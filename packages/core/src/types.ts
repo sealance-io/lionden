@@ -240,6 +240,10 @@ export interface ArtifactStore {
   getAleoSource(programId: string): string | undefined;
   /** Get all compiled program IDs */
   getProgramIds(): string[];
+  /** Store the ABI JSON for a compiled program */
+  setAbi(programId: string, abi: unknown): void;
+  /** Store the compiled .aleo source for a program */
+  setAleoSource(programId: string, source: string): void;
 }
 
 export interface LionDenRuntimeEnvironment {

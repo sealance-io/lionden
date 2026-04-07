@@ -184,3 +184,28 @@ describe("createLre config-level tasks", () => {
     expect(result).toBe("config");
   });
 });
+
+describe("artifact store", () => {
+  const mockConfig = {
+    leoVersion: "4.0.0",
+    paths: { root: "/tmp", programs: "/tmp/programs", artifacts: "/tmp/artifacts", typechain: "/tmp/typechain", cache: "/tmp/cache" },
+    networks: {},
+    defaultNetwork: "devnode",
+    compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
+    codegen: { enabled: true, outDir: "typechain" },
+    testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
+    deploy: { defaultPriorityFee: 0, confirmTransactions: true, confirmationTimeout: 60_000 },
+  } satisfies LionDenResolvedConfig;
+
+  it("exposes setAbi/setAleoSource on the artifact store interface", () => {
+    const lre = createLre({ config: mockConfig, plugins: [] });
+
+    // Should be callable without type errors
+    lre.artifacts.setAbi("hello.aleo", { program: "hello.aleo", transitions: [] });
+    lre.artifacts.setAleoSource("hello.aleo", "program hello.aleo { }");
+
+    expect(lre.artifacts.getAbi("hello.aleo")).toEqual({ program: "hello.aleo", transitions: [] });
+    expect(lre.artifacts.getAleoSource("hello.aleo")).toBe("program hello.aleo { }");
+    expect(lre.artifacts.getProgramIds()).toEqual(["hello.aleo"]);
+  });
+});

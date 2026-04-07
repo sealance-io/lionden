@@ -159,12 +159,14 @@ function buildDefaults(
   const programsDir = config.programsDir ?? "programs";
   const artifactsDir = config.artifactsDir ?? "artifacts";
   const typechainDir = config.typechainDir ?? "typechain";
+  // codegen.outDir takes precedence over typechainDir when explicitly set
+  const codegenOutDir = config.codegen?.outDir ?? typechainDir;
 
   const paths: ResolvedPaths = {
     root: projectRoot,
     programs: path.resolve(projectRoot, programsDir),
     artifacts: path.resolve(projectRoot, artifactsDir),
-    typechain: path.resolve(projectRoot, typechainDir),
+    typechain: path.resolve(projectRoot, codegenOutDir),
     cache: path.resolve(projectRoot, artifactsDir, ".cache"),
   };
 
@@ -177,7 +179,7 @@ function buildDefaults(
 
   const codegen: ResolvedCodegenConfig = {
     enabled: config.codegen?.enabled ?? true,
-    outDir: config.codegen?.outDir ?? typechainDir,
+    outDir: codegenOutDir,
   };
 
   const testing: ResolvedTestingConfig = {

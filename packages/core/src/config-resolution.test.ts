@@ -219,4 +219,36 @@ describe("resolveConfig", () => {
     const { extendedUserConfig } = await resolveConfig({}, [plugin], projectRoot);
     expect(extendedUserConfig.leoVersion).toBe("4.2.0");
   });
+
+  it("resolves paths.typechain from codegen.outDir when set", async () => {
+    const config: LionDenUserConfig = {
+      codegen: { outDir: "generated" },
+    };
+    const resolved = await resolve(config, [], projectRoot);
+
+    // paths.typechain should follow codegen.outDir
+    expect(resolved.paths.typechain).toBe("/tmp/test-project/generated");
+    expect(resolved.codegen.outDir).toBe("generated");
+  });
+
+  it("uses typechainDir as default for paths.typechain and codegen.outDir", async () => {
+    const config: LionDenUserConfig = {
+      typechainDir: "custom-types",
+    };
+    const resolved = await resolve(config, [], projectRoot);
+
+    expect(resolved.paths.typechain).toBe("/tmp/test-project/custom-types");
+    expect(resolved.codegen.outDir).toBe("custom-types");
+  });
+
+  it("codegen.outDir takes precedence over typechainDir", async () => {
+    const config: LionDenUserConfig = {
+      typechainDir: "old-path",
+      codegen: { outDir: "new-path" },
+    };
+    const resolved = await resolve(config, [], projectRoot);
+
+    expect(resolved.paths.typechain).toBe("/tmp/test-project/new-path");
+    expect(resolved.codegen.outDir).toBe("new-path");
+  });
 });
