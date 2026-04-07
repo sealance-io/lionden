@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+artifacts/
+typechain/
+build/
+.cache/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test and coverage outputs
+coverage/
+.vitest/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+*.local
+
+# Package manager and tool caches
+.npm/
+.pnpm-store/
+.yarn/
+.turbo/
+.eslintcache
+
+# Editors and local tooling
+.claude/
+.idea/
+.vscode/
+.vscode-test/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+
+# Intentionally local-only docs
+_docs
