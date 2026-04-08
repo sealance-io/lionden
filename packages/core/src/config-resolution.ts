@@ -210,7 +210,7 @@ function buildDefaults(
     };
   } else {
     for (const [name, netConfig] of Object.entries(userNetworks)) {
-      networks[name] = resolveNetworkConfig(netConfig);
+      networks[name] = resolveNetworkConfig(name, netConfig);
     }
   }
 
@@ -229,6 +229,7 @@ function buildDefaults(
 }
 
 function resolveNetworkConfig(
+  networkName: string,
   config: NetworkUserConfig,
 ): ResolvedNetworkConfig {
   switch (config.type) {
@@ -238,7 +239,17 @@ function resolveNetworkConfig(
         socketAddr: config.socketAddr ?? "127.0.0.1:3030",
         autoBlock: config.autoBlock ?? true,
         verbosity: config.verbosity ?? 0,
-        accounts: config.accounts ?? [],
+        accounts: (config.accounts ?? []).map((a, i) => {
+          const key = resolveStringOrVariable(a.privateKey);
+          if (!key) {
+            const err = {
+              path: `networks.${networkName}.accounts[${i}].privateKey`,
+              message: "Account private key must be a non-empty string or a resolvable ConfigVariable",
+            };
+            throw new ConfigResolutionError(err.message, [err]);
+          }
+          return { privateKey: key, name: a.name };
+        }),
         genesisPath: config.genesisPath,
         network: config.network ?? "testnet",
       };

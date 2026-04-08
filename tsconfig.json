@@ -4,7 +4,9 @@
     { "path": "packages/config" },
     { "path": "packages/core" },
     { "path": "packages/leo-compiler" },
+    { "path": "packages/network" },
     { "path": "packages/plugin-leo" },
+    { "path": "packages/plugin-network" },
     { "path": "packages/cli" }
   ]
 }

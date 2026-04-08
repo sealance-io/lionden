@@ -227,6 +227,12 @@ export interface LionDenPlugin {
 
   /** Global CLI options added by this plugin */
   readonly globalOptions?: readonly GlobalOptionDefinition[];
+
+  /**
+   * Called after LRE construction. Allows plugins to inject services
+   * (e.g., network manager) into the runtime environment.
+   */
+  readonly extendLre?: (lre: LionDenRuntimeEnvironment) => void;
 }
 
 // ---------------------------------------------------------------------------

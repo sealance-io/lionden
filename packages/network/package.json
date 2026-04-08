@@ -1,0 +1,20 @@
+{
+  "name": "@lionden/network",
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@lionden/config": "*",
+    "@lionden/core": "*",
+    "@provablehq/sdk": "^0.10.1"
+  }
+}

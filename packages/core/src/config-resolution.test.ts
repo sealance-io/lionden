@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { resolveConfig, ConfigResolutionError } from "./config-resolution.js";
 import type { LionDenUserConfig } from "@lionden/config";
+import { configVariable } from "@lionden/config";
 import type { LionDenPlugin } from "./types.js";
 
 /** Helper to unwrap the resolved config from the result tuple */
@@ -239,6 +240,52 @@ describe("resolveConfig", () => {
 
     expect(resolved.paths.typechain).toBe("/tmp/test-project/custom-types");
     expect(resolved.codegen.outDir).toBe("custom-types");
+  });
+
+  it("resolves devnode account ConfigVariables to strings", async () => {
+    // Set env var for the config variable
+    process.env["TEST_ALEO_KEY"] = "APrivateKey1zkpResolved123";
+    try {
+      const config: LionDenUserConfig = {
+        networks: {
+          local: {
+            type: "devnode",
+            accounts: [
+              { privateKey: configVariable("TEST_ALEO_KEY"), name: "deployer" },
+              { privateKey: "APrivateKey1zkpLiteral456" },
+            ],
+          },
+        },
+      };
+      const resolved = await resolve(config, [], projectRoot);
+      const net = resolved.networks["local"]!;
+      if (net.type === "devnode") {
+        expect(net.accounts).toHaveLength(2);
+        // ConfigVariable should be resolved to the env var value
+        expect(net.accounts[0]!.privateKey).toBe("APrivateKey1zkpResolved123");
+        expect(net.accounts[0]!.name).toBe("deployer");
+        // Literal string passes through unchanged
+        expect(net.accounts[1]!.privateKey).toBe("APrivateKey1zkpLiteral456");
+      }
+    } finally {
+      delete process.env["TEST_ALEO_KEY"];
+    }
+  });
+
+  it("throws on unresolvable devnode account private key", async () => {
+    const config: LionDenUserConfig = {
+      networks: {
+        local: {
+          type: "devnode",
+          accounts: [
+            { privateKey: configVariable("NONEXISTENT_VAR_FOR_TEST") },
+          ],
+        },
+      },
+    };
+    await expect(resolve(config, [], projectRoot)).rejects.toThrow(
+      "NONEXISTENT_VAR_FOR_TEST",
+    );
   });
 
   it("codegen.outDir takes precedence over typechainDir", async () => {

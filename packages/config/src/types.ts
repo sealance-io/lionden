@@ -67,6 +67,12 @@ export interface AccountConfig {
   readonly name?: string;
 }
 
+/** Account config after variable resolution — privateKey is always a string. */
+export interface ResolvedAccountConfig {
+  readonly privateKey: string;
+  readonly name?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin and Task types (forward-declared here so config can reference them)
 // ---------------------------------------------------------------------------
@@ -211,7 +217,7 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly socketAddr: string;
   readonly autoBlock: boolean;
   readonly verbosity: number;
-  readonly accounts: AccountConfig[];
+  readonly accounts: ResolvedAccountConfig[];
   readonly genesisPath?: string;
   readonly network: AleoNetwork;
 }

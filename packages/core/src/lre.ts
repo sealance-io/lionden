@@ -69,13 +69,20 @@ export function createLre(options: CreateLreOptions): LionDenRuntimeEnvironment 
 
   const lre: LionDenRuntimeEnvironment = {
     config,
-    network: null, // Will be set by @lionden/network when loaded
+    network: null, // Set by @lionden/plugin-network via extendLre
     tasks,
     hooks,
     artifacts,
     plugins,
     globalOptions,
   };
+
+  // Allow plugins to inject services (e.g., network manager)
+  for (const plugin of plugins) {
+    if (plugin.extendLre) {
+      plugin.extendLre(lre);
+    }
+  }
 
   // Bind LRE to task runner
   tasks.setLre(lre);
