@@ -1,4 +1,4 @@
-// LRE factory (auto-discovers config and creates HRE for test files)
+// LRE factory (auto-discovers config and creates LRE for test files)
 export { createTestLre, resetTestLre } from "./lre-factory.js";
 
 // Test context

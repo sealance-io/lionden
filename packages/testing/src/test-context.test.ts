@@ -11,7 +11,7 @@ vi.mock("./devnode-lifecycle.js", () => ({
   stopDevnode: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Mock lre-factory so tests that omit hre don't attempt config discovery
+// Mock lre-factory so tests that omit lre don't attempt config discovery
 vi.mock("./lre-factory.js", async () => {
   // Will be set per-test via the mockCreateTestLre helper
   let mockLre: LionDenRuntimeEnvironment | null = null;
@@ -45,7 +45,7 @@ function mockConnection(): NetworkConnection {
   } as unknown as NetworkConnection;
 }
 
-function mockHre(): LionDenRuntimeEnvironment {
+function mockLre(): LionDenRuntimeEnvironment {
   const connection = mockConnection();
   const manager: NetworkManager = {
     connect: vi.fn().mockResolvedValue(connection),
@@ -117,96 +117,96 @@ describe("test-context", () => {
     process.env = { ...originalEnv };
   });
 
-  describe("setup with explicit hre", () => {
+  describe("setup with explicit lre", () => {
     it("creates a test context with connection and accounts", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre });
+      const lre = mockLre();
+      const ctx = await setup({ lre });
 
-      expect(ctx.hre).toBe(hre);
+      expect(ctx.lre).toBe(lre);
       expect(ctx.accounts).toHaveLength(4);
       expect(ctx.connection).toBeDefined();
       expect(ctx.connection.type).toBe("devnode");
     });
 
     it("connects to the default network", async () => {
-      const hre = mockHre();
-      await setup({ hre });
+      const lre = mockLre();
+      await setup({ lre });
 
-      const manager = hre.network as NetworkManager;
+      const manager = lre.network as NetworkManager;
       expect(manager.connect).toHaveBeenCalledWith("devnode");
     });
 
     it("connects to specified network when provided", async () => {
-      const hre = mockHre();
-      await setup({ hre, network: "testnet" });
+      const lre = mockLre();
+      await setup({ lre, network: "testnet" });
 
-      const manager = hre.network as NetworkManager;
+      const manager = lre.network as NetworkManager;
       expect(manager.connect).toHaveBeenCalledWith("testnet");
     });
 
     it("starts devnode by default", async () => {
-      const hre = mockHre();
-      await setup({ hre });
+      const lre = mockLre();
+      await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
       expect(startDevnode).toHaveBeenCalledOnce();
     });
 
     it("skips devnode when skipDevnode is true", async () => {
-      const hre = mockHre();
-      await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      await setup({ lre, skipDevnode: true });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
       expect(startDevnode).not.toHaveBeenCalled();
     });
 
     it("skips devnode when autoStartDevnode config is false", async () => {
-      const hre = mockHre();
-      Object.defineProperty(hre.config, "testing", {
+      const lre = mockLre();
+      Object.defineProperty(lre.config, "testing", {
         value: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: false },
         writable: true,
       });
 
-      await setup({ hre });
+      await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
       expect(startDevnode).not.toHaveBeenCalled();
     });
   });
 
-  describe("setup without hre (auto-discovery)", () => {
-    it("calls createTestLre when hre is omitted", async () => {
-      const hre = mockHre();
+  describe("setup without lre (auto-discovery)", () => {
+    it("calls createTestLre when lre is omitted", async () => {
+      const lre = mockLre();
       const lreFactory = await import("./lre-factory.js");
-      (lreFactory as unknown as { __setMockLre: (lre: unknown) => void }).__setMockLre(hre);
+      (lreFactory as unknown as { __setMockLre: (lre: unknown) => void }).__setMockLre(lre);
 
       const ctx = await setup();
 
       expect(lreFactory.createTestLre).toHaveBeenCalledOnce();
-      expect(ctx.hre).toBe(hre);
+      expect(ctx.lre).toBe(lre);
     });
   });
 
   describe("autoBlock config passthrough", () => {
     it("does not override config autoBlock when caller omits it", async () => {
-      const hre = mockHre();
-      await setup({ hre });
+      const lre = mockLre();
+      await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
       // Should be called without autoBlock override (second arg undefined or without autoBlock)
       expect(startDevnode).toHaveBeenCalledWith(
-        hre.config,
+        lre.config,
         undefined,
       );
     });
 
     it("passes explicit autoBlock override when caller sets it", async () => {
-      const hre = mockHre();
-      await setup({ hre, autoBlock: false });
+      const lre = mockLre();
+      await setup({ lre, autoBlock: false });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
       expect(startDevnode).toHaveBeenCalledWith(
-        hre.config,
+        lre.config,
         { autoBlock: false },
       );
     });
@@ -214,12 +214,12 @@ describe("test-context", () => {
 
   describe("ctx.deploy", () => {
     it("delegates to deploy task", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       const result = await ctx.deploy("hello");
 
-      expect(hre.tasks.run).toHaveBeenCalledWith("deploy", {
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "hello",
         priorityFee: undefined,
         skipConfirm: undefined,
@@ -229,12 +229,12 @@ describe("test-context", () => {
     });
 
     it("passes deploy options", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.deploy("token", { priorityFee: 1000, skipConfirm: true });
 
-      expect(hre.tasks.run).toHaveBeenCalledWith("deploy", {
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "token",
         priorityFee: 1000,
         skipConfirm: true,
@@ -244,8 +244,8 @@ describe("test-context", () => {
 
   describe("ctx.execute", () => {
     it("defaults to onchain mode with prove=false", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.execute("hello.aleo", "main", ["1u32", "2u32"]);
 
@@ -256,8 +256,8 @@ describe("test-context", () => {
 
     it("passes prove=true when LIONDEN_PROVE is set", async () => {
       process.env["LIONDEN_PROVE"] = "true";
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.execute("hello.aleo", "main", ["1u32"]);
 
@@ -267,8 +267,8 @@ describe("test-context", () => {
     });
 
     it("explicit mode overrides default", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.execute("hello.aleo", "main", [], { mode: "local" });
 
@@ -278,8 +278,8 @@ describe("test-context", () => {
     });
 
     it("passes execution options", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.execute("hello.aleo", "main", [], { mode: "onchain", fee: 500 });
 
@@ -291,8 +291,8 @@ describe("test-context", () => {
 
   describe("ctx.advanceBlocks", () => {
     it("delegates to connection.advanceBlocks on devnode", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.advanceBlocks(5);
 
@@ -302,12 +302,12 @@ describe("test-context", () => {
 
   describe("ctx.teardown", () => {
     it("disconnects and stops devnode", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre });
+      const lre = mockLre();
+      const ctx = await setup({ lre });
 
       await ctx.teardown();
 
-      const manager = hre.network as NetworkManager;
+      const manager = lre.network as NetworkManager;
       expect(manager.disconnectAll).toHaveBeenCalledOnce();
 
       const { stopDevnode } = await import("./devnode-lifecycle.js");
@@ -315,8 +315,8 @@ describe("test-context", () => {
     });
 
     it("skips stopDevnode when devnode was not started", async () => {
-      const hre = mockHre();
-      const ctx = await setup({ hre, skipDevnode: true });
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.teardown();
 

@@ -33,7 +33,7 @@ This testing approach is built around a devnode-first workflow, suite-level isol
 
 The resulting `TestContext` includes:
 
-- `hre`
+- `lre`
 - `accounts`
 - `connection`
 - `deploy()`

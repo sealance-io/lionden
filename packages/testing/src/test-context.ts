@@ -20,7 +20,7 @@ import { createTestLre } from "./lre-factory.js";
 
 export interface SetupOptions {
   /** LRE instance. If omitted, one is created automatically from the project config. */
-  hre?: LionDenRuntimeEnvironment;
+  lre?: LionDenRuntimeEnvironment;
   /** Skip auto-starting a devnode (use existing connection). */
   skipDevnode?: boolean;
   /** Override devnode auto-block setting. When omitted, the config value is used. */
@@ -31,7 +31,7 @@ export interface SetupOptions {
 
 export interface TestContext {
   /** The LionDen runtime environment. */
-  readonly hre: LionDenRuntimeEnvironment;
+  readonly lre: LionDenRuntimeEnvironment;
   /** Pre-funded devnode accounts. */
   readonly accounts: readonly DevnodeAccount[];
   /** Active network connection. */
@@ -78,7 +78,7 @@ export interface ExecuteResult {
 /**
  * Create a test context with a running devnode and active connection.
  *
- * If `hre` is not provided, one is created automatically by discovering
+ * If `lre` is not provided, one is created automatically by discovering
  * the project's `lionden.config.{ts,js,mjs}`. The test runner sets
  * `LIONDEN_PROJECT_ROOT` so config discovery works from Vitest workers.
  *
@@ -94,7 +94,7 @@ export interface ExecuteResult {
  * ```
  */
 export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
-  const hre = opts.hre ?? (await createTestLre());
+  const lre = opts.lre ?? (await createTestLre());
   const { skipDevnode, autoBlock, network: networkName } = opts;
   let managedDevnode: ManagedDevnode | undefined;
 
@@ -103,27 +103,27 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   const prove = process.env["LIONDEN_PROVE"] === "true";
 
   // 1. Optionally start a devnode
-  if (!skipDevnode && hre.config.testing.autoStartDevnode) {
+  if (!skipDevnode && lre.config.testing.autoStartDevnode) {
     // Only pass autoBlock override if the caller explicitly set it.
     // Otherwise, let startDevnode() read the value from config.
     managedDevnode = await startDevnode(
-      hre.config,
+      lre.config,
       autoBlock !== undefined ? { autoBlock } : undefined,
     );
   }
 
   // 2. Connect to the network
-  const manager = hre.network as NetworkManager;
-  const connection = await manager.connect(networkName ?? hre.config.defaultNetwork);
+  const manager = lre.network as NetworkManager;
+  const connection = await manager.connect(networkName ?? lre.config.defaultNetwork);
 
   // 3. Build context
   const ctx: TestContext = {
-    hre,
+    lre,
     accounts: DEVNODE_ACCOUNTS,
     connection,
 
     async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
-      const result = await hre.tasks.run("deploy", {
+      const result = await lre.tasks.run("deploy", {
         program: programName,
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,

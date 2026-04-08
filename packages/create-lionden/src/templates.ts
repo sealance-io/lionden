@@ -151,12 +151,12 @@ describe("hello program", () => {
 const HELLO_DEPLOY = `\
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 
-export default async function (hre: LionDenRuntimeEnvironment) {
+export default async function (lre: LionDenRuntimeEnvironment) {
   console.log("Compiling...");
-  await hre.tasks.run("compile");
+  await lre.tasks.run("compile");
 
   console.log("Deploying hello.aleo...");
-  const results = await hre.tasks.run("deploy", { program: "hello" });
+  const results = await lre.tasks.run("deploy", { program: "hello" });
   const deploy = (results as Array<{ programId: string; txId: string }>)[0]!;
   console.log(\`Deployed \${deploy.programId} — tx: \${deploy.txId}\`);
 }
@@ -292,12 +292,12 @@ describe("token program", () => {
 const TOKEN_DEPLOY = `\
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 
-export default async function (hre: LionDenRuntimeEnvironment) {
+export default async function (lre: LionDenRuntimeEnvironment) {
   console.log("Compiling...");
-  await hre.tasks.run("compile");
+  await lre.tasks.run("compile");
 
   console.log("Deploying token.aleo...");
-  const results = await hre.tasks.run("deploy", { program: "token" });
+  const results = await lre.tasks.run("deploy", { program: "token" });
   const deploy = (results as Array<{ programId: string; txId: string }>)[0]!;
   console.log(\`Deployed \${deploy.programId} — tx: \${deploy.txId}\`);
 }

@@ -3,7 +3,7 @@
  *
  * Discovers the project config, resolves it through the full plugin
  * lifecycle, and constructs a cached LRE singleton. This allows test
- * files to call `setup()` without manually constructing an HRE — the
+ * files to call `setup()` without manually constructing an LRE — the
  * factory handles config discovery and LRE creation transparently.
  *
  * Config is discovered from `LIONDEN_PROJECT_ROOT` (set by the test
