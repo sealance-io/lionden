@@ -1,9 +1,9 @@
 {
-  "name": "@lionden/cli",
+  "name": "create-lionden",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "lionden": "./dist/bin.js"
+    "create-lionden": "./dist/bin.js"
   },
   "exports": {
     ".": {
@@ -14,10 +14,5 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc --build"
-  },
-  "dependencies": {
-    "@lionden/config": "*",
-    "@lionden/core": "*",
-    "tsx": "^4.0.0"
   }
 }
