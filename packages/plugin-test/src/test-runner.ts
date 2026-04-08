@@ -64,7 +64,7 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
     include: [`${testDir}/**/*.test.ts`],
     testTimeout: options.timeout ?? 120_000,
     hookTimeout: options.timeout ?? 120_000,
-    ...(options.grep ? { namePattern: options.grep } : {}),
+    ...(options.grep ? { testNamePattern: options.grep } : {}),
   });
 
   if (!vitest) {

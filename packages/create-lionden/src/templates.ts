@@ -36,6 +36,9 @@ export function sharedFiles(projectName: string): TemplateFile[] {
             deploy: "lionden run scripts/deploy.ts",
             node: "lionden node",
           },
+          engines: {
+            node: "^20.19.0 || >=22.12.0",
+          },
           devDependencies: {
             "@lionden/cli": "^0.1.0",
             "@lionden/config": "^0.1.0",
@@ -47,7 +50,7 @@ export function sharedFiles(projectName: string): TemplateFile[] {
             "@lionden/testing": "^0.1.0",
             tsx: "^4.0.0",
             typescript: "^5.7.0",
-            vitest: "^3.0.0",
+            vitest: "^4.0.0",
           },
         },
         null,

@@ -3,12 +3,13 @@ import type { LionDenResolvedConfig } from "@lionden/config";
 
 // Mock DevnodeManager before importing the module under test
 vi.mock("@lionden/network", () => {
-  const DevnodeManager = vi.fn().mockImplementation(() => ({
-    start: vi.fn().mockResolvedValue(undefined),
-    stop: vi.fn().mockResolvedValue(undefined),
-    endpoint: "http://127.0.0.1:3030",
-    isRunning: vi.fn().mockReturnValue(true),
-  }));
+  const DevnodeManager = vi.fn().mockImplementation(function () {
+    this.start = vi.fn().mockResolvedValue(undefined);
+    this.stop = vi.fn().mockResolvedValue(undefined);
+    this.endpoint = "http://127.0.0.1:3030";
+    this.isRunning = vi.fn().mockReturnValue(true);
+    return this;
+  });
 
   return { DevnodeManager };
 });

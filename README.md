@@ -50,7 +50,7 @@ When the code and the plan differ, treat the current codebase as the source of t
 
 For contributor workflows and realistic end-to-end runs, assume:
 
-- Node.js 20+ (the root package declares `>=20`)
+- Node.js 20.19+ or 22.12+ (the root package declares `^20.19.0 || >=22.12.0`)
 - npm
 - Leo CLI v4.0.0 available on `PATH`
 - snarkOS available when working on devnet-oriented flows
