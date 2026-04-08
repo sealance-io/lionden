@@ -25,6 +25,16 @@ export interface ExecuteOptions {
   mode?: "local" | "onchain";
   fee?: number;
   privateFee?: boolean;
+  /**
+   * Generate real proofs during on-chain execution.
+   * When false (default), devnode connections use the fast-path builder
+   * (`buildDevnodeExecutionTransaction`) which skips proof generation.
+   * When true, the standard `pm.execute()` path is used even on devnode,
+   * producing real proofs (significantly slower).
+   * Has no effect on non-devnode connections (proofs are always generated)
+   * or in `"local"` mode.
+   */
+  prove?: boolean;
 }
 
 // ---------------------------------------------------------------------------

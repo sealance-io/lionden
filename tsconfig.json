@@ -8,6 +8,8 @@
     { "path": "packages/plugin-leo" },
     { "path": "packages/plugin-network" },
     { "path": "packages/plugin-deploy" },
+    { "path": "packages/testing" },
+    { "path": "packages/plugin-test" },
     { "path": "packages/cli" }
   ]
 }

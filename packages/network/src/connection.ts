@@ -136,8 +136,13 @@ export class AleoConnection implements NetworkConnection {
     // On-chain execution
     let txId: string;
 
-    if (this.type === "devnode" && typeof pm.buildDevnodeExecutionTransaction === "function") {
-      // Use devnode-specific builder
+    const useDevnodeFastPath =
+      this.type === "devnode" &&
+      !options?.prove &&
+      typeof pm.buildDevnodeExecutionTransaction === "function";
+
+    if (useDevnodeFastPath) {
+      // Devnode fast-path — skips proof generation
       const tx = await pm.buildDevnodeExecutionTransaction({
         programId,
         functionName: transitionName,

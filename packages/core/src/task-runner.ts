@@ -91,8 +91,10 @@ export class TaskRunnerImpl implements TaskRunner {
     // Resolve the action (may be lazy-loaded)
     const action = await this.resolveAction(registered.definition.action);
 
-    // Fill default values for options
-    const mergedArgs = this.mergeDefaults(registered.definition, args);
+    // Normalize CLI args (kebab-case → camelCase, string → number coercion)
+    // then fill default values for options/flags
+    const normalizedArgs = this.normalizeArgs(registered.definition, args);
+    const mergedArgs = this.mergeDefaults(registered.definition, normalizedArgs);
 
     // If there are overrides, create the runSuper chain
     if (registered.overrideChain.length > 0) {
@@ -160,6 +162,55 @@ export class TaskRunnerImpl implements TaskRunner {
     };
   }
 
+  /**
+   * Normalize CLI-parsed args to match the task definition's option/flag names.
+   *
+   * The CLI parser stores raw flag names (e.g., "no-compile") and string values
+   * (e.g., "5000" for --timeout 5000). This method:
+   * 1. Maps kebab-case keys to their camelCase equivalents
+   * 2. Coerces string values to the declared option type (number, boolean)
+   */
+  private normalizeArgs(
+    definition: TaskDefinition,
+    args: Record<string, unknown>,
+  ): Record<string, unknown> {
+    // Build canonical name lookup: kebab-case → camelCase
+    const canonicalMap = new Map<string, { name: string; type?: string }>();
+    for (const opt of definition.options ?? []) {
+      canonicalMap.set(opt.name, { name: opt.name, type: opt.type });
+      const kebab = camelToKebab(opt.name);
+      if (kebab !== opt.name) {
+        canonicalMap.set(kebab, { name: opt.name, type: opt.type });
+      }
+    }
+    for (const flag of definition.flags ?? []) {
+      canonicalMap.set(flag.name, { name: flag.name, type: "boolean" });
+      const kebab = camelToKebab(flag.name);
+      if (kebab !== flag.name) {
+        canonicalMap.set(kebab, { name: flag.name, type: "boolean" });
+      }
+    }
+
+    const normalized: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args)) {
+      const canonical = canonicalMap.get(key);
+      if (canonical) {
+        // Coerce string values to declared type
+        if (typeof value === "string" && canonical.type === "number") {
+          const num = Number(value);
+          normalized[canonical.name] = Number.isNaN(num) ? value : num;
+        } else {
+          normalized[canonical.name] = value;
+        }
+      } else {
+        // Pass through unrecognized args (e.g., _positional)
+        normalized[key] = value;
+      }
+    }
+
+    return normalized;
+  }
+
   private mergeDefaults(
     definition: TaskDefinition,
     args: Record<string, unknown>,
@@ -180,4 +231,9 @@ export class TaskRunnerImpl implements TaskRunner {
 
     return merged;
   }
+}
+
+/** Convert camelCase to kebab-case (e.g., "noCompile" → "no-compile"). */
+function camelToKebab(name: string): string {
+  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
 }

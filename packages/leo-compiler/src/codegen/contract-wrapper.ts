@@ -11,6 +11,14 @@ export interface CallOptions {
   mode?: ExecutionMode;
   fee?: number;
   privateFee?: boolean;
+  /**
+   * Generate real proofs during on-chain execution.
+   * When false (default), devnode connections use the fast-path builder
+   * which skips proof generation. When true, real proofs are generated
+   * (significantly slower). Has no effect in "local" mode or on
+   * non-devnode connections.
+   */
+  prove?: boolean;
 }
 
 export interface TransitionCallResult {
