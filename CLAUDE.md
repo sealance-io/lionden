@@ -63,6 +63,7 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | Leo compilation, materialization, ABI, codegen | `docs/compiler.md` |
 | Network types, devnode/devnet, deploy/upgrade | `docs/network-and-deploy.md` |
 | Test context, fixtures, assertions | `docs/testing.md` |
+| JSON ABI schema, serde rules, compiler-vs-TS normalization | `docs/json-abi.md` |
 | Package map, examples, scaffolder | `docs/project-layout.md` |
 
 `_docs/` contains design specs and implementation plan — treat as roadmap, not source of truth. When code and plan differ, trust the code.

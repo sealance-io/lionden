@@ -41,6 +41,7 @@ Open the smallest relevant doc first:
 | Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md) |
 | Network configs, devnode/devnet, `node`, `run`, `deploy`, `upgrade` | [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md) |
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) |
+| JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md) |
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md) |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md) |
 
