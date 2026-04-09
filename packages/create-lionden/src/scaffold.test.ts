@@ -88,6 +88,18 @@ describe("scaffold", () => {
     expect(existsSync(join(dir, "programs", "hello", "main.leo"))).toBe(true);
   });
 
+  it("scaffolds Leo programs with ARC-0006 constructors", async () => {
+    const dir = tmpProject();
+    dirs.push(dir);
+
+    const template = getTemplate("hello-world")!;
+    await scaffold({ projectDir: dir, projectName: "constructors", template });
+
+    const leo = readFileSync(join(dir, "programs/hello/main.leo"), "utf-8");
+    expect(leo).toContain("@noupgrade");
+    expect(leo).toContain("fn constructor() {}");
+  });
+
   it("throws on non-empty directory", async () => {
     const dir = tmpProject();
     dirs.push(dir);

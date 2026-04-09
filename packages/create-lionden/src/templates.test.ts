@@ -38,6 +38,18 @@ describe("templates", () => {
     }
   });
 
+  it("each template Leo program includes an ARC-0006 constructor", () => {
+    for (const template of TEMPLATES) {
+      const programFiles = template.files.filter((f) => f.path.endsWith(".leo"));
+      expect(programFiles.length).toBeGreaterThan(0);
+
+      for (const programFile of programFiles) {
+        expect(programFile.content).toContain("@noupgrade");
+        expect(programFile.content).toContain("fn constructor() {}");
+      }
+    }
+  });
+
   it("each template includes a test file", () => {
     for (const template of TEMPLATES) {
       const hasTest = template.files.some((f) => f.path.startsWith("test/"));
