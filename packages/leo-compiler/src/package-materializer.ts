@@ -23,10 +23,22 @@ export function materializePackage(
   const srcDir = path.join(packageDir, "src");
   const importsDir = path.join(packageDir, "imports");
 
-  // Clean and recreate
+  // Clean and recreate, but preserve the build/ directory (contains leo build
+  // output that the cache expects to still be there on subsequent runs).
+  const buildDir = path.join(packageDir, "build");
+  const buildExists = fs.existsSync(buildDir);
+  const tmpBuildDir = buildExists
+    ? path.join(config.paths.artifacts, ".build", `.preserve-${id}-${process.pid}`)
+    : null;
+  if (tmpBuildDir) {
+    fs.renameSync(buildDir, tmpBuildDir);
+  }
   fs.rmSync(packageDir, { recursive: true, force: true });
   fs.mkdirSync(srcDir, { recursive: true });
   fs.mkdirSync(importsDir, { recursive: true });
+  if (tmpBuildDir) {
+    fs.renameSync(tmpBuildDir, buildDir);
+  }
 
   // Copy all .leo sources preserving directory structure
   for (const relPath of unit.allSources) {
