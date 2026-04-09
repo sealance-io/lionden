@@ -452,6 +452,7 @@ describe("validateAdminSigner (Fix 3)", () => {
     execute: vi.fn(),
     waitForConfirmation: vi.fn(),
     getBlockHeight: vi.fn(),
+    broadcastTransaction: vi.fn(),
     close: vi.fn(),
   };
 

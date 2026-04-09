@@ -1,11 +1,12 @@
 /**
  * AleoConnection — concrete implementation of NetworkConnection.
  *
- * Uses the Aleo REST API for queries (block height, mappings, balance)
- * and delegates transaction execution to the SDK adapter when available.
+ * Delegates to the Provable SDK's AleoNetworkClient for queries and
+ * transaction broadcasting, and to ProgramManager for transaction building.
  */
 
 import type { AleoNetwork } from "@lionden/config";
+import type { SdkObjects } from "./sdk-adapter.js";
 import type {
   NetworkConnection,
   TransitionCallResult,
@@ -29,7 +30,10 @@ export class AleoConnection implements NetworkConnection {
   readonly name: string;
   readonly endpoint: string;
   readonly networkId: AleoNetwork;
-  private readonly privateKey?: string;
+  readonly privateKey?: string;
+
+  private sdkObjects?: SdkObjects;
+  private sdkObjectsPromise?: Promise<SdkObjects>;
 
   constructor(options: ConnectionOptions) {
     this.type = options.type;
@@ -54,6 +58,26 @@ export class AleoConnection implements NetworkConnection {
     }
   }
 
+  /** Lazy-init and cache SDK objects for this connection. */
+  private async getSdkObjects(): Promise<SdkObjects> {
+    if (this.sdkObjects) return this.sdkObjects;
+
+    if (!this.sdkObjectsPromise) {
+      this.sdkObjectsPromise = (async () => {
+        const { createSdkObjects } = await import("./sdk-adapter.js");
+        const objects = await createSdkObjects(
+          this.networkId,
+          this.endpoint,
+          this.privateKey,
+        );
+        this.sdkObjects = objects;
+        return objects;
+      })();
+    }
+
+    return this.sdkObjectsPromise;
+  }
+
   async getBalance(address?: string): Promise<bigint> {
     const addr = address ?? await this.getDefaultAddress();
     const value = await this.getMappingValue(
@@ -71,28 +95,26 @@ export class AleoConnection implements NetworkConnection {
     mappingName: string,
     key: string,
   ): Promise<string | null> {
-    const url =
-      `${this.endpoint}/${this.networkId}/program/${encodeURIComponent(programId)}` +
-      `/mapping/${encodeURIComponent(mappingName)}/${encodeURIComponent(key)}`;
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
 
-    const response = await fetch(url);
-
-    if (response.status === 404) return null;
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to query mapping ${programId}/${mappingName}: ` +
-          `${response.status} ${response.statusText}`,
-      );
-    }
-
-    const text = await response.text();
-    // REST API returns JSON-encoded string or null
     try {
-      const parsed = JSON.parse(text) as string | null;
-      return parsed;
-    } catch {
-      return text.trim() || null;
+      const value: string | undefined = await nc.getProgramMappingValue(
+        programId,
+        mappingName,
+        key,
+      );
+      if (value === undefined || value === null) return null;
+      return typeof value === "string" ? value : String(value);
+    } catch (err: unknown) {
+      // SDK throws on 404 / missing key — treat as null
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("404") || message.includes("not found") || message.includes("Not Found")) {
+        return null;
+      }
+      throw new Error(
+        `Failed to query mapping ${programId}/${mappingName}: ${message}`,
+      );
     }
   }
 
@@ -102,21 +124,15 @@ export class AleoConnection implements NetworkConnection {
     args: string[],
     options?: ExecuteOptions,
   ): Promise<TransitionCallResult> {
-    const { createSdkObjects, initConsensusHeights, checkDevnodeSdkSupport } =
-      await import("./sdk-adapter.js");
-
     if (this.type === "devnode") {
+      const { checkDevnodeSdkSupport, initConsensusHeights } =
+        await import("./sdk-adapter.js");
       // Enforce SDK v0.10.1 baseline for devnode operations
       await checkDevnodeSdkSupport();
       await initConsensusHeights();
     }
 
-    const sdk = await createSdkObjects(
-      this.networkId,
-      this.endpoint,
-      this.privateKey,
-    );
-
+    const sdk = await this.getSdkObjects();
     const pm = sdk.programManager as any;
     const mode = options?.mode ?? "onchain";
 
@@ -170,32 +186,43 @@ export class AleoConnection implements NetworkConnection {
     txId: string,
     timeout?: number,
   ): Promise<ConfirmedTransaction> {
-    const deadline = Date.now() + (timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS);
-    const url = `${this.endpoint}/${this.networkId}/transaction/${txId}`;
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+    const effectiveTimeout = timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
 
+    try {
+      const result = await nc.getTransaction(txId);
+      if (result) {
+        const height =
+          typeof result["block_height"] === "number"
+            ? result["block_height"]
+            : 0;
+        return { txId, blockHeight: height as number, status: "accepted" };
+      }
+    } catch {
+      // Not confirmed yet — fall through to polling
+    }
+
+    // Poll until confirmed
+    const deadline = Date.now() + effectiveTimeout;
     while (Date.now() < deadline) {
+      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
       try {
-        const response = await fetch(url);
-        if (response.ok) {
-          const data = (await response.json()) as Record<string, unknown>;
+        const result = await nc.getTransaction(txId);
+        if (result) {
           const height =
-            typeof data["block_height"] === "number"
-              ? data["block_height"]
+            typeof result["block_height"] === "number"
+              ? result["block_height"]
               : 0;
-          return {
-            txId,
-            blockHeight: height as number,
-            status: "accepted",
-          };
+          return { txId, blockHeight: height as number, status: "accepted" };
         }
       } catch {
         // Not confirmed yet
       }
-      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
 
     throw new Error(
-      `Transaction ${txId} not confirmed within ${timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS}ms`,
+      `Transaction ${txId} not confirmed within ${effectiveTimeout}ms`,
     );
   }
 
@@ -203,52 +230,28 @@ export class AleoConnection implements NetworkConnection {
   advanceBlocks?: (count: number) => Promise<void>;
 
   async getBlockHeight(): Promise<number> {
-    const url = `${this.endpoint}/${this.networkId}/block/height/latest`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(
-        `Failed to get block height: ${response.status} ${response.statusText}`,
-      );
-    }
-
-    const text = await response.text();
-    return Number(text);
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+    const height: number = await nc.getLatestHeight();
+    return height;
   }
 
   async close(): Promise<void> {
-    // No persistent connection to close for REST-based connections
+    this.sdkObjects = undefined;
+    this.sdkObjectsPromise = undefined;
   }
 
-  /** Broadcast a serialized transaction. */
-  private async broadcastTransaction(transaction: unknown): Promise<string> {
-    const url = `${this.endpoint}/${this.networkId}/transaction/broadcast`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(transaction),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(
-        `Failed to broadcast transaction: ${response.status} ${text.slice(0, 200)}`,
-      );
-    }
-
-    return (await response.text()).replace(/"/g, "");
+  /** Broadcast a serialized transaction via the SDK network client. */
+  async broadcastTransaction(transaction: unknown): Promise<string> {
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+    const txId: string = await nc.submitTransaction(transaction);
+    return typeof txId === "string" ? txId.replace(/"/g, "") : String(txId);
   }
 
   private async getDefaultAddress(): Promise<string> {
     if (this.privateKey) {
-      // Would derive address from private key via SDK
-      // For now, return a placeholder — real impl uses Account.from_private_key()
-      const { createSdkObjects } = await import("./sdk-adapter.js");
-      const sdk = await createSdkObjects(
-        this.networkId,
-        this.endpoint,
-        this.privateKey,
-      );
+      const sdk = await this.getSdkObjects();
       const account = sdk.account as any;
       return typeof account.address === "function"
         ? account.address().to_string()

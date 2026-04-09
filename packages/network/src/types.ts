@@ -54,6 +54,8 @@ export interface NetworkConnection {
   readonly endpoint: string;
   /** Aleo network ID */
   readonly networkId: AleoNetwork;
+  /** Private key for signing, if configured. */
+  readonly privateKey?: string;
 
   /** Get account balance in microcredits. Uses configured default account if none specified. */
   getBalance(address?: string): Promise<bigint>;
@@ -84,6 +86,9 @@ export interface NetworkConnection {
 
   /** Get the current block height. */
   getBlockHeight(): Promise<number>;
+
+  /** Broadcast a serialized transaction to the network. Returns the transaction ID. */
+  broadcastTransaction(transaction: unknown): Promise<string>;
 
   /** Close this connection and release resources. */
   close(): Promise<void>;

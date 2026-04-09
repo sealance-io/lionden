@@ -357,7 +357,7 @@ async function buildAndBroadcastUpgrade(
   const sdk = await createSdkObjects(
     connection.networkId,
     connection.endpoint,
-    getConnectionPrivateKey(connection),
+    connection.privateKey,
   );
 
   if (
@@ -369,7 +369,7 @@ async function buildAndBroadcastUpgrade(
       privateFee: false,
     });
 
-    return broadcastTransaction(connection, tx);
+    return connection.broadcastTransaction(tx);
   }
 
   // Standard upgrade
@@ -401,30 +401,3 @@ function readOldAbi(
   return JSON.parse(raw) as ProgramABI;
 }
 
-function getConnectionPrivateKey(connection: NetworkConnection): string | undefined {
-  const conn = connection as unknown as Record<string, unknown>;
-  if (typeof conn["privateKey"] === "string") return conn["privateKey"];
-  return undefined;
-}
-
-async function broadcastTransaction(
-  connection: NetworkConnection,
-  tx: unknown,
-): Promise<string> {
-  const url = `${connection.endpoint}/${connection.networkId}/transaction/broadcast`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(tx),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new DeployError(
-      `Failed to broadcast upgrade transaction: ${response.status} ${text.slice(0, 200)}`,
-    );
-  }
-
-  return (await response.text()).replace(/"/g, "");
-}

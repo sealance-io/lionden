@@ -405,7 +405,7 @@ async function buildAndBroadcastDeploy(
   const sdk = await createSdkObjects(
     connection.networkId,
     connection.endpoint,
-    getConnectionPrivateKey(connection),
+    connection.privateKey,
   );
 
   if (
@@ -418,8 +418,8 @@ async function buildAndBroadcastDeploy(
       privateFee: false,
     });
 
-    // Broadcast
-    return broadcastTransaction(connection, tx);
+    // Broadcast via SDK network client
+    return connection.broadcastTransaction(tx);
   }
 
   // Standard deployment
@@ -466,33 +466,3 @@ function collectLeoFiles(dir: string, results: string[]): void {
   }
 }
 
-function getConnectionPrivateKey(connection: NetworkConnection): string | undefined {
-  // Access the private key from the connection — it's stored on the impl
-  const conn = connection as unknown as Record<string, unknown>;
-  if (typeof conn["privateKey"] === "string") return conn["privateKey"];
-  return undefined;
-}
-
-async function broadcastTransaction(
-  connection: NetworkConnection,
-  tx: unknown,
-): Promise<string> {
-  const endpoint = connection.endpoint;
-  const networkId = connection.networkId;
-  const url = `${endpoint}/${networkId}/transaction/broadcast`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(tx),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new DeployError(
-      `Failed to broadcast deployment transaction: ${response.status} ${text.slice(0, 200)}`,
-    );
-  }
-
-  return (await response.text()).replace(/"/g, "");
-}

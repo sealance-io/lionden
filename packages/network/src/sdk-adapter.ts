@@ -197,7 +197,8 @@ export async function initConsensusHeights(): Promise<void> {
   try {
     const sdk = await loadSdkModule("testnet");
     if (typeof sdk.getOrInitConsensusVersionTestHeights === "function") {
-      sdk.getOrInitConsensusVersionTestHeights("0,1");
+      // TOOD: support custom heights
+      sdk.getOrInitConsensusVersionTestHeights();
     }
   } catch {
     // Non-fatal — may not be needed for all operations
