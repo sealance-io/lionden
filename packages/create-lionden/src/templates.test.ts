@@ -45,7 +45,7 @@ describe("templates", () => {
 
       for (const programFile of programFiles) {
         expect(programFile.content).toContain("@noupgrade");
-        expect(programFile.content).toContain("fn constructor() {}");
+        expect(programFile.content).toContain("constructor() {}");
       }
     }
   });

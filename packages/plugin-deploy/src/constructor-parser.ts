@@ -8,7 +8,7 @@
  *
  * The annotation appears on a `constructor` function:
  *   @noupgrade
- *   fn constructor() { ... }
+ *   constructor() { ... }
  */
 
 // ---------------------------------------------------------------------------
@@ -27,17 +27,17 @@ export interface ConstructorInfo {
 // Regex patterns
 // ---------------------------------------------------------------------------
 
-// Match @noupgrade annotation followed (possibly after whitespace/comments) by constructor fn
+// Match @noupgrade annotation followed (possibly after whitespace/comments) by constructor
 const NOUPGRADE_RE =
-  /@noupgrade\s+(?:\/\/[^\n]*\n\s*)*fn\s+constructor\s*\(/;
+  /@noupgrade\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
 
-// Match @admin(address="...") followed by constructor fn
+// Match @admin(address="...") followed by constructor
 const ADMIN_RE =
-  /@admin\s*\(\s*address\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*fn\s+constructor\s*\(/;
+  /@admin\s*\(\s*address\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
 
-// Match @custom annotation followed by constructor fn
+// Match @custom annotation followed by constructor
 const CUSTOM_RE =
-  /@custom\s+(?:\/\/[^\n]*\n\s*)*fn\s+constructor\s*\(/;
+  /@custom\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
 
 // Aleo address format: aleo1 followed by 58 bech32 characters
 const ALEO_ADDRESS_RE = /^aleo1[a-z0-9]{58}$/;

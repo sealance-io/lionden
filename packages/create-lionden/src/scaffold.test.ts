@@ -97,7 +97,7 @@ describe("scaffold", () => {
 
     const leo = readFileSync(join(dir, "programs/hello/main.leo"), "utf-8");
     expect(leo).toContain("@noupgrade");
-    expect(leo).toContain("fn constructor() {}");
+    expect(leo).toContain("constructor() {}");
   });
 
   it("throws on non-empty directory", async () => {

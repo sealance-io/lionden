@@ -344,11 +344,11 @@ export function validateConstructor(
         `Per ARC-0006, all deployments require a constructor. ` +
         `Add one of the following to your program:\n\n` +
         `  @noupgrade\n` +
-        `  fn constructor() { ... }\n\n` +
+        `  constructor() { ... }\n\n` +
         `  @admin(address="aleo1...")\n` +
-        `  fn constructor() { ... }\n\n` +
+        `  constructor() { ... }\n\n` +
         `  @custom\n` +
-        `  fn constructor() { ... }\n`,
+        `  constructor() { ... }\n`,
     );
   }
 

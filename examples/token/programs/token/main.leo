@@ -1,6 +1,6 @@
 program token.aleo {
     @noupgrade
-    fn constructor() {}
+    constructor() {}
 
     /// Public balances stored on-chain.
     mapping balances: address => u64;

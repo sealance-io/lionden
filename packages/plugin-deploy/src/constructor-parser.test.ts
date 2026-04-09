@@ -21,7 +21,7 @@ describe("parseConstructor", () => {
     const source = `
       program hello.aleo {
         @noupgrade
-        fn constructor() {
+        constructor() {
           assert_eq(edition, 0u16);
         }
 
@@ -38,7 +38,7 @@ describe("parseConstructor", () => {
     const source = `
       program token.aleo {
         @admin(address="aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px")
-        fn constructor() {
+        constructor() {
           // admin-only upgrade logic
         }
       }
@@ -54,7 +54,7 @@ describe("parseConstructor", () => {
     const source = `
       program dao.aleo {
         @custom
-        fn constructor() {
+        constructor() {
           // custom upgrade logic with governance vote
         }
       }
@@ -63,20 +63,20 @@ describe("parseConstructor", () => {
     expect(result).toEqual({ type: "custom" });
   });
 
-  it("handles whitespace between annotation and fn", () => {
+  it("handles whitespace between annotation and constructor", () => {
     const source = `
       @noupgrade
 
-      fn constructor() {}
+      constructor() {}
     `;
     expect(parseConstructor(source)).toEqual({ type: "noupgrade" });
   });
 
-  it("handles comments between annotation and fn", () => {
+  it("handles comments between annotation and constructor", () => {
     const source = `
       @noupgrade
       // This program cannot be upgraded
-      fn constructor() {}
+      constructor() {}
     `;
     expect(parseConstructor(source)).toEqual({ type: "noupgrade" });
   });
@@ -94,7 +94,7 @@ describe("parseConstructor", () => {
     const source = `
       /*
         @noupgrade
-        fn constructor() {}
+        constructor() {}
       */
       fn main() {}
     `;
@@ -104,7 +104,7 @@ describe("parseConstructor", () => {
   it("parses @admin with spaces in attribute", () => {
     const source = `
       @admin( address = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px" )
-      fn constructor() {}
+      constructor() {}
     `;
     const result = parseConstructor(source);
     expect(result?.type).toBe("admin");
@@ -117,10 +117,10 @@ describe("parseConstructor", () => {
     // Should not happen in practice, but test deterministic behavior
     const source = `
       @noupgrade
-      fn constructor() {}
+      constructor() {}
 
       @custom
-      fn constructor() {}
+      constructor() {}
     `;
     // @admin is tried first, then @noupgrade
     const result = parseConstructor(source);
@@ -135,7 +135,7 @@ describe("parseConstructorFromFiles", () => {
 
   it("finds constructor in first file", () => {
     const sources = [
-      `@noupgrade\nfn constructor() {}`,
+      `@noupgrade\nconstructor() {}`,
       `fn main() {}`,
     ];
     expect(parseConstructorFromFiles(sources)?.type).toBe("noupgrade");
@@ -144,7 +144,7 @@ describe("parseConstructorFromFiles", () => {
   it("finds constructor in second file", () => {
     const sources = [
       `fn main() {}`,
-      `@custom\nfn constructor() {}`,
+      `@custom\nconstructor() {}`,
     ];
     expect(parseConstructorFromFiles(sources)?.type).toBe("custom");
   });

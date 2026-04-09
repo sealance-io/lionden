@@ -74,12 +74,12 @@ describe("readLeoSourcesFromDir (Fix 2: source dir from discovery)", () => {
     // The sourceDir is programs/token, NOT programs/ledger
     fs.writeFileSync(
       path.join(tmpDir, "main.leo"),
-      `program ledger.aleo {\n  @noupgrade\n  fn constructor() {}\n}`,
+      `program ledger.aleo {\n  @noupgrade\n  constructor() {}\n}`,
     );
 
     const source = readLeoSourcesFromDir(tmpDir);
     expect(source).toContain("@noupgrade");
-    expect(source).toContain("fn constructor()");
+    expect(source).toContain("constructor()");
   });
 
   it("reads nested .leo files preserving all sources", () => {
@@ -88,12 +88,12 @@ describe("readLeoSourcesFromDir (Fix 2: source dir from discovery)", () => {
     fs.mkdirSync(path.join(tmpDir, "internal"));
     fs.writeFileSync(
       path.join(tmpDir, "internal", "helpers.leo"),
-      "@custom\nfn constructor() {}",
+      "@custom\nconstructor() {}",
     );
 
     const source = readLeoSourcesFromDir(tmpDir);
     expect(source).toContain("@custom");
-    expect(source).toContain("fn constructor()");
+    expect(source).toContain("constructor()");
   });
 
   it("returns empty string for non-existent directory", () => {
@@ -108,7 +108,7 @@ describe("readLeoSourcesFromDir (Fix 2: source dir from discovery)", () => {
     fs.mkdirSync(tokenDir);
     fs.writeFileSync(
       path.join(tokenDir, "main.leo"),
-      `program ledger.aleo {\n  @admin(address="aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px")\n  fn constructor() {}\n}`,
+      `program ledger.aleo {\n  @admin(address="aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px")\n  constructor() {}\n}`,
     );
 
     // Reading from the discovered sourceDir (token/) works

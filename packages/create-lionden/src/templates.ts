@@ -122,7 +122,7 @@ export default defineConfig({
 const HELLO_PROGRAM = `\
 program hello.aleo {
     @noupgrade
-    fn constructor() {}
+    constructor() {}
 
     /// Add two unsigned 32-bit integers.
     fn main(a: u32, b: u32) -> u32 {
@@ -194,7 +194,7 @@ export default defineConfig({
 const TOKEN_PROGRAM = `\
 program token.aleo {
     @noupgrade
-    fn constructor() {}
+    constructor() {}
 
     /// Public balances stored on-chain.
     mapping balances: address => u64;
