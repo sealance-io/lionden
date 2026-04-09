@@ -58,6 +58,8 @@ When sources disagree, use this order:
 - Distinguish clearly between current implementation and planned architecture.
 - Cite concrete package paths before summarizing a subsystem.
 - Avoid claiming that a workflow is stable unless you verified it in code or tests.
+- If `node` or `npm` is missing from `PATH`, load `nvm` and use the repo version before concluding the toolchain is unavailable:
+  `source "$HOME/.nvm/nvm.sh" && nvm use`
 - Keep edits aligned with the focused docs split:
   - broad overview in `README.md`
   - subsystem depth in `docs/*.md`
