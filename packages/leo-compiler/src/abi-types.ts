@@ -15,17 +15,35 @@ export type PrimitiveType =
   | { UInt: UIntSize }
   | { Int: IntSize };
 
+// Type references — preserve full identity for upgrade compatibility
+export interface StructRef {
+  readonly path: readonly string[];
+  readonly program: string | null;
+}
+
+export interface RecordRef {
+  readonly path: readonly string[];
+  readonly program: string | null;
+}
+
 // Plaintext types (recursive)
 export type PlaintextType =
   | { Primitive: PrimitiveType }
-  | { Struct: string }
-  | { Array: [PlaintextType, number] };
+  | { Struct: StructRef }
+  | { Array: [PlaintextType, number] }
+  | { Optional: PlaintextType };
 
-// Top-level Aleo types
+// Top-level Aleo types (function inputs/outputs)
 export type AleoType =
   | { Plaintext: PlaintextType }
-  | { Record: string }
-  | { Future: string };
+  | { Record: RecordRef }
+  | { Future: string }
+  | "DynamicRecord";
+
+// Storage variable type — supports vectors unlike Plaintext
+export type StorageType =
+  | { Plaintext: PlaintextType }
+  | { Vector: StorageType };
 
 // Input/output mode
 export type Mode = "None" | "Public" | "Private";
@@ -58,7 +76,7 @@ export interface StructFieldABI {
 }
 
 export interface StructABI {
-  readonly name: string;
+  readonly path: readonly string[];
   readonly fields: readonly StructFieldABI[];
 }
 
@@ -69,7 +87,7 @@ export interface RecordFieldABI {
 }
 
 export interface RecordABI {
-  readonly name: string;
+  readonly path: readonly string[];
   readonly fields: readonly RecordFieldABI[];
 }
 
@@ -81,7 +99,7 @@ export interface MappingABI {
 
 export interface StorageVariableABI {
   readonly name: string;
-  readonly ty: PlaintextType;
+  readonly ty: StorageType;
 }
 
 // ---------------------------------------------------------------------------

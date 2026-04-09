@@ -22,9 +22,12 @@ export type {
   RecordFieldABI,
   MappingABI,
   StorageVariableABI,
+  StorageType,
   AleoType,
   PlaintextType,
   PrimitiveType,
+  StructRef,
+  RecordRef,
   Mode,
   AbiInput,
   AbiOutput,
@@ -68,4 +71,4 @@ export {
 
 // Codegen
 export { generateBindings, generateBaseContract } from "./codegen/typescript-generator.js";
-export { primitiveToTs, plaintextToTs, aleoTypeToTs } from "./codegen/type-mapper.js";
+export { primitiveToTs, plaintextToTs, aleoTypeToTs, pathToTsName } from "./codegen/type-mapper.js";

@@ -425,19 +425,20 @@ LionDen reads the ABI from `build/abi.json` in `readProgramAbi()` (`packages/leo
 
 ## LionDen Normalization
 
-LionDen's TypeScript types (`packages/leo-compiler/src/abi-types.ts`) normalize the compiler output for ergonomic consumption. The differences are intentional — the TS types are a simplified projection of the full schema.
+LionDen's TypeScript types (`packages/leo-compiler/src/abi-types.ts`) preserve most of the compiler's type identity while renaming a few top-level fields. The parser (`packages/leo-compiler/src/abi-parser.ts`) bridges both the compiler format and any older normalized format.
 
 | Compiler JSON (this spec) | LionDen TS types | Notes |
 |---|---|---|
 | `"functions"` array key | `transitions` / `TransitionABI` | Aleo-level naming |
 | `"is_final"` | `is_async` | Semantic equivalence — `is_final` means "has finalize block" |
-| `"path": ["Token"]` on structs/records | `name: string` | Flattened — last path segment used as name |
-| `{ Struct: { path, program? } }` | `{ Struct: "name" }` | Flattened StructRef |
-| `{ Record: { path, program } }` | `{ Record: "name" }` | Flattened RecordRef |
+| `"path": ["Token"]` on struct/record definitions | `path: readonly string[]` | Full path preserved — avoids collisions for module-scoped types |
+| `{ Struct: { path, program } }` | `{ Struct: StructRef }` | Full identity preserved — `StructRef { path, program }` |
+| `{ Record: { path, program } }` | `{ Record: RecordRef }` | Full identity preserved — `RecordRef { path, program }` |
 | `"Final"` output | `{ Future: string }` | Remapped variant name |
-| `"DynamicRecord"` | — | Not represented |
-| `Optional(Plaintext)` | — | Not represented |
-| `StorageType::Vector(...)` | `PlaintextType` | Flattened — no Vector wrapper |
+| `"DynamicRecord"` | `"DynamicRecord"` literal | First-class variant — TS type is `string` (pre-encoded Leo record) |
+| `{ Optional: Plaintext }` | `{ Optional: PlaintextType }` | Preserved — serde uses lowered `{ is_some, val }` struct form |
+| `StorageType::Plaintext \| Vector` | `StorageType` | Preserved — `{ Plaintext } \| { Vector }` |
+| `{ Array: { element, length } }` | `{ Array: [PlaintextType, number] }` | Object → tuple normalization |
 | `Mode::Constant` | — | Not in `Mode` union |
 | `Primitive::Identifier` | — | Not in `PrimitiveType` |
 | `Primitive::Signature` | — | Not in `PrimitiveType` |

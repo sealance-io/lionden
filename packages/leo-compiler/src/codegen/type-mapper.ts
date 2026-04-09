@@ -1,4 +1,30 @@
-import type { AleoType, PlaintextType, PrimitiveType } from "../abi-types.js";
+import type { AleoType, PlaintextType, PrimitiveType, StructRef, RecordRef } from "../abi-types.js";
+
+/**
+ * Convert a path (from a StructRef, RecordRef, or declaration) to a
+ * collision-free TypeScript identifier.
+ *
+ * Single segment: `["Foo"]` → `"Foo"` (unchanged).
+ * Multi-segment:  `["utils", "Vector3"]` → `"Utils_Vector3"`.
+ */
+export function pathToTsName(path: readonly string[]): string {
+  if (path.length === 1) return path[0]!;
+  return path.map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join("_");
+}
+
+/**
+ * Derive the TypeScript name for a StructRef.
+ */
+export function structRefName(ref: StructRef): string {
+  return pathToTsName(ref.path);
+}
+
+/**
+ * Derive the TypeScript name for a RecordRef.
+ */
+export function recordRefName(ref: RecordRef): string {
+  return pathToTsName(ref.path);
+}
 
 /**
  * Map a Leo/Aleo primitive type to its TypeScript representation.
@@ -46,11 +72,12 @@ export function primitiveToTs(prim: PrimitiveType): string {
  */
 export function plaintextToTs(pt: PlaintextType): string {
   if ("Primitive" in pt) return primitiveToTs(pt.Primitive);
-  if ("Struct" in pt) return pt.Struct;
+  if ("Struct" in pt) return structRefName(pt.Struct);
   if ("Array" in pt) {
     const [elemType, _size] = pt.Array;
     return `${plaintextToTs(elemType)}[]`;
   }
+  if ("Optional" in pt) return `${plaintextToTs(pt.Optional)} | null`;
   return "unknown";
 }
 
@@ -58,8 +85,9 @@ export function plaintextToTs(pt: PlaintextType): string {
  * Map a top-level AleoType to its TypeScript representation.
  */
 export function aleoTypeToTs(ty: AleoType): string {
+  if (ty === "DynamicRecord") return "string";
   if ("Plaintext" in ty) return plaintextToTs(ty.Plaintext);
-  if ("Record" in ty) return ty.Record;
+  if ("Record" in ty) return recordRefName(ty.Record);
   if ("Future" in ty) return "void";
   return "unknown";
 }

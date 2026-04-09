@@ -17,6 +17,7 @@ import type {
   RecordABI,
   TransitionABI,
   StorageVariableABI,
+  StorageType,
   PlaintextType,
   StructFieldABI,
   RecordFieldABI,
@@ -66,24 +67,27 @@ export function checkAbiCompatibility(
     "mapping",
     compareMappings,
     violations,
+    (m) => m.name,
   );
 
-  // Check structs
+  // Check structs (keyed by full path to avoid module collisions)
   checkNamedItems(
     oldAbi.structs,
     newAbi.structs,
     "struct",
     compareStructs,
     violations,
+    (s) => s.path.join("::"),
   );
 
-  // Check records
+  // Check records (keyed by full path to avoid module collisions)
   checkNamedItems(
     oldAbi.records,
     newAbi.records,
     "record",
     compareRecords,
     violations,
+    (r) => r.path.join("::"),
   );
 
   // Check transitions (can only be deleted, not modified in signature)
@@ -96,6 +100,7 @@ export function checkAbiCompatibility(
     "storage_variable",
     compareStorageVariables,
     violations,
+    (sv) => sv.name,
   );
 
   return {
@@ -110,22 +115,24 @@ export function checkAbiCompatibility(
 
 type Comparator<T> = (oldItem: T, newItem: T) => string | null;
 
-function checkNamedItems<T extends { readonly name: string }>(
+function checkNamedItems<T>(
   oldItems: readonly T[],
   newItems: readonly T[],
   kind: string,
   compare: Comparator<T>,
   violations: AbiViolation[],
+  keyFn: (item: T) => string,
 ): void {
-  const newMap = new Map(newItems.map((item) => [item.name, item]));
+  const newMap = new Map(newItems.map((item) => [keyFn(item), item]));
 
   for (const oldItem of oldItems) {
-    const newItem = newMap.get(oldItem.name);
+    const key = keyFn(oldItem);
+    const newItem = newMap.get(key);
     if (!newItem) {
       violations.push({
         kind: `${kind}_deleted` as AbiViolation["kind"],
-        name: oldItem.name,
-        detail: `${kind} "${oldItem.name}" was deleted`,
+        name: key,
+        detail: `${kind} "${key}" was deleted`,
       });
       continue;
     }
@@ -134,7 +141,7 @@ function checkNamedItems<T extends { readonly name: string }>(
     if (diff) {
       violations.push({
         kind: `${kind}_modified` as AbiViolation["kind"],
-        name: oldItem.name,
+        name: key,
         detail: diff,
       });
     }
@@ -177,15 +184,16 @@ function compareStructs(
   oldStruct: StructABI,
   newStruct: StructABI,
 ): string | null {
+  const key = oldStruct.path.join("::");
   if (oldStruct.fields.length !== newStruct.fields.length) {
-    return `struct "${oldStruct.name}" field count changed (${oldStruct.fields.length} -> ${newStruct.fields.length})`;
+    return `struct "${key}" field count changed (${oldStruct.fields.length} -> ${newStruct.fields.length})`;
   }
 
   for (let i = 0; i < oldStruct.fields.length; i++) {
     const oldField = oldStruct.fields[i]!;
     const newField = newStruct.fields[i]!;
     if (!structFieldsEqual(oldField, newField)) {
-      return `struct "${oldStruct.name}" field "${oldField.name}" changed`;
+      return `struct "${key}" field "${oldField.name}" changed`;
     }
   }
 
@@ -196,15 +204,16 @@ function compareRecords(
   oldRecord: RecordABI,
   newRecord: RecordABI,
 ): string | null {
+  const key = oldRecord.path.join("::");
   if (oldRecord.fields.length !== newRecord.fields.length) {
-    return `record "${oldRecord.name}" field count changed (${oldRecord.fields.length} -> ${newRecord.fields.length})`;
+    return `record "${key}" field count changed (${oldRecord.fields.length} -> ${newRecord.fields.length})`;
   }
 
   for (let i = 0; i < oldRecord.fields.length; i++) {
     const oldField = oldRecord.fields[i]!;
     const newField = newRecord.fields[i]!;
     if (!recordFieldsEqual(oldField, newField)) {
-      return `record "${oldRecord.name}" field "${oldField.name}" changed`;
+      return `record "${key}" field "${oldField.name}" changed`;
     }
   }
 
@@ -215,7 +224,7 @@ function compareStorageVariables(
   oldVar: StorageVariableABI,
   newVar: StorageVariableABI,
 ): string | null {
-  if (!plaintextTypesEqual(oldVar.ty, newVar.ty)) {
+  if (!storageTypesEqual(oldVar.ty, newVar.ty)) {
     return `storage variable "${oldVar.name}" type changed`;
   }
   return null;
@@ -226,6 +235,10 @@ function compareStorageVariables(
 // ---------------------------------------------------------------------------
 
 function plaintextTypesEqual(a: PlaintextType, b: PlaintextType): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function storageTypesEqual(a: StorageType, b: StorageType): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
