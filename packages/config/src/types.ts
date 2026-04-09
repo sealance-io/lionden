@@ -164,6 +164,8 @@ export interface TestingConfig {
 export interface DeployConfig {
   /** Default priority fee in microcredits. Default: 0 */
   readonly defaultPriorityFee?: number;
+  /** Pay fees from private records instead of public balance. Default: false */
+  readonly privateFee?: boolean;
   /** Confirm transactions. Default: true */
   readonly confirmTransactions?: boolean;
   /** Confirmation timeout in ms. Default: 60000 */
@@ -207,6 +209,7 @@ export interface ResolvedTestingConfig {
 
 export interface ResolvedDeployConfig {
   readonly defaultPriorityFee: number;
+  readonly privateFee: boolean;
   readonly confirmTransactions: boolean;
   readonly confirmationTimeout: number;
 }

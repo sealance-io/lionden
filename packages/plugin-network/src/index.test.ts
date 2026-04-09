@@ -34,6 +34,7 @@ const mockConfig: LionDenResolvedConfig = {
   testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
   deploy: {
     defaultPriorityFee: 0,
+    privateFee: false,
     confirmTransactions: true,
     confirmationTimeout: 60_000,
   },

@@ -152,6 +152,7 @@ export async function upgradeAction(
     aleoSource,
     connection,
     fee,
+    privateFee: config.deploy.privateFee,
     edition: newEdition,
   });
 
@@ -295,11 +296,12 @@ async function deriveAddressFromKey(
 ): Promise<string | undefined> {
   try {
     const { createSdkObjects } = await import("@lionden/network");
-    const sdk = await createSdkObjects(
-      connection.networkId,
-      connection.endpoint,
+    const sdk = await createSdkObjects({
+      network: connection.networkId,
+      endpoint: connection.endpoint,
       privateKey,
-    );
+      apiKey: connection.apiKey,
+    });
     return sdk.account.address().to_string();
   } catch (err) {
     console.warn(
@@ -338,13 +340,14 @@ interface BuildUpgradeOptions {
   aleoSource: string;
   connection: NetworkConnection;
   fee: number;
+  privateFee: boolean;
   edition: number;
 }
 
 async function buildAndBroadcastUpgrade(
   opts: BuildUpgradeOptions,
 ): Promise<string> {
-  const { programId, aleoSource, connection, fee, edition } = opts;
+  const { programId, aleoSource, connection, fee, privateFee, edition } = opts;
 
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
@@ -354,11 +357,12 @@ async function buildAndBroadcastUpgrade(
     await initConsensusHeights();
   }
 
-  const sdk = await createSdkObjects(
-    connection.networkId,
-    connection.endpoint,
-    connection.privateKey,
-  );
+  const sdk = await createSdkObjects({
+    network: connection.networkId,
+    endpoint: connection.endpoint,
+    privateKey: connection.privateKey,
+    apiKey: connection.apiKey,
+  });
 
   if (
     connection.type === "devnode"
@@ -366,16 +370,24 @@ async function buildAndBroadcastUpgrade(
     const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
       program: aleoSource,
       priorityFee: fee,
-      privateFee: false,
+      privateFee,
     });
 
     return connection.broadcastTransaction(tx);
   }
 
-  // Standard upgrade
-  const pm = sdk.programManager as typeof sdk.programManager & {
-    upgrade?: (program: string, priorityFee: number, edition: number) => Promise<string>;
-  };
+  // Standard upgrade — use buildUpgradeTransaction + manual broadcast
+  const pm = sdk.programManager as any;
+  if (typeof pm.buildUpgradeTransaction === "function") {
+    const tx = await pm.buildUpgradeTransaction({
+      program: aleoSource,
+      priorityFee: fee,
+      privateFee,
+    });
+    return connection.broadcastTransaction(tx);
+  }
+
+  // Fallback: try legacy upgrade() if available on older SDK versions
   if (typeof pm.upgrade === "function") {
     return pm.upgrade(aleoSource, fee, edition);
   }

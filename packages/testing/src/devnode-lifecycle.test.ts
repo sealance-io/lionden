@@ -31,7 +31,7 @@ function makeConfig(networks: Record<string, unknown> = {}): LionDenResolvedConf
     compiler: { enableDce: false, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
   };
 }
 

@@ -13,4 +13,4 @@ export { NetworkManagerImpl } from "./network-manager.js";
 export { DevnodeManager } from "./devnode-manager.js";
 export { DevnetManager, type DevnetStartOptions } from "./devnet-manager.js";
 export { DEVNODE_ACCOUNTS, getDefaultAccount } from "./accounts.js";
-export { initSdk, createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } from "./sdk-adapter.js";
+export { initSdk, createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights, type CreateSdkObjectsOptions } from "./sdk-adapter.js";

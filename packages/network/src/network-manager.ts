@@ -131,6 +131,7 @@ export class NetworkManagerImpl implements NetworkManager {
           endpoint: config.endpoint,
           networkId: config.network,
           privateKey: config.privateKey,
+          apiKey: config.apiKey,
         });
       }
     }

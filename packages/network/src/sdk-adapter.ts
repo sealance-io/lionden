@@ -96,19 +96,33 @@ export async function initSdk(): Promise<void> {
   }
 }
 
+export interface CreateSdkObjectsOptions {
+  network: AleoNetwork;
+  endpoint: string;
+  privateKey?: string;
+  /** API key passed as Authorization header to AleoNetworkClient. */
+  apiKey?: string;
+}
+
 /**
  * Create SDK objects for a given network and endpoint.
  * Validates that required devnode methods exist (version guard).
  */
 export async function createSdkObjects(
-  network: AleoNetwork,
-  endpoint: string,
+  networkOrOpts: AleoNetwork | CreateSdkObjectsOptions,
+  endpoint?: string,
   privateKey?: string,
 ): Promise<SdkObjects> {
+  // Support both positional args and options object
+  const opts: CreateSdkObjectsOptions =
+    typeof networkOrOpts === "object"
+      ? networkOrOpts
+      : { network: networkOrOpts, endpoint: endpoint!, privateKey };
+
   await initSdk();
 
   try {
-    const sdk = await loadSdkModule(network);
+    const sdk = await loadSdkModule(opts.network);
 
     const {
       Account,
@@ -119,10 +133,13 @@ export async function createSdkObjects(
     } = sdk;
 
     // Create account
-    const account = privateKey ? new Account({ privateKey }) : new Account();
+    const account = opts.privateKey ? new Account({ privateKey: opts.privateKey }) : new Account();
 
-    // Create network client
-    const networkClient = new AleoNetworkClient(endpoint);
+    // Create network client — pass apiKey as Authorization header if provided
+    const networkClientOptions = opts.apiKey
+      ? { headers: { Authorization: `Bearer ${opts.apiKey}` } }
+      : undefined;
+    const networkClient = new AleoNetworkClient(opts.endpoint, networkClientOptions);
 
     // Create key and record providers
     const keyProvider = new AleoKeyProvider();
@@ -131,7 +148,7 @@ export async function createSdkObjects(
 
     // Create program manager
     const programManager = new ProgramManager(
-      endpoint,
+      opts.endpoint,
       keyProvider,
       recordProvider,
     );
@@ -140,7 +157,7 @@ export async function createSdkObjects(
     return { account, networkClient, programManager, keyProvider, recordProvider };
   } catch (err: unknown) {
     throw new Error(
-      `Failed to create SDK objects for network "${network}" at ${endpoint}. ` +
+      `Failed to create SDK objects for network "${opts.network}" at ${opts.endpoint}. ` +
         `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );

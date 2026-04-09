@@ -113,6 +113,7 @@ export async function deployAction(
   // 6. Deploy each program in order
   const results: DeployResult[] = [];
   const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
+  const privateFee = config.deploy.privateFee;
   const shouldConfirm =
     !options.skipConfirm && config.deploy.confirmTransactions;
   const confirmTimeout = config.deploy.confirmationTimeout;
@@ -128,6 +129,7 @@ export async function deployAction(
       networkConfig,
       networkName,
       fee,
+      privateFee,
       shouldConfirm,
       confirmTimeout,
       lre,
@@ -244,6 +246,7 @@ interface DeploySingleOptions {
   networkConfig: ResolvedNetworkConfig;
   networkName: string;
   fee: number;
+  privateFee: boolean;
   shouldConfirm: boolean;
   confirmTimeout: number;
   lre: LionDenRuntimeEnvironment;
@@ -260,6 +263,7 @@ async function deploySingleProgram(
     networkConfig,
     networkName,
     fee,
+    privateFee,
     shouldConfirm,
     confirmTimeout,
     lre,
@@ -291,6 +295,7 @@ async function deploySingleProgram(
     connection,
     networkConfig,
     fee,
+    privateFee,
   });
 
   // Wait for confirmation
@@ -386,12 +391,13 @@ interface BuildDeployOptions {
   connection: NetworkConnection;
   networkConfig: ResolvedNetworkConfig;
   fee: number;
+  privateFee: boolean;
 }
 
 async function buildAndBroadcastDeploy(
   opts: BuildDeployOptions,
 ): Promise<string> {
-  const { programId, aleoSource, connection, networkConfig, fee } = opts;
+  const { programId, aleoSource, connection, networkConfig, fee, privateFee } = opts;
 
   // Use SDK to build and broadcast the deployment transaction
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
@@ -402,11 +408,12 @@ async function buildAndBroadcastDeploy(
     await initConsensusHeights();
   }
 
-  const sdk = await createSdkObjects(
-    connection.networkId,
-    connection.endpoint,
-    connection.privateKey,
-  );
+  const sdk = await createSdkObjects({
+    network: connection.networkId,
+    endpoint: connection.endpoint,
+    privateKey: connection.privateKey,
+    apiKey: connection.apiKey,
+  });
 
   if (
     connection.type === "devnode"
@@ -415,18 +422,18 @@ async function buildAndBroadcastDeploy(
     const tx = await sdk.programManager.buildDevnodeDeploymentTransaction({
       program: aleoSource,
       priorityFee: fee,
-      privateFee: false,
+      privateFee,
     });
 
     // Broadcast via SDK network client
     return connection.broadcastTransaction(tx);
   }
 
-  // Standard deployment
+  // Standard deployment — deploy() takes positional args
   return sdk.programManager.deploy(
     aleoSource,
     fee,
-    false,
+    privateFee,
   );
 }
 

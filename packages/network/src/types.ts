@@ -56,6 +56,8 @@ export interface NetworkConnection {
   readonly networkId: AleoNetwork;
   /** Private key for signing, if configured. */
   readonly privateKey?: string;
+  /** API key for explorer/node authentication. */
+  readonly apiKey?: string;
 
   /** Get account balance in microcredits. Uses configured default account if none specified. */
   getBalance(address?: string): Promise<bigint>;

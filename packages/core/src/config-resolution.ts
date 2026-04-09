@@ -190,6 +190,7 @@ function buildDefaults(
 
   const deploy: ResolvedDeployConfig = {
     defaultPriorityFee: config.deploy?.defaultPriorityFee ?? 0,
+    privateFee: config.deploy?.privateFee ?? false,
     confirmTransactions: config.deploy?.confirmTransactions ?? true,
     confirmationTimeout: config.deploy?.confirmationTimeout ?? 60_000,
   };

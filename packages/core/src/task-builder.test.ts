@@ -158,7 +158,7 @@ describe("createLre config-level tasks", () => {
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
   } satisfies LionDenResolvedConfig;
 
   it("registers config-level tasks alongside plugin tasks", async () => {
@@ -194,7 +194,7 @@ describe("artifact store", () => {
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
   } satisfies LionDenResolvedConfig;
 
   it("exposes setAbi/setAleoSource on the artifact store interface", () => {

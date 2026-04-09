@@ -20,6 +20,8 @@ export interface ConnectionOptions {
   endpoint: string;
   networkId: AleoNetwork;
   privateKey?: string;
+  /** API key for explorer/node authentication. */
+  apiKey?: string;
 }
 
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 60_000;
@@ -31,6 +33,7 @@ export class AleoConnection implements NetworkConnection {
   readonly endpoint: string;
   readonly networkId: AleoNetwork;
   readonly privateKey?: string;
+  readonly apiKey?: string;
 
   private sdkObjects?: SdkObjects;
   private sdkObjectsPromise?: Promise<SdkObjects>;
@@ -41,6 +44,7 @@ export class AleoConnection implements NetworkConnection {
     this.endpoint = options.endpoint;
     this.networkId = options.networkId;
     this.privateKey = options.privateKey;
+    this.apiKey = options.apiKey;
 
     // Devnode connections support block advancement
     if (this.type === "devnode") {
@@ -65,11 +69,12 @@ export class AleoConnection implements NetworkConnection {
     if (!this.sdkObjectsPromise) {
       this.sdkObjectsPromise = (async () => {
         const { createSdkObjects } = await import("./sdk-adapter.js");
-        const objects = await createSdkObjects(
-          this.networkId,
-          this.endpoint,
-          this.privateKey,
-        );
+        const objects = await createSdkObjects({
+          network: this.networkId,
+          endpoint: this.endpoint,
+          privateKey: this.privateKey,
+          apiKey: this.apiKey,
+        });
         this.sdkObjects = objects;
         return objects;
       })();
@@ -137,9 +142,13 @@ export class AleoConnection implements NetworkConnection {
     const mode = options?.mode ?? "onchain";
 
     if (mode === "local") {
-      // Local execution — run without generating proofs
+      // Local execution — run without generating proofs.
+      // SDK's run() expects the full program source code as first arg.
+      // Fetch it from the node if we only have a program ID.
+      const nc = sdk.networkClient as any;
+      const programSource: string = await nc.getProgram(programId);
       const result = await pm.run(
-        programId,
+        programSource,
         transitionName,
         args,
         false, // proveExecution = false
@@ -160,20 +169,20 @@ export class AleoConnection implements NetworkConnection {
     if (useDevnodeFastPath) {
       // Devnode fast-path — skips proof generation
       const tx = await pm.buildDevnodeExecutionTransaction({
-        programId,
+        programName: programId,
         functionName: transitionName,
         inputs: args,
-        fee: options?.fee ?? 0,
+        priorityFee: options?.fee ?? 0,
         privateFee: options?.privateFee ?? false,
       });
       txId = await this.broadcastTransaction(tx);
     } else {
       // Standard execution via ProgramManager
       txId = await pm.execute({
-        programId,
+        programName: programId,
         functionName: transitionName,
         inputs: args,
-        fee: options?.fee ?? 0,
+        priorityFee: options?.fee ?? 0,
         privateFee: options?.privateFee ?? false,
       });
     }
@@ -186,39 +195,36 @@ export class AleoConnection implements NetworkConnection {
     txId: string,
     timeout?: number,
   ): Promise<ConfirmedTransaction> {
-    const sdk = await this.getSdkObjects();
-    const nc = sdk.networkClient as any;
     const effectiveTimeout = timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
 
-    try {
-      const result = await nc.getTransaction(txId);
-      if (result) {
-        const height =
-          typeof result["block_height"] === "number"
-            ? result["block_height"]
-            : 0;
-        return { txId, blockHeight: height as number, status: "accepted" };
-      }
-    } catch {
-      // Not confirmed yet — fall through to polling
+    // Poll the node REST API directly — the raw JSON response includes
+    // block_height which is not part of the SDK's typed TransactionJSON.
+    const url = `${this.endpoint}/${this.networkId}/transaction/${txId}`;
+    const deadline = Date.now() + effectiveTimeout;
+    const fetchHeaders: Record<string, string> = {};
+    if (this.apiKey) {
+      fetchHeaders["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
-    // Poll until confirmed
-    const deadline = Date.now() + effectiveTimeout;
     while (Date.now() < deadline) {
-      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
       try {
-        const result = await nc.getTransaction(txId);
-        if (result) {
+        const response = await fetch(url, { headers: fetchHeaders });
+        if (response.ok) {
+          const data = (await response.json()) as Record<string, unknown>;
           const height =
-            typeof result["block_height"] === "number"
-              ? result["block_height"]
+            typeof data["block_height"] === "number"
+              ? data["block_height"]
               : 0;
-          return { txId, blockHeight: height as number, status: "accepted" };
+          return {
+            txId,
+            blockHeight: height as number,
+            status: "accepted",
+          };
         }
       } catch {
         // Not confirmed yet
       }
+      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
 
     throw new Error(
