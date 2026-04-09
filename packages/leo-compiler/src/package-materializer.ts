@@ -76,10 +76,11 @@ function buildProgramJson(
   const id = unitId(unit);
   const imports = graph.imports.get(id) ?? [];
 
-  // Programs use "hello.aleo", libraries use "math_utils" (no .aleo suffix)
+  // Leo CLI expects the program field to use the .aleo suffix for both
+  // programs and libraries (matching import syntax, e.g. "math_utils.aleo").
   const programName = unit.kind === "program"
     ? (unit as DiscoveredProgram).programId
-    : (unit as DiscoveredLibrary).name;
+    : `${(unit as DiscoveredLibrary).name}.aleo`;
 
   const dependencies: LeoDepEntry[] = [];
 
@@ -87,9 +88,13 @@ function buildProgramJson(
     if (graph.networkDeps.has(dep)) {
       dependencies.push({ name: dep, location: "network" });
     } else {
-      // Local dependency — point to its materialized package
+      // Local dependency — point to its materialized package.
+      // Leo CLI expects dependency names to match import statements
+      // (e.g. "math_utils.aleo"), but libraries have canonical IDs
+      // without the .aleo suffix, so we normalize here.
+      const depName = dep.endsWith(".aleo") ? dep : `${dep}.aleo`;
       const depPackageDir = path.join(config.paths.artifacts, ".build", dep);
-      dependencies.push({ name: dep, location: "local", path: depPackageDir });
+      dependencies.push({ name: depName, location: "local", path: depPackageDir });
     }
   }
 

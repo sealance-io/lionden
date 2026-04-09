@@ -120,7 +120,7 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     expect(networkDep.location).toBe("network");
   });
 
-  it("uses library naming convention (no .aleo suffix)", () => {
+  it("uses .aleo suffix for library program name in manifest", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
 
     const units = discoverUnits(programsDir);
@@ -129,7 +129,7 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     const pkgDir = materializePackage(units[0]!, config, graph);
 
     const programJson = JSON.parse(fs.readFileSync(path.join(pkgDir, "program.json"), "utf-8"));
-    expect(programJson.program).toBe("math");
+    expect(programJson.program).toBe("math.aleo");
   });
 
   it("generates .env with devnode defaults", () => {
@@ -157,18 +157,23 @@ program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
     const graph = resolveDependencies(units);
     const config = mockConfig();
 
-    // Materialize the library — should be at .build/math/ (not .build/math.aleo/)
+    // Materialize the library — directory uses canonical name (no .aleo suffix)
     const mathUnit = units.find((u) => u.kind === "library")!;
     const mathPkgDir = materializePackage(mathUnit, config, graph);
     expect(mathPkgDir).toContain(path.join(".build", "math"));
     expect(mathPkgDir).not.toContain("math.aleo");
 
-    // Materialize the program — its deps should reference canonical "math" path
+    // Library manifest must declare "math.aleo" so Leo CLI can match imports
+    const mathJson = JSON.parse(fs.readFileSync(path.join(mathPkgDir, "program.json"), "utf-8"));
+    expect(mathJson.program).toBe("math.aleo");
+
+    // Materialize the program — its deps should use "math.aleo" name
+    // (matching Leo import syntax) but the path still uses the canonical dir
     const helloUnit = units.find((u) => u.kind === "program")!;
     const helloPkgDir = materializePackage(helloUnit, config, graph);
     const programJson = JSON.parse(fs.readFileSync(path.join(helloPkgDir, "program.json"), "utf-8"));
 
-    const mathDep = programJson.dependencies?.find((d: { name: string }) => d.name === "math");
+    const mathDep = programJson.dependencies?.find((d: { name: string }) => d.name === "math.aleo");
     expect(mathDep).toBeDefined();
     expect(mathDep.location).toBe("local");
     expect(mathDep.path).toContain(path.join(".build", "math"));

@@ -11,22 +11,25 @@ program token.aleo {
         amount: u64,
     }
 
-    /// Mint public tokens to the caller.
-    fn mint_public(receiver: address, amount: u64) {
-        let current: u64 = Mapping::get_or_use(balances, receiver, 0u64);
-        Mapping::set(balances, receiver, current + amount);
+    /// Mint public tokens to a receiver.
+    fn mint_public(public receiver: address, public amount: u64) -> Final {
+        return final {
+            let current: u64 = balances.get_or_use(receiver, 0u64);
+            balances.set(receiver, current + amount);
+        };
     }
 
-    /// Transfer public tokens from caller to receiver.
-    fn transfer_public(receiver: address, amount: u64) {
-        let sender: address = self.caller;
+    /// Transfer public tokens from signer to receiver.
+    fn transfer_public(public receiver: address, public amount: u64) -> Final {
+        let sender: address = self.signer;
+        return final {
+            let sender_balance: u64 = balances.get(sender);
+            assert(sender_balance >= amount);
+            balances.set(sender, sender_balance - amount);
 
-        let sender_balance: u64 = Mapping::get(balances, sender);
-        assert(sender_balance >= amount);
-        Mapping::set(balances, sender, sender_balance - amount);
-
-        let receiver_balance: u64 = Mapping::get_or_use(balances, receiver, 0u64);
-        Mapping::set(balances, receiver, receiver_balance + amount);
+            let receiver_balance: u64 = balances.get_or_use(receiver, 0u64);
+            balances.set(receiver, receiver_balance + amount);
+        };
     }
 
     /// Mint private tokens as a record.
