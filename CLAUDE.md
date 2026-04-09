@@ -8,8 +8,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install --ignore-scripts   # install workspace dependencies
 npm run build                  # tsc --build (all packages via project references)
 npm run clean                  # tsc --build --clean
-npm test                       # vitest (all packages)
+npm test                       # vitest run (all packages, one-shot)
+npm run test:agent             # vitest run with the agent reporter
 npx vitest run packages/core   # run tests for a single package
+npx vitest run --reporter=agent packages/core   # targeted run with minimal agent output
 npx vitest run packages/core/src/hook-system.test.ts  # run a single test file
 ```
 
@@ -46,6 +48,7 @@ Plugins are **declarative**: users list them in `defineConfig({ plugins: [...] }
 
 - **All imports use `.js` extensions** (ESM NodeNext resolution). Write `import { foo } from "./bar.js"` even though the source file is `bar.ts`.
 - **Tests are colocated** with source as `*.test.ts` under `packages/*/src/`. Pattern: `packages/*/src/**/*.test.ts`.
+- **Agent test runs should prefer Vitest's `agent` reporter** to reduce token-heavy passing output. Use `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs.
 - **Plugin shape**: `{ id, name, hookHandlers?, tasks?, globalOptions?, extendLre? }` — see `packages/core/src/types.ts` for `LionDenPlugin`.
 - **Task builder API**: `task(id, desc).addOption({...}).setAction(fn).build()` and `overrideTask(id).setAction(fn).build()` — see `packages/core/src/task-builder.ts`.
 - **Source-first Leo layout**: users write `.leo` files in `programs/` without `program.json`. The compiler materializes Leo CLI packages internally during `compilePipeline()`.

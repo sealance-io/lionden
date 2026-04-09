@@ -58,6 +58,8 @@ When sources disagree, use this order:
 - Distinguish clearly between current implementation and planned architecture.
 - Cite concrete package paths before summarizing a subsystem.
 - Avoid claiming that a workflow is stable unless you verified it in code or tests.
+- When running Vitest in agent workflows, prefer `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs. Vitest's `agent` reporter minimizes passing-test noise and token usage.
+- Avoid adding a fixed `reporters` setting to shared Vitest config unless you intentionally want to override agent-aware reporter auto-detection or explicitly preserve `agent`.
 - If `node` or `npm` is missing from `PATH`, load `nvm` and use the repo version before concluding the toolchain is unavailable:
   `source "$HOME/.nvm/nvm.sh" && nvm use`
 - Keep edits aligned with the focused docs split:
