@@ -408,19 +408,14 @@ async function buildAndBroadcastDeploy(
     getConnectionPrivateKey(connection),
   );
 
-  const pm = sdk.programManager as Record<string, unknown>;
-
   if (
-    connection.type === "devnode" &&
-    typeof pm["buildDevnodeDeploymentTransaction"] === "function"
+    connection.type === "devnode"
   ) {
     // Devnode-specific deployment
-    const buildFn = pm["buildDevnodeDeploymentTransaction"] as (
-      opts: unknown,
-    ) => Promise<unknown>;
-    const tx = await buildFn({
+    const tx = await sdk.programManager.buildDevnodeDeploymentTransaction({
       program: aleoSource,
-      fee,
+      priorityFee: fee,
+      privateFee: false,
     });
 
     // Broadcast
@@ -428,17 +423,10 @@ async function buildAndBroadcastDeploy(
   }
 
   // Standard deployment
-  if (typeof pm["deploy"] === "function") {
-    const deployFn = pm["deploy"] as (
-      program: string,
-      fee: number,
-    ) => Promise<string>;
-    return deployFn(aleoSource, fee);
-  }
-
-  throw new DeployError(
-    `Unable to deploy "${programId}": no suitable deployment method found on ProgramManager. ` +
-      `Ensure @provablehq/sdk@^0.10.1 is installed.`,
+  return sdk.programManager.deploy(
+    aleoSource,
+    fee,
+    false,
   );
 }
 

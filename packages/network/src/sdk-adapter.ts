@@ -3,54 +3,94 @@
  *
  * The Provable SDK v0.10.1 requires:
  * 1. initThreadPool() for multi-threaded WASM
- * 2. Network-specific imports (@provablehq/sdk/testnet.js or /mainnet.js)
+ * 2. Network-specific loading via @provablehq/sdk/dynamic.js
  * 3. getOrInitConsensusVersionTestHeights() for devnode connections
  * 4. ProgramManager with devnode-specific transaction builders
  *
- * This adapter dynamically imports the SDK and checks for required methods.
- * If the SDK is not installed or is too old, it fails with a clear message.
+ * This adapter loads the runtime SDK module dynamically per network while
+ * keeping TypeScript types anchored to the testnet entrypoint, which matches
+ * the mainnet surface in the current SDK release.
  */
 
 import type { AleoNetwork } from "@lionden/config";
+import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 
 // ---------------------------------------------------------------------------
-// Minimal SDK type stubs (avoid hard compile-time dependency)
+// SDK types
 // ---------------------------------------------------------------------------
+
+type SdkModule = typeof TestnetSdk;
+type SupportedSdkNetwork = "testnet" | "mainnet";
 
 export interface SdkObjects {
-  account: unknown;
-  networkClient: unknown;
-  programManager: unknown;
-  keyProvider: unknown;
-  recordProvider: unknown;
+  account: InstanceType<SdkModule["Account"]>;
+  networkClient: InstanceType<SdkModule["AleoNetworkClient"]>;
+  programManager: InstanceType<SdkModule["ProgramManager"]>;
+  keyProvider: InstanceType<SdkModule["AleoKeyProvider"]>;
+  recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
 }
 
 // ---------------------------------------------------------------------------
 // SDK initialization
 // ---------------------------------------------------------------------------
 
-let sdkInitialized = false;
+const SDK_VERSION = "^0.10.1";
+
+let sdkInitPromise: Promise<void> | undefined;
+const sdkModuleCache = new Map<AleoNetwork, Promise<SdkModule>>();
+
+function normalizeSdkNetwork(network: AleoNetwork): SupportedSdkNetwork {
+  switch (network) {
+    case "mainnet":
+      return "mainnet";
+    case "testnet":
+    case "canary":
+      return "testnet";
+  }
+}
+
+async function loadSdkModule(network: AleoNetwork): Promise<SdkModule> {
+  const cached = sdkModuleCache.get(network);
+  if (cached) {
+    return cached;
+  }
+
+  const modulePromise = (async () => {
+    const { loadNetwork } = await import("@provablehq/sdk/dynamic.js" as string);
+    return (await loadNetwork(normalizeSdkNetwork(network))) as SdkModule;
+  })();
+
+  sdkModuleCache.set(network, modulePromise);
+
+  try {
+    return await modulePromise;
+  } catch (err) {
+    sdkModuleCache.delete(network);
+    throw err;
+  }
+}
 
 /**
  * Initialize the Provable SDK WASM runtime.
  * Must be called once before any SDK operations.
  */
 export async function initSdk(): Promise<void> {
-  if (sdkInitialized) return;
+  if (!sdkInitPromise) {
+    sdkInitPromise = (async () => {
+      const sdk = await loadSdkModule("testnet");
+      if (typeof sdk.initThreadPool === "function") {
+        await sdk.initThreadPool();
+      }
+    })();
+  }
 
   try {
-    // Dynamic import — SDK may not be installed
-    const sdk = await import("@provablehq/sdk" as string);
-
-    if (typeof sdk.initThreadPool === "function") {
-      await sdk.initThreadPool();
-    }
-
-    sdkInitialized = true;
+    await sdkInitPromise;
   } catch (err: unknown) {
+    sdkInitPromise = undefined;
     throw new Error(
       `Failed to initialize @provablehq/sdk. ` +
-        `Ensure @provablehq/sdk@^0.10.1 is installed.\n` +
+        `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -68,13 +108,7 @@ export async function createSdkObjects(
   await initSdk();
 
   try {
-    // Import network-specific entry point
-    const sdkPath =
-      network === "mainnet"
-        ? "@provablehq/sdk/mainnet.js"
-        : "@provablehq/sdk/testnet.js";
-
-    const sdk = await import(sdkPath as string);
+    const sdk = await loadSdkModule(network);
 
     const {
       Account,
@@ -107,7 +141,7 @@ export async function createSdkObjects(
   } catch (err: unknown) {
     throw new Error(
       `Failed to create SDK objects for network "${network}" at ${endpoint}. ` +
-        `Ensure @provablehq/sdk@^0.10.1 is installed.\n` +
+        `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -121,20 +155,24 @@ export async function checkDevnodeSdkSupport(): Promise<void> {
   await initSdk();
 
   try {
-    const sdk = await import("@provablehq/sdk/testnet.js" as string);
+    const sdk = await loadSdkModule("testnet");
     const { ProgramManager } = sdk;
 
     const requiredMethods = [
       "buildDevnodeExecutionTransaction",
       "buildDevnodeDeploymentTransaction",
       "buildDevnodeUpgradeTransaction",
-    ];
+    ] as const;
+    const programManagerPrototype = ProgramManager.prototype as Record<
+      (typeof requiredMethods)[number],
+      unknown
+    >;
 
     for (const method of requiredMethods) {
-      if (typeof ProgramManager.prototype[method] !== "function") {
+      if (typeof programManagerPrototype[method] !== "function") {
         throw new Error(
           `ProgramManager is missing method "${method}". ` +
-            `This method requires @provablehq/sdk@^0.10.1. ` +
+            `This method requires @provablehq/sdk@${SDK_VERSION}. ` +
             `Your installed version may be too old.`,
         );
       }
@@ -145,7 +183,7 @@ export async function checkDevnodeSdkSupport(): Promise<void> {
     }
     throw new Error(
       `Failed to verify SDK devnode support. ` +
-        `Ensure @provablehq/sdk@^0.10.1 is installed.\n` +
+        `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -157,7 +195,7 @@ export async function checkDevnodeSdkSupport(): Promise<void> {
  */
 export async function initConsensusHeights(): Promise<void> {
   try {
-    const sdk = await import("@provablehq/sdk/testnet.js" as string);
+    const sdk = await loadSdkModule("testnet");
     if (typeof sdk.getOrInitConsensusVersionTestHeights === "function") {
       sdk.getOrInitConsensusVersionTestHeights("0,1");
     }

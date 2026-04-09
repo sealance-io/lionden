@@ -300,21 +300,7 @@ async function deriveAddressFromKey(
       connection.endpoint,
       privateKey,
     );
-    const account = sdk.account as Record<string, unknown>;
-    // SDK Account exposes address via .address() or .address
-    if (typeof account["address"] === "function") {
-      const addr = (account["address"] as () => unknown)();
-      return typeof addr === "string" ? addr : String(addr);
-    }
-    if (typeof account["address"] === "string") {
-      return account["address"];
-    }
-    // Try .to_string() pattern
-    const addrObj = account["address"];
-    if (addrObj && typeof (addrObj as Record<string, unknown>)["to_string"] === "function") {
-      const toStr = (addrObj as Record<string, unknown>)["to_string"] as () => unknown;
-      return String(toStr.call(addrObj));
-    }
+    return sdk.account.address().to_string();
   } catch (err) {
     console.warn(
       `Warning: SDK address derivation failed: ${err instanceof Error ? err.message : String(err)}. ` +
@@ -374,32 +360,24 @@ async function buildAndBroadcastUpgrade(
     getConnectionPrivateKey(connection),
   );
 
-  const pm = sdk.programManager as Record<string, unknown>;
-
   if (
-    connection.type === "devnode" &&
-    typeof pm["buildDevnodeUpgradeTransaction"] === "function"
+    connection.type === "devnode"
   ) {
-    const buildFn = pm["buildDevnodeUpgradeTransaction"] as (
-      opts: unknown,
-    ) => Promise<unknown>;
-    const tx = await buildFn({
+    const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
       program: aleoSource,
-      fee,
-      edition,
+      priorityFee: fee,
+      privateFee: false,
     });
 
     return broadcastTransaction(connection, tx);
   }
 
   // Standard upgrade
-  if (typeof pm["upgrade"] === "function") {
-    const upgradeFn = pm["upgrade"] as (
-      program: string,
-      fee: number,
-      edition: number,
-    ) => Promise<string>;
-    return upgradeFn(aleoSource, fee, edition);
+  const pm = sdk.programManager as typeof sdk.programManager & {
+    upgrade?: (program: string, priorityFee: number, edition: number) => Promise<string>;
+  };
+  if (typeof pm.upgrade === "function") {
+    return pm.upgrade(aleoSource, fee, edition);
   }
 
   throw new DeployError(
