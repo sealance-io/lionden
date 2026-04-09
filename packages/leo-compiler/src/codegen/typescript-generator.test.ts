@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import ts from "typescript";
 import { generateBindings, generateBaseContract } from "./typescript-generator.js";
 import type { ProgramABI, StructRef, RecordRef } from "../abi-types.js";
 
@@ -10,6 +11,62 @@ function sref(name: string, program: string | null = null): StructRef {
 /** Shorthand for creating a RecordRef in tests */
 function rref(name: string, program: string | null = null): RecordRef {
   return { path: [name], program };
+}
+
+function expectGeneratedToTypecheck(programName: string, output: string): void {
+  const files: Record<string, string> = {
+    "/virtual/package.json": '{ "type": "module" }',
+    "/virtual/BaseContract.ts": generateBaseContract(),
+    [`/virtual/${programName}.ts`]: output,
+    "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
+  };
+
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2024,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    skipLibCheck: true,
+    isolatedModules: true,
+    verbatimModuleSyntax: true,
+    lib: ["lib.es2024.d.ts"],
+  };
+
+  const host = ts.createCompilerHost(options);
+  const origRead = host.readFile.bind(host);
+  const origExists = host.fileExists.bind(host);
+
+  host.readFile = (fileName) => files[fileName] ?? origRead(fileName);
+  host.fileExists = (fileName) => Object.hasOwn(files, fileName) || origExists(fileName);
+  host.resolveModuleNames = (moduleNames, containingFile) =>
+    moduleNames.map((moduleName) => {
+      if (moduleName === "@lionden/core") {
+        return {
+          resolvedFileName: "/virtual/core.d.ts",
+          extension: ts.Extension.Dts,
+          isExternalLibraryImport: true,
+        };
+      }
+      if (moduleName === "./BaseContract.js") {
+        return {
+          resolvedFileName: "/virtual/BaseContract.ts",
+          extension: ts.Extension.Ts,
+        };
+      }
+      return ts.resolveModuleName(moduleName, containingFile, options, host).resolvedModule;
+    });
+
+  const program = ts.createProgram(Object.keys(files), options, host);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  const message = diagnostics.length === 0
+    ? ""
+    : ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+        getCurrentDirectory: () => "/virtual",
+        getCanonicalFileName: (fileName) => fileName,
+        getNewLine: () => "\n",
+      });
+
+  expect(message).toBe("");
 }
 
 const SAMPLE_ABI: ProgramABI = {
@@ -92,6 +149,11 @@ describe("generateBindings", () => {
     expect(output).not.toContain("JSON.stringify");
   });
 
+  it("serializes record nonce for valid record inputs", () => {
+    const output = generateBindings(SAMPLE_ABI);
+    expect(output).toContain('fields.push("_nonce: " + value._nonce);');
+  });
+
   it("serializes record inputs via serializeRecord, not JSON.stringify", () => {
     const abi: ProgramABI = {
       program: "wallet.aleo",
@@ -135,18 +197,19 @@ describe("generateBindings", () => {
     expect(output).toContain("async mint(");
     expect(output).toContain("receiver: string,");
     expect(output).toContain("amount: bigint,");
+    expect(output).toContain("options?: LocalCallOptions,");
     expect(output).toContain("): Promise<Token>");
     expect(output).toContain("async transfer(");
     expect(output).toContain("): Promise<void>");
   });
 
-  it("generates argument serialization in transition methods", () => {
+  it("generates local execution and broadcast transition helpers", () => {
     const output = generateBindings(SAMPLE_ABI);
-    // mint() should serialize arguments and call this.execute()
     expect(output).toContain("const _args: string[]");
-    expect(output).toContain('this.execute("mint"');
-    // transfer() with void return should also call execute
-    expect(output).toContain('this.execute("transfer"');
+    expect(output).toContain('this.executeLocal("mint"');
+    expect(output).toContain("async mintBroadcast(");
+    expect(output).toContain('return this.broadcast("mint"');
+    expect(output).toContain("async transferBroadcast(");
   });
 
   it("deserializes transition outputs to proper JS types", () => {
@@ -271,8 +334,12 @@ describe("generateBaseContract", () => {
     expect(output).toContain("connect(lre: LionDenRuntimeEnvironment)");
     expect(output).toContain("protected getLre()");
     expect(output).toContain("protected async execute(");
+    expect(output).toContain("protected async executeLocal(");
+    expect(output).toContain("protected async broadcast(");
     expect(output).toContain("protected async queryMapping(");
     expect(output).toContain("TransitionCallResult");
+    expect(output).toContain("LocalCallOptions");
+    expect(output).toContain("BroadcastOptions");
   });
 
   it("includes parseArray static method for depth-aware array splitting", () => {
@@ -368,6 +435,82 @@ describe("DynamicRecord handling", () => {
     expect(output).toContain("): Promise<string>");
     // Should pass through as-is, not JSON.stringify
     expect(output).not.toContain("JSON.stringify");
+  });
+});
+
+describe("external references", () => {
+  it("treats external structs as pre-encoded strings", () => {
+    const abi: ProgramABI = {
+      program: "consumer.aleo",
+      structs: [],
+      records: [],
+      mappings: [
+        {
+          name: "metadata",
+          key: { Primitive: "Field" as const },
+          value: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } },
+        },
+      ],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "submit",
+          is_async: false,
+          inputs: [
+            {
+              name: "info",
+              ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+              mode: "None" as const,
+            },
+          ],
+          outputs: [
+            {
+              ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+              mode: "None" as const,
+            },
+          ],
+        },
+      ],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain("info: string,");
+    expect(output).toContain("async getMetadata(key: string): Promise<string | null>");
+    expect(output).not.toContain("serializeTokenInfo(info)");
+    expect(output).not.toContain("deserializeTokenInfo(_result.outputs[0]!)");
+  });
+
+  it("treats external records as pre-encoded strings", () => {
+    const abi: ProgramABI = {
+      program: "consumer.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "forward",
+          is_async: false,
+          inputs: [
+            {
+              name: "record",
+              ty: { Record: { path: ["credits"], program: "credits.aleo" } },
+              mode: "None" as const,
+            },
+          ],
+          outputs: [
+            {
+              ty: { Record: { path: ["credits"], program: "credits.aleo" } },
+              mode: "None" as const,
+            },
+          ],
+        },
+      ],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain("record: string,");
+    expect(output).toContain("): Promise<string>");
+    expect(output).not.toContain("serializeCredits(record)");
+    expect(output).not.toContain("deserializeCredits(_result.outputs[0]!)");
   });
 });
 
@@ -469,6 +612,26 @@ describe("Optional type handling", () => {
     expect(output).toContain('serializeInner(value.backup)');
     expect(output).toContain('{ is_some: false, val: { x: 0u32 } }');
     expect(output).not.toContain('Cannot serialize None for this Optional type');
+  });
+});
+
+describe("storage variables", () => {
+  it("generates a storage interface for ABI storage variables", () => {
+    const abi: ProgramABI = {
+      program: "vault.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [
+        { name: "admin", ty: { Plaintext: { Primitive: "Address" } } },
+        { name: "whitelist", ty: { Vector: { Plaintext: { Primitive: "Address" } } } },
+      ],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain("export interface VaultStorage");
+    expect(output).toContain("readonly admin: string;");
+    expect(output).toContain("readonly whitelist: string[];");
   });
 });
 
@@ -892,5 +1055,68 @@ describe("program ID to class name", () => {
     };
     const output = generateBindings(abi);
     expect(output).toContain("export class DashedName extends BaseContract");
+  });
+});
+
+describe("generated TypeScript validity", () => {
+  it("typechecks generated bindings for mixed ABI features", () => {
+    const abi: ProgramABI = {
+      program: "check.aleo",
+      structs: [
+        {
+          path: ["Inner"],
+          fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }],
+        },
+        {
+          path: ["Settings"],
+          fields: [
+            { name: "backup", ty: { Optional: { Struct: sref("Inner") } } },
+            { name: "remote", ty: { Struct: { path: ["Info"], program: "registry.aleo" } } },
+          ],
+        },
+      ],
+      records: [
+        {
+          path: ["Coin"],
+          fields: [
+            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" as const },
+            { name: "value", ty: { Primitive: { UInt: "U64" } }, mode: "Private" as const },
+          ],
+        },
+      ],
+      mappings: [
+        {
+          name: "entries",
+          key: { Primitive: "Field" as const },
+          value: { Struct: sref("Settings") },
+        },
+      ],
+      storage_variables: [
+        { name: "admin", ty: { Plaintext: { Primitive: "Address" } } },
+        { name: "watchers", ty: { Vector: { Plaintext: { Primitive: "Address" } } } },
+      ],
+      transitions: [
+        {
+          name: "mint_and_finalize",
+          is_async: true,
+          inputs: [
+            { name: "receiver", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" as const },
+            { name: "record", ty: { Record: rref("Coin") }, mode: "None" as const },
+            {
+              name: "externalInfo",
+              ty: { Plaintext: { Struct: { path: ["Info"], program: "registry.aleo" } } },
+              mode: "None" as const,
+            },
+          ],
+          outputs: [
+            { ty: { Record: rref("Coin") }, mode: "None" as const },
+            { ty: { Future: "check.aleo" }, mode: "None" as const },
+          ],
+        },
+      ],
+    };
+
+    const output = generateBindings(abi);
+    expectGeneratedToTypecheck("Check", output);
   });
 });

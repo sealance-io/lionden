@@ -21,6 +21,14 @@ export interface CallOptions {
   prove?: boolean;
 }
 
+export interface LocalCallOptions extends Omit<CallOptions, "mode"> {
+  mode?: never;
+}
+
+export interface BroadcastOptions extends Omit<CallOptions, "mode"> {
+  mode?: never;
+}
+
 export interface TransitionCallResult {
   /** Raw outputs from the transition as Leo-encoded strings */
   readonly outputs: string[];
@@ -73,6 +81,41 @@ export abstract class BaseContract {
     }
 
     return network.execute(this.programId, transitionName, args, options);
+  }
+
+  /**
+   * Execute a transition locally and return raw Leo outputs.
+   * Generated typed wrappers deserialize this path into JS values.
+   */
+  protected async executeLocal(
+    transitionName: string,
+    args: string[],
+    options: LocalCallOptions = {},
+  ): Promise<TransitionCallResult> {
+    return this.execute(transitionName, args, {
+      ...options,
+      mode: "local",
+    });
+  }
+
+  /**
+   * Broadcast a transition on-chain and return the transaction metadata.
+   */
+  protected async broadcast(
+    transitionName: string,
+    args: string[],
+    options: BroadcastOptions = {},
+  ): Promise<TransitionCallResult> {
+    const result = await this.execute(transitionName, args, {
+      ...options,
+      mode: "onchain",
+    });
+    if (!result.txId) {
+      throw new Error(
+        \`Expected on-chain execution of \${this.programId}/\${transitionName} to return a transaction ID.\`,
+      );
+    }
+    return result;
   }
 
   /**
