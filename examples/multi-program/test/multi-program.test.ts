@@ -14,11 +14,16 @@ async function deployRewards() {
   // Deploying "rewards" automatically deploys its transitive program
   // dependency "treasury" first (topological ordering). The library
   // "math_utils" is compiled but not deployed — libraries are compile-only.
-  await ctx.deploy("rewards", { noCompile: true });
-  return { ctx };
+  try {
+    await ctx.deploy("rewards", { noCompile: true });
+    return { ctx };
+  } catch (error) {
+    await ctx.teardown();
+    throw error;
+  }
 }
 
-let ctx: TestContext;
+let ctx: TestContext | undefined;
 
 beforeAll(async () => {
   const fixture = await loadFixture(deployRewards);
@@ -26,18 +31,21 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  clearFixtures();
-  await ctx.teardown();
+  if (ctx) {
+    await ctx.teardown();
+  } else {
+    clearFixtures();
+  }
 });
 
 describe("treasury program", () => {
-  const signer = () => ctx.accounts[0]!.address;
+  const signer = () => ctx!.accounts[0]!.address;
 
   it("deposits funds for the signer", async () => {
-    await ctx.execute("treasury.aleo", "deposit", ["500u64"]);
+    await ctx!.execute("treasury.aleo", "deposit", ["500u64"]);
 
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "treasury.aleo",
       "deposits",
       signer(),
@@ -46,11 +54,11 @@ describe("treasury program", () => {
   });
 
   it("accumulates multiple deposits", async () => {
-    await ctx.execute("treasury.aleo", "deposit", ["300u64"]);
+    await ctx!.execute("treasury.aleo", "deposit", ["300u64"]);
 
     // 500 from previous test + 300
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "treasury.aleo",
       "deposits",
       signer(),
@@ -59,11 +67,11 @@ describe("treasury program", () => {
   });
 
   it("withdraws funds for the signer", async () => {
-    await ctx.execute("treasury.aleo", "withdraw", ["200u64"]);
+    await ctx!.execute("treasury.aleo", "withdraw", ["200u64"]);
 
     // 800 - 200
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "treasury.aleo",
       "deposits",
       signer(),
@@ -73,13 +81,13 @@ describe("treasury program", () => {
 });
 
 describe("rewards program", () => {
-  const signer = () => ctx.accounts[0]!.address;
+  const signer = () => ctx!.accounts[0]!.address;
 
   it("earns reward points", async () => {
-    await ctx.execute("rewards.aleo", "earn_points", ["75u64"]);
+    await ctx!.execute("rewards.aleo", "earn_points", ["75u64"]);
 
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "rewards.aleo",
       "points",
       signer(),
@@ -88,11 +96,11 @@ describe("rewards program", () => {
   });
 
   it("accumulates points across calls", async () => {
-    await ctx.execute("rewards.aleo", "earn_points", ["50u64"]);
+    await ctx!.execute("rewards.aleo", "earn_points", ["50u64"]);
 
     // 75 + 50 = 125
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "rewards.aleo",
       "points",
       signer(),
@@ -102,7 +110,7 @@ describe("rewards program", () => {
 
   it("starts with no claimed status", async () => {
     await assertMappingEmpty(
-      ctx.connection,
+      ctx!.connection,
       "rewards.aleo",
       "claimed",
       signer(),
@@ -114,11 +122,11 @@ describe("rewards program", () => {
       // Signer has 125 points (>= 100 threshold), so claiming should succeed.
       // claim_reward calls treasury.aleo::deposit() cross-program.
       // Both programs use self.signer, so the deposit is keyed by account-0.
-      await ctx.execute("rewards.aleo", "claim_reward", ["1000u64"]);
+      await ctx!.execute("rewards.aleo", "claim_reward", ["1000u64"]);
 
       // Verify claimed flag is set
       await assertMappingValue(
-        ctx.connection,
+        ctx!.connection,
         "rewards.aleo",
         "claimed",
         signer(),
@@ -128,7 +136,7 @@ describe("rewards program", () => {
       // Verify the cross-program deposit landed in treasury under the signer.
       // Prior treasury balance was 600 (from deposit/withdraw tests) + 1000 reward.
       await assertMappingValue(
-        ctx.connection,
+        ctx!.connection,
         "treasury.aleo",
         "deposits",
         signer(),

@@ -3,11 +3,16 @@ import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/te
 
 async function deployHello() {
   const ctx = await setup();
-  await ctx.deploy("hello", { noCompile: true });
-  return { ctx };
+  try {
+    await ctx.deploy("hello", { noCompile: true });
+    return { ctx };
+  } catch (error) {
+    await ctx.teardown();
+    throw error;
+  }
 }
 
-let ctx: TestContext;
+let ctx: TestContext | undefined;
 
 beforeAll(async () => {
   const fixture = await loadFixture(deployHello);
@@ -15,23 +20,26 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  clearFixtures();
-  await ctx.teardown();
+  if (ctx) {
+    await ctx.teardown();
+  } else {
+    clearFixtures();
+  }
 });
 
 describe("hello program", () => {
   it("adds two numbers", async () => {
-    const result = await ctx.execute("hello.aleo", "main", ["3u32", "5u32"], { mode: "local" });
+    const result = await ctx!.execute("hello.aleo", "main", ["3u32", "5u32"], { mode: "local" });
     expect(result.outputs[0]).toBe("8u32");
   });
 
   it("multiplies two numbers", async () => {
-    const result = await ctx.execute("hello.aleo", "multiply", ["4u32", "7u32"], { mode: "local" });
+    const result = await ctx!.execute("hello.aleo", "multiply", ["4u32", "7u32"], { mode: "local" });
     expect(result.outputs[0]).toBe("28u32");
   });
 
   it("handles zero", async () => {
-    const result = await ctx.execute("hello.aleo", "main", ["0u32", "42u32"], { mode: "local" });
+    const result = await ctx!.execute("hello.aleo", "main", ["0u32", "42u32"], { mode: "local" });
     expect(result.outputs[0]).toBe("42u32");
   });
 });

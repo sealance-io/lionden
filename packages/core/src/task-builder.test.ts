@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { task, overrideTask } from "./task-builder.js";
 import { TaskRunnerImpl } from "./task-runner.js";
@@ -186,9 +189,16 @@ describe("createLre config-level tasks", () => {
 });
 
 describe("artifact store", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-artifacts-"));
   const mockConfig = {
     leoVersion: "4.0.0",
-    paths: { root: "/tmp", programs: "/tmp/programs", artifacts: "/tmp/artifacts", typechain: "/tmp/typechain", cache: "/tmp/cache" },
+    paths: {
+      root: tempRoot,
+      programs: path.join(tempRoot, "programs"),
+      artifacts: path.join(tempRoot, "artifacts"),
+      typechain: path.join(tempRoot, "typechain"),
+      cache: path.join(tempRoot, "cache"),
+    },
     networks: {},
     defaultNetwork: "devnode",
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
@@ -207,5 +217,27 @@ describe("artifact store", () => {
     expect(lre.artifacts.getAbi("hello.aleo")).toEqual({ program: "hello.aleo", transitions: [] });
     expect(lre.artifacts.getAleoSource("hello.aleo")).toBe("program hello.aleo { }");
     expect(lre.artifacts.getProgramIds()).toEqual(["hello.aleo"]);
+  });
+
+  it("hydrates artifacts from disk for a fresh LRE", () => {
+    const artifactDir = path.join(mockConfig.paths.artifacts, "hello.aleo");
+    fs.mkdirSync(artifactDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(artifactDir, "abi.json"),
+      JSON.stringify({ program: "hello.aleo", transitions: ["main"] }),
+    );
+    fs.writeFileSync(
+      path.join(artifactDir, "main.aleo"),
+      "program hello.aleo { }",
+    );
+
+    const lre = createLre({ config: mockConfig, plugins: [] });
+
+    expect(lre.artifacts.getProgramIds()).toContain("hello.aleo");
+    expect(lre.artifacts.getAbi("hello.aleo")).toEqual({
+      program: "hello.aleo",
+      transitions: ["main"],
+    });
+    expect(lre.artifacts.getAleoSource("hello.aleo")).toBe("program hello.aleo { }");
   });
 });

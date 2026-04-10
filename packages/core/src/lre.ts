@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import type {
   LionDenPlugin,
@@ -9,11 +11,20 @@ import { HookDispatcherImpl } from "./hook-system.js";
 import { TaskRunnerImpl } from "./task-runner.js";
 
 /**
- * In-memory artifact store. Populated by the compile task.
+ * Artifact store backed by in-memory writes with lazy fallback to disk.
+ *
+ * Fresh LRE instances are created inside test workers and CLI subprocesses.
+ * They need to be able to observe artifacts produced by an earlier compile
+ * step in a different process.
  */
-class InMemoryArtifactStore implements ArtifactStore {
+class ArtifactStoreImpl implements ArtifactStore {
+  private readonly artifactsDir: string;
   private readonly abis = new Map<string, unknown>();
   private readonly sources = new Map<string, string>();
+
+  constructor(artifactsDir: string) {
+    this.artifactsDir = artifactsDir;
+  }
 
   setAbi(programId: string, abi: unknown): void {
     this.abis.set(programId, abi);
@@ -24,15 +35,54 @@ class InMemoryArtifactStore implements ArtifactStore {
   }
 
   getAbi(programId: string): unknown | undefined {
-    return this.abis.get(programId);
+    const cached = this.abis.get(programId);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const abiPath = path.join(this.artifactsDir, programId, "abi.json");
+    if (!fs.existsSync(abiPath)) {
+      return undefined;
+    }
+
+    const abi = JSON.parse(fs.readFileSync(abiPath, "utf8")) as unknown;
+    this.abis.set(programId, abi);
+    return abi;
   }
 
   getAleoSource(programId: string): string | undefined {
-    return this.sources.get(programId);
+    const cached = this.sources.get(programId);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const sourcePath = path.join(this.artifactsDir, programId, "main.aleo");
+    if (!fs.existsSync(sourcePath)) {
+      return undefined;
+    }
+
+    const source = fs.readFileSync(sourcePath, "utf8");
+    this.sources.set(programId, source);
+    return source;
   }
 
   getProgramIds(): string[] {
-    return [...this.abis.keys()];
+    const programIds = new Set(this.abis.keys());
+
+    if (fs.existsSync(this.artifactsDir)) {
+      for (const entry of fs.readdirSync(this.artifactsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.startsWith(".")) {
+          continue;
+        }
+
+        const abiPath = path.join(this.artifactsDir, entry.name, "abi.json");
+        if (fs.existsSync(abiPath)) {
+          programIds.add(entry.name);
+        }
+      }
+    }
+
+    return [...programIds];
   }
 }
 
@@ -65,7 +115,7 @@ export function createLre(options: CreateLreOptions): LionDenRuntimeEnvironment 
   }
 
   // Build artifact store
-  const artifacts = new InMemoryArtifactStore();
+  const artifacts = new ArtifactStoreImpl(config.paths.artifacts);
 
   const lre: LionDenRuntimeEnvironment = {
     config,

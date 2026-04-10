@@ -144,7 +144,7 @@ describe("NetworkManagerImpl", () => {
     const conn = await manager.connect("devnode") as any;
     // The AleoConnection stores privateKey — verify it was set
     expect(conn.privateKey).toBe(
-      "APrivateKey1zkp8CZNn3yeCBJ4tRPqpQMBR5Qn3ZjYkBEQR6VcX3v7t7QE",
+      "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
     );
   });
 

@@ -16,5 +16,8 @@
     "@lionden/config": "*",
     "@lionden/core": "*",
     "@lionden/leo-compiler": "*"
+  },
+  "devDependencies": {
+    "@lionden/test-internals": "*"
   }
 }

@@ -50,8 +50,14 @@ export class AleoConnection implements NetworkConnection {
     if (this.type === "devnode") {
       this.advanceBlocks = async (count: number) => {
         for (let i = 0; i < count; i++) {
-          const url = `${this.endpoint}/${this.networkId}/block/advance`;
-          const response = await fetch(url, { method: "POST" });
+          const url = `${this.endpoint}/${this.networkId}/block/create`;
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ num_blocks: 1 }),
+          });
           if (!response.ok) {
             throw new Error(
               `Failed to advance block: ${response.status} ${response.statusText}`,
@@ -153,8 +159,9 @@ export class AleoConnection implements NetworkConnection {
         args,
         false, // proveExecution = false
       );
+      const outputs = extractLocalExecutionOutputs(result);
       return {
-        outputs: Array.isArray(result) ? result.map(String) : [],
+        outputs,
       };
     }
 
@@ -272,4 +279,28 @@ export class AleoConnection implements NetworkConnection {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractLocalExecutionOutputs(result: unknown): string[] {
+  if (Array.isArray(result)) {
+    return result.map(String);
+  }
+
+  if (result && typeof result === "object") {
+    const executionResponse = result as {
+      getOutputs?: () => unknown;
+      outputs?: unknown;
+    };
+
+    if (typeof executionResponse.getOutputs === "function") {
+      const outputs = executionResponse.getOutputs();
+      return Array.isArray(outputs) ? outputs.map(String) : [];
+    }
+
+    if (Array.isArray(executionResponse.outputs)) {
+      return executionResponse.outputs.map(String);
+    }
+  }
+
+  return [];
 }

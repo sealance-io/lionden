@@ -19,5 +19,8 @@
     "@lionden/config": "*",
     "@lionden/core": "*",
     "tsx": "^4.0.0"
+  },
+  "devDependencies": {
+    "@lionden/test-internals": "*"
   }
 }

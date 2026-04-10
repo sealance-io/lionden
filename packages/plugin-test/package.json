@@ -17,6 +17,9 @@
     "@lionden/core": "*",
     "@lionden/testing": "*"
   },
+  "devDependencies": {
+    "@lionden/test-internals": "*"
+  },
   "peerDependencies": {
     "vitest": "^4.0.0"
   },

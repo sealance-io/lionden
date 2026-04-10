@@ -16,5 +16,8 @@
     "@lionden/config": "*",
     "@lionden/core": "*",
     "@lionden/network": "*"
+  },
+  "devDependencies": {
+    "@lionden/test-internals": "*"
   }
 }

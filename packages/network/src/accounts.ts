@@ -9,7 +9,7 @@ export const DEVNODE_ACCOUNTS: readonly DevnodeAccount[] = [
   {
     name: "account-0",
     privateKey:
-      "APrivateKey1zkp8CZNn3yeCBJ4tRPqpQMBR5Qn3ZjYkBEQR6VcX3v7t7QE",
+      "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
     address:
       "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
     initialBalance: 23_437_500_000_000n,

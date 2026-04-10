@@ -135,20 +135,26 @@ const HELLO_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext } from "@lionden/testing";
 
-let ctx: TestContext;
+let ctx: TestContext | undefined;
 
 beforeAll(async () => {
   ctx = await setup();
-  await ctx.deploy("hello");
+  try {
+    await ctx.deploy("hello");
+  } catch (error) {
+    await ctx.teardown();
+    ctx = undefined;
+    throw error;
+  }
 });
 
 afterAll(async () => {
-  await ctx.teardown();
+  await ctx?.teardown();
 });
 
 describe("hello program", () => {
   it("adds two numbers", async () => {
-    const result = await ctx.execute("hello.aleo", "main", ["3u32", "5u32"]);
+    const result = await ctx!.execute("hello.aleo", "main", ["3u32", "5u32"]);
     expect(result.outputs[0]).toBe("8u32");
   });
 });
@@ -248,25 +254,31 @@ const TOKEN_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext, assertMappingValue } from "@lionden/testing";
 
-let ctx: TestContext;
+let ctx: TestContext | undefined;
+const RECEIVER = "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
 
 beforeAll(async () => {
   ctx = await setup();
-  await ctx.deploy("token");
+  try {
+    await ctx.deploy("token");
+  } catch (error) {
+    await ctx.teardown();
+    ctx = undefined;
+    throw error;
+  }
 });
 
 afterAll(async () => {
-  await ctx.teardown();
+  await ctx?.teardown();
 });
 
 describe("token program", () => {
   it("mints public tokens", async () => {
-    // Use account-2 so this test is independent of others
-    const receiver = ctx.accounts[2]!.address;
-    await ctx.execute("token.aleo", "mint_public", [receiver, "1000u64"]);
+    const receiver = RECEIVER;
+    await ctx!.execute("token.aleo", "mint_public", [receiver, "1000u64"]);
 
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "token.aleo",
       "balances",
       receiver,
@@ -275,15 +287,15 @@ describe("token program", () => {
   });
 
   it("transfers public tokens", async () => {
-    // Use account-0 (sender) and account-3 (receiver) — isolated from other tests
-    const sender = ctx.accounts[0]!.address;
-    const receiver = ctx.accounts[3]!.address;
+    // Use account-0 (sender) and a stable external receiver address.
+    const sender = ctx!.accounts[0]!.address;
+    const receiver = RECEIVER;
 
-    await ctx.execute("token.aleo", "mint_public", [sender, "2000u64"]);
-    await ctx.execute("token.aleo", "transfer_public", [receiver, "500u64"]);
+    await ctx!.execute("token.aleo", "mint_public", [sender, "2000u64"]);
+    await ctx!.execute("token.aleo", "transfer_public", [receiver, "500u64"]);
 
     await assertMappingValue(
-      ctx.connection,
+      ctx!.connection,
       "token.aleo",
       "balances",
       receiver,
