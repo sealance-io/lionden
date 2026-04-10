@@ -1,18 +1,27 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
+  loadFixture,
+  clearFixtures,
   type TestContext,
   assertMappingValue,
 } from "@lionden/testing";
 
+async function deployToken() {
+  const ctx = await setup();
+  await ctx.deploy("token", { noCompile: true });
+  return { ctx };
+}
+
 let ctx: TestContext;
 
 beforeAll(async () => {
-  ctx = await setup();
-  await ctx.deploy("token");
+  const fixture = await loadFixture(deployToken);
+  ctx = fixture.ctx;
 });
 
 afterAll(async () => {
+  clearFixtures();
   await ctx.teardown();
 });
 
@@ -62,10 +71,9 @@ describe("token program", () => {
       const result = await ctx.execute("token.aleo", "mint_private", [
         receiver,
         "500u64",
-      ]);
+      ], { mode: "local" });
 
       expect(result.outputs).toHaveLength(1);
-      expect(result.txId).toBeDefined();
     });
   });
 

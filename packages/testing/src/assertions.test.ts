@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { NetworkConnection } from "@lionden/network";
+import { createMockConnection } from "@lionden/test-internals";
 import {
   assertMappingValue,
   assertMappingEmpty,
@@ -11,25 +11,7 @@ import {
   AssertionError,
 } from "./assertions.js";
 
-function mockConnection(overrides: Partial<NetworkConnection> = {}): NetworkConnection {
-  return {
-    type: "devnode",
-    name: "devnode",
-    endpoint: "http://127.0.0.1:3030",
-    networkId: "testnet",
-    getBalance: vi.fn().mockResolvedValue(1000n),
-    getMappingValue: vi.fn().mockResolvedValue(null),
-    execute: vi.fn().mockResolvedValue({ outputs: [] }),
-    waitForConfirmation: vi.fn().mockResolvedValue({
-      txId: "at1test",
-      blockHeight: 10,
-      status: "accepted",
-    }),
-    getBlockHeight: vi.fn().mockResolvedValue(100),
-    close: vi.fn(),
-    ...overrides,
-  } as unknown as NetworkConnection;
-}
+const mockConnection = createMockConnection;
 
 describe("assertions", () => {
   describe("assertMappingValue", () => {

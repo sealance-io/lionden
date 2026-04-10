@@ -10,8 +10,11 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:contract": "vitest run --project contract",
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
+    "test:smoke": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test --no-compile && node --import tsx packages/cli/src/bin.ts --config examples/token/lionden.config.ts test --no-compile && node --import tsx packages/cli/src/bin.ts --config examples/multi-program/lionden.config.ts test --no-compile",
     "lint": "eslint packages/"
   },
   "devDependencies": {

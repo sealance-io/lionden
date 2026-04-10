@@ -8,8 +8,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install --ignore-scripts   # install workspace dependencies
 npm run build                  # tsc --build (all packages via project references)
 npm run clean                  # tsc --build --clean
-npm test                       # vitest run (all packages, one-shot)
+npm test                       # vitest run (all unit + contract tests)
+npm run test:unit              # unit tests only
+npm run test:contract          # contract tests only
 npm run test:agent             # vitest run with the agent reporter
+npm run test:smoke             # example project smoke tests (requires build)
 npx vitest run packages/core   # run tests for a single package
 npx vitest run --reporter=agent packages/core   # targeted run with minimal agent output
 npx vitest run packages/core/src/hook-system.test.ts  # run a single test file
@@ -23,7 +26,7 @@ node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.
 
 ## Architecture at a Glance
 
-npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 2 examples.
+npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 3 examples.
 
 **Dependency flow** (each layer depends only on layers above it):
 
@@ -47,7 +50,7 @@ Plugins are **declarative**: users list them in `defineConfig({ plugins: [...] }
 ## Key Patterns
 
 - **All imports use `.js` extensions** (ESM NodeNext resolution). Write `import { foo } from "./bar.js"` even though the source file is `bar.ts`.
-- **Tests are colocated** with source as `*.test.ts` under `packages/*/src/`. Pattern: `packages/*/src/**/*.test.ts`.
+- **Tests are colocated** with source as `*.test.ts` (unit) and `*.contract.test.ts` (cross-package) under `packages/*/src/`. See `docs/testing-strategy.md` for the tier taxonomy.
 - **Agent test runs should prefer Vitest's `agent` reporter** to reduce token-heavy passing output. Use `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs.
 - **Plugin shape**: `{ id, name, hookHandlers?, tasks?, globalOptions?, extendLre? }` — see `packages/core/src/types.ts` for `LionDenPlugin`.
 - **Task builder API**: `task(id, desc).addOption({...}).setAction(fn).build()` and `overrideTask(id).setAction(fn).build()` — see `packages/core/src/task-builder.ts`.
@@ -63,6 +66,7 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | Leo compilation, materialization, ABI, codegen | `docs/compiler.md` |
 | Network types, devnode/HTTP, deploy/upgrade | `docs/network-and-deploy.md` |
 | Test context, fixtures, assertions | `docs/testing.md` |
+| Repo-wide test strategy, CI lanes, tier taxonomy | `docs/testing-strategy.md` |
 | JSON ABI schema, serde rules, compiler-vs-TS normalization | `docs/json-abi.md` |
 | Package map, examples, scaffolder | `docs/project-layout.md` |
 

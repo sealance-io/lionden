@@ -1,0 +1,710 @@
+# Testing Strategy
+
+When to read this: use this file for the proposed repo-wide testing strategy, test taxonomy, CI lanes, ownership boundaries, and rollout plan. Use [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) for the current testing surface that exists in the codebase today.
+
+## Why This Doc Exists
+
+LionDen is hard to test with a single approach:
+
+- much of the repo is deterministic transformation logic and should be tested without a network
+- some important behavior lives at package boundaries and is only visible when multiple packages cooperate
+- end-to-end coverage is expensive because realistic flows involve Leo compilation, devnode lifecycle, network state, and sometimes proof generation
+
+The current repo already reflects this tension:
+
+- root Vitest coverage is package-oriented
+- `@lionden/plugin-test` runs project-local suites under `test/`
+- `@lionden/testing` creates an LRE, optionally starts a devnode, and exposes deploy/execute helpers
+- fixture reuse exists, but isolation still relies on fresh devnode lifecycle rather than snapshot/revert semantics
+- two packages (`packages/cli` and `packages/plugin-leo`) have zero test files today
+
+This strategy proposes a testing model that accepts those constraints and organizes the suite accordingly.
+
+## Ground Truth Today
+
+The proposal below is based on the current implementation:
+
+- package tests run through the root Vitest config in [`vitest.config.ts`](/Users/mitzpetel/Workspaces/lionden/vitest.config.ts)
+- the root `test` script is currently `vitest run` in [`package.json`](/Users/mitzpetel/Workspaces/lionden/package.json), with `test:agent` and `test:watch` also defined
+- project tests run through the `test` task in [`packages/plugin-test/src/index.ts`](/Users/mitzpetel/Workspaces/lionden/packages/plugin-test/src/index.ts)
+- the programmatic test runner discovers `test/**/*.test.ts` under the project root in [`packages/plugin-test/src/test-runner.ts`](/Users/mitzpetel/Workspaces/lionden/packages/plugin-test/src/test-runner.ts)
+- `setup()` creates or reuses an LRE, optionally starts a devnode, connects to a network, and returns deploy/execute helpers in [`packages/testing/src/test-context.ts`](/Users/mitzpetel/Workspaces/lionden/packages/testing/src/test-context.ts)
+- fixture caching exists in [`packages/testing/src/fixtures.ts`](/Users/mitzpetel/Workspaces/lionden/packages/testing/src/fixtures.ts)
+- the network layer already supports `mode: "local" | "onchain"` execution in [`packages/network/src/types.ts`](/Users/mitzpetel/Workspaces/lionden/packages/network/src/types.ts) and [`packages/network/src/connection.ts`](/Users/mitzpetel/Workspaces/lionden/packages/network/src/connection.ts)
+
+## Strategy Goals
+
+- keep the default feedback loop fast enough for normal development
+- move the bulk of coverage into deterministic tests instead of expensive devnode suites
+- make package-boundary behavior testable without requiring a full end-to-end environment
+- keep a small number of real workflow smoke tests that prove the stack still works
+- isolate proof-generation testing into a separate lane
+- improve failure diagnosis so expensive tests are worth running
+
+## Non-Goals
+
+- achieving a single coverage number that mixes cheap and expensive tests into one target
+- making every behavior run through a real devnode in CI
+- pretending current devnode isolation is equivalent to snapshot/revert semantics
+- replacing Vitest with a custom LionDen-specific test runner
+
+## Testing Principles
+
+1. Prefer the cheapest test that can reliably detect the regression.
+2. Test pure transformations as pure transformations.
+3. Test package boundaries with stable repo-owned fakes rather than ad hoc mocks.
+4. Reserve real devnode tests for network state, deployment semantics, and cross-package workflow checks.
+5. Treat proof generation as a special compatibility lane, not the default development loop.
+6. Keep example-project smoke tests small and intentional.
+
+## Proposed Test Taxonomy
+
+LionDen should adopt four explicit test tiers.
+
+### Tier 1: Fast Deterministic Tests
+
+Purpose:
+- validate pure logic, normalization, parsing, planning, and code generation
+
+Characteristics:
+- no devnode
+- no real Leo process
+- no network
+- no sleeping or polling
+- sub-second to low-second runtime per package
+
+Primary targets:
+- `packages/config`
+- `packages/core`
+- most of `packages/leo-compiler`
+- deploy manifest parsing and ABI compatibility logic in `packages/plugin-deploy`
+- scaffolder template rendering in `packages/create-lionden`
+
+Recommended techniques:
+- table-driven tests
+- golden-file tests for generated output
+- property-based tests for parsers and normalization code
+- regression fixtures for edge-case Leo layouts and ABI shapes
+
+### Tier 2: Contract Tests
+
+Purpose:
+- validate behavior at package boundaries without requiring a full project smoke test
+
+A Tier 2 test **crosses package boundaries** — it composes real code from multiple LionDen packages. Tests within a single package that use fakes for external processes (e.g., a stubbed Leo CLI runner inside `packages/leo-compiler`) remain Tier 1.
+
+Characteristics:
+- compose 2-4 real LionDen packages together
+- use repo-owned fakes for external systems such as Leo CLI, SDK calls, filesystem workspaces, or process spawning
+- verify contracts at the seams where unit tests are too mocked and end-to-end tests are too expensive
+
+Primary targets:
+- `core` + `plugin-*` task registration and override behavior
+- `plugin-test` + Vitest runner configuration
+- `testing` + `network` interactions when devnode lifecycle is stubbed
+- `leo-compiler` orchestration around materialization, cache decisions, and command planning
+- `plugin-deploy` interactions with compiler output, manifest rules, and network calls
+
+Recommended techniques:
+- fake `NetworkConnection` and `NetworkManager` implementations
+- fake Leo command runner with recorded invocations
+- temp project builders with controlled fixture trees
+- snapshotting normalized outputs and planned command arguments
+
+### Tier 3: Workflow Smoke Tests
+
+Purpose:
+- prove that a real LionDen project can compile, deploy, execute, and assert state in a realistic environment
+
+Characteristics:
+- real example project
+- real `lionden test` path
+- real devnode lifecycle
+- minimal number of assertions
+- optimized for confidence, not breadth
+
+Primary targets:
+- `examples/hello-world`
+- `examples/token`
+- `examples/multi-program`
+
+Expected scope:
+- one smoke suite per example that proves the happy path
+- one or two targeted negative-path suites only where the workflow contract is especially critical
+
+### Tier 4: Proof And Compatibility Tests
+
+Purpose:
+- validate the slowest and most brittle compatibility path separately from normal PR feedback
+
+Characteristics:
+- real proof generation
+- longer timeouts
+- narrower scope
+- nightly, release, or manually triggered
+
+Primary targets:
+- one deploy + execute proof path on devnode
+- constructor/deploy compatibility paths that depend on exact network behavior
+- SDK compatibility checks that are known to be sensitive
+
+## Concrete Repo Layout
+
+The current structure should stay mostly intact. The proposal is to clarify intent rather than move everything.
+
+### Keep
+
+- `packages/*/src/**/*.test.ts` for fast deterministic tests
+- `examples/*/test/**/*.test.ts` for project workflow smoke tests
+
+### Add
+
+- `*.contract.test.ts` naming convention for contract tests that cross package boundaries, colocated in the package that owns the integration surface (e.g., `packages/core/src/task-dispatch.contract.test.ts`)
+- Vitest named projects select contract tests by filename pattern rather than directory, avoiding a new top-level `tests/` tree with its own `tsconfig.json` and import-path complexity
+
+### Add `packages/test-internals/` (Private)
+
+Create a private (`"private": true`, not published) package for repo-owned test infrastructure:
+
+- `fakes/fake-network.ts`
+- `fakes/fake-task-runner.ts`
+- `fakes/fake-leo-runner.ts`
+- `builders/temp-project.ts`
+- `builders/example-project.ts`
+- `diagnostics/test-artifacts.ts`
+
+This keeps `@lionden/testing` focused on the user-facing test context, assertions, and fixtures. Internal test fakes should not ship in a published package or couple repo-internal infrastructure to its release cycle.
+
+## Coverage Allocation By Subsystem
+
+### `packages/config`
+
+Primary tier:
+- Tier 1
+
+Coverage focus:
+- config variables
+- validation rules
+- merge behavior
+- environment-driven resolution
+
+Expectation:
+- near-complete deterministic coverage
+
+### `packages/core`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+
+Coverage focus:
+- plugin order
+- hook dispatch semantics
+- config lifecycle
+- task override and dispatch behavior
+- LRE creation boundaries
+
+Expectation:
+- pure behavior stays in Tier 1
+- cross-plugin and task-registry behavior gets contract tests
+
+### `packages/cli`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+- Tier 3
+
+Coverage focus:
+- config discovery
+- argument parsing
+- help output
+- dispatch into the task registry
+
+Expectation:
+- this package currently has zero test files and is a high-value target for new coverage
+- argument parsing and help output are pure Tier 1 targets
+- avoid broad subprocess-heavy suites
+- use contract tests for config discovery and dispatch
+- rely on smoke tests for one real CLI workflow per example
+
+### `packages/leo-compiler`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+
+Coverage focus:
+- source discovery
+- dependency resolution
+- package materialization
+- ABI parsing
+- code generation
+- cache invalidation decisions
+- Leo command planning and output handling
+
+Expectation:
+- this package should carry a large share of the repo's total coverage
+- use golden fixtures heavily
+- decouple golden ABI fixtures from live example artifacts — copy stable fixture ABIs into `packages/leo-compiler/src/__fixtures__/` so compiler tests do not break when an unrelated example is recompiled
+
+### `packages/network`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+- Tier 4
+
+Coverage focus:
+- connection lifecycle
+- execution-mode branching
+- endpoint selection
+- confirmation polling
+- SDK adapter behavior
+- devnode manager process handling
+
+Expectation:
+- local branching and request construction should be deterministic
+- only a narrow set of tests should require real devnode or proof paths
+
+### `packages/testing`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+- Tier 3
+
+Coverage focus:
+- LRE factory behavior
+- fixture caching
+- test context lifecycle
+- managed devnode startup/teardown
+- assertions
+
+Expectation:
+- package tests cover the helper semantics
+- smoke tests prove the helpers work in a real project
+
+### `packages/plugin-leo`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+
+Coverage focus:
+- task registration for `compile` and `clean`
+- task argument normalization
+- orchestration between task args and compiler pipeline
+
+Expectation:
+- this package currently has zero test files and is a high-value target for new coverage
+- pure argument handling and task registration belong in Tier 1
+- orchestration with `leo-compiler` belongs in Tier 2
+
+### `packages/plugin-deploy`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+- Tier 3
+
+Coverage focus:
+- constructor annotation parsing
+- ABI compatibility checking
+- deploy manifest read/write
+- deploy target resolution
+- task-to-network orchestration
+
+Expectation:
+- substantial pure-logic coverage already exists in Tier 1 (constructor parsing, ABI compat, manifest I/O)
+- deploy orchestration and network interactions belong in Tier 2
+- one smoke path through example deploy belongs in Tier 3
+
+### `packages/plugin-network`
+
+Primary tiers:
+- Tier 2
+
+Coverage focus:
+- task registration
+- network manager injection via `extendLre()`
+
+Expectation:
+- thin orchestration plugin, covered primarily through boundary tests
+
+### `packages/plugin-test`
+
+Primary tiers:
+- Tier 1
+- Tier 2
+
+Coverage focus:
+- task registration and argument handling
+- Vitest runner configuration
+- compile/test task interaction
+
+Expectation:
+- argument handling and config validation belong in Tier 1
+- runner integration and hook dispatch belong in Tier 2
+
+### `packages/create-lionden`
+
+Primary tiers:
+- Tier 1
+- Tier 3
+
+Coverage focus:
+- template rendering
+- file tree creation
+- example script and config correctness
+
+Expectation:
+- deterministic scaffolding tests plus one smoke path that verifies a scaffolded project actually works
+
+## How To Test Leo Program Behavior
+
+LionDen should split Leo program tests into two categories.
+
+### Semantic Transition Tests
+
+Use `mode: "local"` whenever the test is trying to validate:
+
+- transition outputs
+- argument normalization
+- happy-path program semantics
+- generated wrapper behavior that does not depend on chain state
+
+Rationale:
+- local execution already exists in the network layer
+- these tests are much cheaper than on-chain execution
+- they remove devnode state management from cases that do not need it
+
+### Chain-State Tests
+
+Use `mode: "onchain"` only when the test needs:
+
+- mapping reads and writes
+- block advancement
+- balance changes
+- confirmations
+- deploy semantics
+- upgrade behavior
+- fee or proof-specific behavior
+
+Rationale:
+- these are the behaviors that justify real network cost
+
+## Devnode Strategy
+
+LionDen should not try to turn devnode into the default test primitive for every suite.
+
+Recommended policy:
+
+- one managed devnode per smoke suite file, not per individual test
+- no cross-file shared global devnode in the default lane
+- fixture-based reuse inside a suite for deploy-heavy setup
+- local execution for semantic assertions whenever possible
+- explicit proof suites for slow paths
+
+This aligns with the current documented constraint that test isolation relies on fresh devnode lifecycle and fixture patterns rather than snapshots.
+
+## Fixture Strategy
+
+The existing `loadFixture()` helper should become the standard setup primitive for expensive state preparation.
+
+Recommended usage:
+
+- cache deployments per suite
+- return structured handles such as `{ ctx, deployment, accounts }`
+- make fixtures idempotent and narrowly scoped
+- avoid implicit global mutable state outside the fixture cache
+
+Recommended additions:
+
+- `loadProjectFixture()` for temp project creation
+- `loadDeploymentFixture()` for compile + deploy setup
+- `clearTestArtifacts()` for diagnostics cleanup
+
+## Contract Test Harness Proposal
+
+The repo should provide first-class harnesses for the seams that are currently hardest to cover. These harnesses live in `packages/test-internals/`, not in the published `@lionden/testing` package.
+
+### Fake Network Harness
+
+Provide:
+
+- fake connection object implementing `NetworkConnection`
+- controllable execute responses
+- controllable mapping state
+- explicit confirmation and block-height behavior
+- call recording for assertions
+
+Use for:
+
+- deploy orchestration tests
+- test context behavior
+- wrapper and assertion helpers
+
+### Fake Leo Harness
+
+Provide:
+
+- fake process runner for `leo build` and `leo devnode`
+- configurable stdout/stderr/exit codes
+- recorded argv assertions
+- synthetic artifacts directory population
+
+Use for:
+
+- compiler orchestration
+- plugin task tests
+- devnode manager command construction tests
+
+### Temp Project Builder
+
+Provide:
+
+- builder for config file, `programs/`, `scripts/`, and `test/`
+- fixture helpers for nested Leo imports and multi-program workspaces
+- stable absolute paths for CLI and LRE discovery tests
+
+Use for:
+
+- config discovery
+- compiler project graph scenarios
+- plugin-test integration
+
+## Example Project Strategy
+
+Examples should be treated as smoke-test fixtures, not as the place where all detailed behavioral testing lives.
+
+### `examples/hello-world`
+
+Role:
+- minimal compile/deploy/execute smoke test
+
+Keep:
+- one fast happy-path suite
+
+Add:
+- one local-mode semantic suite if wrapper generation or compile output grows more complex
+
+### `examples/token`
+
+Role:
+- stateful workflow smoke test
+
+Keep:
+- on-chain mapping and block assertions
+
+Change:
+- move most semantic transition checks into local-mode tests
+- use deployment fixtures instead of raw `beforeAll` setup for every file
+
+### `examples/multi-program`
+
+Role:
+- cross-program interaction and dependency graph smoke test
+
+Keep:
+- on-chain cross-program calls and state assertions
+
+Change:
+- move semantic transition checks into local-mode tests where possible
+
+### Future Examples
+
+Only add a new example when it represents a new workflow contract:
+
+- upgrade path
+- HTTP network behavior
+- codegen edge cases visible to users
+
+Do not add examples just to increase raw test count.
+
+## CI Lanes
+
+The repo should expose explicit scripts for each lane.
+
+### Required On Every PR
+
+- `npm run test:unit`
+- `npm run test:contract`
+
+These two lanes form the PR quality gate. They must be fast and reliable enough to block on every pull request.
+
+### Required On Most PRs
+
+- `npm run test:smoke`
+
+This lane should stay small enough to run on normal pull requests. If runtime becomes too high, split it into:
+
+- `npm run test:smoke:core`
+- `npm run test:smoke:examples`
+
+and use changed-path filtering in CI.
+
+### Nightly Or Release Lane
+
+- `npm run test:prove` — add when proof-specific tests are isolated
+- optional SDK compatibility lane against the supported toolchain matrix
+
+## Proposed Script Surface
+
+The following scripts are recommended:
+
+```json
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:contract": "vitest run --project contract",
+    "test:agent": "vitest run --reporter=agent",
+    "test:watch": "vitest",
+    "test:smoke": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test --no-compile && node --import tsx packages/cli/src/bin.ts --config examples/token/lionden.config.ts test --no-compile && node --import tsx packages/cli/src/bin.ts --config examples/multi-program/lionden.config.ts test --no-compile"
+  }
+}
+```
+
+Add this script when proof-specific tests are isolated:
+
+```json
+{
+  "scripts": {
+    "test:prove": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test --prove"
+  }
+}
+```
+
+The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests use `--config` to point the CLI at each example's config file, since the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. The `test:agent` and `test:watch` scripts are already in use and documented in `CLAUDE.md` and `AGENTS.md`. Note that the `test:smoke` script hardcodes example config paths — it needs maintenance when examples are added or removed.
+
+## Vitest Project Configuration
+
+The root Vitest config should evolve from a single include pattern into named projects.
+
+Recommended projects:
+
+- `unit` — selects `packages/*/src/**/*.test.ts` excluding `*.contract.test.ts`
+- `contract` — selects `packages/*/src/**/*.contract.test.ts`
+
+Add the `contract` project when the first contract test file is created. Do not force smoke tests into the root Vitest project if they naturally belong to project-local `lionden test` runs.
+
+## Coverage Policy
+
+Coverage should be measured separately by lane.
+
+Recommended policy:
+
+- enforce coverage thresholds only for Tier 1 and selected Tier 2 suites
+- do not block on coverage percentages for smoke or proof lanes
+- track smoke lane count, duration, and flake rate instead
+
+Suggested initial targets:
+
+- deterministic lines/branches threshold for `packages/config`, `packages/core`, and `packages/leo-compiler`
+- no global monorepo threshold until lane separation is in place
+
+## Failure Diagnostics
+
+Expensive failures must produce useful artifacts.
+
+When a smoke or proof suite fails, preserve:
+
+- devnode stdout/stderr
+- Leo command stdout/stderr
+- generated artifacts paths
+- transaction ids
+- confirmation polling context
+- project root used by the test runner
+
+This should be handled by repo-level helpers, not reimplemented per suite.
+
+## Flake Management
+
+The repo should explicitly track flakiness rather than treating it as unavoidable.
+
+Recommended policy:
+
+- no retries in deterministic lanes
+- limited retries only for smoke and proof lanes, with retry counts reported
+- quarantine only with a tracked follow-up issue
+- record and review top flaky tests monthly
+
+## Incremental Rollout Plan
+
+### Phase 0: Naming And Lane Separation
+
+- add this strategy doc
+- rename `test` to `test:fast`, add `test:smoke` script
+- keep current tests where they are, but classify them
+
+### Phase 1: Example Smoke Cleanup
+
+- convert example suites to use `mode: "local"` for semantic transition checks
+- adopt `loadFixture()` for deploy setup in example tests
+- reduce unnecessary devnode work in example projects
+- this phase requires no new infrastructure and delivers immediate CI time savings
+
+### Phase 2: Extract Shared Test Doubles
+
+- extract duplicated `mockConfig` patterns (repeated across ~5 test files) into a shared location
+- extract duplicated `mockConnection` factories into shared helpers
+- create `packages/test-internals/` as the home for repo-owned test infrastructure
+
+### Phase 3: Contract Harnesses And First Contract Tests
+
+- add fake network and temp project builders under `packages/test-internals`
+- write 2-3 initial contract tests to validate the pattern before expanding
+- add the `contract` Vitest project and `test:contract` script once the first test exists
+- initial targets: CLI config discovery + dispatch, deploy task orchestration, `plugin-test` runner configuration
+
+### Phase 4: Compiler And Codegen Goldens
+
+- expand golden coverage for compiler output, package materialization, and TypeScript codegen
+- copy stable fixture ABIs into `packages/leo-compiler/src/__fixtures__/` to decouple from example artifacts
+- add edge-case fixtures for nested imports and multi-program graphs
+
+### Phase 5: Proof Lane And Diagnostics
+
+- isolate proof-generation coverage into a dedicated CI lane
+- preserve useful failure artifacts automatically
+- establish runtime and flake budgets
+
+## Concrete Near-Term Backlog
+
+The first backlog should be small and high leverage.
+
+1. Add `docs/testing-strategy.md` and link it from the existing doc map.
+2. Rename root `test` script to `test:fast`, add `test:smoke` script.
+3. Convert example tests to use `mode: "local"` for semantic transition checks and `loadFixture()` for deploy setup.
+4. Add basic Tier 1 tests for `packages/cli` (arg parsing, help output) and `packages/plugin-leo` (task registration).
+5. Extract duplicated `mockConfig` and `mockConnection` into `packages/test-internals/`.
+6. Create initial contract tests for:
+   - CLI config discovery and dispatch
+   - `plugin-test` runner configuration
+   - deploy task orchestration
+   - compiler command planning and cache decisions
+7. Copy stable fixture ABIs into `packages/leo-compiler/src/__fixtures__/` to decouple from example artifacts.
+8. Add one nightly `--prove` smoke path.
+
+## Success Criteria
+
+The strategy is working when:
+
+- normal PR feedback comes primarily from deterministic and contract lanes
+- smoke runtime stays bounded and failures are diagnosable
+- proof tests run separately and do not block day-to-day iteration
+- example suites prove workflow health without becoming the main source of behavioral coverage
+- new package features come with a clear answer to which tier they belong in
+
+## Decision Rules For Future Changes
+
+When adding a new feature, ask:
+
+1. What is the cheapest lane that can detect a regression here?
+2. Is this logic pure, boundary-oriented, or workflow-oriented?
+3. Does it require real chain state, or only semantic execution?
+4. If it needs a fake, should the fake become a shared repo harness instead of a test-local mock?
+5. If it needs a smoke test, what existing smoke can be replaced or simplified so the lane stays small?
+
+If those questions do not have a clear answer, the test design is probably still too broad.

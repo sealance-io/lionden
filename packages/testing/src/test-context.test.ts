@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { NetworkConnection, NetworkManager } from "@lionden/network";
+import type { NetworkManager } from "@lionden/network";
+import { createMockConnection } from "@lionden/test-internals";
 
 // Mock devnode-lifecycle to avoid spawning real processes
 vi.mock("./devnode-lifecycle.js", () => ({
@@ -27,26 +28,10 @@ vi.mock("./lre-factory.js", async () => {
 
 import { setup } from "./test-context.js";
 
-function mockConnection(): NetworkConnection {
-  return {
-    type: "devnode",
-    name: "devnode",
-    endpoint: "http://127.0.0.1:3030",
-    networkId: "testnet",
-    getBalance: vi.fn().mockResolvedValue(1000n),
-    getMappingValue: vi.fn().mockResolvedValue(null),
-    execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1exec" }),
-    waitForConfirmation: vi.fn().mockResolvedValue({
-      txId: "at1test", blockHeight: 10, status: "accepted",
-    }),
-    getBlockHeight: vi.fn().mockResolvedValue(100),
-    advanceBlocks: vi.fn().mockResolvedValue(undefined),
-    close: vi.fn(),
-  } as unknown as NetworkConnection;
-}
-
 function mockLre(): LionDenRuntimeEnvironment {
-  const connection = mockConnection();
+  const connection = createMockConnection({
+    execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1exec" }),
+  });
   const manager: NetworkManager = {
     connect: vi.fn().mockResolvedValue(connection),
     getConnection: vi.fn().mockReturnValue(connection),
@@ -223,6 +208,7 @@ describe("test-context", () => {
         program: "hello",
         priorityFee: undefined,
         skipConfirm: undefined,
+        noCompile: undefined,
       });
       expect(result.programId).toBe("hello.aleo");
       expect(result.txId).toBe("at1deploy");
@@ -238,6 +224,7 @@ describe("test-context", () => {
         program: "token",
         priorityFee: 1000,
         skipConfirm: true,
+        noCompile: undefined,
       });
     });
   });

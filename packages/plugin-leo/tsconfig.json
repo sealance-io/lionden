@@ -8,6 +8,7 @@
   "references": [
     { "path": "../config" },
     { "path": "../core" },
-    { "path": "../leo-compiler" }
+    { "path": "../leo-compiler" },
+    { "path": "../test-internals" }
   ]
 }

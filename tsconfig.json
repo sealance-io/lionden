@@ -11,6 +11,7 @@
     { "path": "packages/testing" },
     { "path": "packages/plugin-test" },
     { "path": "packages/cli" },
-    { "path": "packages/create-lionden" }
+    { "path": "packages/create-lionden" },
+    { "path": "packages/test-internals" }
   ]
 }

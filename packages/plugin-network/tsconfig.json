@@ -8,6 +8,7 @@
   "references": [
     { "path": "../config" },
     { "path": "../core" },
-    { "path": "../network" }
+    { "path": "../network" },
+    { "path": "../test-internals" }
   ]
 }

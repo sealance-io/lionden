@@ -1,23 +1,32 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
+  loadFixture,
+  clearFixtures,
   type TestContext,
   assertMappingValue,
   assertMappingEmpty,
 } from "@lionden/testing";
 
-let ctx: TestContext;
-
-beforeAll(async () => {
-  ctx = await setup();
+async function deployRewards() {
+  const ctx = await setup();
 
   // Deploying "rewards" automatically deploys its transitive program
   // dependency "treasury" first (topological ordering). The library
   // "math_utils" is compiled but not deployed — libraries are compile-only.
-  await ctx.deploy("rewards");
+  await ctx.deploy("rewards", { noCompile: true });
+  return { ctx };
+}
+
+let ctx: TestContext;
+
+beforeAll(async () => {
+  const fixture = await loadFixture(deployRewards);
+  ctx = fixture.ctx;
 });
 
 afterAll(async () => {
+  clearFixtures();
   await ctx.teardown();
 });
 

@@ -39,6 +39,8 @@ export interface DeployOptions {
   skipConfirm?: boolean;
   /** Target network (overrides defaultNetwork) */
   network?: string;
+  /** Skip compilation before deploying (artifacts must already exist) */
+  noCompile?: boolean;
 }
 
 export interface DeployResult {
@@ -61,14 +63,17 @@ export async function deployAction(
     priorityFee: args["priorityFee"] as number | undefined,
     skipConfirm: args["skipConfirm"] as boolean | undefined,
     network: args["network"] as string | undefined,
+    noCompile: args["noCompile"] as boolean | undefined,
   };
 
   const config = lre.config;
   const artifactsDir = config.paths.artifacts;
   const programsDir = config.paths.programs;
 
-  // 1. Compile first (run the compile task)
-  await lre.tasks.run("compile");
+  // 1. Compile first (unless --noCompile)
+  if (!options.noCompile) {
+    await lre.tasks.run("compile");
+  }
 
   // 2. Discover all units (programs + libraries) for source-dir mapping
   //    and dependency ordering. discoverUnits is fast — directory scan only.

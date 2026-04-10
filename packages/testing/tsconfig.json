@@ -9,6 +9,7 @@
     { "path": "../config" },
     { "path": "../core" },
     { "path": "../network" },
-    { "path": "../leo-compiler" }
+    { "path": "../leo-compiler" },
+    { "path": "../test-internals" }
   ]
 }

@@ -198,6 +198,7 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
 - [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md): network types, devnode/HTTP, run/deploy/upgrade flows
 - [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
+- [`docs/testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
 - [`AGENTS.md`](/Users/mitzpetel/Workspaces/lionden/AGENTS.md): agent-specific navigation and selective disclosure rules
 
 ## Roadmap Framing

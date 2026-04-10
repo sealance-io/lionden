@@ -1,46 +1,12 @@
 import { describe, it, expect } from "vitest";
 import pluginDeploy from "./index.js";
 import { createLre } from "@lionden/core";
-import type { LionDenResolvedConfig } from "@lionden/config";
+import { createMockConfig } from "@lionden/test-internals";
 import { validateConstructor, DeployError } from "./deploy-task.js";
 import { validateUpgradePermission, UpgradeCompatibilityError } from "./upgrade-task.js";
 import type { DeployManifest } from "./deploy-manifest.js";
 
-const mockConfig: LionDenResolvedConfig = {
-  leoVersion: "4.0.0",
-  paths: {
-    root: "/tmp",
-    programs: "/tmp/programs",
-    artifacts: "/tmp/artifacts",
-    typechain: "/tmp/typechain",
-    cache: "/tmp/cache",
-  },
-  networks: {
-    devnode: {
-      type: "devnode",
-      socketAddr: "127.0.0.1:3030",
-      autoBlock: true,
-      verbosity: 0,
-      accounts: [],
-      network: "testnet",
-    },
-  },
-  defaultNetwork: "devnode",
-  compiler: {
-    enableDce: true,
-    conditionalBlockMaxDepth: 10,
-    buildTests: false,
-    extraFlags: [],
-  },
-  codegen: { enabled: true, outDir: "typechain" },
-  testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-  deploy: {
-    defaultPriorityFee: 0,
-    privateFee: false,
-    confirmTransactions: true,
-    confirmationTimeout: 60_000,
-  },
-};
+const mockConfig = createMockConfig();
 
 // ---------------------------------------------------------------------------
 // Plugin structure tests

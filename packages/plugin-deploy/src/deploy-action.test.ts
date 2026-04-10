@@ -15,7 +15,7 @@ import { validateAdminSigner } from "./upgrade-task.js";
 import { DeployError } from "./deploy-task.js";
 import type { DiscoveredProgram, DependencyGraph } from "@lionden/leo-compiler";
 import type { DeployManifest } from "./deploy-manifest.js";
-import type { NetworkConnection } from "@lionden/network";
+import { createMockConnection } from "@lionden/test-internals";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -442,11 +442,7 @@ describe("validateAdminSigner (Fix 3)", () => {
     deployedAt: "2026-04-08T12:00:00.000Z",
   };
 
-  const mockConnection: NetworkConnection = {
-    type: "devnode",
-    name: "devnode",
-    endpoint: "http://127.0.0.1:3030",
-    networkId: "testnet",
+  const mockConnection = createMockConnection({
     getBalance: vi.fn(),
     getMappingValue: vi.fn(),
     execute: vi.fn(),
@@ -454,7 +450,7 @@ describe("validateAdminSigner (Fix 3)", () => {
     getBlockHeight: vi.fn(),
     broadcastTransaction: vi.fn(),
     close: vi.fn(),
-  };
+  });
 
   afterEach(() => {
     vi.restoreAllMocks();

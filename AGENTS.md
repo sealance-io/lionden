@@ -41,6 +41,7 @@ Open the smallest relevant doc first:
 | Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md) |
 | Network configs, devnode/HTTP, `node`, `run`, `deploy`, `upgrade` | [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md) |
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) |
+| Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md) |
 | JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md) |
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md) |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md) |
@@ -59,7 +60,7 @@ When sources disagree, use this order:
 - Distinguish clearly between current implementation and planned architecture.
 - Cite concrete package paths before summarizing a subsystem.
 - Avoid claiming that a workflow is stable unless you verified it in code or tests.
-- When running Vitest in agent workflows, prefer `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs. Vitest's `agent` reporter minimizes passing-test noise and token usage.
+- When running Vitest in agent workflows, prefer `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs. Vitest's `agent` reporter minimizes passing-test noise and token usage. Use `npm run test:unit` or `npm run test:contract` to run specific lanes.
 - Avoid adding a fixed `reporters` setting to shared Vitest config unless you intentionally want to override agent-aware reporter auto-detection or explicitly preserve `agent`.
 - If `node` or `npm` is missing from `PATH`, load `nvm` and use the repo version before concluding the toolchain is unavailable:
   `source "$HOME/.nvm/nvm.sh" && nvm use`

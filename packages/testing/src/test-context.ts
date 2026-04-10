@@ -54,6 +54,8 @@ export interface TestContext {
 export interface DeployOptions {
   priorityFee?: number;
   skipConfirm?: boolean;
+  /** Skip compilation before deploying (artifacts must already exist) */
+  noCompile?: boolean;
 }
 
 export interface DeployResult {
@@ -127,6 +129,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         program: programName,
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,
+        noCompile: deployOpts?.noCompile,
       });
 
       const results = result as Array<{ programId: string; txId: string }>;

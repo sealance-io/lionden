@@ -99,6 +99,8 @@ Vitest remains a peer dependency of `@lionden/plugin-test`.
 
 This lets test suites stay concise without reimplementing common network checks.
 
-## Design Direction
+## Strategy And Design Direction
+
+For the proposed repo-wide testing strategy, lane split, and rollout plan, use [`testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md).
 
 For the rationale behind the Vitest-based testing model, devnode-first assumptions, and known testing constraints, use [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md). Use the testing package and example suites for current reality.

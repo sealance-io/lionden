@@ -7,9 +7,6 @@
   "include": ["src"],
   "references": [
     { "path": "../config" },
-    { "path": "../core" },
-    { "path": "../leo-compiler" },
-    { "path": "../network" },
-    { "path": "../test-internals" }
+    { "path": "../network" }
   ]
 }

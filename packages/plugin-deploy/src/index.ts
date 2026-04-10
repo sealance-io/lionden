@@ -54,6 +54,10 @@ const deployTask = task("deploy", "Deploy Aleo programs to a network")
     name: "skipConfirm",
     description: "Skip waiting for transaction confirmation",
   })
+  .addFlag({
+    name: "noCompile",
+    description: "Skip compilation before deploying (artifacts must already exist)",
+  })
   .addOption({
     name: "network",
     type: "string",
