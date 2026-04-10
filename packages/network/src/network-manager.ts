@@ -115,15 +115,6 @@ export class NetworkManagerImpl implements NetworkManager {
           privateKey,
         });
       }
-      case "devnet": {
-        const endpoint = `http://127.0.0.1:${config.restPort}`;
-        return new AleoConnection({
-          type: "devnet",
-          name,
-          endpoint,
-          networkId: config.network,
-        });
-      }
       case "http": {
         return new AleoConnection({
           type: "http",

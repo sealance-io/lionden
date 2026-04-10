@@ -23,24 +23,6 @@ export interface DevnodeNetworkConfig {
   readonly network?: AleoNetwork;
 }
 
-export interface DevnetNetworkConfig {
-  readonly type: "devnet";
-  /** Number of validators. Default: 4 */
-  readonly numValidators?: number;
-  /** Number of clients. Default: 2 */
-  readonly numClients?: number;
-  /** Network type. Default: "testnet" */
-  readonly network?: AleoNetwork;
-  /** snarkOS binary path */
-  readonly snarkosPath?: string;
-  /** Verbosity (0-4). Default: 1 */
-  readonly verbosity?: number;
-  /** Base REST port. Default: 3030 */
-  readonly restPort?: number;
-  /** Storage directory */
-  readonly storageDir?: string;
-}
-
 export interface HttpNetworkConfig {
   readonly type: "http";
   /** Full endpoint URL, e.g. "https://api.explorer.provable.com/v1" */
@@ -55,7 +37,6 @@ export interface HttpNetworkConfig {
 
 export type NetworkUserConfig =
   | DevnodeNetworkConfig
-  | DevnetNetworkConfig
   | HttpNetworkConfig;
 
 export type AleoNetwork = "mainnet" | "testnet" | "canary";
@@ -225,17 +206,6 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly network: AleoNetwork;
 }
 
-export interface ResolvedDevnetNetworkConfig {
-  readonly type: "devnet";
-  readonly numValidators: number;
-  readonly numClients: number;
-  readonly network: AleoNetwork;
-  readonly snarkosPath: string;
-  readonly verbosity: number;
-  readonly restPort: number;
-  readonly storageDir?: string;
-}
-
 export interface ResolvedHttpNetworkConfig {
   readonly type: "http";
   readonly endpoint: string;
@@ -246,7 +216,6 @@ export interface ResolvedHttpNetworkConfig {
 
 export type ResolvedNetworkConfig =
   | ResolvedDevnodeNetworkConfig
-  | ResolvedDevnetNetworkConfig
   | ResolvedHttpNetworkConfig;
 
 export interface LionDenResolvedConfig {

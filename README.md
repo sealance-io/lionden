@@ -1,6 +1,6 @@
 # LionDen
 
-LionDen is a Hardhat-inspired development framework for Aleo and Leo. It combines a declarative plugin system, a task-driven CLI, Leo compilation and TypeScript code generation, devnode/devnet network tooling, and test helpers for end-to-end workflows.
+LionDen is a Hardhat-inspired development framework for Aleo and Leo. It combines a declarative plugin system, a task-driven CLI, Leo compilation and TypeScript code generation, devnode/HTTP network tooling, and test helpers for end-to-end workflows.
 
 This repository currently contains a working monorepo baseline with core packages, default plugins, example projects, and a project scaffolder. The public documentation under `docs/` covers both the current implementation and the design direction that shapes ongoing work.
 
@@ -15,7 +15,7 @@ Implemented in the repo today:
 - `@lionden/core` for plugin ordering, config resolution, hook dispatch, task registration, task overrides, and LRE creation
 - `@lionden/cli` for config discovery, help output, argument parsing, and task dispatch
 - `@lionden/leo-compiler` for source discovery, dependency resolution, package materialization, Leo compilation, ABI parsing, caching, and TypeScript binding generation
-- `@lionden/network` for devnode/devnet/HTTP connections and SDK initialization helpers
+- `@lionden/network` for devnode/HTTP connections and SDK initialization helpers
 - default plugins for compilation, network tasks, deploy/upgrade, and testing
 - `@lionden/testing` for devnode lifecycle, fixtures, assertions, and test setup helpers
 - `create-lionden` scaffolding with `hello-world` and `token` templates
@@ -34,7 +34,7 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `packages/config` | Config types, `defineConfig()`, `configVariable()` |
 | `packages/core` | Plugin model, hook system, task builder, task runner, LRE |
 | `packages/cli` | `lionden` CLI entrypoint and config discovery |
-| `packages/network` | Network manager, Aleo connection, devnode/devnet lifecycle |
+| `packages/network` | Network manager, Aleo connection, devnode lifecycle |
 | `packages/leo-compiler` | Leo source discovery, package materialization, `leo build`, ABI/codegen |
 | `packages/testing` | Test context, fixtures, assertions, managed devnode helpers |
 | `packages/plugin-leo` | `compile` and `clean` tasks |
@@ -53,7 +53,7 @@ For contributor workflows and realistic end-to-end runs, assume:
 - Node.js 20.19+ or 22.12+ (the root package declares `^20.19.0 || >=22.12.0`)
 - npm
 - Leo CLI v4.0.0 available on `PATH`
-- snarkOS available when working on devnet-oriented flows
+
 
 Network functionality depends on `@provablehq/sdk@^0.10.1` via `packages/network`.
 
@@ -196,7 +196,7 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
 - [`docs/architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
 - [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
-- [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md): network types, devnode/devnet, run/deploy/upgrade flows
+- [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md): network types, devnode/HTTP, run/deploy/upgrade flows
 - [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
 - [`AGENTS.md`](/Users/mitzpetel/Workspaces/lionden/AGENTS.md): agent-specific navigation and selective disclosure rules
 

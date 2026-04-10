@@ -254,17 +254,6 @@ function resolveNetworkConfig(
         genesisPath: config.genesisPath,
         network: config.network ?? "testnet",
       };
-    case "devnet":
-      return {
-        type: "devnet",
-        numValidators: config.numValidators ?? 4,
-        numClients: config.numClients ?? 2,
-        network: config.network ?? "testnet",
-        snarkosPath: config.snarkosPath ?? "snarkos",
-        verbosity: config.verbosity ?? 1,
-        restPort: config.restPort ?? 3030,
-        storageDir: config.storageDir,
-      };
     case "http":
       return {
         type: "http",
@@ -273,6 +262,16 @@ function resolveNetworkConfig(
         privateKey: resolveStringOrVariable(config.privateKey),
         apiKey: resolveStringOrVariable(config.apiKey),
       };
+    default: {
+      const unknownType = (config as { type: string }).type;
+      throw new ConfigResolutionError(
+        `Unknown network type "${unknownType}" for network "${networkName}". Supported types are "devnode" and "http".`,
+        [{
+          path: `networks.${networkName}.type`,
+          message: `Unknown network type "${unknownType}". Supported types are "devnode" and "http".`,
+        }],
+      );
+    }
   }
 }
 

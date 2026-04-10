@@ -47,7 +47,7 @@ export interface ExecuteOptions {
  */
 export interface NetworkConnection {
   /** Connection type */
-  readonly type: "devnode" | "devnet" | "http";
+  readonly type: "devnode" | "http";
   /** Name from config (e.g., "devnode", "testnet") */
   readonly name: string;
   /** REST API endpoint URL (e.g., "http://127.0.0.1:3030") */

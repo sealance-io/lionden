@@ -16,7 +16,7 @@ Do not load every doc up front. Most tasks only need one focused doc plus a few 
 - `packages/core`: plugin lifecycle, hooks, tasks, LRE
 - `packages/cli`: CLI discovery, parsing, help, dispatch
 - `packages/leo-compiler`: Leo source discovery, dependency resolution, materialization, compile pipeline, codegen
-- `packages/network`: network manager, Aleo connection, devnode/devnet helpers, SDK adapter
+- `packages/network`: network manager, Aleo connection, devnode helpers, SDK adapter
 - `packages/testing`: test LRE setup, devnode lifecycle, fixtures, assertions
 - `packages/plugin-*`: default task plugins
 - `packages/create-lionden`: project scaffolding
@@ -39,7 +39,7 @@ Open the smallest relevant doc first:
 | --- | --- |
 | Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md) |
 | Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md) |
-| Network configs, devnode/devnet, `node`, `run`, `deploy`, `upgrade` | [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md) |
+| Network configs, devnode/HTTP, `node`, `run`, `deploy`, `upgrade` | [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md) |
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) |
 | JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md) |
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md) |

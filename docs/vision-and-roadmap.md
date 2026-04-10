@@ -34,7 +34,7 @@ The major decisions preserved from the original planning material are:
 
 1. ESM-native package and runtime model.
 2. Lazy loading where possible to keep CLI startup cheap.
-3. Devnode-first local workflows, with devnet used when fuller network simulation matters.
+3. Devnode-first local workflows, with `http` for connecting to external networks.
 4. ABI-driven code generation rather than regex-driven parsing of generated Aleo source.
 5. Support for local-style and on-chain-style execution flows in generated and runtime tooling.
 6. Vitest as the test runner instead of a custom LionDen-owned framework.
@@ -49,7 +49,7 @@ Several platform facts are important when working on LionDen:
 
 - Leo v4 changed core language and tooling assumptions, including unified `fn` syntax and library support via `lib.leo`.
 - `leo devnode` is the primary lightweight local-development target.
-- `leo devnet` remains useful for broader network simulation.
+- Users who need a multi-validator network can run snarkOS externally and connect via `http`.
 - `leo build` produces structured JSON ABI output that LionDen treats as the source of truth for wrapper generation.
 - Upgradability depends on constructor behavior and compatibility constraints, so deployment tooling must understand constructor metadata and persisted deploy state.
 
@@ -61,7 +61,7 @@ The implementation work is organized conceptually in these layers:
 
 1. Foundation: config, core plugin model, task system, CLI boot flow.
 2. Compilation: source discovery, dependency resolution, temporary package materialization, `leo build`, ABI parsing, code generation.
-3. Network abstraction: devnode/devnet/HTTP connections, runtime network manager, `node` and `run`.
+3. Network abstraction: devnode/HTTP connections, runtime network manager, `node` and `run`.
 4. Deployment: deploy and upgrade flows, constructor enforcement, deploy manifests.
 5. Testing: managed devnode lifecycle, reusable test context, fixtures, assertions, Vitest integration.
 6. Scaffolding and examples: `create-lionden`, starter templates, example projects.

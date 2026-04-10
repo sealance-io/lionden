@@ -10,7 +10,7 @@ LionDen is a workspace monorepo with code grouped by responsibility:
 - `packages/core`: the plugin interface, hook system, task builder, task runner, config resolution, and LRE creation
 - `packages/cli`: config discovery, argument parsing, help output, and task dispatch for `lionden`
 - `packages/leo-compiler`: Leo source discovery, dependency resolution, temporary package materialization, `leo build` orchestration, caching, ABI parsing, and TypeScript codegen
-- `packages/network`: network manager, connections, devnode/devnet lifecycle helpers, SDK adapter entrypoints
+- `packages/network`: network manager, connections, devnode lifecycle helpers, SDK adapter entrypoints
 - `packages/testing`: test LRE creation, managed devnode lifecycle, fixtures, assertions, account helpers
 - `packages/plugin-leo`: `compile` and `clean`
 - `packages/plugin-network`: `node`, `run`, and LRE network injection

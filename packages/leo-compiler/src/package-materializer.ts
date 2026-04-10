@@ -125,13 +125,11 @@ function buildDotEnv(config: LionDenResolvedConfig): string {
     lines.push(`ENDPOINT=${networkConfig.endpoint}`);
   } else if (networkConfig?.type === "devnode") {
     lines.push(`ENDPOINT=http://${networkConfig.socketAddr}`);
-  } else if (networkConfig?.type === "devnet") {
-    lines.push(`ENDPOINT=http://127.0.0.1:${networkConfig.restPort}`);
   } else {
     lines.push("ENDPOINT=http://127.0.0.1:3030");
   }
 
-  if (networkConfig?.type === "devnode" || networkConfig?.type === "devnet") {
+  if (networkConfig?.type === "devnode") {
     lines.push("DEVNET=true");
   }
 

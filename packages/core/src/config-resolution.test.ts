@@ -58,21 +58,6 @@ describe("resolveConfig", () => {
     }
   });
 
-  it("resolves devnet network config with defaults", async () => {
-    const config: LionDenUserConfig = {
-      networks: {
-        local: { type: "devnet" },
-      },
-    };
-    const resolved = await resolve(config, [], projectRoot);
-    const net = resolved.networks["local"]!;
-    if (net.type === "devnet") {
-      expect(net.numValidators).toBe(4);
-      expect(net.numClients).toBe(2);
-      expect(net.snarkosPath).toBe("snarkos");
-    }
-  });
-
   it("resolves http network config", async () => {
     const config: LionDenUserConfig = {
       networks: {
@@ -89,6 +74,17 @@ describe("resolveConfig", () => {
       expect(net.endpoint).toBe("https://api.example.com");
       expect(net.network).toBe("testnet");
     }
+  });
+
+  it("rejects unknown network types", async () => {
+    const config = {
+      networks: {
+        local: { type: "devnet" },
+      },
+    } as unknown as LionDenUserConfig;
+    await expect(resolve(config, [], projectRoot)).rejects.toThrow(
+      /Unknown network type "devnet"/,
+    );
   });
 
   it("respects user-specified paths", async () => {

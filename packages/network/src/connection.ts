@@ -15,7 +15,7 @@ import type {
 } from "./types.js";
 
 export interface ConnectionOptions {
-  type: "devnode" | "devnet" | "http";
+  type: "devnode" | "http";
   name: string;
   endpoint: string;
   networkId: AleoNetwork;
@@ -28,7 +28,7 @@ const DEFAULT_CONFIRMATION_TIMEOUT_MS = 60_000;
 const CONFIRMATION_POLL_INTERVAL_MS = 1_000;
 
 export class AleoConnection implements NetworkConnection {
-  readonly type: "devnode" | "devnet" | "http";
+  readonly type: "devnode" | "http";
   readonly name: string;
   readonly endpoint: string;
   readonly networkId: AleoNetwork;

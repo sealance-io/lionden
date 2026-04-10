@@ -61,7 +61,7 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | --- | --- |
 | Plugin model, config lifecycle, tasks, LRE, CLI boot | `docs/architecture.md` |
 | Leo compilation, materialization, ABI, codegen | `docs/compiler.md` |
-| Network types, devnode/devnet, deploy/upgrade | `docs/network-and-deploy.md` |
+| Network types, devnode/HTTP, deploy/upgrade | `docs/network-and-deploy.md` |
 | Test context, fixtures, assertions | `docs/testing.md` |
 | JSON ABI schema, serde rules, compiler-vs-TS normalization | `docs/json-abi.md` |
 | Package map, examples, scaffolder | `docs/project-layout.md` |

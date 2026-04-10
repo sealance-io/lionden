@@ -1,13 +1,12 @@
 # Network And Deploy
 
-When to read this: use this file for network config types, connection management, devnode/devnet lifecycle, script execution, deployment, and upgrade behavior.
+When to read this: use this file for network config types, connection management, devnode lifecycle, script execution, deployment, and upgrade behavior.
 
 ## Current Network Model
 
-`packages/config/src/types.ts` defines three network config variants:
+`packages/config/src/types.ts` defines two network config variants:
 
 - `devnode`
-- `devnet`
 - `http`
 
 Resolved config stores them under `config.networks` and selects one through `config.defaultNetwork` unless the CLI or task overrides it.
@@ -16,12 +15,9 @@ Current defaults include an implicit `devnode` network when the user does not co
 
 ## Platform Baseline
 
-LionDen is designed around two local-development modes:
+LionDen uses `devnode` as its built-in lightweight local development target and `http` for connecting to any external network (local or remote, testnet or mainnet).
 
-- `devnode`: lightweight single-node local development, the primary inner-loop target
-- `devnet`: fuller local network simulation for broader integration coverage
-
-The framework is intentionally devnode-first. That assumption shapes the default network behavior, the test helpers, and the task surface.
+The framework is intentionally devnode-first. That assumption shapes the default network behavior, the test helpers, and the task surface. Users who need a multi-validator network can run one externally and connect via an `http` network entry.
 
 ## Network Manager
 
@@ -38,7 +34,6 @@ Current responsibilities:
 Connection creation currently maps:
 
 - `devnode` to `http://<socketAddr>`
-- `devnet` to a local REST endpoint derived from `restPort`
 - `http` to the configured endpoint
 
 ## Devnode Lifecycle
@@ -62,7 +57,7 @@ Current `node` task flags:
 
 The task keeps the process alive until interrupted.
 
-At the platform level, devnode and devnet expose the same style of REST surface for blocks, transactions, programs, mappings, and block height. That is why LionDen can use network endpoints both for runtime interaction and for fetching deployed program sources as compiler dependencies.
+At the platform level, devnode and snarkOS nodes expose the same REST surface for blocks, transactions, programs, mappings, and block height. That is why LionDen can use network endpoints both for runtime interaction and for fetching deployed program sources as compiler dependencies.
 
 ## Script Execution
 

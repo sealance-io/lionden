@@ -75,7 +75,6 @@ When the default network is:
 
 - `http`: LionDen uses the configured endpoint
 - `devnode`: LionDen derives `http://<socketAddr>`
-- `devnet`: LionDen currently falls back to a local REST endpoint
 
 ## Caching
 
