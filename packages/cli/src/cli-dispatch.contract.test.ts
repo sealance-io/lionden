@@ -8,7 +8,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
 import { parseArgs, dispatchTask } from "./task-dispatch.js";
 import {
@@ -22,23 +21,18 @@ import {
   type TaskDefinition,
 } from "@lionden/core";
 import type { LionDenUserConfig } from "@lionden/config";
+import { TempProjectBuilder, type TempProject } from "@lionden/test-internals";
 
 describe("CLI dispatch contract", () => {
-  let tmpDir: string;
+  let project: TempProject;
 
   afterEach(() => {
-    if (tmpDir) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+    project?.cleanup();
   });
 
   function createTempProject(configContent: string): string {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-cli-contract-"));
-    const programsDir = path.join(tmpDir, "programs");
-    fs.mkdirSync(programsDir);
-    const configPath = path.join(tmpDir, "lionden.config.ts");
-    fs.writeFileSync(configPath, configContent);
-    return tmpDir;
+    project = new TempProjectBuilder().withConfig(configContent).build();
+    return project.root;
   }
 
   it("discovers and loads config from disk, then dispatches task", async () => {

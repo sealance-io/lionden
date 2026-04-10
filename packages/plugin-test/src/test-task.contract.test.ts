@@ -5,8 +5,8 @@
  * Mocks vitest/node to capture the config that runTests passes to startVitest.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
+import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import pluginTest from "./index.js";
 
 // Mock vitest/node so we don't start real vitest
@@ -28,6 +28,7 @@ vi.mock("vitest/node", () => ({
 
 describe("test task contract", () => {
   const originalEnv = { ...process.env };
+  let fixture: ContractLreResult | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -35,23 +36,17 @@ describe("test task contract", () => {
 
   afterEach(() => {
     process.env = { ...originalEnv };
+    fixture?.cleanup();
+    fixture = undefined;
   });
 
   function createTestLre(configOverrides?: Record<string, unknown>) {
-    // Register a mock compile task so --noCompile=false path doesn't fail
-    const compilePlugin = {
-      id: "mock-compile",
-      tasks: [
-        {
-          id: "compile",
-          description: "Mock compile",
-          action: vi.fn().mockResolvedValue(undefined),
-        },
-      ],
-    };
-
-    const config = createMockConfig(configOverrides as any);
-    return createLre({ config, plugins: [compilePlugin, pluginTest] });
+    fixture = createContractLre({
+      plugins: [pluginTest],
+      withMockCompile: true,
+      configOverrides: configOverrides as any,
+    });
+    return fixture.lre;
   }
 
   it("test task is registered in LRE", () => {

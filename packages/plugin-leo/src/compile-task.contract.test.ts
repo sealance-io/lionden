@@ -8,9 +8,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
-import { createLre } from "@lionden/core";
-import { createMockConfig } from "@lionden/test-internals";
+import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import pluginLeo from "./index.js";
 
 // Mock leo-compiler's pipeline to avoid real Leo CLI invocation
@@ -85,30 +83,20 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
 });
 
 describe("compile task contract", () => {
-  let tmpDir: string;
+  let result: ContractLreResult;
 
   afterEach(() => {
-    if (tmpDir) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    }
+    result?.cleanup();
   });
 
   function createTestLre(codegenEnabled = true) {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-compile-contract-"));
-    const typechainDir = path.join(tmpDir, "typechain");
-
-    const config = createMockConfig({
-      paths: {
-        root: tmpDir,
-        programs: path.join(tmpDir, "programs"),
-        artifacts: path.join(tmpDir, "artifacts"),
-        typechain: typechainDir,
-        cache: path.join(tmpDir, "cache"),
+    result = createContractLre({
+      plugins: [pluginLeo],
+      configOverrides: {
+        codegen: { enabled: codegenEnabled, outDir: "typechain" },
       },
-      codegen: { enabled: codegenEnabled, outDir: "typechain" },
     });
-
-    return createLre({ config, plugins: [pluginLeo] });
+    return result.lre;
   }
 
   it("compile task calls compilePipeline and populates artifacts", async () => {
