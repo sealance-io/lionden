@@ -1,0 +1,66 @@
+{
+  "program": "token.aleo",
+  "structs": [],
+  "records": [
+    {
+      "path": ["Token"],
+      "fields": [
+        { "name": "owner", "ty": { "Primitive": "Address" }, "mode": "Private" },
+        { "name": "amount", "ty": { "Primitive": { "UInt": "U64" } }, "mode": "Private" }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "name": "supply",
+      "key": { "Primitive": "Field" },
+      "value": { "Primitive": { "UInt": "U128" } }
+    }
+  ],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "mint",
+      "is_async": false,
+      "inputs": [
+        { "name": "receiver", "ty": { "Plaintext": { "Primitive": "Address" } }, "mode": "None" },
+        { "name": "amount", "ty": { "Plaintext": { "Primitive": { "UInt": "U64" } } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Record": { "path": ["Token"], "program": "token.aleo" } }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "mint_and_finalize",
+      "is_async": true,
+      "inputs": [
+        { "name": "receiver", "ty": { "Plaintext": { "Primitive": "Address" } }, "mode": "Public" }
+      ],
+      "outputs": [
+        { "ty": { "Record": { "path": ["Token"], "program": "token.aleo" } }, "mode": "None" },
+        { "ty": { "Future": "token.aleo" }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "burn",
+      "is_async": true,
+      "inputs": [
+        { "name": "token", "ty": { "Record": { "path": ["Token"], "program": "token.aleo" } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Future": "token.aleo" }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "split",
+      "is_async": false,
+      "inputs": [
+        { "name": "token", "ty": { "Record": { "path": ["Token"], "program": "token.aleo" } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Record": { "path": ["Token"], "program": "token.aleo" } }, "mode": "None" },
+        { "ty": { "Record": { "path": ["Token"], "program": "token.aleo" } }, "mode": "None" }
+      ]
+    }
+  ]
+}

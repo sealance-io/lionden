@@ -1,0 +1,44 @@
+{
+  "program": "grid.aleo",
+  "structs": [
+    {
+      "path": ["Cell"],
+      "fields": [
+        { "name": "value", "ty": { "Primitive": { "UInt": "U8" } } }
+      ]
+    },
+    {
+      "path": ["Board"],
+      "fields": [
+        { "name": "cells", "ty": { "Array": [{ "Array": [{ "Struct": { "path": ["Cell"], "program": null } }, 3] }, 3] } },
+        { "name": "turn", "ty": { "Primitive": { "UInt": "U8" } } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "get_board",
+      "is_async": false,
+      "inputs": [],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["Board"], "program": null } } }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "set_cell",
+      "is_async": false,
+      "inputs": [
+        { "name": "board", "ty": { "Plaintext": { "Struct": { "path": ["Board"], "program": null } } }, "mode": "None" },
+        { "name": "row", "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" },
+        { "name": "col", "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" },
+        { "name": "val", "ty": { "Plaintext": { "Struct": { "path": ["Cell"], "program": null } } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["Board"], "program": null } } }, "mode": "None" }
+      ]
+    }
+  ]
+}

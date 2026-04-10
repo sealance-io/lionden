@@ -1,0 +1,40 @@
+{
+  "program": "config.aleo",
+  "structs": [
+    {
+      "path": ["Inner"],
+      "fields": [
+        { "name": "x", "ty": { "Primitive": { "UInt": "U32" } } }
+      ]
+    },
+    {
+      "path": ["Settings"],
+      "fields": [
+        { "name": "admin", "ty": { "Primitive": "Address" } },
+        { "name": "backup", "ty": { "Optional": { "Primitive": "Address" } } },
+        { "name": "inner", "ty": { "Optional": { "Struct": { "path": ["Inner"], "program": null } } } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "get_settings",
+      "is_async": false,
+      "inputs": [],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["Settings"], "program": null } } }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "update",
+      "is_async": false,
+      "inputs": [
+        { "name": "settings", "ty": { "Plaintext": { "Struct": { "path": ["Settings"], "program": null } } }, "mode": "None" }
+      ],
+      "outputs": []
+    }
+  ]
+}

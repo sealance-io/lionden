@@ -1,0 +1,4 @@
+NETWORK=testnet
+PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH
+ENDPOINT=http://127.0.0.1:3030
+DEVNET=true

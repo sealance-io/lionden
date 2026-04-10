@@ -1,0 +1,79 @@
+{
+  "program": "dex.aleo",
+  "structs": [
+    {
+      "path": ["Pair"],
+      "fields": [
+        { "name": "token_a", "ty": { "Primitive": "Address" } },
+        { "name": "token_b", "ty": { "Primitive": "Address" } },
+        { "name": "reserve_a", "ty": { "Primitive": { "UInt": "U128" } } },
+        { "name": "reserve_b", "ty": { "Primitive": { "UInt": "U128" } } }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "path": ["LPToken"],
+      "fields": [
+        { "name": "owner", "ty": { "Primitive": "Address" }, "mode": "None" },
+        { "name": "amount", "ty": { "Primitive": { "UInt": "U64" } }, "mode": "None" },
+        { "name": "pair_id", "ty": { "Primitive": "Field" }, "mode": "None" }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "name": "pairs",
+      "key": { "Primitive": "Field" },
+      "value": { "Struct": { "path": ["Pair"], "program": null } }
+    },
+    {
+      "name": "total_supply",
+      "key": { "Primitive": "Field" },
+      "value": { "Primitive": { "UInt": "U128" } }
+    }
+  ],
+  "storage_variables": [
+    { "name": "admin", "ty": { "Plaintext": { "Primitive": "Address" } } }
+  ],
+  "functions": [
+    {
+      "name": "add_liquidity",
+      "is_final": true,
+      "inputs": [
+        { "name": "pair_id", "ty": { "Plaintext": { "Primitive": "Field" } }, "mode": "Public" },
+        { "name": "amount_a", "ty": { "Plaintext": { "Primitive": { "UInt": "U128" } } }, "mode": "Public" },
+        { "name": "amount_b", "ty": { "Plaintext": { "Primitive": { "UInt": "U128" } } }, "mode": "Public" }
+      ],
+      "outputs": [
+        { "ty": { "Record": { "path": ["LPToken"], "program": "dex.aleo" } }, "mode": "None" },
+        { "ty": "Final", "mode": "None" }
+      ]
+    },
+    {
+      "name": "remove_liquidity",
+      "is_final": true,
+      "inputs": [
+        {
+          "name": "lp_token",
+          "ty": { "Record": { "path": ["LPToken"], "program": "dex.aleo" } },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        { "ty": "Final", "mode": "None" }
+      ]
+    },
+    {
+      "name": "swap",
+      "is_final": false,
+      "inputs": [
+        { "name": "pair_id", "ty": { "Plaintext": { "Primitive": "Field" } }, "mode": "None" },
+        { "name": "amount_in", "ty": { "Plaintext": { "Primitive": { "UInt": "U128" } } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Plaintext": { "Primitive": { "UInt": "U128" } } }, "mode": "None" }
+      ]
+    }
+  ]
+}

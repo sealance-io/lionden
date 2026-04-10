@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parseAbi, AbiParseError } from "./abi-parser.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(__dirname, "../../..");
+const FIXTURES_DIR = resolve(__dirname, "__fixtures__/abi");
 
 // ---------------------------------------------------------------------------
 // Helpers — normalized (internal) format
@@ -980,10 +980,10 @@ describe("parseAbi — complex ABI with all features", () => {
 // Real fixture files from examples/
 // ---------------------------------------------------------------------------
 
-describe("parseAbi — real fixture files", () => {
-  it("parses examples/hello-world/artifacts/hello.aleo/abi.json", () => {
+describe("parseAbi — fixture files", () => {
+  it("parses hello.abi.json fixture", () => {
     const json = readFileSync(
-      resolve(REPO_ROOT, "examples/hello-world/artifacts/hello.aleo/abi.json"),
+      resolve(FIXTURES_DIR, "hello.abi.json"),
       "utf-8",
     );
     const abi = parseAbi(json);
@@ -1010,9 +1010,9 @@ describe("parseAbi — real fixture files", () => {
     expect(multiply.is_async).toBe(false);
   });
 
-  it("parses examples/token/artifacts/token.aleo/abi.json", () => {
+  it("parses token.abi.json fixture", () => {
     const json = readFileSync(
-      resolve(REPO_ROOT, "examples/token/artifacts/token.aleo/abi.json"),
+      resolve(FIXTURES_DIR, "token.abi.json"),
       "utf-8",
     );
     const abi = parseAbi(json);
@@ -1066,9 +1066,9 @@ describe("parseAbi — real fixture files", () => {
     });
   });
 
-  it("parses examples/multi-program/artifacts/rewards.aleo/abi.json", () => {
+  it("parses rewards.abi.json fixture", () => {
     const json = readFileSync(
-      resolve(REPO_ROOT, "examples/multi-program/artifacts/rewards.aleo/abi.json"),
+      resolve(FIXTURES_DIR, "rewards.abi.json"),
       "utf-8",
     );
     const abi = parseAbi(json);
@@ -1088,9 +1088,9 @@ describe("parseAbi — real fixture files", () => {
     expect(abi.transitions[0]!.outputs[0]!.ty).toEqual({ Future: "rewards.aleo" });
   });
 
-  it("parses examples/multi-program/artifacts/treasury.aleo/abi.json", () => {
+  it("parses treasury.abi.json fixture", () => {
     const json = readFileSync(
-      resolve(REPO_ROOT, "examples/multi-program/artifacts/treasury.aleo/abi.json"),
+      resolve(FIXTURES_DIR, "treasury.abi.json"),
       "utf-8",
     );
     const abi = parseAbi(json);

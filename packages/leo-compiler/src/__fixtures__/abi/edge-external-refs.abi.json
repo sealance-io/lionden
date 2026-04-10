@@ -1,0 +1,49 @@
+{
+  "program": "consumer.aleo",
+  "structs": [],
+  "records": [],
+  "mappings": [
+    {
+      "name": "metadata",
+      "key": { "Primitive": "Field" },
+      "value": { "Struct": { "path": ["TokenInfo"], "program": "registry.aleo" } }
+    }
+  ],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "submit",
+      "is_async": false,
+      "inputs": [
+        {
+          "name": "info",
+          "ty": { "Plaintext": { "Struct": { "path": ["TokenInfo"], "program": "registry.aleo" } } },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": { "Plaintext": { "Struct": { "path": ["TokenInfo"], "program": "registry.aleo" } } },
+          "mode": "None"
+        }
+      ]
+    },
+    {
+      "name": "forward",
+      "is_async": false,
+      "inputs": [
+        {
+          "name": "record",
+          "ty": { "Record": { "path": ["credits"], "program": "credits.aleo" } },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": { "Record": { "path": ["credits"], "program": "credits.aleo" } },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "program": "vault.aleo",
+  "structs": [
+    {
+      "path": ["Policy"],
+      "fields": [
+        { "name": "max_amount", "ty": { "Primitive": { "UInt": "U128" } } },
+        { "name": "admin", "ty": { "Primitive": "Address" } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [
+    { "name": "admin", "ty": { "Plaintext": { "Primitive": "Address" } } },
+    { "name": "whitelist", "ty": { "Vector": { "Plaintext": { "Primitive": "Address" } } } },
+    { "name": "policy", "ty": { "Plaintext": { "Struct": { "path": ["Policy"], "program": null } } } },
+    { "name": "policies", "ty": { "Vector": { "Plaintext": { "Struct": { "path": ["Policy"], "program": null } } } } }
+  ],
+  "transitions": [
+    {
+      "name": "set_admin",
+      "is_async": false,
+      "inputs": [
+        { "name": "new_admin", "ty": { "Plaintext": { "Primitive": "Address" } }, "mode": "Public" }
+      ],
+      "outputs": []
+    }
+  ]
+}

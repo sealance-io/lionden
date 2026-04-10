@@ -1,0 +1,39 @@
+{
+  "program": "test.aleo",
+  "structs": [
+    {
+      "path": ["a", "Thing"],
+      "fields": [
+        { "name": "x", "ty": { "Primitive": { "UInt": "U32" } } }
+      ]
+    },
+    {
+      "path": ["b", "Thing"],
+      "fields": [
+        { "name": "y", "ty": { "Primitive": { "UInt": "U64" } } },
+        { "name": "z", "ty": { "Primitive": "Boolean" } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "get_a",
+      "is_async": false,
+      "inputs": [],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["a", "Thing"], "program": null } } }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "get_b",
+      "is_async": false,
+      "inputs": [],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["b", "Thing"], "program": null } } }, "mode": "None" }
+      ]
+    }
+  ]
+}

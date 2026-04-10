@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { fileURLToPath } from "node:url";
 import { resolveDependencies, CircularDependencyError } from "./dependency-resolver.js";
 import { discoverUnits } from "./source-discovery.js";
 import { unitId } from "./types.js";
@@ -131,5 +132,59 @@ program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
     expect(helloImports).not.toContain("math.aleo");
     // math.aleo should NOT be classified as a network dep
     expect(graph.networkDeps.has("math.aleo")).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Edge-case fixtures — multi-program graph scenarios
+// ---------------------------------------------------------------------------
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FIXTURES_DIR = path.resolve(__dirname, "__fixtures__/programs");
+
+describe("resolveDependencies — edge-case fixtures", () => {
+  it("resolves diamond dependency correctly", () => {
+    const units = discoverUnits(path.resolve(FIXTURES_DIR, "diamond"));
+    const graph = resolveDependencies(units);
+    const ids = graph.order.map(unitId);
+
+    // D must come before B and C; B and C must come before A
+    expect(ids.indexOf("d.aleo")).toBeLessThan(ids.indexOf("b.aleo"));
+    expect(ids.indexOf("d.aleo")).toBeLessThan(ids.indexOf("c.aleo"));
+    expect(ids.indexOf("b.aleo")).toBeLessThan(ids.indexOf("a.aleo"));
+    expect(ids.indexOf("c.aleo")).toBeLessThan(ids.indexOf("a.aleo"));
+    expect(ids).toHaveLength(4);
+    expect(graph.networkDeps.size).toBe(0);
+  });
+
+  it("resolves deep import chain correctly", () => {
+    const units = discoverUnits(path.resolve(FIXTURES_DIR, "deep-chain"));
+    const graph = resolveDependencies(units);
+    const ids = graph.order.map(unitId);
+
+    expect(ids).toEqual(["d.aleo", "c.aleo", "b.aleo", "a.aleo"]);
+    expect(graph.networkDeps.size).toBe(0);
+  });
+
+  it("resolves program importing library", () => {
+    const units = discoverUnits(path.resolve(FIXTURES_DIR, "lib-import"));
+    const graph = resolveDependencies(units);
+    const ids = graph.order.map(unitId);
+
+    expect(ids.indexOf("math")).toBeLessThan(ids.indexOf("app.aleo"));
+    expect(graph.networkDeps.size).toBe(0);
+
+    // The imports map should use the canonical library name
+    const appImports = graph.imports.get("app.aleo");
+    expect(appImports).toContain("math");
+  });
+
+  it("resolves program importing program", () => {
+    const units = discoverUnits(path.resolve(FIXTURES_DIR, "program-import"));
+    const graph = resolveDependencies(units);
+    const ids = graph.order.map(unitId);
+
+    expect(ids.indexOf("utils.aleo")).toBeLessThan(ids.indexOf("app.aleo"));
+    expect(graph.networkDeps.size).toBe(0);
   });
 });

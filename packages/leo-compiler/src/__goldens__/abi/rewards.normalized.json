@@ -1,0 +1,80 @@
+{
+  "program": "rewards.aleo",
+  "structs": [],
+  "records": [],
+  "mappings": [
+    {
+      "name": "points",
+      "key": {
+        "Primitive": "Address"
+      },
+      "value": {
+        "Primitive": {
+          "UInt": "U64"
+        }
+      }
+    },
+    {
+      "name": "claimed",
+      "key": {
+        "Primitive": "Address"
+      },
+      "value": {
+        "Primitive": "Boolean"
+      }
+    }
+  ],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "earn_points",
+      "is_async": true,
+      "inputs": [
+        {
+          "name": "amount",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "Public"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Future": "rewards.aleo"
+          },
+          "mode": "None"
+        }
+      ]
+    },
+    {
+      "name": "claim_reward",
+      "is_async": true,
+      "inputs": [
+        {
+          "name": "reward_amount",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "Public"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Future": "rewards.aleo"
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "program": "token.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "utils.aleo",
+      "location": "local",
+      "path": "<ROOT>/artifacts/.build/utils.aleo"
+    },
+    {
+      "name": "credits.aleo",
+      "location": "network"
+    }
+  ]
+}

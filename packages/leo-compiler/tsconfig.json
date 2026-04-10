@@ -5,6 +5,7 @@
     "rootDir": "src"
   },
   "include": ["src"],
+  "exclude": ["src/**/__goldens__", "src/**/__fixtures__"],
   "references": [
     { "path": "../config" },
     { "path": "../core" }

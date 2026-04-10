@@ -1,0 +1,50 @@
+{
+  "program": "geo.aleo",
+  "structs": [
+    {
+      "path": ["Point"],
+      "fields": [
+        { "name": "x", "ty": { "Primitive": { "Int": "I32" } } },
+        { "name": "y", "ty": { "Primitive": { "Int": "I32" } } }
+      ]
+    },
+    {
+      "path": ["Line"],
+      "fields": [
+        { "name": "start", "ty": { "Struct": { "path": ["Point"], "program": null } } },
+        { "name": "end", "ty": { "Struct": { "path": ["Point"], "program": null } } }
+      ]
+    },
+    {
+      "path": ["Triangle"],
+      "fields": [
+        { "name": "a", "ty": { "Struct": { "path": ["Line"], "program": null } } },
+        { "name": "b", "ty": { "Struct": { "path": ["Line"], "program": null } } },
+        { "name": "c", "ty": { "Struct": { "path": ["Line"], "program": null } } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "get_triangle",
+      "is_async": false,
+      "inputs": [],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["Triangle"], "program": null } } }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "get_line",
+      "is_async": false,
+      "inputs": [
+        { "name": "triangle", "ty": { "Plaintext": { "Struct": { "path": ["Triangle"], "program": null } } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["Line"], "program": null } } }, "mode": "None" }
+      ]
+    }
+  ]
+}

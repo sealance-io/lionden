@@ -1,0 +1,31 @@
+{
+  "program": "proxy.aleo",
+  "structs": [],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "forward",
+      "is_async": false,
+      "inputs": [
+        { "name": "record", "ty": "DynamicRecord", "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": "DynamicRecord", "mode": "None" }
+      ]
+    },
+    {
+      "name": "forward_pair",
+      "is_async": false,
+      "inputs": [
+        { "name": "a", "ty": "DynamicRecord", "mode": "None" },
+        { "name": "b", "ty": "DynamicRecord", "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": "DynamicRecord", "mode": "None" },
+        { "ty": "DynamicRecord", "mode": "None" }
+      ]
+    }
+  ]
+}
