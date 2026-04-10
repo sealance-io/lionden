@@ -10,8 +10,6 @@
  * - `LIONDEN_PROVE` — "true" when `--prove` flag is set
  */
 
-import * as path from "node:path";
-
 export interface TestRunnerOptions {
   /** Grep pattern to filter tests by name. */
   grep?: string;
@@ -57,11 +55,12 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
 
   const { startVitest } = await import("vitest/node");
 
-  const testDir = path.join(options.root, "test");
-
   const vitest = await startVitest("test", [], {
     root: options.root,
-    include: [`${testDir}/**/*.test.ts`],
+    // Run against the LionDen project only; repo-level Vitest workspace
+    // config should not leak into scaffolded/example project execution.
+    config: false,
+    include: ["test/**/*.test.ts"],
     testTimeout: options.timeout ?? 120_000,
     hookTimeout: options.timeout ?? 120_000,
     ...(options.grep ? { testNamePattern: options.grep } : {}),

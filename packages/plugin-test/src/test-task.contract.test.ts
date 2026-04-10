@@ -67,6 +67,20 @@ describe("test task contract", () => {
     expect(vitestConfig.testNamePattern).toBe("mint");
   });
 
+  it("runs vitest with project-local discovery only", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("test", { noCompile: true });
+
+    const { startVitest } = await import("vitest/node");
+    const callArgs = (startVitest as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const vitestConfig = callArgs[2] as Record<string, unknown>;
+
+    expect(vitestConfig.root).toBe(lre.config.paths.root);
+    expect(vitestConfig.config).toBe(false);
+    expect(vitestConfig.include).toEqual(["test/**/*.test.ts"]);
+  });
+
   it("--timeout overrides default from config", async () => {
     const lre = createTestLre();
 
