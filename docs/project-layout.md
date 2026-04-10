@@ -108,6 +108,8 @@ Use this doc for navigation only. For behavior-level detail:
 - compile pipeline: [`compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md)
 - networks and deployment: [`network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md)
 - test helpers: [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md)
+- repo-wide test strategy and CI: [`testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md)
+- JSON ABI schema and codegen types: [`json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md)
 - product goals and roadmap: [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md)
 
 ## Design Direction

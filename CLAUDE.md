@@ -26,7 +26,7 @@ node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.
 
 ## Architecture at a Glance
 
-npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 6 examples.
+npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 6 examples. Requires Node `^20.19.0 || >=22.12.0` and Leo CLI v4 on `PATH`.
 
 **Dependency flow** (each layer depends only on layers above it):
 
@@ -55,6 +55,18 @@ Plugins are **declarative**: users list them in `defineConfig({ plugins: [...] }
 - **Plugin shape**: `{ id, name, hookHandlers?, tasks?, globalOptions?, extendLre? }` — see `packages/core/src/types.ts` for `LionDenPlugin`.
 - **Task builder API**: `task(id, desc).addOption({...}).setAction(fn).build()` and `overrideTask(id).setAction(fn).build()` — see `packages/core/src/task-builder.ts`.
 - **Source-first Leo layout**: users write `.leo` files in `programs/` without `program.json`. The compiler materializes Leo CLI packages internally during `compilePipeline()`.
+- **Config variable resolution is eager**: `configVariable()` values are resolved for ALL networks during config resolution, not lazily for the active network. A `configVariable()` without a default will throw even on devnode runs if the env var is unset.
+
+## Leo v4 Syntax
+
+This repo targets Leo v4 only. Key syntax differences from earlier Leo versions:
+
+- `fn` keyword (not `transition`). Functions that touch on-chain state return `-> Final` (not `-> Future`).
+- Finalize blocks use `return final { ... }` inline. Cross-program finalize composition uses `.run()`.
+- Constructors use decorators: `@noupgrade` for immutable programs, `@admin(address="aleo1...")` for upgradeable programs.
+- Mappings: `mapping name: KeyType => ValueType;` with `name.get()`, `name.get_or_use()`, `name.set()` inside `final` blocks.
+- Records and structs are declared with `record Name { ... }` and `struct Name { ... }`.
+- `self.signer` gives the caller address, `self.caller` gives the immediate caller (may differ in cross-program calls).
 
 ## Documentation Map
 
