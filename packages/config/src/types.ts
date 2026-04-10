@@ -21,6 +21,8 @@ export interface DevnodeNetworkConfig {
   readonly genesisPath?: string;
   /** Aleo network type. Default: "testnet" */
   readonly network?: AleoNetwork;
+  /** Private key for the devnode validator. Default: well-known test key */
+  readonly privateKey?: string;
 }
 
 export interface HttpNetworkConfig {
@@ -204,6 +206,7 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly accounts: ResolvedAccountConfig[];
   readonly genesisPath?: string;
   readonly network: AleoNetwork;
+  readonly privateKey?: string;
 }
 
 export interface ResolvedHttpNetworkConfig {

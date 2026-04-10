@@ -166,4 +166,6 @@ export interface DevnodeStartOptions {
   genesisPath?: string;
   /** Aleo network. Default: "testnet" */
   network?: AleoNetwork;
+  /** Private key for the devnode validator. Default: well-known test key */
+  privateKey?: string;
 }

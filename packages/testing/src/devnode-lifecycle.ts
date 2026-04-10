@@ -61,12 +61,13 @@ export async function stopDevnode(devnode: ManagedDevnode): Promise<void> {
  */
 function findDevnodeNetworkConfig(
   config: LionDenResolvedConfig,
-): { autoBlock?: boolean; network?: "testnet" | "mainnet" | "canary" } | undefined {
+): { autoBlock?: boolean; network?: "testnet" | "mainnet" | "canary"; privateKey?: string } | undefined {
   for (const net of Object.values(config.networks)) {
     if (net.type === "devnode") {
       return {
         autoBlock: net.autoBlock,
         network: net.network,
+        privateKey: net.privateKey,
       };
     }
   }

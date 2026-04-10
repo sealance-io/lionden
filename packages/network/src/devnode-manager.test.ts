@@ -58,7 +58,7 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
-      ["devnode", "start", "--socket-addr", "127.0.0.1:4040"],
+      ["devnode", "start", "--socket-addr", "127.0.0.1:4040", "--private-key", "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"],
       expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
     );
     expect(manager.endpoint).toBe("http://127.0.0.1:4040");
@@ -73,7 +73,7 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
-      ["devnode", "start"],
+      ["devnode", "start", "--private-key", "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"],
       expect.any(Object),
     );
     expect(manager.endpoint).toBe("http://127.0.0.1:3030");

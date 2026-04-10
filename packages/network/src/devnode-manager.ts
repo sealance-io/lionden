@@ -8,6 +8,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { DevnodeStartOptions } from "./types.js";
 
 const DEFAULT_SOCKET_ADDR = "127.0.0.1:3030";
+const DEFAULT_PRIVATE_KEY =
+  "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
 const HEALTH_CHECK_INTERVAL_MS = 200;
 const HEALTH_CHECK_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -133,6 +135,8 @@ export class DevnodeManager {
     if (options.network && options.network !== "testnet") {
       args.push("--network", options.network);
     }
+
+    args.push("--private-key", options.privateKey ?? DEFAULT_PRIVATE_KEY);
 
     return args;
   }

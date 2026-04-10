@@ -253,6 +253,7 @@ function resolveNetworkConfig(
         }),
         genesisPath: config.genesisPath,
         network: config.network ?? "testnet",
+        privateKey: config.privateKey,
       };
     case "http":
       return {
