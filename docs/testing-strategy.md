@@ -127,6 +127,9 @@ Primary targets:
 - `examples/hello-world`
 - `examples/token`
 - `examples/multi-program`
+- `examples/nft-registry`
+- `examples/upgradeable-counter`
+- `examples/async-escrow`
 
 Expected scope:
 - one smoke suite per example that proves the happy path
@@ -512,15 +515,37 @@ Keep:
 Change:
 - move semantic transition checks into local-mode tests where possible
 
+### `examples/nft-registry`
+
+Role:
+- struct/record codegen and test pattern smoke test
+
+Keep:
+- `loadFixture()` usage across describe blocks
+- local execution mode demonstration
+
+### `examples/upgradeable-counter`
+
+Role:
+- upgrade workflow end-to-end smoke test
+
+Keep:
+- `@admin` constructor, upgrade task, ABI compat check
+- `assertBalanceAtLeast` and `assertBlockHeightAtLeast` usage
+- `configVariable()` and multi-network config demonstration
+
+### `examples/async-escrow`
+
+Role:
+- typechain bindings usage in tests smoke test
+
+Keep:
+- generated TypeScript contract wrapper for all transitions
+- escrow state machine lifecycle assertions
+
 ### Future Examples
 
-Only add a new example when it represents a new workflow contract:
-
-- upgrade path
-- HTTP network behavior
-- codegen edge cases visible to users
-
-Do not add examples just to increase raw test count.
+Only add a new example when it represents a new workflow contract not covered by existing examples. Do not add examples just to increase raw test count.
 
 ## CI Lanes
 
@@ -561,7 +586,7 @@ The following scripts are recommended:
     "test:contract": "vitest run --project contract",
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
-    "test:smoke": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test --no-compile && node --import tsx packages/cli/src/bin.ts --config examples/token/lionden.config.ts test --no-compile && node --import tsx packages/cli/src/bin.ts --config examples/multi-program/lionden.config.ts test --no-compile"
+    "test:smoke": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/token/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/multi-program/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/nft-registry/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/upgradeable-counter/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/async-escrow/lionden.config.ts test"
   }
 }
 ```

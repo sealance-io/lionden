@@ -12,6 +12,7 @@ import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import {
   discoverUnits,
+  parseAbi,
   type DiscoveredProgram,
 } from "@lionden/leo-compiler";
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
@@ -410,6 +411,6 @@ function readOldAbi(
   if (!fs.existsSync(abiPath)) return null;
 
   const raw = fs.readFileSync(abiPath, "utf-8");
-  return JSON.parse(raw) as ProgramABI;
+  return parseAbi(raw);
 }
 

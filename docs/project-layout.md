@@ -22,6 +22,10 @@ Top-level supporting paths:
 
 - `examples/hello-world`: minimal project example
 - `examples/token`: fuller example with mappings and richer tests
+- `examples/multi-program`: cross-program calls and dependency graph
+- `examples/nft-registry`: structs, records, `loadFixture`, local mode
+- `examples/upgradeable-counter`: `@admin` constructor, upgrade flow, multi-network config
+- `examples/async-escrow`: typechain bindings in tests, escrow state machine
 - `docs/`: focused implementation docs
 
 ## Contributor Entry Points
@@ -51,6 +55,29 @@ Useful starting points for common repo tasks:
 - private and public transitions
 - richer test assertions
 - deploy configuration
+
+`examples/multi-program` demonstrates cross-program interactions:
+
+- multiple programs with inter-program calls
+- dependency graph resolution
+- typechain usage for typed contract wrappers
+
+`examples/nft-registry` showcases structs, records, and test patterns:
+
+- struct and record definitions with `field` type
+- `loadFixture()` for shared test setup
+- local execution mode (no finalize)
+
+`examples/upgradeable-counter` exercises the upgrade workflow:
+
+- `@admin` constructor for upgrade authorization
+- end-to-end upgrade flow with ABI compatibility
+- multi-network configuration (devnode + commented testnet with `configVariable()`)
+
+`examples/async-escrow` demonstrates typechain bindings in tests:
+
+- generated TypeScript contract wrappers
+- escrow state machine with on-chain status transitions
 
 When documenting user workflows, prefer checking the examples before inventing examples from scratch.
 

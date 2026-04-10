@@ -44,6 +44,10 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `packages/create-lionden` | Project scaffolder |
 | `examples/hello-world` | Minimal example project |
 | `examples/token` | Richer example with mappings and private/public flows |
+| `examples/multi-program` | Cross-program calls, dependency graph, typechain |
+| `examples/nft-registry` | Structs, records, `loadFixture`, local execution mode |
+| `examples/upgradeable-counter` | `@admin` constructor, upgrade flow, multi-network config |
+| `examples/async-escrow` | Typechain bindings in tests, escrow state machine |
 | `docs/` | Focused deep dives for lazy loading |
 
 ## Prerequisites
@@ -111,7 +115,7 @@ export default defineConfig({
 });
 ```
 
-The repo examples under `examples/hello-world` and `examples/token` follow this pattern.
+The repo examples under `examples/` follow this pattern.
 
 ## Current CLI Task Surface
 
@@ -187,6 +191,31 @@ For subsystem detail, use the focused docs in `docs/` instead of loading everyth
 - mappings
 - private and public transitions
 - richer test assertions via `@lionden/testing`
+
+`examples/multi-program` demonstrates cross-program interactions:
+
+- multiple programs with inter-program calls
+- dependency graph resolution
+- typechain usage for typed contract wrappers
+
+`examples/nft-registry` showcases structs, records, and test patterns:
+
+- struct and record definitions with `field` type
+- `loadFixture()` for shared test setup
+- local execution mode (no finalize)
+
+`examples/upgradeable-counter` exercises the upgrade workflow:
+
+- `@admin` constructor for upgrade authorization
+- end-to-end upgrade flow with ABI compatibility
+- multi-network configuration (devnode + commented testnet with `configVariable()`)
+- `assertBalanceAtLeast` and `assertBlockHeightAtLeast`
+
+`examples/async-escrow` demonstrates typechain bindings in tests:
+
+- generated TypeScript contract wrappers for all transitions
+- escrow state machine with on-chain status transitions
+- `assertMappingValue` for verifying mapping state
 
 ## Documentation Map
 

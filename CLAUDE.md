@@ -26,7 +26,7 @@ node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.
 
 ## Architecture at a Glance
 
-npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 3 examples.
+npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 6 examples.
 
 **Dependency flow** (each layer depends only on layers above it):
 
