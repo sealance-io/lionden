@@ -58,7 +58,7 @@ export class DevnetManager {
 
     const args = this.buildArgs(options);
 
-    const proc = spawn("leo", ["devnet", "start", ...args], {
+    const proc = spawn("leo", ["devnet", "--yes", ...args], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.processes.push(proc);
@@ -139,13 +139,16 @@ export class DevnetManager {
       args.push("--network", options.network);
     }
     if (options.verbosity !== undefined && options.verbosity > 0) {
-      args.push("-" + "v".repeat(Math.min(options.verbosity, 4)));
+      args.push("--verbosity", String(Math.min(options.verbosity, 4)));
     }
     if (options.restPort !== undefined && options.restPort !== 3030) {
       args.push("--rest-port", String(options.restPort));
     }
     if (options.storageDir) {
-      args.push("--storage-dir", options.storageDir);
+      args.push("--storage", options.storageDir);
+    }
+    if (options.snarkosPath) {
+      args.push("--snarkos", options.snarkosPath);
     }
 
     return args;

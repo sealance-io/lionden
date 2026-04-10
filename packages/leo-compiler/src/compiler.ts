@@ -220,7 +220,7 @@ async function runLeoBuild(
   try {
     await execFileAsync("leo", args, {
       timeout: 120_000,
-      env: { ...process.env, PATH: process.env["PATH"] },
+      env: { ...process.env },
     });
   } catch (err: unknown) {
     const e = err as { stderr?: string; message?: string };

@@ -143,7 +143,8 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
     expect(env).toContain("NETWORK=testnet");
     expect(env).toContain("ENDPOINT=http://127.0.0.1:3030");
-    expect(env).toContain("PRIVATE_KEY=");
+    expect(env).toContain("PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
+    expect(env).toContain("DEVNET=true");
   });
 
   it("materializes library dependency with canonical path", () => {

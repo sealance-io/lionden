@@ -119,15 +119,15 @@ export class DevnodeManager {
     }
 
     if (options.autoBlock === false) {
-      args.push("--no-auto-block");
+      args.push("--manual-block-creation");
     }
 
     if (options.verbosity !== undefined && options.verbosity > 0) {
-      args.push("-" + "v".repeat(options.verbosity));
+      args.push("--verbosity", String(options.verbosity));
     }
 
     if (options.genesisPath) {
-      args.push("--genesis", options.genesisPath);
+      args.push("--genesis-path", options.genesisPath);
     }
 
     if (options.network && options.network !== "testnet") {

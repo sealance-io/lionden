@@ -88,7 +88,7 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
-      expect.arrayContaining(["--no-auto-block"]),
+      expect.arrayContaining(["--manual-block-creation"]),
       expect.any(Object),
     );
   });
@@ -102,7 +102,7 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
-      expect.arrayContaining(["-vv"]),
+      expect.arrayContaining(["--verbosity", "2"]),
       expect.any(Object),
     );
   });

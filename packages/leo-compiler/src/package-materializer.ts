@@ -111,21 +111,28 @@ function buildDotEnv(config: LionDenResolvedConfig): string {
   const networkConfig = config.networks[config.defaultNetwork];
   const lines: string[] = [];
 
-  lines.push(`NETWORK=${networkConfig?.type === "http" ? networkConfig.network : "testnet"}`);
+  // Every resolved network config carries a `network` field — use it directly.
+  lines.push(`NETWORK=${networkConfig?.network ?? "testnet"}`);
 
   if (networkConfig?.type === "http" && networkConfig.privateKey) {
     lines.push(`PRIVATE_KEY=${networkConfig.privateKey}`);
   } else {
-    // Default devnode private key
-    lines.push("PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCBJ4tRPxGzmKnVmpVCjkMWqGz3JhHUAyqDJ1");
+    // Default devnode private key (recommended by Leo CLI for local devnets)
+    lines.push("PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
   }
 
   if (networkConfig?.type === "http") {
     lines.push(`ENDPOINT=${networkConfig.endpoint}`);
   } else if (networkConfig?.type === "devnode") {
     lines.push(`ENDPOINT=http://${networkConfig.socketAddr}`);
+  } else if (networkConfig?.type === "devnet") {
+    lines.push(`ENDPOINT=http://127.0.0.1:${networkConfig.restPort}`);
   } else {
     lines.push("ENDPOINT=http://127.0.0.1:3030");
+  }
+
+  if (networkConfig?.type === "devnode" || networkConfig?.type === "devnet") {
+    lines.push("DEVNET=true");
   }
 
   return lines.join("\n") + "\n";
