@@ -232,6 +232,16 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
+  it("throws DeployError when confirmation returns rejected status", async () => {
+    const { lre, fakeNetwork } = createUpgradeFixture();
+
+    fakeNetwork.setConfirmBehavior("reject");
+
+    await expect(
+      upgradeAction({ program: "hello" }, lre),
+    ).rejects.toThrow(DeployError);
+  });
+
   it("skips confirmation when skipConfirm is true", async () => {
     const { lre, fakeNetwork } = createUpgradeFixture();
 

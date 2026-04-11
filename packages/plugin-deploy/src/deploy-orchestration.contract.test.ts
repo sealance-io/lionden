@@ -120,6 +120,18 @@ describe("deploy orchestration contract", () => {
     ).rejects.toThrow(DeployError);
   });
 
+  it("throws DeployError when confirmation returns rejected status", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    fakeNetwork.setConfirmBehavior("reject");
+
+    await expect(
+      deployAction({ program: "hello", noCompile: true }, lre),
+    ).rejects.toThrow(DeployError);
+  });
+
   it("skips confirmation when skipConfirm is true", async () => {
     const { lre, fakeNetwork } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },

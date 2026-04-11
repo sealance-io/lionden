@@ -165,6 +165,11 @@ export async function upgradeAction(
       txId,
       config.deploy.confirmationTimeout,
     );
+    if (confirmed.status === "rejected") {
+      throw new DeployError(
+        `Upgrade transaction ${txId} was rejected on-chain.`,
+      );
+    }
     blockHeight = confirmed.blockHeight;
   }
 

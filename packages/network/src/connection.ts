@@ -206,7 +206,7 @@ export class AleoConnection implements NetworkConnection {
 
     // Poll the node REST API directly — the raw JSON response includes
     // block_height which is not part of the SDK's typed TransactionJSON.
-    const url = `${this.endpoint}/${this.networkId}/transaction/${txId}`;
+    const url = `${this.endpoint}/${this.networkId}/transaction/confirmed/${txId}`;
     const deadline = Date.now() + effectiveTimeout;
     const fetchHeaders: Record<string, string> = {};
     if (this.apiKey) {
@@ -222,10 +222,18 @@ export class AleoConnection implements NetworkConnection {
             typeof data["block_height"] === "number"
               ? data["block_height"]
               : 0;
+          // In Aleo, rejected transactions are confirmed as fee-only.
+          // Accepted: type is "execute" or "deploy". Rejected: type is "fee".
+          const txData = data["transaction"] as
+            | Record<string, unknown>
+            | undefined;
+          const txType = txData?.["type"] ?? data["type"];
+          const status: "accepted" | "rejected" =
+            txType === "fee" ? "rejected" : "accepted";
           return {
             txId,
             blockHeight: height as number,
-            status: "accepted",
+            status,
           };
         }
       } catch {

@@ -307,6 +307,11 @@ async function deploySingleProgram(
   let blockHeight = 0;
   if (shouldConfirm) {
     const confirmed = await connection.waitForConfirmation(txId, confirmTimeout);
+    if (confirmed.status === "rejected") {
+      throw new DeployError(
+        `Deploy transaction ${txId} was rejected on-chain.`,
+      );
+    }
     blockHeight = confirmed.blockHeight;
   }
 

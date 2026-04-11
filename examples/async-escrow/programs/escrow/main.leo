@@ -7,6 +7,7 @@ program escrow.aleo {
 
     /// Create a new escrow for the given item.
     fn create_escrow(public item_id: u64) -> Final {
+        assert(item_id > 0u64);
         return final {
             escrow_status.set(item_id, 0u8);
         };

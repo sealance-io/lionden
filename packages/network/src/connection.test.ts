@@ -402,7 +402,7 @@ describe("AleoConnection", () => {
       await connection.waitForConfirmation("at1test");
 
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://127.0.0.1:3030/testnet/transaction/at1test",
+        "http://127.0.0.1:3030/testnet/transaction/confirmed/at1test",
         expect.objectContaining({ headers: {} }),
       );
     });
@@ -484,6 +484,75 @@ describe("AleoConnection", () => {
       await vi.advanceTimersByTimeAsync(61_000);
 
       await expect(promise).rejects.toThrow("not confirmed within 60000ms");
+    });
+
+    it("returns rejected status for fee-only (rejected) transactions", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          transaction: { type: "fee" },
+          block_height: 15,
+        }),
+      });
+      const connection = createDevnodeConnection();
+
+      const result = await connection.waitForConfirmation("at1test");
+
+      expect(result).toEqual({
+        txId: "at1test",
+        blockHeight: 15,
+        status: "rejected",
+      });
+    });
+
+    it("returns accepted status for execute transactions", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          transaction: { type: "execute" },
+          block_height: 20,
+        }),
+      });
+      const connection = createDevnodeConnection();
+
+      const result = await connection.waitForConfirmation("at1test");
+
+      expect(result).toEqual({
+        txId: "at1test",
+        blockHeight: 20,
+        status: "accepted",
+      });
+    });
+
+    it("returns accepted status for deploy transactions", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          transaction: { type: "deploy" },
+          block_height: 25,
+        }),
+      });
+      const connection = createDevnodeConnection();
+
+      const result = await connection.waitForConfirmation("at1test");
+
+      expect(result).toEqual({
+        txId: "at1test",
+        blockHeight: 25,
+        status: "accepted",
+      });
+    });
+
+    it("defaults to accepted when no transaction type is present", async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ block_height: 42 }),
+      });
+      const connection = createDevnodeConnection();
+
+      const result = await connection.waitForConfirmation("at1test");
+
+      expect(result.status).toBe("accepted");
     });
 
     it("defaults blockHeight to 0 when missing from response JSON", async () => {
