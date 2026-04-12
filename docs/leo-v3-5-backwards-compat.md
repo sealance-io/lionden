@@ -416,7 +416,122 @@ LEO_V35=~/.leo/bin/leo-3.5 LEO_V4=$(which leo) \
 
 ## Probe 4: leo-v35-cross-program
 
-_Pending_
+**Goal:** Compile two v3.5 programs with cross-program call (slash-path syntax
+`foo.aleo/bar()`), deploy to a v4 devnode in topological order, execute the
+cross-program finalize composition, verify mapping state.
+
+**Status:** PASSED (all 4 phases green, 4 tests pass)
+
+**Scope note:** Same as Probes 1-3 — uses `leoVersion: "4.0.0"` in config with
+a PATH shim. Tests LionDen's import parser dependency discovery, topological
+compile/deploy order, and cross-program finalize composition with v3.5 bytecode
+on a v4 devnode.
+
+### Test Programs
+
+**`counter_store.aleo`** — base program:
+- `@noupgrade async constructor() {}` (v3.5 syntax)
+- `mapping counter: address => u64`
+- `async transition increment(public addr: address, public amount: u64) -> Future`
+- `transition get_double(public val: u64) -> u64` (sync, no finalize)
+
+**`batch_caller.aleo`** — cross-program caller:
+- `import counter_store.aleo;` (explicit import)
+- `@noupgrade async constructor() {}` (v3.5 syntax)
+- `async transition call_increment(...)` → `counter_store.aleo/increment(addr, amount)` (slash-path cross-call)
+- Finalize composition: `f.await()` (v3.5 syntax)
+
+### Phases and Results
+
+| Phase | Result | Notes |
+|-------|--------|-------|
+| Compile both (v3.5, topological order) | PASS | counter_store compiled first, then batch_caller |
+| ABI parse + codegen (both programs) | PASS | v3.5 ABI format normalized correctly |
+| Typecheck typechain bindings | PASS | CounterStore.ts + BatchCaller.ts typecheck cleanly |
+| Deploy to v4 devnode | PASS | `deploy --program batch_caller` auto-deployed counter_store first |
+| Verify: direct increment | PASS | `incrementBroadcast(addr, 100n)` → valid txId |
+| Verify: cross-program call | PASS | `call_incrementBroadcast(addr, 50n)` → valid txId |
+| Verify: mapping state | PASS | counter = 150 (100 direct + 50 cross-program) |
+| Full typecheck (typechain + tests) | PASS | |
+| Test: direct increment | PASS | `incrementBroadcast(addr, 25n)` |
+| Test: cross-program call_increment | PASS | `call_incrementBroadcast(addr, 30n)` |
+| Test: mapping state (cumulative) | PASS | counter ≥ 205 |
+| Test: sync get_double | PASS | `get_double(7n)` → 14 |
+
+### Bugs Found and Fixed
+
+None. Cross-program v3.5 compilation, deployment, and execution work through
+LionDen's pipeline without code changes beyond the two fixes from Probe 1.
+
+### Key Observations
+
+1. **Import parser discovers v3.5 dependencies via `import` statement.** The
+   `importDeclRegex` (`/import\s+([\w]+\.aleo)\s*;/g`) correctly matches
+   `import counter_store.aleo;` in `batch_caller/main.leo`. The dependency
+   graph resolves correctly and programs compile in topological order.
+
+2. **Cross-call regex gap (non-blocking for this proven lane).** The `crossCallRegex`
+   (`/([\w]+\.aleo)::/g`) does NOT match v3.5's slash-path syntax
+   (`counter_store.aleo/increment(...)`). This probe uses an explicit
+   `import counter_store.aleo;`, so the dependency is discovered via
+   `importDeclRegex` before the fallback cross-call scan matters. **No fix
+   needed for the proven v3.5 shape** — but if LionDen wants dependency
+   discovery to be robust to slash-path references without explicit imports,
+   adding `/([\w]+\.aleo)\//g` alongside the existing `::` pattern would close
+   the gap.
+
+3. **Compiled bytecode preserves slash-path syntax.** The v3.5-compiled
+   `main.aleo` for `batch_caller` uses:
+   ```
+   call counter_store.aleo/increment r0 r1 into r2;
+   ...
+   input r0 as counter_store.aleo/increment.future;
+   await r0;
+   ```
+   This is the v3.5 cross-program IR format. The v4 devnode accepts it without
+   issue.
+
+4. **v4 devnode accepts v3.5 cross-program finalize composition.** The
+   `await r0;` instruction (v3.5 finalize composition) executes correctly on
+   the v4 devnode. The counter_store's finalize block runs as expected,
+   updating the mapping.
+
+5. **Topological deploy works with `--program` filter.** Specifying
+   `deploy --program batch_caller` correctly auto-deployed `counter_store`
+   first via `resolveDeployTargets()` → `collectTransitiveProgramDeps()`.
+   LionDen's dependency resolution chain works end-to-end with v3.5 programs.
+
+6. **Both deploy manifests correct.** counter_store: edition 0, `@noupgrade`,
+   empty fingerprint. batch_caller: edition 0, `@noupgrade`, empty fingerprint.
+   Both deployed to separate transactions.
+
+7. **Cross-program call updates caller's dependency's mapping.** The
+   `batch_caller.call_increment()` call correctly updated `counter_store`'s
+   `counter` mapping. The v3.5 finalize composition correctly chains the
+   cross-program finalize.
+
+8. **Sync transitions work on v4 devnode.** Directly executing
+   `counter_store.get_double(7)` returns 14, confirming non-async v3.5
+   transitions work correctly with v3.5 compiled bytecode on a v4 devnode.
+
+### Reproducibility
+
+```bash
+LEO_V35=~/.leo/bin/leo-3.5 LEO_V4=$(which leo) \
+  ./tmp/bug-hunts/leo-v35-cross-program/run-probe.sh
+```
+
+### Artifacts
+
+- counter_store source: `tmp/bug-hunts/leo-v35-cross-program/programs/counter_store/main.leo`
+- batch_caller source: `tmp/bug-hunts/leo-v35-cross-program/programs/batch_caller/main.leo`
+- counter_store compiled: `tmp/bug-hunts/leo-v35-cross-program/artifacts/counter_store.aleo/main.aleo`
+- batch_caller compiled: `tmp/bug-hunts/leo-v35-cross-program/artifacts/batch_caller.aleo/main.aleo`
+- counter_store ABI: `tmp/bug-hunts/leo-v35-cross-program/artifacts/counter_store.aleo/abi.json`
+- batch_caller ABI: `tmp/bug-hunts/leo-v35-cross-program/artifacts/batch_caller.aleo/abi.json`
+- Deploy manifests: `tmp/bug-hunts/leo-v35-cross-program/artifacts/*/deploy.json`
+- Typechain: `tmp/bug-hunts/leo-v35-cross-program/typechain/{CounterStore,BatchCaller}.ts`
+- Tests: `tmp/bug-hunts/leo-v35-cross-program/test/cross-program.test.ts`
 
 ---
 
