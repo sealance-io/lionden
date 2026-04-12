@@ -97,7 +97,62 @@ describe("AleoConnection", () => {
       "main",
       ["3u32", "5u32"],
       false,
+      undefined, // no imports for a program without import declarations
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // execute() — local mode: cross-program import fetching
+  // -------------------------------------------------------------------------
+
+  describe("local execution with cross-program imports", () => {
+    it("fetches imports and passes them to pm.run() as 5th arg", async () => {
+      const topSource =
+        "import dep_a.aleo;\nimport dep_b.aleo;\nprogram top.aleo;\nfunction main:\n  output 1u32 as u32.private;\n";
+      const depASource = "program dep_a.aleo;\nfunction helper:\n  output 1u32 as u32.private;\n";
+      const depBSource = "program dep_b.aleo;\nfunction helper:\n  output 2u32 as u32.private;\n";
+
+      mockGetProgram.mockImplementation(async (id: string) => {
+        if (id === "top.aleo") return topSource;
+        if (id === "dep_a.aleo") return depASource;
+        if (id === "dep_b.aleo") return depBSource;
+        throw new Error(`Unknown program: ${id}`);
+      });
+      mockRun.mockResolvedValue({ getOutputs: () => ["3u32"] });
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("top.aleo", "main", [], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual(["3u32"]);
+      expect(mockRun).toHaveBeenCalledWith(
+        topSource,
+        "main",
+        [],
+        false,
+        { "dep_a.aleo": depASource, "dep_b.aleo": depBSource },
+      );
+      // getProgram called 3 times: target + 2 imports
+      expect(mockGetProgram).toHaveBeenCalledTimes(3);
+    });
+
+    it("passes undefined imports for programs without import declarations", async () => {
+      mockRun.mockResolvedValue({ getOutputs: () => ["5u32"] });
+
+      const connection = createDevnodeConnection();
+      await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(mockRun).toHaveBeenCalledWith(
+        "program hello.aleo { }",
+        "main",
+        ["1u32"],
+        false,
+        undefined,
+      );
+    });
   });
 
   // -------------------------------------------------------------------------

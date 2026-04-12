@@ -241,11 +241,19 @@ export class AleoConnection implements NetworkConnection {
       // Fetch it from the node if we only have a program ID.
       const nc = effectiveNc as any;
       const programSource: string = await nc.getProgram(programId);
+
+      // Fetch imported program sources for cross-program local execution.
+      // The compiled Aleo source lists all transitive imports at the top;
+      // pm.run() needs them as a Record<programId, source> in its 5th arg.
+      const programImports =
+        await fetchProgramImports(nc, programSource);
+
       const result = await pm.run(
         programSource,
         transitionName,
         args,
         false, // proveExecution = false
+        programImports,
       );
       const outputs = extractLocalExecutionOutputs(result);
       return {
@@ -411,6 +419,36 @@ function tryDestroyAccount(account: unknown): void {
       // Non-fatal — some SDK versions may not support destroy
     }
   }
+}
+
+/**
+ * Parse `import <name>.aleo;` declarations from compiled Aleo source and
+ * fetch each imported program from the network.  The compiled format lists
+ * all transitive imports at the top level, so no recursion is needed.
+ *
+ * Returns `undefined` when the program has no imports (avoids passing an
+ * empty object to pm.run() which some SDK versions may not expect).
+ */
+async function fetchProgramImports(
+  nc: { getProgram(id: string): Promise<string> },
+  programSource: string,
+): Promise<Record<string, string> | undefined> {
+  const importPattern = /import\s+([\w]+\.aleo)\s*;/g;
+  const importIds: string[] = [];
+  let match;
+  while ((match = importPattern.exec(programSource)) !== null) {
+    importIds.push(match[1]!);
+  }
+  if (importIds.length === 0) return undefined;
+
+  const sources = await Promise.all(
+    importIds.map((id) => nc.getProgram(id)),
+  );
+  const imports: Record<string, string> = {};
+  for (let i = 0; i < importIds.length; i++) {
+    imports[importIds[i]!] = sources[i]!;
+  }
+  return imports;
 }
 
 function extractLocalExecutionOutputs(result: unknown): string[] {
