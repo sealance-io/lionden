@@ -207,30 +207,25 @@ keyword support).
 
 ### Key Observations
 
-1. **v3.5 `@admin` constructor uses `program_owner`, not `self.signer`.** The
-   compiled `main.aleo` for `@admin(address="aleo1...")` produces:
+1. **Both v3.5 and v4 `@admin` constructors use `program_owner`.** The
+   compiled `main.aleo` for `@admin(address="aleo1...")` produces identical
+   output in both versions:
    ```
    constructor:
        assert.eq program_owner aleo1rhgdu77...rsvzp9px;
    ```
-   In v4, the same annotation compiles to:
-   ```
-   constructor:
-       assert.eq self.signer aleo1rhgdu77...rsvzp9px;
-       assert.eq edition 0u16;
-   ```
-   Two differences: (a) `program_owner` vs `self.signer`, (b) no `assert.eq
-   edition` in v3.5. This means **v3.5 → v4 upgrade (Probe 3) will fail the
-   fingerprint check** since the compiled constructor output changes form.
+   **Correction:** Earlier in this probe, we speculated that v4 might use
+   `self.signer` and include `assert.eq edition`. Probe 3 disproved this —
+   v4 also uses `program_owner` with no edition assertion. The v3.5 → v4
+   constructor fingerprint is **identical**, and the upgrade path works.
 
-2. **No `assert.eq edition` in v3.5's `@admin` constructor.** v3.5 does not
-   emit an edition assertion in `@admin` constructors. Despite this, the
-   devnode accepts both deploy (edition 0) and upgrade (edition 1) transactions.
-   The edition is enforced at the protocol/VM level, not in the constructor
-   body.
+2. **No `assert.eq edition` in `@admin` constructors (either version).** Neither
+   v3.5 nor v4 emits an edition assertion in `@admin` constructors. The edition
+   is enforced at the protocol/VM level, not in the constructor body. The
+   devnode accepts both deploy (edition 0) and upgrade (edition 1+) transactions.
 
-3. **v3.5 `@noupgrade` DOES include `assert.eq edition 0u16`** (from Probe 1),
-   but `@admin` does NOT. This is an asymmetry in v3.5's constructor codegen.
+3. **`@noupgrade` DOES include `assert.eq edition 0u16`** (from Probe 1),
+   but `@admin` does NOT. This asymmetry exists in both v3.5 and v4.
 
 4. **Constructor fingerprint is stable across v3.5 → v3.5 upgrade.** The
    fingerprint `assert.eq program_owner aleo1...;` is identical before and
@@ -258,13 +253,11 @@ keyword support).
 9. **New transitions are immediately executable after upgrade.** The `reset`
    transition added in v2 works on the first call after upgrade broadcast.
 
-10. **Predicted Probe 3 blocker: fingerprint mismatch.** Based on observations
-    1-2, a v3.5 → v4 upgrade will produce a different compiled constructor:
-    `program_owner` → `self.signer`, and a new `assert.eq edition` line will
-    appear. The upgrade task's fingerprint comparison will reject this as a
-    constructor body change. Probe 3 will need to determine whether this is a
-    hard blocker or if LionDen can be taught to handle the version-specific
-    fingerprint transition.
+10. **Probe 3 prediction disproved: fingerprint is identical.** The earlier
+    prediction that v4 would compile `@admin` to `self.signer` (different from
+    v3.5's `program_owner`) was wrong. Probe 3 confirmed that both v3.5 and v4
+    produce `assert.eq program_owner <addr>;` with no `assert.eq edition`. The
+    v3.5 → v4 upgrade path works without any code changes.
 
 ### Reproducibility
 
@@ -289,7 +282,135 @@ LEO_V35=~/.leo/bin/leo-3.5 LEO_V4=$(which leo) \
 
 ## Probe 3: leo-v35-to-v4-upgrade
 
-_Pending_
+**Goal:** Deploy a v3.5 `@admin` program (edition 0), migrate source to v4
+syntax (`fn`, `-> Final`, non-async `constructor`, inline `final {}` blocks),
+recompile with Leo v4, upgrade on same v4 devnode. Verify the predicted
+fingerprint mismatch (or its absence), ABI cross-version compatibility, and
+post-upgrade execution.
+
+**Status:** PASSED (all 6 phases green, 4 tests pass)
+
+**Key Result:** The predicted fingerprint mismatch **did not occur**. Both v3.5
+and v4 compile `@admin` constructors to identical bytecode (`assert.eq
+program_owner <addr>;`). The LionDen upgrade task succeeded without any code
+changes.
+
+**Scope note:** Same as Probes 1-2 — uses `leoVersion: "4.0.0"` in config with
+a PATH shim. Tests the full v3.5 → v4 version migration path: syntax
+conversion, cross-version ABI compatibility, constructor fingerprint stability,
+and post-upgrade execution.
+
+### Test Programs
+
+**v1** (`programs-v1/counter_prog/main.leo`, v3.5 syntax):
+- `@admin(address="aleo1rhgdu77...rsvzp9px") async constructor() {}`
+- `mapping counter: address => u64`
+- `async transition increment(public amount: u64) -> Future`
+- Separate `async function finalize_increment()` with `Mapping::get_or_use()` / `Mapping::set()`
+
+**v2** (`programs-v2/counter_prog/main.leo`, v4 syntax):
+- `@admin(address="aleo1rhgdu77...rsvzp9px") constructor() {}` (no `async`)
+- `mapping counter: address => u64`
+- `fn increment(public amount: u64) -> Final` with inline `return final { counter.get_or_use(...); counter.set(...); };`
+- **Added:** `fn reset(public addr: address) -> Final` (additive ABI change)
+
+### Phases and Results
+
+| Phase | Result | Notes |
+|-------|--------|-------|
+| Compile v1 (v3.5) | PASS | `@admin async constructor()` compiles to `assert.eq program_owner <addr>` |
+| Typecheck v1 bindings | PASS | CounterProg.ts with `increment`, `getCounter` |
+| Deploy v1 to v4 devnode | PASS | edition 0, fingerprint = `assert.eq program_owner aleo1...;` |
+| Verify v1 execution | PASS | `increment(100)` → counter = 100 |
+| Swap to v2 source (v4 syntax) | — | Runner copies `programs-v2/` over `programs/` |
+| LionDen upgrade (v3.5→v4) | **PASS** | Full validation: ABI compat ✓, constructor type ✓, admin addr ✓, fingerprint ✓ |
+| Direct SDK follow-up upgrade | PASS | Redundant v4-bytecode upgrade after LionDen migration (edition 1→2) |
+| Typecheck v2 bindings | PASS | CounterProg.ts includes `reset`, `resetBroadcast` |
+| Post-upgrade: increment (old transition) | PASS | `increment(50)` → counter ≥ 150 |
+| Post-upgrade: state preserved | PASS | Counter preserved from v3.5 deployment |
+| Post-upgrade: reset (new transition) | PASS | `reset(addr)` → counter = 0 |
+| Manifest edition | PASS | Edition 1 after LionDen upgrade, then edition 2 after direct SDK follow-up |
+
+### Bugs Found and Fixed
+
+None. The v3.5 → v4 upgrade flow works without code changes beyond the two
+fixes from Probe 1 (ABI parser `"Future"` normalization and constructor parser
+`async` keyword support).
+
+### Key Observations
+
+1. **v4 `@admin` constructor compiles identically to v3.5.** Both produce:
+   ```
+   constructor:
+       assert.eq program_owner aleo1rhgdu77...rsvzp9px;
+   ```
+   No `self.signer`, no `assert.eq edition`. The plan's prediction that v4
+   would use `self.signer` was based on speculation, not empirical evidence.
+   This is the central finding of the probe — it eliminates the predicted
+   blocker.
+
+2. **Constructor fingerprint is stable across v3.5 → v4.** The stored
+   fingerprint `assert.eq program_owner aleo1...;` from v3.5 deployment
+   matches the v4-compiled fingerprint exactly. `extractConstructorFingerprint()`
+   works correctly across versions.
+
+3. **ABI cross-version compatibility works.** The old ABI (v3.5 format:
+   `"transitions"`, `"is_async"`, `"Future"`) and new ABI (v4 format:
+   `"functions"`, `"is_final"`, `"Final"`) both normalize identically through
+   `parseAbi()`. `checkAbiCompatibility()` correctly accepts the additive
+   `reset` transition.
+
+4. **Compiled IR is structurally identical across versions.** Both v3.5 and v4
+   produce the same `main.aleo` structure: `function`/`finalize` sections,
+   `async` dispatch with `.future` outputs, `get.or_use`/`add`/`set`
+   instructions. The only differences are the added `reset` transition (from
+   source change, not version change).
+
+5. **State is preserved across version migration.** Counter value (100) set
+   during v3.5 execution persisted through the v4 upgrade. Post-upgrade
+   `increment(50)` correctly read and added to the existing value.
+
+6. **New transitions are immediately executable.** The `reset` transition
+   added in the v4 source upgrade works on first call.
+
+7. **v4 ABI format differences are cosmetic.** v4 uses `"functions"` (not
+   `"transitions"`), `"is_final"` (not `"is_async"`), and `"Final"` (not
+   `"Future"`). These are already handled by the ABI parser's normalization.
+
+8. **Admin signer prevalidation works across versions.** The upgrade task's
+   `validateAdminSigner()` correctly verifies the signer address against the
+   manifest's `constructorAdmin` regardless of which compiler version was used.
+
+9. **Network acceptance is confirmed by the LionDen upgrade broadcast.** The
+   LionDen upgrade task builds and broadcasts the v4-compiled upgrade of the
+   v3.5-deployed program, so its success proves the devnode accepts the
+   migration. The direct SDK phase is only a redundant follow-up upgrade after
+   migration (edition 1→2), keeping the low-level SDK path exercised without
+   serving as independent proof of the initial v3.5→v4 transition.
+
+10. **The v3.5 → v4 migration path is fully viable.** No code changes needed
+    in LionDen, no fingerprint workarounds, no version-conditional logic. Users
+    can deploy with v3.5, migrate source to v4 syntax, and upgrade seamlessly.
+
+### Reproducibility
+
+```bash
+LEO_V35=~/.leo/bin/leo-3.5 LEO_V4=$(which leo) \
+  ./tmp/bug-hunts/leo-v35-to-v4-upgrade/run-probe.sh
+```
+
+### Artifacts
+
+- v1 source (v3.5): `tmp/bug-hunts/leo-v35-to-v4-upgrade/programs-v1/counter_prog/main.leo`
+- v2 source (v4): `tmp/bug-hunts/leo-v35-to-v4-upgrade/programs-v2/counter_prog/main.leo`
+- Active source: `tmp/bug-hunts/leo-v35-to-v4-upgrade/programs/counter_prog/main.leo` (reset from v1 at probe start, then overwritten by v2 before upgrade)
+- Compiled (v4): `tmp/bug-hunts/leo-v35-to-v4-upgrade/artifacts/counter_prog.aleo/main.aleo`
+- ABI (v4): `tmp/bug-hunts/leo-v35-to-v4-upgrade/artifacts/counter_prog.aleo/abi.json`
+- Deploy manifest: `tmp/bug-hunts/leo-v35-to-v4-upgrade/artifacts/counter_prog.aleo/deploy.json`
+- Typechain: `tmp/bug-hunts/leo-v35-to-v4-upgrade/typechain/CounterProg.ts`
+- Tests: `tmp/bug-hunts/leo-v35-to-v4-upgrade/test/post-upgrade.test.ts`
+- LionDen upgrade script: `tmp/bug-hunts/leo-v35-to-v4-upgrade/scripts/upgrade-lionden.ts`
+- Direct SDK follow-up script: `tmp/bug-hunts/leo-v35-to-v4-upgrade/scripts/upgrade-direct.ts`
 
 ---
 
