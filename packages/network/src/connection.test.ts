@@ -212,6 +212,84 @@ describe("AleoConnection", () => {
   });
 
   // -------------------------------------------------------------------------
+  // extractLocalExecutionOutputs — fallback paths
+  // -------------------------------------------------------------------------
+
+  describe("extractLocalExecutionOutputs fallback paths", () => {
+    it("handles SDK result as a direct array", async () => {
+      // Path 1: pm.run() returns a plain array of strings
+      mockRun.mockResolvedValue(["42u32", "7u64"]);
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual(["42u32", "7u64"]);
+    });
+
+    it("handles SDK result with .outputs property (no getOutputs method)", async () => {
+      // Path 2b: pm.run() returns an object with an outputs array but no getOutputs()
+      mockRun.mockResolvedValue({ outputs: ["99u128"] });
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual(["99u128"]);
+    });
+
+    it("returns empty array when SDK result is null", async () => {
+      // Fallback: pm.run() returns null
+      mockRun.mockResolvedValue(null);
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual([]);
+    });
+
+    it("returns empty array when SDK result is an object with no recognized shape", async () => {
+      // Fallback: pm.run() returns an unrecognized object
+      mockRun.mockResolvedValue({ something: "else" });
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual([]);
+    });
+
+    it("converts non-string array elements to strings", async () => {
+      // Path 1: pm.run() returns array with non-string elements
+      mockRun.mockResolvedValue([42, true, "hello"]);
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual(["42", "true", "hello"]);
+    });
+
+    it("returns empty array when getOutputs() returns a non-array", async () => {
+      // Path 2a edge case: getOutputs() returns something unexpected
+      mockRun.mockResolvedValue({ getOutputs: () => "not-an-array" });
+
+      const connection = createDevnodeConnection();
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+      });
+
+      expect(result.outputs).toEqual([]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // getMappingValue()
   // -------------------------------------------------------------------------
 
