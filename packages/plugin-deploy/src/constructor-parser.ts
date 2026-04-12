@@ -32,21 +32,22 @@ export interface ConstructorInfo {
 // Regex patterns
 // ---------------------------------------------------------------------------
 
-// Match @noupgrade annotation followed (possibly after whitespace/comments) by constructor
+// Match @noupgrade annotation followed (possibly after whitespace/comments)
+// by [async] constructor. Leo v3.5 uses `async constructor()`, v4 uses `constructor()`.
 const NOUPGRADE_RE =
-  /@noupgrade\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
+  /@noupgrade\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
-// Match @admin(address="...") followed by constructor
+// Match @admin(address="...") followed by [async] constructor
 const ADMIN_RE =
-  /@admin\s*\(\s*address\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
+  /@admin\s*\(\s*address\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
-// Match @checksum(mapping="...", key="...") followed by constructor
+// Match @checksum(mapping="...", key="...") followed by [async] constructor
 const CHECKSUM_RE =
-  /@checksum\s*\(\s*mapping\s*=\s*"([^"]+)"\s*,\s*key\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
+  /@checksum\s*\(\s*mapping\s*=\s*"([^"]+)"\s*,\s*key\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
-// Match @custom annotation followed by constructor
+// Match @custom annotation followed by [async] constructor
 const CUSTOM_RE =
-  /@custom\s+(?:\/\/[^\n]*\n\s*)*constructor\s*\(/;
+  /@custom\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
 // Aleo address format: aleo1 followed by 58 bech32 characters
 const ALEO_ADDRESS_RE = /^aleo1[a-z0-9]{58}$/;
