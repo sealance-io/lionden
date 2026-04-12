@@ -561,6 +561,27 @@ describe("parseAbi — function type normalization", () => {
     expect(abi.transitions[0]!.outputs[0]!.ty).toEqual({ Future: "token.aleo" });
   });
 
+  it("normalizes bare 'Future' string output to Future (v3.5 ABI format)", () => {
+    // Leo v3.5 emits "Future" as a bare string (like "Final" in v4),
+    // not as { Future: "program.aleo" }.
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "deposit.aleo",
+        transitions: [
+          {
+            name: "deposit",
+            is_async: true,
+            inputs: [
+              { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
+            ],
+            outputs: [{ ty: "Future", mode: "None" }],
+          },
+        ],
+      }),
+    );
+    expect(abi.transitions[0]!.outputs[0]!.ty).toEqual({ Future: "deposit.aleo" });
+  });
+
   it("normalizes nested Plaintext types in function inputs", () => {
     const abi = parseAbi(
       JSON.stringify({

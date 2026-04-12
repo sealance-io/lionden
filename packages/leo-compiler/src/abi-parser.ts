@@ -228,8 +228,8 @@ function normalizeStorageVariable(raw: unknown): StorageVariableABI {
  * - `{ Plaintext: ... }` → `{ Plaintext: normalized }`
  */
 function normalizeAleoType(raw: unknown, programId: string): AleoType {
-  // "Final" string → { Future: programId }
-  if (raw === "Final") return { Future: programId };
+  // "Final" (v4) or "Future" (v3.5) string → { Future: programId }
+  if (raw === "Final" || raw === "Future") return { Future: programId };
 
   // "DynamicRecord" — first-class variant
   if (raw === "DynamicRecord") return "DynamicRecord";

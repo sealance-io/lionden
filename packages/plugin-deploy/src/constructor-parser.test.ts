@@ -110,6 +110,58 @@ describe("parseConstructor", () => {
     expect(parseConstructor(source)).toEqual({ type: "noupgrade" });
   });
 
+  // Leo v3.5 uses `async constructor()` syntax (v4 drops the `async` keyword)
+  it("parses @noupgrade async constructor (v3.5 syntax)", () => {
+    const source = `
+      program hello.aleo {
+        @noupgrade
+        async constructor() {}
+      }
+    `;
+    expect(parseConstructor(source)).toEqual({ type: "noupgrade" });
+  });
+
+  it("parses @admin async constructor (v3.5 syntax)", () => {
+    const source = `
+      program token.aleo {
+        @admin(address="aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px")
+        async constructor() {}
+      }
+    `;
+    const result = parseConstructor(source);
+    expect(result).toEqual({
+      type: "admin",
+      adminAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    });
+  });
+
+  it("parses @checksum async constructor (v3.5 syntax)", () => {
+    const source = `
+      program dao_member.aleo {
+        @checksum(mapping="basic_voting.aleo::approved_checksum", key="true")
+        async constructor() {}
+      }
+    `;
+    const result = parseConstructor(source);
+    expect(result).toEqual({
+      type: "checksum",
+      checksumMapping: "basic_voting.aleo::approved_checksum",
+      checksumKey: "true",
+    });
+  });
+
+  it("parses @custom async constructor (v3.5 syntax)", () => {
+    const source = `
+      program dao.aleo {
+        @custom
+        async constructor() {
+          // custom upgrade logic
+        }
+      }
+    `;
+    expect(parseConstructor(source)).toEqual({ type: "custom" });
+  });
+
   it("ignores @noupgrade not followed by constructor", () => {
     const source = `
       // @noupgrade
