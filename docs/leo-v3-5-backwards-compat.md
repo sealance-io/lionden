@@ -537,4 +537,80 @@ LEO_V35=~/.leo/bin/leo-3.5 LEO_V4=$(which leo) \
 
 ## Probe 5: leo-v35-library
 
-_Pending_
+**Result: NEGATIVE — `lib.leo` is not supported by Leo v3.5.**
+
+### Purpose
+
+Test whether `lib.leo` libraries (pure functions outside a program block)
+work with the Leo v3.5 compiler. Libraries are used by LionDen's `examples/multi-program/`
+pattern, where `math_utils/lib.leo` provides shared helpers imported by multiple programs.
+
+### Setup
+
+- `math_helpers/lib.leo` — pure function library (`min`, `max`, `clamp`)
+- `calculator/main.leo` — v3.5 program importing `math_helpers` via slash-path calls
+
+### Execution
+
+```bash
+LEO_V35=~/.leo/bin/leo-3.5 LEO_V4=$(which leo) \
+  bash ./tmp/bug-hunts/leo-v35-library/run-probe.sh
+```
+
+### Observations
+
+1. **v3.5 `leo build` hardcodes `src/main.leo` as the entry point.** LionDen's source
+   discovery correctly discovers the library (`kind: "library"`, entry file `lib.leo`) and
+   the materializer copies it as `src/lib.leo` in the build package, but Leo v3.5's compiler
+   only looks for `src/main.leo`. Error: `ECMP0376000: Cannot read from the provided file
+   path '...src/main.leo': No such file or directory (os error 2)`.
+
+2. **`lib.leo` is outside the v3.5 compatibility scope.** The v3.5 CLI does not
+   support the `lib.leo` compilation unit shape that LionDen uses for shared
+   libraries. Leo v4 supports this package shape.
+
+3. **No transparent library-unit workaround is feasible.** Renaming `lib.leo` →
+   `main.leo` would not work because libraries have no `program <name>.aleo {}`
+   block, and Leo v3.5 would fail with a missing program declaration error.
+   Users can still manually inline or duplicate helper code into deployable
+   `main.leo` programs, but LionDen cannot preserve `lib.leo` as a shared
+   compilation unit under Leo v3.5.
+
+### Implication for v3.5 Support
+
+**v3.5 backwards compatibility is scoped to deployable programs only** — projects using
+`lib.leo` shared libraries must target Leo v4. This is a documentation-only constraint;
+no code changes are needed since LionDen will simply fail at compile time with a clear
+Leo CLI error if a v3.5 project includes a `lib.leo` unit. A friendlier early
+validation error would be optional polish.
+
+### Artifacts
+
+- Source: `tmp/bug-hunts/leo-v35-library/programs/{math_helpers/lib.leo,calculator/main.leo}`
+- Compile log: `tmp/bug-hunts/leo-v35-library/compile-v35.log`
+- Materialized package: `tmp/bug-hunts/leo-v35-library/artifacts/.build/math_helpers/`
+
+---
+
+## Summary of All Probes
+
+| Probe | Result | Probe-Discovered Behavioral Changes |
+|-------|--------|-------------------|
+| 1. leo-v35-deploy-v4-node | **PASS** | ABI parser `"Future"` normalization; constructor parser `(?:async\s+)?` regex |
+| 2. leo-v35-upgrade-v35-cli-v4-node | **PASS** | None beyond Probe 1 fixes |
+| 3. leo-v35-to-v4-upgrade | **PASS** | None beyond Probe 1 fixes |
+| 4. leo-v35-cross-program | **PASS** | None beyond Probe 1 fixes |
+| 5. leo-v35-library | **FAIL** | None — documentation-only constraint |
+
+**Probe-discovered compiler/deploy behavior fixes:** Two fixes from Probe 1 only:
+1. ABI parser: normalize bare `"Future"` string outputs to LionDen's internal future type (already handled — confirmed working)
+2. Constructor parser: `(?:async\s+)?` inserted before `constructor` in four regex patterns
+
+**Phase 1 implementation plumbing still required:** accept `leoVersion: "3.5.0"`,
+add/thread `leoBinary`, ensure managed devnodes pass the required consensus
+heights for constructor programs, and add focused unit coverage/docs. The probes
+used `leoVersion: "4.0.0"` plus PATH shims, so they prove compatibility lanes,
+not that first-class v3.5 configuration is already implemented.
+
+**Scope constraint:** v3.5 support is limited to deployable programs (`main.leo`). Projects
+using `lib.leo` shared libraries must target Leo v4.
