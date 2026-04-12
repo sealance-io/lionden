@@ -2,6 +2,7 @@ export type {
   NetworkConnection,
   NetworkManager,
   DevnodeAccount,
+  Signer,
   TransitionCallResult,
   ConfirmedTransaction,
   ExecuteOptions,
@@ -12,4 +13,4 @@ export { AleoConnection, type ConnectionOptions } from "./connection.js";
 export { NetworkManagerImpl } from "./network-manager.js";
 export { DevnodeManager } from "./devnode-manager.js";
 export { DEVNODE_ACCOUNTS, getDefaultAccount } from "./accounts.js";
-export { initSdk, createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights, type CreateSdkObjectsOptions } from "./sdk-adapter.js";
+export { initSdk, createSdkObjects, createSignerSdkObjects, checkDevnodeSdkSupport, initConsensusHeights, type CreateSdkObjectsOptions, type SignerSdkObjects, type CreateSignerSdkObjectsOptions } from "./sdk-adapter.js";

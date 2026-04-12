@@ -36,11 +36,15 @@ export class NetworkManagerImpl implements NetworkManager {
       );
     }
 
-    // Return existing connection if already connected
+    // Return existing connection if already connected and not closed
     const existing = this.connections.get(networkName);
     if (existing) {
-      this.activeConnection = existing;
-      return existing;
+      if (existing.closed) {
+        this.connections.delete(networkName);
+      } else {
+        this.activeConnection = existing;
+        return existing;
+      }
     }
 
     const connection = this.createConnection(networkName, networkConfig);

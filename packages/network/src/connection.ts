@@ -6,7 +6,7 @@
  */
 
 import type { AleoNetwork } from "@lionden/config";
-import type { SdkObjects } from "./sdk-adapter.js";
+import type { SdkObjects, SignerSdkObjects } from "./sdk-adapter.js";
 import type {
   NetworkConnection,
   TransitionCallResult,
@@ -37,6 +37,23 @@ export class AleoConnection implements NetworkConnection {
 
   private sdkObjects?: SdkObjects;
   private sdkObjectsPromise?: Promise<SdkObjects>;
+  private _closed = false;
+
+  /** Whether this connection has been permanently closed. */
+  get closed(): boolean {
+    return this._closed;
+  }
+
+  /** Throws if this connection has been closed. */
+  private assertOpen(): void {
+    if (this._closed) {
+      throw new Error("Connection is closed.");
+    }
+  }
+
+  // Per-signer SDK object cache — isolated PM + RecordProvider + Account per key
+  private signerSdkResolved = new Map<string, SignerSdkObjects>();
+  private signerSdkInflight = new Map<string, Promise<SignerSdkObjects>>();
 
   constructor(options: ConnectionOptions) {
     this.type = options.type;
@@ -49,6 +66,7 @@ export class AleoConnection implements NetworkConnection {
     // Devnode connections support block advancement
     if (this.type === "devnode") {
       this.advanceBlocks = async (count: number) => {
+        this.assertOpen();
         for (let i = 0; i < count; i++) {
           const url = `${this.endpoint}/${this.networkId}/block/create`;
           const response = await fetch(url, {
@@ -70,6 +88,7 @@ export class AleoConnection implements NetworkConnection {
 
   /** Lazy-init and cache SDK objects for this connection. */
   private async getSdkObjects(): Promise<SdkObjects> {
+    this.assertOpen();
     if (this.sdkObjects) return this.sdkObjects;
 
     if (!this.sdkObjectsPromise) {
@@ -81,6 +100,12 @@ export class AleoConnection implements NetworkConnection {
           privateKey: this.privateKey,
           apiKey: this.apiKey,
         });
+        // Guard: if close() was called while we were initializing,
+        // destroy the account and bail out.
+        if (this._closed) {
+          tryDestroyAccount(objects.account);
+          throw new Error("Connection closed during SDK initialization.");
+        }
         this.sdkObjects = objects;
         return objects;
       })();
@@ -89,7 +114,64 @@ export class AleoConnection implements NetworkConnection {
     return this.sdkObjectsPromise;
   }
 
+  /**
+   * Get the effective ProgramManager for an execution.
+   * Returns the default PM when no signer override is given,
+   * or a per-signer isolated PM otherwise.
+   */
+  private async getEffectivePm(
+    signerPrivateKey?: string,
+  ): Promise<{ pm: unknown; nc: unknown }> {
+    const defaultSdk = await this.getSdkObjects();
+
+    if (!signerPrivateKey || signerPrivateKey === this.privateKey) {
+      return { pm: defaultSdk.programManager, nc: defaultSdk.networkClient };
+    }
+
+    // Check resolved cache
+    const resolved = this.signerSdkResolved.get(signerPrivateKey);
+    if (resolved) {
+      return { pm: resolved.programManager, nc: defaultSdk.networkClient };
+    }
+
+    // Check inflight cache
+    let inflight = this.signerSdkInflight.get(signerPrivateKey);
+    if (!inflight) {
+      inflight = (async () => {
+        const { createSignerSdkObjects } = await import("./sdk-adapter.js");
+        const signerSdk = await createSignerSdkObjects({
+          privateKey: signerPrivateKey,
+          endpoint: this.endpoint,
+          network: this.networkId,
+          keyProvider: defaultSdk.keyProvider,
+          apiKey: this.apiKey,
+        });
+
+        // If close() was called while creating, destroy and bail
+        if (this._closed) {
+          tryDestroyAccount(signerSdk.account);
+          throw new Error("Connection closed during signer SDK initialization.");
+        }
+
+        this.signerSdkResolved.set(signerPrivateKey, signerSdk);
+        this.signerSdkInflight.delete(signerPrivateKey);
+        return signerSdk;
+      })();
+
+      this.signerSdkInflight.set(signerPrivateKey, inflight);
+
+      // Evict from inflight on rejection so retries work
+      inflight.catch(() => {
+        this.signerSdkInflight.delete(signerPrivateKey);
+      });
+    }
+
+    const signerSdk = await inflight;
+    return { pm: signerSdk.programManager, nc: defaultSdk.networkClient };
+  }
+
   async getBalance(address?: string): Promise<bigint> {
+    this.assertOpen();
     const addr = address ?? await this.getDefaultAddress();
     const value = await this.getMappingValue(
       "credits.aleo",
@@ -106,6 +188,7 @@ export class AleoConnection implements NetworkConnection {
     mappingName: string,
     key: string,
   ): Promise<string | null> {
+    this.assertOpen();
     const sdk = await this.getSdkObjects();
     const nc = sdk.networkClient as any;
 
@@ -135,6 +218,7 @@ export class AleoConnection implements NetworkConnection {
     args: string[],
     options?: ExecuteOptions,
   ): Promise<TransitionCallResult> {
+    this.assertOpen();
     if (this.type === "devnode") {
       const { checkDevnodeSdkSupport, initConsensusHeights } =
         await import("./sdk-adapter.js");
@@ -143,15 +227,19 @@ export class AleoConnection implements NetworkConnection {
       await initConsensusHeights();
     }
 
-    const sdk = await this.getSdkObjects();
-    const pm = sdk.programManager as any;
+    // Resolve the effective ProgramManager — uses a per-signer isolated PM
+    // when options.signer is provided, otherwise the connection's default.
+    const { pm: effectivePm, nc: effectiveNc } = await this.getEffectivePm(
+      options?.signer?.privateKey,
+    );
+    const pm = effectivePm as any;
     const mode = options?.mode ?? "onchain";
 
     if (mode === "local") {
       // Local execution — run without generating proofs.
       // SDK's run() expects the full program source code as first arg.
       // Fetch it from the node if we only have a program ID.
-      const nc = sdk.networkClient as any;
+      const nc = effectiveNc as any;
       const programSource: string = await nc.getProgram(programId);
       const result = await pm.run(
         programSource,
@@ -202,6 +290,7 @@ export class AleoConnection implements NetworkConnection {
     txId: string,
     timeout?: number,
   ): Promise<ConfirmedTransaction> {
+    this.assertOpen();
     const effectiveTimeout = timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
 
     // Poll the node REST API directly — the raw JSON response includes
@@ -251,6 +340,7 @@ export class AleoConnection implements NetworkConnection {
   advanceBlocks?: (count: number) => Promise<void>;
 
   async getBlockHeight(): Promise<number> {
+    this.assertOpen();
     const sdk = await this.getSdkObjects();
     const nc = sdk.networkClient as any;
     const height: number = await nc.getLatestHeight();
@@ -258,12 +348,35 @@ export class AleoConnection implements NetworkConnection {
   }
 
   async close(): Promise<void> {
+    this._closed = true;
+
+    // Destroy cached signer accounts
+    for (const signerSdk of this.signerSdkResolved.values()) {
+      tryDestroyAccount(signerSdk.account);
+    }
+    this.signerSdkResolved.clear();
+    this.signerSdkInflight.clear();
+
+    // Destroy default account if resolved
+    if (this.sdkObjects) {
+      tryDestroyAccount(this.sdkObjects.account);
+    } else if (this.sdkObjectsPromise) {
+      // Pending — await and destroy
+      try {
+        const sdk = await this.sdkObjectsPromise;
+        tryDestroyAccount(sdk.account);
+      } catch {
+        // Init failed — nothing to destroy
+      }
+    }
+
     this.sdkObjects = undefined;
     this.sdkObjectsPromise = undefined;
   }
 
   /** Broadcast a serialized transaction via the SDK network client. */
   async broadcastTransaction(transaction: unknown): Promise<string> {
+    this.assertOpen();
     const sdk = await this.getSdkObjects();
     const nc = sdk.networkClient as any;
     const txId: string = await nc.submitTransaction(transaction);
@@ -287,6 +400,17 @@ export class AleoConnection implements NetworkConnection {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Best-effort destroy of an SDK Account to release WASM private-key state. */
+function tryDestroyAccount(account: unknown): void {
+  if (account && typeof (account as any).destroy === "function") {
+    try {
+      (account as any).destroy();
+    } catch {
+      // Non-fatal — some SDK versions may not support destroy
+    }
+  }
 }
 
 function extractLocalExecutionOutputs(result: unknown): string[] {

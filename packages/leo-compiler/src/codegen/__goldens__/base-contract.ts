@@ -14,6 +14,8 @@ export interface CallOptions {
    * non-devnode connections.
    */
   prove?: boolean;
+  /** Override the signer for this call. */
+  signer?: { readonly privateKey: string; readonly address: string };
 }
 
 export interface LocalCallOptions extends Omit<CallOptions, "mode"> {
@@ -34,6 +36,7 @@ export interface TransitionCallResult {
 export abstract class BaseContract {
   protected readonly programId: string;
   protected lre: LionDenRuntimeEnvironment | null = null;
+  protected signer?: CallOptions["signer"];
 
   constructor(programId: string) {
     this.programId = programId;
@@ -43,6 +46,18 @@ export abstract class BaseContract {
   connect(lre: LionDenRuntimeEnvironment): this {
     this.lre = lre;
     return this;
+  }
+
+  /**
+   * Return a new contract instance bound to a specific signer.
+   * The returned instance shares the same LRE connection but all
+   * transitions will execute as the given signer.
+   */
+  withSigner(signer: CallOptions["signer"]): this {
+    const instance = Object.create(Object.getPrototypeOf(this));
+    Object.assign(instance, this);
+    instance.signer = signer;
+    return instance;
   }
 
   protected getLre(): LionDenRuntimeEnvironment {
@@ -75,7 +90,12 @@ export abstract class BaseContract {
       );
     }
 
-    return network.execute(this.programId, transitionName, args, options);
+    // Merge instance-level signer as default; per-call signer overrides.
+    const effectiveOptions = this.signer && !options.signer
+      ? { ...options, signer: this.signer }
+      : options;
+
+    return network.execute(this.programId, transitionName, args, effectiveOptions);
   }
 
   /**

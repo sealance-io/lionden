@@ -40,3 +40,6 @@ export {
   getAddresses,
   getAccountByAddress,
 } from "./accounts.js";
+
+// Signer type (re-export for convenience)
+export type { Signer } from "@lionden/network";

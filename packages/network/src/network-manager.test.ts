@@ -148,6 +148,17 @@ describe("NetworkManagerImpl", () => {
     );
   });
 
+  it("connect creates a fresh connection when cached one is closed", async () => {
+    const conn1 = await manager.connect("devnode");
+    await conn1.close();
+
+    const conn2 = await manager.connect("devnode");
+
+    expect(conn2).not.toBe(conn1);
+    expect(conn2.closed).toBe(false);
+    expect(conn2.type).toBe("devnode");
+  });
+
   it("devnode connection uses configured account when provided", async () => {
     const configWithAccount = {
       ...mockConfig,

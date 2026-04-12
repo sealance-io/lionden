@@ -146,11 +146,13 @@ export async function createSdkObjects(
     keyProvider.useCache(true);
     const recordProvider = new NetworkRecordProvider(account, networkClient);
 
-    // Create program manager
+    // Create program manager — pass networkClientOptions so the PM's internal
+    // network client inherits API key headers for authenticated endpoints.
     const programManager = new ProgramManager(
       opts.endpoint,
       keyProvider,
       recordProvider,
+      networkClientOptions,
     );
     programManager.setAccount(account);
 
@@ -162,6 +164,67 @@ export async function createSdkObjects(
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-signer SDK objects
+// ---------------------------------------------------------------------------
+
+/**
+ * A signer-specific subset of SDK objects. Shares the KeyProvider with the
+ * default connection but has its own Account, RecordProvider, and
+ * ProgramManager to avoid shared mutable state.
+ */
+export interface SignerSdkObjects {
+  account: InstanceType<SdkModule["Account"]>;
+  recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
+  programManager: InstanceType<SdkModule["ProgramManager"]>;
+}
+
+export interface CreateSignerSdkObjectsOptions {
+  privateKey: string;
+  endpoint: string;
+  network: AleoNetwork;
+  keyProvider: SdkObjects["keyProvider"];
+  apiKey?: string;
+}
+
+/**
+ * Create an isolated set of SDK objects for a specific signer.
+ * Reuses the shared KeyProvider (proving-key cache) but creates
+ * dedicated Account, RecordProvider, and ProgramManager instances.
+ */
+export async function createSignerSdkObjects(
+  opts: CreateSignerSdkObjectsOptions,
+): Promise<SignerSdkObjects> {
+  await initSdk();
+
+  const sdk = await loadSdkModule(opts.network);
+  const {
+    Account,
+    AleoNetworkClient,
+    NetworkRecordProvider,
+    ProgramManager,
+  } = sdk;
+
+  const account = new Account({ privateKey: opts.privateKey });
+
+  // Dedicated NetworkClient with API key for record lookups
+  const ncOptions = opts.apiKey
+    ? { headers: { Authorization: `Bearer ${opts.apiKey}` } }
+    : undefined;
+  const networkClient = new AleoNetworkClient(opts.endpoint, ncOptions);
+
+  const recordProvider = new NetworkRecordProvider(account, networkClient);
+  const programManager = new ProgramManager(
+    opts.endpoint,
+    opts.keyProvider,
+    recordProvider,
+    ncOptions,
+  );
+  programManager.setAccount(account);
+
+  return { account, recordProvider, programManager };
 }
 
 /**

@@ -8,11 +8,13 @@ const mockGetProgramMappingValue = vi.fn();
 const mockGetLatestHeight = vi.fn();
 const mockGetProgram = vi.fn();
 const mockCreateSdkObjects = vi.fn();
+const mockCreateSignerSdkObjects = vi.fn();
 const mockCheckDevnodeSdkSupport = vi.fn();
 const mockInitConsensusHeights = vi.fn();
 
 vi.mock("./sdk-adapter.js", () => ({
   createSdkObjects: mockCreateSdkObjects,
+  createSignerSdkObjects: mockCreateSignerSdkObjects,
   checkDevnodeSdkSupport: mockCheckDevnodeSdkSupport,
   initConsensusHeights: mockInitConsensusHeights,
 }));
@@ -686,19 +688,186 @@ describe("AleoConnection", () => {
   // -------------------------------------------------------------------------
 
   describe("close()", () => {
-    it("clears cached SDK objects so next call re-initializes", async () => {
+    it("rejects all public methods after close", async () => {
       const connection = createDevnodeConnection();
 
-      // First call initializes SDK
-      await connection.getBlockHeight();
-      expect(mockCreateSdkObjects).toHaveBeenCalledTimes(1);
-
-      // Close clears cache
       await connection.close();
 
-      // Next call re-initializes
-      await connection.getBlockHeight();
-      expect(mockCreateSdkObjects).toHaveBeenCalledTimes(2);
+      await expect(connection.getBlockHeight()).rejects.toThrow("Connection is closed.");
+      await expect(connection.getBalance("aleo1abc")).rejects.toThrow("Connection is closed.");
+      await expect(connection.getMappingValue("t.aleo", "m", "k")).rejects.toThrow("Connection is closed.");
+      await expect(connection.execute("t.aleo", "f", [])).rejects.toThrow("Connection is closed.");
+      await expect(connection.waitForConfirmation("at1x")).rejects.toThrow("Connection is closed.");
+      await expect(connection.broadcastTransaction("tx")).rejects.toThrow("Connection is closed.");
+      await expect(connection.advanceBlocks!(1)).rejects.toThrow("Connection is closed.");
+    });
+
+    it("calls account.destroy() on resolved signer accounts", async () => {
+      const signerDestroy = vi.fn();
+      const signerPm = { run: mockRun, execute: mockExecute, buildDevnodeExecutionTransaction: mockBuildDevnodeExec };
+      mockCreateSignerSdkObjects.mockResolvedValue({
+        account: { destroy: signerDestroy },
+        recordProvider: {},
+        programManager: signerPm,
+      });
+
+      const connection = createDevnodeConnection();
+
+      // Trigger signer SDK creation
+      await connection.execute("hello.aleo", "main", ["1u32"], {
+        signer: { privateKey: "APrivateKey1zkpSigner", address: "aleo1signer" },
+      });
+
+      await connection.close();
+      expect(signerDestroy).toHaveBeenCalledOnce();
+    });
+
+    it("calls account.destroy() on default account", async () => {
+      const defaultDestroy = vi.fn();
+      mockCreateSdkObjects.mockResolvedValue({
+        account: { destroy: defaultDestroy, address: () => ({ to_string: () => "aleo1d" }) },
+        networkClient: { getProgram: mockGetProgram, submitTransaction: mockSubmitTransaction, getProgramMappingValue: mockGetProgramMappingValue, getLatestHeight: mockGetLatestHeight },
+        programManager: { run: mockRun, execute: mockExecute, buildDevnodeExecutionTransaction: mockBuildDevnodeExec },
+        keyProvider: {},
+        recordProvider: {},
+      });
+
+      const connection = createDevnodeConnection();
+      await connection.getBlockHeight(); // force SDK init
+      await connection.close();
+      expect(defaultDestroy).toHaveBeenCalledOnce();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Signer switching
+  // -------------------------------------------------------------------------
+
+  describe("signer switching", () => {
+    const signerKey = "APrivateKey1zkpSignerKey";
+    const signerAddress = "aleo1signeraddr";
+
+    const signerRunMock = vi.fn();
+    const signerExecuteMock = vi.fn();
+    const signerBuildDevnodeMock = vi.fn();
+
+    beforeEach(() => {
+      signerRunMock.mockReset();
+      signerExecuteMock.mockResolvedValue("at1signer");
+      signerBuildDevnodeMock.mockResolvedValue("mock-signer-tx");
+
+      mockCreateSignerSdkObjects.mockResolvedValue({
+        account: { destroy: vi.fn() },
+        recordProvider: {},
+        programManager: {
+          run: signerRunMock,
+          execute: signerExecuteMock,
+          buildDevnodeExecutionTransaction: signerBuildDevnodeMock,
+        },
+      });
+    });
+
+    it("uses the signer's PM for on-chain execution, not the default", async () => {
+      const connection = createDevnodeConnection();
+
+      await connection.execute("hello.aleo", "main", ["1u32"], {
+        signer: { privateKey: signerKey, address: signerAddress },
+      });
+
+      // Signer PM was used
+      expect(signerBuildDevnodeMock).toHaveBeenCalledOnce();
+      // Default PM was not used
+      expect(mockBuildDevnodeExec).not.toHaveBeenCalled();
+    });
+
+    it("uses the signer's PM for local execution", async () => {
+      signerRunMock.mockResolvedValue({ getOutputs: () => ["99u32"] });
+
+      const connection = createDevnodeConnection();
+
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+        signer: { privateKey: signerKey, address: signerAddress },
+      });
+
+      expect(signerRunMock).toHaveBeenCalledOnce();
+      expect(mockRun).not.toHaveBeenCalled();
+      expect(result.outputs).toEqual(["99u32"]);
+    });
+
+    it("uses default PM when no signer override is given", async () => {
+      const connection = createDevnodeConnection();
+
+      await connection.execute("hello.aleo", "main", ["1u32"]);
+
+      expect(mockBuildDevnodeExec).toHaveBeenCalledOnce();
+      expect(signerBuildDevnodeMock).not.toHaveBeenCalled();
+    });
+
+    it("uses default PM when signer key matches connection key", async () => {
+      const connection = createDevnodeConnection();
+      const defaultKey = "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
+
+      await connection.execute("hello.aleo", "main", ["1u32"], {
+        signer: { privateKey: defaultKey, address: "aleo1default" },
+      });
+
+      expect(mockBuildDevnodeExec).toHaveBeenCalledOnce();
+      expect(mockCreateSignerSdkObjects).not.toHaveBeenCalled();
+    });
+
+    it("caches signer SDK objects across calls with the same key", async () => {
+      const connection = createDevnodeConnection();
+      const signer = { privateKey: signerKey, address: signerAddress };
+
+      await connection.execute("hello.aleo", "main", ["1u32"], { signer });
+      await connection.execute("hello.aleo", "main", ["2u32"], { signer });
+
+      expect(mockCreateSignerSdkObjects).toHaveBeenCalledOnce();
+      expect(signerBuildDevnodeMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("passes keyProvider and apiKey to createSignerSdkObjects", async () => {
+      const connection = createDevnodeConnection({ apiKey: "my-api-key" });
+
+      await connection.execute("hello.aleo", "main", ["1u32"], {
+        signer: { privateKey: signerKey, address: signerAddress },
+      });
+
+      expect(mockCreateSignerSdkObjects).toHaveBeenCalledWith({
+        privateKey: signerKey,
+        endpoint: "http://127.0.0.1:3030",
+        network: "testnet",
+        keyProvider: {},
+        apiKey: "my-api-key",
+      });
+    });
+
+    it("evicts rejected signer creation from cache so retries work", async () => {
+      mockCreateSignerSdkObjects
+        .mockRejectedValueOnce(new Error("WASM init failed"))
+        .mockResolvedValueOnce({
+          account: { destroy: vi.fn() },
+          recordProvider: {},
+          programManager: {
+            run: signerRunMock,
+            execute: signerExecuteMock,
+            buildDevnodeExecutionTransaction: signerBuildDevnodeMock,
+          },
+        });
+
+      const connection = createDevnodeConnection();
+      const signer = { privateKey: signerKey, address: signerAddress };
+
+      // First call fails
+      await expect(
+        connection.execute("hello.aleo", "main", ["1u32"], { signer }),
+      ).rejects.toThrow("WASM init failed");
+
+      // Retry succeeds
+      await connection.execute("hello.aleo", "main", ["1u32"], { signer });
+      expect(mockCreateSignerSdkObjects).toHaveBeenCalledTimes(2);
+      expect(signerBuildDevnodeMock).toHaveBeenCalledOnce();
     });
   });
 });

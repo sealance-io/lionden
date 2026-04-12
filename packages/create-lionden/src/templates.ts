@@ -274,41 +274,46 @@ afterAll(async () => {
 
 describe("token program", () => {
   it("mints public tokens", async () => {
-    const receiver = RECEIVER;
-    await ctx!.execute("token.aleo", "mint_public", [receiver, "1000u64"]);
+    await ctx!.execute("token.aleo", "mint_public", [RECEIVER, "1000u64"]);
 
     await assertMappingValue(
       ctx!.connection,
       "token.aleo",
       "balances",
-      receiver,
+      RECEIVER,
       "1000u64",
     );
   });
 
-  it("transfers public tokens", async () => {
-    // Use account-0 (sender) and a stable external receiver address.
-    const sender = ctx!.accounts[0]!.address;
-    const receiver = RECEIVER;
+  it("transfers public tokens from a different signer", async () => {
+    const account1 = ctx!.accounts[1]!;
+    const receiver = ctx!.accounts[2]!.address;
 
-    await ctx!.execute("token.aleo", "mint_public", [sender, "2000u64"]);
-    await ctx!.execute("token.aleo", "transfer_public", [receiver, "500u64"]);
+    // Mint tokens to account-1
+    await ctx!.execute("token.aleo", "mint_public", [account1.address, "5000u64"]);
 
+    // transfer_public reads self.signer to determine the sender.
+    // Using options.signer switches the transaction signer to account-1.
+    await ctx!.execute("token.aleo", "transfer_public", [receiver, "2000u64"], {
+      signer: account1,
+    });
+
+    // Verify account-1's balance decreased (5000 - 2000 = 3000)
     await assertMappingValue(
       ctx!.connection,
       "token.aleo",
       "balances",
-      receiver,
-      "500u64",
+      account1.address,
+      "3000u64",
     );
   });
 
   it("mints private tokens", async () => {
-    const receiver = ctx.accounts[1]!.address;
-    const result = await ctx.execute("token.aleo", "mint_private", [
+    const receiver = ctx!.accounts[1]!.address;
+    const result = await ctx!.execute("token.aleo", "mint_private", [
       receiver,
       "100u64",
-    ]);
+    ], { mode: "local" });
     expect(result.outputs).toHaveLength(1);
   });
 });

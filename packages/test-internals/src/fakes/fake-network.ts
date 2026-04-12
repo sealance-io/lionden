@@ -38,6 +38,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   readonly endpoint: string;
   readonly networkId: AleoNetwork;
   readonly privateKey?: string;
+  closed = false;
 
   /** Recorded method calls for assertions. */
   readonly calls: FakeCall[] = [];
@@ -202,6 +203,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   }
 
   async close(): Promise<void> {
+    this.closed = true;
     this.calls.push({ method: "close", args: [], timestamp: Date.now() });
   }
 }
@@ -241,6 +243,9 @@ export class FakeNetworkManager implements NetworkManager {
         `Network "${networkName}" not found in config. Available: ${available || "none"}`,
       );
     }
+    // Reset closed flag so reconnecting after disconnectAll() works,
+    // matching production behavior where the manager creates a fresh connection.
+    this.connection.closed = false;
     this.activeConnection = this.connection;
     return this.connection;
   }

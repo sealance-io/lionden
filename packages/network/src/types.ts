@@ -20,11 +20,26 @@ export interface ConfirmedTransaction {
   readonly status: "accepted" | "rejected";
 }
 
+// ---------------------------------------------------------------------------
+// Signer
+// ---------------------------------------------------------------------------
+
+/**
+ * A signer that can authorize transactions.
+ * DevnodeAccount satisfies this interface structurally.
+ */
+export interface Signer {
+  readonly privateKey: string;
+  readonly address: string;
+}
+
 /** Options for transition execution. */
 export interface ExecuteOptions {
   mode?: "local" | "onchain";
   fee?: number;
   privateFee?: boolean;
+  /** Override the signer for this execution. */
+  signer?: Signer;
   /**
    * Generate real proofs during on-chain execution.
    * When false (default), devnode connections use the fast-path builder
@@ -91,6 +106,9 @@ export interface NetworkConnection {
 
   /** Broadcast a serialized transaction to the network. Returns the transaction ID. */
   broadcastTransaction(transaction: unknown): Promise<string>;
+
+  /** Whether this connection has been permanently closed. */
+  readonly closed: boolean;
 
   /** Close this connection and release resources. */
   close(): Promise<void>;

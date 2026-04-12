@@ -7,7 +7,7 @@
  */
 
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { NetworkConnection, NetworkManager, DevnodeAccount } from "@lionden/network";
+import type { NetworkConnection, NetworkManager, DevnodeAccount, Signer } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import type { ManagedDevnode } from "./devnode-lifecycle.js";
 import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
@@ -66,6 +66,8 @@ export interface DeployResult {
 export interface ExecuteOptions {
   mode?: "local" | "onchain";
   fee?: number;
+  /** Override the signer for this execution. */
+  signer?: Signer;
 }
 
 export interface ExecuteResult {
@@ -150,6 +152,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         mode: execOpts?.mode ?? "onchain",
         fee: execOpts?.fee,
         prove,
+        signer: execOpts?.signer,
       });
       return { outputs: result.outputs, txId: result.txId };
     },

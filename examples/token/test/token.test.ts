@@ -6,6 +6,7 @@ import {
   type TestContext,
   assertMappingValue,
 } from "@lionden/testing";
+import { createToken } from "../typechain/index.js";
 
 const RECEIVERS = {
   publicMint: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5",
@@ -56,16 +57,30 @@ describe("token program", () => {
   });
 
   describe("transfer_public", () => {
-    it("transfers tokens between accounts", async () => {
-      // Use account-0 as signer and a stable external receiver address.
-      const sender = ctx!.accounts[0]!.address;
+    it("transfers from a different signer via options.signer", async () => {
+      const account1 = ctx!.accounts[1]!;
       const receiver = RECEIVERS.publicTransfer;
 
-      // Mint initial tokens for sender
-      await ctx!.execute("token.aleo", "mint_public", [sender, "2000u64"]);
+      // Mint tokens to account-1 (using default signer account-0)
+      await ctx!.execute("token.aleo", "mint_public", [account1.address, "5000u64"]);
 
-      // Transfer some to receiver
-      await ctx!.execute("token.aleo", "transfer_public", [receiver, "800u64"]);
+      // transfer_public reads self.signer (token.aleo:24) to determine sender.
+      // Using options.signer switches the signer to account-1.
+      // If signer switching is broken, account-0 would be the sender and the
+      // finalize assert(sender_balance >= amount) would fail or debit the
+      // wrong account.
+      await ctx!.execute("token.aleo", "transfer_public", [receiver, "2000u64"], {
+        signer: account1,
+      });
+
+      // Verify account-1's balance decreased (5000 - 2000 = 3000)
+      await assertMappingValue(
+        ctx!.connection,
+        "token.aleo",
+        "balances",
+        account1.address,
+        "3000u64",
+      );
 
       // Verify receiver got tokens
       await assertMappingValue(
@@ -73,8 +88,40 @@ describe("token program", () => {
         "token.aleo",
         "balances",
         receiver,
-        "800u64",
+        "2000u64",
       );
+    });
+  });
+
+  describe("withSigner (generated wrapper)", () => {
+    it("transfers via contract.withSigner() using generated bindings", async () => {
+      const account1 = ctx!.accounts[1]!;
+      const account2 = ctx!.accounts[2]!;
+
+      // Use the generated Token wrapper with withSigner()
+      const token = createToken().connect(ctx!.lre);
+
+      // Capture balances before to make assertions delta-based and order-independent
+      const balance1Before = await token.getBalances(account1.address) ?? 0n;
+      const balance2Before = await token.getBalances(account2.address) ?? 0n;
+
+      // Mint tokens to account-1 so this test is self-contained
+      await token.mint_publicBroadcast(account1.address, 5000n);
+
+      // transfer_public reads self.signer (token.aleo:24) to determine sender.
+      // If signer switching is broken, account-0 would be the sender and the
+      // finalize assert(sender_balance >= amount) would fail or debit the
+      // wrong account.
+      const tokenAsAccount1 = token.withSigner(account1);
+      await tokenAsAccount1.transfer_publicBroadcast(account2.address, 2000n);
+
+      // Assert account-1's balance: +5000 (mint) -2000 (transfer) = +3000 delta
+      const balance1 = await token.getBalances(account1.address);
+      expect(balance1).toBe(balance1Before + 3000n);
+
+      // Assert account-2's balance: +2000 delta
+      const balance2 = await token.getBalances(account2.address);
+      expect(balance2).toBe(balance2Before + 2000n);
     });
   });
 

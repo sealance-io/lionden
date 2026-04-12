@@ -5,7 +5,7 @@
  * this test generates fresh output via generateBaseContract(), transpiles
  * it to JS, writes to a temp .mjs file, and dynamically imports it.
  */
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -255,6 +255,92 @@ describe("BaseContract runtime", () => {
       await expect(
         contract.testQueryMapping("balances", "aleo1abc"),
       ).rejects.toThrow("Network not available on LRE");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // withSigner()
+  // -------------------------------------------------------------------------
+
+  describe("withSigner()", () => {
+    const signer1 = { privateKey: "key1", address: "aleo1signer1" };
+    const signer2 = { privateKey: "key2", address: "aleo1signer2" };
+
+    it("returns a new instance that does not mutate the original", () => {
+      const original = createTestContract("hello.aleo");
+      original.connect(mockLre());
+
+      const withSig = original.withSigner(signer1);
+
+      expect(withSig).not.toBe(original);
+      expect((withSig as any).signer).toEqual(signer1);
+      expect((original as any).signer).toBeUndefined();
+    });
+
+    it("preserves LRE connection on the cloned instance", async () => {
+      const executeSpy = vi.fn().mockResolvedValue({ outputs: [], txId: "at1ok" });
+      const contract = createTestContract("hello.aleo");
+      contract.connect(mockLre({ execute: executeSpy }));
+
+      const withSig = contract.withSigner(signer1);
+      await withSig.testBroadcast("main", ["1u32"]);
+
+      expect(executeSpy).toHaveBeenCalledOnce();
+    });
+
+    it("merges instance signer as default in execute()", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      const withSig = contract.withSigner(signer1);
+      await withSig.testExecute("main", ["1u32"], { fee: 100 });
+
+      expect(spy.calls[0]![3]).toEqual({ fee: 100, signer: signer1 });
+    });
+
+    it("per-call signer overrides instance signer", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      const withSig = contract.withSigner(signer1);
+      await withSig.testExecute("main", ["1u32"], { signer: signer2 });
+
+      // Per-call signer2 should win
+      expect(spy.calls[0]![3].signer).toEqual(signer2);
+    });
+
+    it("does not inject signer when no instance signer is set", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      await contract.testExecute("main", ["1u32"], { fee: 50 });
+
+      expect(spy.calls[0]![3]).toEqual({ fee: 50 });
+      expect(spy.calls[0]![3].signer).toBeUndefined();
     });
   });
 

@@ -17,25 +17,25 @@ export const DEVNODE_ACCOUNTS: readonly DevnodeAccount[] = [
   {
     name: "account-1",
     privateKey:
-      "APrivateKey1zkp2oJEHp9DFAoQhLMZ8v8nUFvYEhyB8WLQ3NKeSDgA8vDE",
+      "APrivateKey1zkp2RWGDcde3efb89rjhME1VYA8QMxcxep5DShNBR6n8Yjh",
     address:
-      "aleo1s3ws5tra87fjycnjrwsjcrnw2qz7vrcqa96naxdzj0tpv3qvqugqxk6rn0",
+      "aleo1s3ws5tra87fjycnjrwsjcrnw2qxr8jfqqdugnf0xzqqw29q9m5pqem2u4t",
     initialBalance: 23_437_500_000_000n,
   },
   {
     name: "account-2",
     privateKey:
-      "APrivateKey1zkp2NWR6o3UvpFCyFBXJTKszQ7v7JoqAmeJLe3RZCGsYj4V",
+      "APrivateKey1zkp2GUmKbVsuc1NSj28pa1WTQuZaK5f1DQJAT6vPcHyWokG",
     address:
-      "aleo15g9c69urtdhvfml0z22l6c3hmk37mnwlhgr3pyd2dp0ry305v5ys382l8y",
+      "aleo1ashyu96tjwe63u0gtnnv8z5lhapdu4l5pjsl2kha7fv7hvz2eqxs5dz0rg",
     initialBalance: 23_437_500_000_000n,
   },
   {
     name: "account-3",
     privateKey:
-      "APrivateKey1zkpBg3hzYdTJHzNEE5x7zhT5WUqN4e6ciMiyiZs5Fq3Y2Mx",
+      "APrivateKey1zkpBjpEgLo4arVUkQmcLdKQMiAKGaHAQVVwmF8HQby8vdYs",
     address:
-      "aleo1ashyu96tjwe63u0gtnnhsvlkynxe37en4kw8r2dn6w5e2c42z58qhwa4df",
+      "aleo12ux3gdauck0v60westgcpqj7v8rrcr3v346e4jtq04q7kkt22czsh808v2",
     initialBalance: 23_437_500_000_000n,
   },
 ] as const;
