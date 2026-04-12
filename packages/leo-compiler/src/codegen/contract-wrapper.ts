@@ -166,9 +166,10 @@ export abstract class BaseContract {
   // Leo string → JS value parsers
   // ---------------------------------------------------------------------------
 
-  /** Strip a Leo type suffix and return the raw string. "100u64" → "100" */
+  /** Strip a Leo type suffix (and optional visibility mode) and return the raw value.
+   *  "100u64" → "100", "2u64.private" → "2", "aleo1abcaddress.public" → "aleo1abc" */
   static stripSuffix(value: string): string {
-    return value.replace(/(?:u(?:8|16|32|64|128)|i(?:8|16|32|64|128)|field|group|scalar|bool|address)$/i, "");
+    return value.replace(/(?:u(?:8|16|32|64|128)|i(?:8|16|32|64|128)|field|group|scalar|bool|address)(?:\\.(?:public|private))?$/i, "");
   }
 
   /** Parse a Leo boolean string. "true" → true */

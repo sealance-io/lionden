@@ -188,7 +188,7 @@ describe("generateBindings", () => {
 
   it("generates contract class extending BaseContract", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("export class Token extends BaseContract");
+    expect(output).toContain("export class TokenContract extends BaseContract");
     expect(output).toContain('super("token.aleo")');
   });
 
@@ -264,7 +264,38 @@ describe("generateBindings", () => {
 
   it("generates factory function", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("export function createToken(): Token");
+    expect(output).toContain("export function createTokenContract(): TokenContract");
+  });
+
+  it("resolves second-order class name collision", () => {
+    // program "token.aleo" → base class "Token", record "Token" → first suffix "TokenContract",
+    // struct "TokenContract" → second suffix "TokenContractContract"
+    const abi: ProgramABI = {
+      program: "token.aleo",
+      structs: [
+        {
+          path: ["TokenContract"],
+          fields: [{ name: "value", ty: { Primitive: { UInt: "U64" } } }],
+        },
+      ],
+      records: [
+        {
+          path: ["Token"],
+          fields: [
+            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" as const },
+          ],
+        },
+      ],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain("export class TokenContractContract extends BaseContract");
+    expect(output).toContain("export function createTokenContractContract(): TokenContractContract");
+    // Interfaces must still use the original names
+    expect(output).toContain("export interface Token {");
+    expect(output).toContain("export interface TokenContract {");
   });
 
   it("includes auto-generated header", () => {

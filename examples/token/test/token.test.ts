@@ -6,7 +6,7 @@ import {
   type TestContext,
   assertMappingValue,
 } from "@lionden/testing";
-import { createToken } from "../typechain/index.js";
+import { createTokenContract } from "../typechain/index.js";
 
 const RECEIVERS = {
   publicMint: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5",
@@ -99,7 +99,7 @@ describe("token program", () => {
       const account2 = ctx!.accounts[2]!;
 
       // Use the generated Token wrapper with withSigner()
-      const token = createToken().connect(ctx!.lre);
+      const token = createTokenContract().connect(ctx!.lre);
 
       // Capture balances before to make assertions delta-based and order-independent
       const balance1Before = await token.getBalances(account1.address) ?? 0n;

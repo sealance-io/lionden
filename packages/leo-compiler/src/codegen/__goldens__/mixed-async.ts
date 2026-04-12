@@ -31,10 +31,10 @@ export function deserializeToken(value: string): Token {
 }
 
 // ---------------------------------------------------------------------------
-// Token contract wrapper
+// TokenContract contract wrapper
 // ---------------------------------------------------------------------------
 
-export class Token extends BaseContract {
+export class TokenContract extends BaseContract {
   constructor() {
     super("token.aleo");
   }
@@ -136,6 +136,6 @@ export class Token extends BaseContract {
   }
 }
 
-export function createToken(): Token {
-  return new Token();
+export function createTokenContract(): TokenContract {
+  return new TokenContract();
 }

@@ -366,8 +366,17 @@ describe("BaseContract runtime", () => {
         ["789scalar", "789"],
         ["truebool", "true"],
         ["aleo1abcaddress", "aleo1abc"],
+        // Visibility suffixes (SDK record fields)
+        ["2u64.private", "2"],
+        ["100u128.public", "100"],
+        ["aleo1abcaddress.private", "aleo1abc"],
       ])("strips suffix from %s → %s", (input, expected) => {
         expect(BaseContract.stripSuffix(input)).toBe(expected);
+      });
+
+      it("does not strip non-dot visibility-like suffixes", () => {
+        // "xprivate" should NOT be treated as a visibility suffix
+        expect(BaseContract.stripSuffix("2u64xprivate")).toBe("2u64xprivate");
       });
     });
 

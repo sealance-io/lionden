@@ -88,12 +88,6 @@ const FIXTURE_PAIRS: [string, string][] = [
   ["edge-dex.abi.json", "dex.ts"],
 ];
 
-// Fixtures where a record/struct name collides with the class name derived from
-// the program ID (e.g., "token.aleo" → class Token vs record Token). This is a
-// known codegen limitation — the generated code works at runtime but fails the
-// strict TypeScript compilation check because the class and interface share a name.
-const TYPECHECK_SKIP = new Set(["token.ts", "mixed-async.ts"]);
-
 describe("codegen goldens", () => {
   for (const [fixtureFile, goldenFile] of FIXTURE_PAIRS) {
     it(`generates expected output for ${fixtureFile}`, async () => {
@@ -115,10 +109,6 @@ describe("codegen goldens", () => {
 
 describe("codegen golden TypeScript validity", () => {
   for (const [fixtureFile, goldenFile] of FIXTURE_PAIRS) {
-    if (TYPECHECK_SKIP.has(goldenFile)) {
-      it.skip(`${goldenFile} typechecks (skipped: record/class name collision)`, () => {});
-      continue;
-    }
     it(`${goldenFile} typechecks`, () => {
       const abi = loadAbi(fixtureFile);
       const output = generateBindings(abi);
