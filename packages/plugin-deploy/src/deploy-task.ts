@@ -22,6 +22,7 @@ import {
 import {
   parseConstructor,
   isValidAleoAddress,
+  extractConstructorFingerprint,
   type ConstructorInfo,
 } from "./constructor-parser.js";
 import { writeDeployManifest, type DeployManifest } from "./deploy-manifest.js";
@@ -326,6 +327,11 @@ async function deploySingleProgram(
     constructorType: constructor!.type,
     constructorAdmin:
       constructor!.type === "admin" ? (constructor!.adminAddress ?? null) : null,
+    checksumMapping:
+      constructor!.type === "checksum" ? (constructor!.checksumMapping ?? null) : null,
+    checksumKey:
+      constructor!.type === "checksum" ? (constructor!.checksumKey ?? null) : null,
+    constructorFingerprint: extractConstructorFingerprint(aleoSource, constructor!.type),
     deployedAt: new Date().toISOString(),
   };
 
@@ -347,6 +353,7 @@ async function deploySingleProgram(
  * Validate the constructor annotation. Per ARC-0006:
  * - ALL deployments MUST have a constructor — hard error if missing
  * - @admin addresses must be valid Aleo addresses
+ * - @checksum must specify a mapping reference and key
  * - @custom triggers a warning about on-chain evaluation
  */
 export function validateConstructor(
@@ -361,6 +368,8 @@ export function validateConstructor(
         `  @noupgrade\n` +
         `  constructor() { ... }\n\n` +
         `  @admin(address="aleo1...")\n` +
+        `  constructor() { ... }\n\n` +
+        `  @checksum(mapping="prog.aleo::map_name", key="value")\n` +
         `  constructor() { ... }\n\n` +
         `  @custom\n` +
         `  constructor() { ... }\n`,
@@ -379,6 +388,21 @@ export function validateConstructor(
         `Program "${programId}" has @admin constructor with invalid address: ` +
           `"${constructor.adminAddress}"\n` +
           `Aleo addresses must start with "aleo1" and be 63 characters long.`,
+      );
+    }
+  }
+
+  if (constructor.type === "checksum") {
+    if (!constructor.checksumMapping) {
+      throw new DeployError(
+        `Program "${programId}" has @checksum constructor but no mapping specified.\n` +
+          `Usage: @checksum(mapping="prog.aleo::map_name", key="value")`,
+      );
+    }
+    if (!constructor.checksumKey) {
+      throw new DeployError(
+        `Program "${programId}" has @checksum constructor but no key specified.\n` +
+          `Usage: @checksum(mapping="prog.aleo::map_name", key="value")`,
       );
     }
   }

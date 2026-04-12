@@ -1,12 +1,12 @@
 /**
  * ABI compatibility checker for program upgrades.
  *
- * Rules (per ARC-0006):
+ * Rules (per Leo v4 / ARC-0006 upgrade spec):
  * - Mappings can be ADDED but not deleted or modified (key/value types must match)
  * - Structs can be ADDED but not deleted or modified (fields must match exactly)
  * - Records can be ADDED but not deleted or modified (fields must match exactly)
- * - Transitions can have logic modified but cannot be deleted
- *   (signature changes are allowed — new inputs/outputs are fine)
+ * - Transitions can be ADDED; existing transitions cannot be deleted and their
+ *   input/output signatures must remain unchanged (logic-only changes are fine)
  * - Storage variables can be ADDED but not deleted or modified
  */
 
@@ -19,6 +19,9 @@ import type {
   StorageVariableABI,
   StorageType,
   PlaintextType,
+  AleoType,
+  AbiInput,
+  AbiOutput,
   StructFieldABI,
   RecordFieldABI,
 } from "@lionden/leo-compiler";
@@ -36,6 +39,7 @@ export interface AbiViolation {
     | "record_deleted"
     | "record_modified"
     | "transition_deleted"
+    | "transition_modified"
     | "storage_variable_deleted"
     | "storage_variable_modified";
   readonly name: string;
@@ -90,8 +94,15 @@ export function checkAbiCompatibility(
     (r) => r.path.join("::"),
   );
 
-  // Check transitions (can only be deleted, not modified in signature)
-  checkTransitions(oldAbi.transitions, newAbi.transitions, violations);
+  // Check transitions (can be added; cannot be deleted or have signature modified)
+  checkNamedItems(
+    oldAbi.transitions,
+    newAbi.transitions,
+    "transition",
+    compareTransitionSignatures,
+    violations,
+    (t) => t.name,
+  );
 
   // Check storage variables
   checkNamedItems(
@@ -148,23 +159,34 @@ function checkNamedItems<T>(
   }
 }
 
-function checkTransitions(
-  oldTransitions: readonly TransitionABI[],
-  newTransitions: readonly TransitionABI[],
-  violations: AbiViolation[],
-): void {
-  const newMap = new Map(newTransitions.map((t) => [t.name, t]));
-
-  for (const oldT of oldTransitions) {
-    if (!newMap.has(oldT.name)) {
-      violations.push({
-        kind: "transition_deleted",
-        name: oldT.name,
-        detail: `transition "${oldT.name}" was deleted`,
-      });
-    }
-    // Transitions CAN have their signature/logic modified — no further checks
+function compareTransitionSignatures(
+  oldT: TransitionABI,
+  newT: TransitionABI,
+): string | null {
+  if (oldT.is_async !== newT.is_async) {
+    return `transition "${oldT.name}" async mode changed (${oldT.is_async} -> ${newT.is_async})`;
   }
+  if (oldT.inputs.length !== newT.inputs.length) {
+    return `transition "${oldT.name}" input count changed (${oldT.inputs.length} -> ${newT.inputs.length})`;
+  }
+  if (oldT.outputs.length !== newT.outputs.length) {
+    return `transition "${oldT.name}" output count changed (${oldT.outputs.length} -> ${newT.outputs.length})`;
+  }
+  for (let i = 0; i < oldT.inputs.length; i++) {
+    const oldIn = oldT.inputs[i]!;
+    const newIn = newT.inputs[i]!;
+    if (!transitionInputsEqual(oldIn, newIn)) {
+      return `transition "${oldT.name}" input "${oldIn.name}" changed`;
+    }
+  }
+  for (let i = 0; i < oldT.outputs.length; i++) {
+    const oldOut = oldT.outputs[i]!;
+    const newOut = newT.outputs[i]!;
+    if (!transitionOutputsEqual(oldOut, newOut)) {
+      return `transition "${oldT.name}" output[${i}] changed`;
+    }
+  }
+  return null;
 }
 
 function compareMappings(
@@ -252,4 +274,16 @@ function recordFieldsEqual(a: RecordFieldABI, b: RecordFieldABI): boolean {
     a.mode === b.mode &&
     plaintextTypesEqual(a.ty, b.ty)
   );
+}
+
+function aleoTypesEqual(a: AleoType, b: AleoType): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function transitionInputsEqual(a: AbiInput, b: AbiInput): boolean {
+  return a.name === b.name && a.mode === b.mode && aleoTypesEqual(a.ty, b.ty);
+}
+
+function transitionOutputsEqual(a: AbiOutput, b: AbiOutput): boolean {
+  return a.mode === b.mode && aleoTypesEqual(a.ty, b.ty);
 }

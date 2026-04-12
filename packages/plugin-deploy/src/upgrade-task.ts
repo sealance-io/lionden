@@ -18,7 +18,10 @@ import {
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
 import { readDeployManifest, writeDeployManifest, type DeployManifest } from "./deploy-manifest.js";
 import { checkAbiCompatibility, type AbiViolation } from "./abi-compat.js";
-import { parseConstructor } from "./constructor-parser.js";
+import {
+  parseConstructor,
+  extractConstructorFingerprint,
+} from "./constructor-parser.js";
 import { DeployError, readLeoSourcesFromDir } from "./deploy-task.js";
 
 // ---------------------------------------------------------------------------
@@ -87,8 +90,26 @@ export async function upgradeAction(
   // 2. Validate constructor permits upgrade
   validateUpgradePermission(manifest, programId);
 
-  // 3. Read old ABI BEFORE recompilation (Fix 1: compilation overwrites abi.json)
+  // 3. Read old ABI and old compiled source BEFORE recompilation
+  //    (compilation overwrites both abi.json and main.aleo on disk)
   const oldAbi = readOldAbi(artifactsDir, programId);
+  if (!oldAbi) {
+    throw new DeployError(
+      `No ABI artifact found for "${programId}" at ` +
+        `${path.join(artifactsDir, programId, "abi.json")}. ` +
+        `Cannot verify upgrade compatibility without the deployed ABI. ` +
+        `Re-compile the deployed version first, or re-deploy.`,
+    );
+  }
+  const oldAleoSource = readOldAleoSource(artifactsDir, programId);
+  if (!oldAleoSource && manifest.constructorFingerprint === undefined) {
+    throw new DeployError(
+      `No compiled source artifact found for "${programId}" at ` +
+        `${path.join(artifactsDir, programId, "main.aleo")}. ` +
+        `Cannot verify constructor immutability without the deployed source. ` +
+        `Re-compile the deployed version first, or re-deploy.`,
+    );
+  }
 
   // 4. Compile the updated program
   await lre.tasks.run("compile", { program: options.program });
@@ -102,11 +123,17 @@ export async function upgradeAction(
   }
 
   // 6. Check ABI compatibility (old vs new)
-  if (oldAbi) {
-    const compat = checkAbiCompatibility(oldAbi, newAbi);
-    if (!compat.compatible) {
-      throw new UpgradeCompatibilityError(programId, compat.violations);
-    }
+  const compat = checkAbiCompatibility(oldAbi, newAbi);
+  if (!compat.compatible) {
+    throw new UpgradeCompatibilityError(programId, compat.violations);
+  }
+
+  // 6b. Read compiled Aleo source (needed for constructor fingerprint)
+  const aleoSource = lre.artifacts.getAleoSource(programId);
+  if (!aleoSource) {
+    throw new DeployError(
+      `No compiled .aleo source found for "${programId}".`,
+    );
   }
 
   // 7. Discover source directory for constructor parsing (Fix 2)
@@ -127,6 +154,65 @@ export async function upgradeAction(
     );
   }
 
+  // 7b. Validate constructor hasn't changed (immutable per ARC-0006)
+  if (newConstructor.type !== manifest.constructorType) {
+    throw new DeployError(
+      `Program "${programId}" constructor type changed from ` +
+        `"${manifest.constructorType}" to "${newConstructor.type}". ` +
+        `Constructors are immutable after first deployment.`,
+    );
+  }
+  if (
+    newConstructor.type === "admin" &&
+    manifest.constructorAdmin &&
+    newConstructor.adminAddress !== manifest.constructorAdmin
+  ) {
+    throw new DeployError(
+      `Program "${programId}" @admin address changed from ` +
+        `"${manifest.constructorAdmin}" to "${newConstructor.adminAddress}". ` +
+        `Constructor admin address is immutable after first deployment.`,
+    );
+  }
+  if (
+    newConstructor.type === "checksum" &&
+    manifest.checksumMapping &&
+    (newConstructor.checksumMapping !== manifest.checksumMapping ||
+      newConstructor.checksumKey !== manifest.checksumKey)
+  ) {
+    throw new DeployError(
+      `Program "${programId}" @checksum parameters changed. ` +
+        `Constructor parameters are immutable after first deployment.`,
+    );
+  }
+
+  // 7c. Compare constructor fingerprint (catches @custom body changes)
+  const newFingerprint = extractConstructorFingerprint(
+    aleoSource,
+    manifest.constructorType,
+  );
+  if (manifest.constructorFingerprint !== undefined) {
+    // Manifest has a stored fingerprint — compare directly
+    if (newFingerprint !== manifest.constructorFingerprint) {
+      throw new DeployError(
+        `Program "${programId}" constructor body changed between versions. ` +
+          `Constructors are immutable after first deployment.`,
+      );
+    }
+  } else if (oldAleoSource) {
+    // Old manifest predates fingerprinting — backfill from the old
+    // compiled source that was on disk before recompilation.
+    const oldFingerprint = extractConstructorFingerprint(
+      oldAleoSource,
+      manifest.constructorType,
+    );
+    if (newFingerprint !== oldFingerprint) {
+      throw new DeployError(
+        `Program "${programId}" constructor body changed between versions. ` +
+          `Constructors are immutable after first deployment.`,
+      );
+    }
+  }
+
   // 8. Connect to network
   const networkName = options.network ?? config.defaultNetwork;
   const manager = lre.network as NetworkManager;
@@ -140,13 +226,6 @@ export async function upgradeAction(
   // 10. Build and broadcast upgrade transaction
   const newEdition = manifest.edition + 1;
   const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
-
-  const aleoSource = lre.artifacts.getAleoSource(programId);
-  if (!aleoSource) {
-    throw new DeployError(
-      `No compiled .aleo source found for "${programId}".`,
-    );
-  }
 
   const txId = await buildAndBroadcastUpgrade({
     programId,
@@ -173,12 +252,13 @@ export async function upgradeAction(
     blockHeight = confirmed.blockHeight;
   }
 
-  // 12. Update deploy manifest
+  // 12. Update deploy manifest (always persist fingerprint for backfill)
   const updatedManifest: DeployManifest = {
     ...manifest,
     txId,
     blockHeight,
     edition: newEdition,
+    constructorFingerprint: newFingerprint,
     deployedAt: new Date().toISOString(),
   };
 
@@ -210,6 +290,10 @@ export function validateUpgradePermission(
 
     case "admin":
       // Admin upgrade is allowed — signer check happens in validateAdminSigner
+      break;
+
+    case "checksum":
+      // Checksum upgrade is allowed — on-chain checksum validation happens during broadcast
       break;
 
     case "custom":
@@ -417,5 +501,14 @@ function readOldAbi(
 
   const raw = fs.readFileSync(abiPath, "utf-8");
   return parseAbi(raw);
+}
+
+function readOldAleoSource(
+  artifactsDir: string,
+  programId: string,
+): string | null {
+  const sourcePath = path.join(artifactsDir, programId, "main.aleo");
+  if (!fs.existsSync(sourcePath)) return null;
+  return fs.readFileSync(sourcePath, "utf-8");
 }
 

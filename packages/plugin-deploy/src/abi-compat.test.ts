@@ -223,20 +223,135 @@ describe("checkAbiCompatibility", () => {
     expect(result.compatible).toBe(true);
   });
 
-  it("allows modifying transition signature", () => {
+  it("rejects modifying transition signature (inputs added)", () => {
     const oldAbi = makeAbi({
       transitions: [{ name: "transfer", is_async: false, inputs: [], outputs: [] }],
     });
     const newAbi = makeAbi({
       transitions: [{
         name: "transfer",
-        is_async: true,
+        is_async: false,
         inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" }],
         outputs: [],
       }],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
-    expect(result.compatible).toBe(true);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
+  });
+
+  it("rejects changing transition from sync to async", () => {
+    const oldAbi = makeAbi({
+      transitions: [{
+        name: "transfer",
+        is_async: false,
+        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+      }],
+    });
+    const newAbi = makeAbi({
+      transitions: [{
+        name: "transfer",
+        is_async: true,
+        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
+    expect(result.violations[0]!.detail).toContain("async mode changed");
+  });
+
+  it("rejects changing transition input type", () => {
+    const oldAbi = makeAbi({
+      transitions: [{
+        name: "deposit",
+        is_async: false,
+        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        outputs: [],
+      }],
+    });
+    const newAbi = makeAbi({
+      transitions: [{
+        name: "deposit",
+        is_async: false,
+        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
+        outputs: [],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
+    expect(result.violations[0]!.detail).toContain("input \"amount\" changed");
+  });
+
+  it("rejects changing transition output type", () => {
+    const oldAbi = makeAbi({
+      transitions: [{
+        name: "get_balance",
+        is_async: false,
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+      }],
+    });
+    const newAbi = makeAbi({
+      transitions: [{
+        name: "get_balance",
+        is_async: false,
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
+    expect(result.violations[0]!.detail).toContain("output[0] changed");
+  });
+
+  it("rejects removing an output from existing transition", () => {
+    const oldAbi = makeAbi({
+      transitions: [{
+        name: "mint",
+        is_async: false,
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+      }],
+    });
+    const newAbi = makeAbi({
+      transitions: [{
+        name: "mint",
+        is_async: false,
+        inputs: [],
+        outputs: [],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
+    expect(result.violations[0]!.detail).toContain("output count changed");
+  });
+
+  it("rejects changing transition input mode", () => {
+    const oldAbi = makeAbi({
+      transitions: [{
+        name: "transfer",
+        is_async: false,
+        inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Private" }],
+        outputs: [],
+      }],
+    });
+    const newAbi = makeAbi({
+      transitions: [{
+        name: "transfer",
+        is_async: false,
+        inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" }],
+        outputs: [],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
   });
 
   it("rejects deleting a transition", () => {

@@ -22,6 +22,12 @@ export interface DeployManifest {
   readonly edition: number;
   readonly constructorType: ConstructorType;
   readonly constructorAdmin: string | null;
+  /** External mapping reference for @checksum constructor. */
+  readonly checksumMapping?: string | null;
+  /** Mapping key for @checksum constructor. */
+  readonly checksumKey?: string | null;
+  /** Fingerprint of compiled constructor body (edition assertion excluded for compiler-managed modes). */
+  readonly constructorFingerprint?: string;
   readonly deployedAt: string; // ISO 8601
 }
 

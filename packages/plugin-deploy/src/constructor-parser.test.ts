@@ -3,6 +3,7 @@ import {
   parseConstructor,
   parseConstructorFromFiles,
   isValidAleoAddress,
+  extractConstructorFingerprint,
 } from "./constructor-parser.js";
 
 describe("parseConstructor", () => {
@@ -48,6 +49,34 @@ describe("parseConstructor", () => {
       type: "admin",
       adminAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
     });
+  });
+
+  it("parses @checksum constructor with mapping and key", () => {
+    const source = `
+      program dao_member.aleo {
+        @checksum(mapping="basic_voting.aleo::approved_checksum", key="true")
+        constructor() {
+          // checksum-governed upgrade
+        }
+      }
+    `;
+    const result = parseConstructor(source);
+    expect(result).toEqual({
+      type: "checksum",
+      checksumMapping: "basic_voting.aleo::approved_checksum",
+      checksumKey: "true",
+    });
+  });
+
+  it("parses @checksum with spaces in attribute", () => {
+    const source = `
+      @checksum( mapping = "gov.aleo::checksums" , key = "dao_member" )
+      constructor() {}
+    `;
+    const result = parseConstructor(source);
+    expect(result?.type).toBe("checksum");
+    expect(result?.checksumMapping).toBe("gov.aleo::checksums");
+    expect(result?.checksumKey).toBe("dao_member");
   });
 
   it("parses @custom constructor", () => {
@@ -155,6 +184,104 @@ describe("parseConstructorFromFiles", () => {
       `fn helper() {}`,
     ];
     expect(parseConstructorFromFiles(sources)).toBeNull();
+  });
+});
+
+describe("extractConstructorFingerprint", () => {
+  it("returns empty string when no constructor section exists", () => {
+    const source = `program hello.aleo;\n\nfunction main:\n    output 1u32 as u32.private;\n`;
+    expect(extractConstructorFingerprint(source)).toBe("");
+  });
+
+  it("returns empty string for edition-only constructor (admin mode)", () => {
+    const source = `program hello.aleo;\n\nconstructor:\n    assert.eq edition 0u16;\n`;
+    expect(extractConstructorFingerprint(source, "admin")).toBe("");
+  });
+
+  it("extracts admin signer assertion (strips edition)", () => {
+    const source = [
+      "program hello.aleo;",
+      "",
+      "constructor:",
+      "    assert.eq self.signer aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px;",
+      "    assert.eq edition 0u16;",
+      "",
+    ].join("\n");
+    expect(extractConstructorFingerprint(source, "admin")).toBe(
+      "assert.eq self.signer aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px;",
+    );
+  });
+
+  it("is stable across edition changes for compiler-managed modes", () => {
+    const makeSource = (edition: number) =>
+      `program test.aleo;\n\nconstructor:\n    assert.eq self.signer aleo1abc;\n    assert.eq edition ${edition}u16;\n`;
+    expect(extractConstructorFingerprint(makeSource(0), "admin")).toBe(
+      extractConstructorFingerprint(makeSource(5), "admin"),
+    );
+  });
+
+  it("custom mode preserves edition assertion verbatim", () => {
+    const source = [
+      "program dao.aleo;",
+      "",
+      "constructor:",
+      "    call governance.aleo/check_vote into r0;",
+      "    assert.eq r0 true;",
+      "    assert.eq edition 2u16;",
+      "",
+    ].join("\n");
+    const fingerprint = extractConstructorFingerprint(source, "custom");
+    // For @custom, edition assertion IS user-authored logic — must be preserved
+    expect(fingerprint).toContain("assert.eq edition 2u16;");
+    expect(fingerprint).toBe(
+      "call governance.aleo/check_vote into r0;\nassert.eq r0 true;\nassert.eq edition 2u16;",
+    );
+  });
+
+  it("custom mode detects edition assertion change", () => {
+    const makeSource = (edition: number) => [
+      "program dao.aleo;",
+      "",
+      "constructor:",
+      "    call governance.aleo/check_vote into r0;",
+      "    assert.eq edition " + edition + "u16;",
+      "",
+    ].join("\n");
+    // For @custom, different edition values produce different fingerprints
+    expect(extractConstructorFingerprint(makeSource(0), "custom")).not.toBe(
+      extractConstructorFingerprint(makeSource(1), "custom"),
+    );
+  });
+
+  it("default (no mode) strips edition for backwards compatibility", () => {
+    const source = [
+      "program dao.aleo;",
+      "",
+      "constructor:",
+      "    call governance.aleo/check_vote into r0;",
+      "    assert.eq r0 true;",
+      "    assert.eq edition 2u16;",
+      "",
+    ].join("\n");
+    // Without mode, edition is stripped (backwards-compatible default)
+    expect(extractConstructorFingerprint(source)).toBe(
+      "call governance.aleo/check_vote into r0;\nassert.eq r0 true;",
+    );
+  });
+
+  it("checksum mode strips edition assertion", () => {
+    const source = [
+      "program member.aleo;",
+      "",
+      "constructor:",
+      "    get basic_voting.aleo/approved_checksum[true] into r0;",
+      "    assert.eq checksum r0;",
+      "    assert.eq edition 0u16;",
+      "",
+    ].join("\n");
+    expect(extractConstructorFingerprint(source, "checksum")).toBe(
+      "get basic_voting.aleo/approved_checksum[true] into r0;\nassert.eq checksum r0;",
+    );
   });
 });
 
