@@ -157,15 +157,21 @@ export function linkLocalDependency(
 /**
  * Cache a network dependency's .aleo source into the cache directory
  * and copy it into the package's imports/ directory.
+ *
+ * Cache is scoped by effective network+endpoint so that switching
+ * `defaultNetwork` in config does not serve stale source from a different
+ * network or endpoint.
  */
 export function linkNetworkDependency(
   packageDir: string,
   depName: string,
   aleoSource: string,
   cacheDir: string,
+  networkScope?: string,
 ): void {
-  // Cache the source
-  const cachePath = path.join(cacheDir, "network-deps", depName);
+  // Cache the source (scoped by network+endpoint)
+  const scope = networkScope ?? "default";
+  const cachePath = path.join(cacheDir, "network-deps", scope, depName);
   fs.mkdirSync(path.dirname(cachePath), { recursive: true });
   fs.writeFileSync(cachePath, aleoSource);
 
@@ -177,12 +183,16 @@ export function linkNetworkDependency(
 
 /**
  * Check if a network dependency is already cached.
+ *
+ * Cache is scoped by network+endpoint — see {@link linkNetworkDependency}.
  */
 export function getCachedNetworkDep(
   cacheDir: string,
   depName: string,
+  networkScope?: string,
 ): string | null {
-  const cachePath = path.join(cacheDir, "network-deps", depName);
+  const scope = networkScope ?? "default";
+  const cachePath = path.join(cacheDir, "network-deps", scope, depName);
   if (fs.existsSync(cachePath)) {
     return fs.readFileSync(cachePath, "utf-8");
   }

@@ -10,15 +10,20 @@ import { unitId } from "./types.js";
  * - Generated program.json content
  * - Hashes of this unit's direct local dependencies (transitivity is automatic
  *   since each dep's hash includes its own deps)
+ * - Contents of linked network dependency .aleo files (so that switching
+ *   network/endpoint or an on-chain program update invalidates the cache)
  *
  * @param localDepIds - the canonical IDs of this unit's direct local dependencies
  * @param depHashes - map of already-computed hashes (populated as units compile in topo order)
+ * @param networkDepIds - the names of this unit's direct network dependencies
+ *   (e.g. "credits.aleo"). Their linked source in imports/ is hashed.
  */
 export function computeUnitHash(
   unit: DiscoveredUnit,
   packageDir: string,
   localDepIds: string[],
   depHashes: Map<string, string>,
+  networkDepIds?: string[],
 ): string {
   const hasher = crypto.createHash("sha256");
 
@@ -44,6 +49,18 @@ export function computeUnitHash(
     const depHash = depHashes.get(depId);
     if (depHash) {
       hasher.update(`dep:${depId}:${depHash}\n`);
+    }
+  }
+
+  // Include linked network dependency source contents.
+  // These live in imports/<depName> after linkNetworkDependency().
+  if (networkDepIds) {
+    for (const depName of [...networkDepIds].sort()) {
+      const importPath = path.join(packageDir, "imports", depName);
+      if (fs.existsSync(importPath)) {
+        hasher.update(`network-dep:${depName}\n`);
+        hasher.update(fs.readFileSync(importPath));
+      }
     }
   }
 

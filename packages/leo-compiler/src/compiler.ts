@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { LionDenResolvedConfig } from "@lionden/config";
@@ -20,7 +21,11 @@ import type { ProgramABI } from "./abi-types.js";
 
 const execFileAsync = promisify(execFile);
 
-export type FetchNetworkDep = (programId: string, endpoint: string) => Promise<string>;
+export type FetchNetworkDep = (
+  programId: string,
+  endpoint: string,
+  networkHint?: string,
+) => Promise<string>;
 
 /**
  * Default network dependency fetcher.
@@ -29,21 +34,40 @@ export type FetchNetworkDep = (programId: string, endpoint: string) => Promise<s
 export async function defaultFetchNetworkDep(
   programId: string,
   endpoint: string,
+  networkHint?: string,
 ): Promise<string> {
-  // Try common network paths — devnode always uses /testnet/
-  for (const network of ["testnet", "mainnet", "canary"]) {
+  // When the caller provides a network hint (derived from config), only try
+  // that network.  Cross-network fallback would silently return source from
+  // the wrong network and cache it under the hinted scope, poisoning future
+  // compiles.  Only fall back across networks when no hint is given (rare —
+  // means no config network was resolved).
+  const networks: readonly string[] = networkHint
+    ? [networkHint]
+    : ["testnet", "mainnet", "canary"];
+
+  const errors: Array<{ network: string; reason: string }> = [];
+
+  for (const network of networks) {
     const url = `${endpoint}/${network}/program/${programId}`;
     try {
       const response = await fetch(url);
       if (response.ok) {
         return await response.text();
       }
-    } catch {
-      // Try next network path
+      errors.push({ network, reason: `HTTP ${response.status}` });
+    } catch (err) {
+      errors.push({
+        network,
+        reason: err instanceof Error ? err.message : String(err),
+      });
     }
   }
+
+  const details = errors
+    .map((e) => `  ${e.network}: ${e.reason}`)
+    .join("\n");
   throw new Error(
-    `Failed to fetch network dependency "${programId}" from ${endpoint}. ` +
+    `Failed to fetch network dependency "${programId}" from ${endpoint}:\n${details}\n` +
     `Ensure the endpoint is reachable and the program is deployed.`,
   );
 }
@@ -107,28 +131,47 @@ export async function compilePipeline(
   }
 
   // 4. Fetch and link network dependencies
+  //    Derive the set of network deps actually needed by compileOrder
+  //    (avoids fetching unrelated deps when --program filters the set).
   const cacheDir = path.join(config.paths.artifacts, ".cache");
-  for (const dep of graph.networkDeps) {
-    for (const unit of compileOrder) {
-      const imports = graph.imports.get(unitId(unit)) ?? [];
-      if (!imports.includes(dep)) continue;
+  const selectedNetworkDeps = new Set<string>();
+  for (const unit of compileOrder) {
+    for (const dep of graph.imports.get(unitId(unit)) ?? []) {
+      if (graph.networkDeps.has(dep)) selectedNetworkDeps.add(dep);
+    }
+  }
 
-      const pkgDir = packageDirs.get(unitId(unit))!;
-      let aleoSource = getCachedNetworkDep(cacheDir, dep);
+  if (selectedNetworkDeps.size > 0) {
+    const networkConfig = config.networks[config.defaultNetwork];
+    const endpoint =
+      networkConfig?.type === "http"
+        ? networkConfig.endpoint
+        : networkConfig?.type === "devnode"
+          ? `http://${networkConfig.socketAddr}`
+          : "http://127.0.0.1:3030";
+    const networkHint = networkConfig?.network;
+
+    // Network+endpoint scope for cache isolation — devnode testnet
+    // and HTTP testnet share the same network name but different sources.
+    const endpointHash = crypto.createHash("sha256").update(endpoint).digest("hex").slice(0, 8);
+    const networkScope = `${networkHint ?? "default"}-${endpointHash}`;
+
+    for (const dep of selectedNetworkDeps) {
+      // Fetch once per dep; skip cache when --force is set
+      let aleoSource = options.force
+        ? null
+        : getCachedNetworkDep(cacheDir, dep, networkScope);
 
       if (!aleoSource) {
-        const networkConfig = config.networks[config.defaultNetwork];
-        const endpoint =
-          networkConfig?.type === "http"
-            ? networkConfig.endpoint
-            : networkConfig?.type === "devnode"
-              ? `http://${networkConfig.socketAddr}`
-              : "http://127.0.0.1:3030";
-        aleoSource = await fetchNetworkDep(dep, endpoint);
+        aleoSource = await fetchNetworkDep(dep, endpoint, networkHint);
       }
 
-      if (aleoSource) {
-        linkNetworkDependency(pkgDir, dep, aleoSource, cacheDir);
+      // Link to every unit that imports this dep
+      for (const unit of compileOrder) {
+        const imports = graph.imports.get(unitId(unit)) ?? [];
+        if (!imports.includes(dep)) continue;
+        const pkgDir = packageDirs.get(unitId(unit))!;
+        linkNetworkDependency(pkgDir, dep, aleoSource, cacheDir, networkScope);
       }
     }
   }
@@ -145,17 +188,21 @@ export async function compilePipeline(
     // Link local dependencies (their compiled .aleo output)
     const imports = graph.imports.get(id) ?? [];
     const localDepIds: string[] = [];
+    const networkDepIds: string[] = [];
     for (const dep of imports) {
-      if (graph.networkDeps.has(dep)) continue;
-      localDepIds.push(dep);
-      const depPkgDir = packageDirs.get(dep);
-      if (depPkgDir) {
-        linkLocalDependency(pkgDir, dep, path.join(depPkgDir, "build"));
+      if (graph.networkDeps.has(dep)) {
+        networkDepIds.push(dep);
+      } else {
+        localDepIds.push(dep);
+        const depPkgDir = packageDirs.get(dep);
+        if (depPkgDir) {
+          linkLocalDependency(pkgDir, dep, path.join(depPkgDir, "build"));
+        }
       }
     }
 
-    // Compute hash and check cache (only include this unit's local dep hashes)
-    const hash = computeUnitHash(unit, pkgDir, localDepIds, depHashes);
+    // Compute hash and check cache
+    const hash = computeUnitHash(unit, pkgDir, localDepIds, depHashes, networkDepIds);
     depHashes.set(id, hash);
 
     const cached = !options.force && isCached(cacheDir, id, hash);
