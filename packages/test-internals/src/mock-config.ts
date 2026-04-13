@@ -38,6 +38,7 @@ export function createMockConfig(
 
   return {
     leoVersion: "4.0.0",
+    leoBinary: "leo",
     paths,
     networks: {
       devnode: {

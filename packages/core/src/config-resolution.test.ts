@@ -284,6 +284,54 @@ describe("resolveConfig", () => {
     );
   });
 
+  it("defaults leoBinary to 'leo'", async () => {
+    const resolved = await resolve({}, [], projectRoot);
+    expect(resolved.leoBinary).toBe("leo");
+  });
+
+  it("respects user-specified leoBinary", async () => {
+    const resolved = await resolve({ leoBinary: "/usr/local/bin/leo-3.5" }, [], projectRoot);
+    expect(resolved.leoBinary).toBe("/usr/local/bin/leo-3.5");
+  });
+
+  it("expands tilde in leoBinary", async () => {
+    const resolved = await resolve({ leoBinary: "~/.leo/bin/leo-3.5" }, [], projectRoot);
+    expect(resolved.leoBinary).not.toContain("~");
+    expect(resolved.leoBinary).toMatch(/\.leo\/bin\/leo-3\.5$/);
+  });
+
+  it("passes explicit consensusHeights through devnode network config", async () => {
+    const config: LionDenUserConfig = {
+      networks: {
+        local: { type: "devnode", consensusHeights: "0,1,2" },
+      },
+    };
+    const resolved = await resolve(config, [], projectRoot);
+    const net = resolved.networks["local"]!;
+    if (net.type === "devnode") {
+      expect(net.consensusHeights).toBe("0,1,2");
+    }
+  });
+
+  it("leaves consensusHeights undefined when not set on explicit devnode", async () => {
+    const config: LionDenUserConfig = {
+      networks: { local: { type: "devnode" } },
+    };
+    const resolved = await resolve(config, [], projectRoot);
+    const net = resolved.networks["local"]!;
+    if (net.type === "devnode") {
+      expect(net.consensusHeights).toBeUndefined();
+    }
+  });
+
+  it("leaves consensusHeights undefined on implicit default devnode", async () => {
+    const resolved = await resolve({}, [], projectRoot);
+    const net = resolved.networks["devnode"]!;
+    if (net.type === "devnode") {
+      expect(net.consensusHeights).toBeUndefined();
+    }
+  });
+
   it("codegen.outDir takes precedence over typechainDir", async () => {
     const config: LionDenUserConfig = {
       typechainDir: "old-path",

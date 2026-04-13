@@ -37,7 +37,7 @@ that requires config validation changes not yet implemented.
 | Compile (v3.5 CLI via PATH shim) | PASS | `leo build --path ... --enable-dce` works identically to v4 |
 | ABI parse + codegen | PASS | After bug fix (see below) |
 | TypeScript typecheck | PASS | Generated `DepositProg.ts` typechecks cleanly |
-| Deploy to v4 devnode | PASS | SDK `buildDevnodeDeploymentTransaction()` works with v3.5 bytecode. Devnode requires `--consensus-heights "0,1,2,3,4,5,6,7,8"` (see observation 8). |
+| Deploy to v4 devnode | PASS | SDK `buildDevnodeDeploymentTransaction()` works with v3.5 bytecode. The probe runner passed `--consensus-heights`; Phase 1 later showed this is only required for Leo v3.5 devnode, not Leo v4 (see observation 8). |
 | Execute deposit (finalize path) | PASS | `depositBroadcast(100n)` returns valid txId |
 | Read mapping state | PASS | `getBalances(address)` returns `>= 100n` |
 | Execute sum (sync/local) | PASS | `sum(3, 5)` returns `8` |
@@ -122,14 +122,25 @@ and the deploy pipeline threw a hard error.
    `parseConstructor()` for all 4 annotation + `async` combinations at the unit
    level.
 
-8. **Devnode requires `--consensus-heights` for constructor programs.** Without
-   this flag, the devnode rejects deploy transactions with: _"program uses syntax
-   that is not allowed before `ConsensusVersion::V9`"_. The required flag format
-   is `--consensus-heights "0,1,2,3,4,5,6,7,8"` — comma-delimited, monotonically
-   increasing block numbers, length = target consensus version. The probe runner
-   (`run-probe.sh`) passes this flag to the devnode. `DevnodeManager`
-   (`packages/network/src/devnode-manager.ts`) does not yet pass this flag and
-   will need updating.
+8. **Devnode `--consensus-heights` behavior differs between Leo versions.**
+   Leo v4 devnode defaults to V9-active — constructor programs deploy without
+   `--consensus-heights`. Leo v3.5 devnode does NOT default to V9-active;
+   without `--consensus-heights "0,1,2,3,4,5,6,7,8"`, deploy transactions fail
+   with: _"program uses syntax that is not allowed before
+   `ConsensusVersion::V9`"_. The flag format is comma-delimited, monotonically
+   increasing block numbers, length = target consensus version. The probe
+   runners pass this flag to the devnode. `DevnodeManager` now supports the
+   `consensusHeights` option (threaded from `DevnodeNetworkConfig`). LionDen
+   treats `consensusHeights` as explicit opt-in — not defaulted — matching the
+   Leo CLI's own default behavior. V3.5 projects must set it in config:
+   ```typescript
+   networks: {
+     devnode: {
+       type: "devnode",
+       consensusHeights: "0,1,2,3,4,5,6,7,8",
+     },
+   }
+   ```
 
 9. **SDK compatibility confirmed.** `@provablehq/sdk@^0.10.1`'s
    `buildDevnodeDeploymentTransaction()` and `buildDevnodeExecutionTransaction()`
@@ -606,11 +617,88 @@ validation error would be optional polish.
 1. ABI parser: normalize bare `"Future"` string outputs to LionDen's internal future type (already handled — confirmed working)
 2. Constructor parser: `(?:async\s+)?` inserted before `constructor` in four regex patterns
 
-**Phase 1 implementation plumbing still required:** accept `leoVersion: "3.5.0"`,
-add/thread `leoBinary`, ensure managed devnodes pass the required consensus
-heights for constructor programs, and add focused unit coverage/docs. The probes
-used `leoVersion: "4.0.0"` plus PATH shims, so they prove compatibility lanes,
-not that first-class v3.5 configuration is already implemented.
+**Phase 1 implementation complete.** First-class `leoVersion: "3.5.0"` and
+`leoBinary` config support is implemented and verified. See the Phase 1
+Implementation section below for details.
 
 **Scope constraint:** v3.5 support is limited to deployable programs (`main.leo`). Projects
 using `lib.leo` shared libraries must target Leo v4.
+
+---
+
+## Phase 1: Implementation
+
+Phase 1 makes the compatibility lanes proven by probes configurable and ergonomic
+— no PATH shims needed. All changes are on branch
+`or/experimental_leo_v3.5.0_backwards_compat`.
+
+### Changes
+
+1. **Config: `leoVersion: "3.5.0"` accepted** — `plugin-leo/src/index.ts`
+   validates against `["4.0.0", "3.5.0"]` instead of hard-rejecting non-4.0.0
+   values.
+
+2. **Config: `leoBinary` field** — `config/src/types.ts` adds `leoBinary?: string`
+   to `LionDenUserConfig` and `leoBinary: string` (required, defaults to `"leo"`)
+   to `LionDenResolvedConfig`. Tilde expansion (`~/` → `os.homedir()`) is applied
+   during config resolution (`core/src/config-resolution.ts`).
+
+3. **Compiler: binary selection** — `leo-compiler/src/compiler.ts` uses
+   `config.leoBinary` instead of hardcoded `"leo"` for `execFileAsync()`.
+
+4. **DevnodeManager: binary + consensus heights** —
+   `network/src/devnode-manager.ts` uses `options.leoBinary` for `spawn()` and
+   passes `--consensus-heights` when `options.consensusHeights` is set.
+   `consensusHeights` is explicit opt-in, not defaulted — v4 devnode defaults to
+   V9-active and doesn't need it; v3.5 devnode requires it for constructor
+   programs.
+
+5. **Config: `consensusHeights` field** — `DevnodeNetworkConfig` gains
+   `consensusHeights?: string`. Threaded to `DevnodeManager` via
+   `plugin-network` (node task) and `testing/src/devnode-lifecycle.ts` (test
+   harness). Both prefer `defaultNetwork` if it's a devnode, falling back to the
+   first devnode in config.
+
+6. **Import parser: slash-path syntax** — `leo-compiler/src/import-parser.ts`
+   adds `/([\w]+\.aleo)\//g` alongside existing `/([\w]+\.aleo)::/g` to discover
+   v3.5's `foo.aleo/bar()` cross-program call dependencies.
+
+### Tests Added
+
+- Config resolution: `leoBinary` defaults, user override, tilde expansion,
+  `consensusHeights` passthrough, undefined when not set
+- Plugin-leo: accepts `leoVersion: "3.5.0"`
+- Import parser: v3.5 slash-path discovery, deduplication, mixed v4+v3.5 calls
+- DevnodeManager: custom `leoBinary`, `--consensus-heights` flag presence/absence
+- Devnode lifecycle: `leoBinary`/`consensusHeights` threading from config,
+  fallback when `defaultNetwork` is HTTP
+
+### Verification
+
+- **778 unit tests pass** (`npm run test:unit`)
+- **All 6 core examples pass smoke tests** (hello-world, token, multi-program,
+  nft-registry, upgradeable-counter, async-escrow) — confirms v4 projects are
+  unaffected by the changes
+- **Phase 1 plumbing probe passes** (`tmp/bug-hunts/leo-v35-phase1-plumbing/`):
+  compile with `leoBinary: "~/.leo/bin/leo-3.5"` (verifies tilde expansion and
+  `leoVersion: "3.5.0"` config acceptance), typecheck bindings, deploy + execute
+  on an externally started v4 devnode, 3 post-deploy tests green. The probe does
+  not exercise managed devnode startup with `consensusHeights` — that threading
+  is covered by unit tests in `devnode-manager.test.ts` and
+  `devnode-lifecycle.test.ts`.
+
+### Consensus Heights Finding
+
+During Phase 1 verification, we discovered that the `--consensus-heights` flag
+behaves differently between Leo versions:
+
+| Devnode version | Default behavior | `--consensus-heights` needed? |
+|-----------------|-----------------|-------------------------------|
+| Leo v4 | V9-active by default | No — constructors work out of the box |
+| Leo v3.5 | V9 NOT active | Yes — required for constructor programs |
+
+LionDen does **not** default `consensusHeights`. This matches the Leo CLI's own
+default behavior and avoids changing devnode behavior for existing v4 projects.
+V3.5 projects must explicitly set `consensusHeights: "0,1,2,3,4,5,6,7,8"` in
+their devnode network config. The Provable SDK has no consensus heights concept —
+it builds and submits transactions without this flag.

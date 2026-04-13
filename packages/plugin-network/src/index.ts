@@ -87,10 +87,21 @@ const nodeTask = task("node", "Start a local Aleo devnode")
 
     console.log(`Starting devnode at http://${socketAddr}...`);
 
+    // Resolve consensusHeights: prefer default network if devnode, else first devnode
+    const defaultNet = lre.config.networks[lre.config.defaultNetwork];
+    const devnodeNet =
+      defaultNet?.type === "devnode"
+        ? defaultNet
+        : Object.values(lre.config.networks).find((n) => n.type === "devnode");
+    const consensusHeights =
+      devnodeNet?.type === "devnode" ? devnodeNet.consensusHeights : undefined;
+
     await devnode.start({
       socketAddr,
       autoBlock: !manualBlocks,
       network,
+      leoBinary: lre.config.leoBinary,
+      consensusHeights,
     });
 
     console.log(`Devnode running at ${devnode.endpoint}`);

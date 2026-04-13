@@ -365,6 +365,7 @@ describe("compilePipeline network dep handling", () => {
   function makeConfig(overrides?: Partial<LionDenResolvedConfig>): LionDenResolvedConfig {
     return {
       leoVersion: "4.0.0",
+      leoBinary: "leo",
       paths: {
         root: tmpDir,
         programs: programsDir,

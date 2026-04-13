@@ -44,6 +44,7 @@ function mockLre(): LionDenRuntimeEnvironment {
   return {
     config: {
       leoVersion: "4.0.0",
+      leoBinary: "leo",
       defaultNetwork: "devnode",
       paths: {
         root: "/tmp/test",

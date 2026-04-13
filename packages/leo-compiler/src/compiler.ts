@@ -265,7 +265,7 @@ async function runLeoBuild(
   }
 
   try {
-    await execFileAsync("leo", args, {
+    await execFileAsync(config.leoBinary, args, {
       timeout: 120_000,
       env: { ...process.env },
     });

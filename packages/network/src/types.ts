@@ -186,4 +186,14 @@ export interface DevnodeStartOptions {
   network?: AleoNetwork;
   /** Private key for the devnode validator. Default: well-known test key */
   privateKey?: string;
+  /**
+   * Path to the Leo CLI binary. Default: "leo".
+   * Allows using a version-specific binary (e.g., "~/.leo/bin/leo-3.5").
+   */
+  leoBinary?: string;
+  /**
+   * Consensus heights for devnode startup (e.g., "0,1,2,3,4,5,6,7,8").
+   * Required for V9/constructor support on devnode.
+   */
+  consensusHeights?: string;
 }

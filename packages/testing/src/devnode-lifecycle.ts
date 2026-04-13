@@ -38,6 +38,8 @@ export async function startDevnode(
   const options: DevnodeStartOptions = {
     autoBlock: devnodeConfig?.autoBlock ?? true,
     network: devnodeConfig?.network ?? "testnet",
+    leoBinary: devnodeConfig?.leoBinary,
+    consensusHeights: devnodeConfig?.consensusHeights,
     ...overrides,
   };
 
@@ -57,17 +59,40 @@ export async function stopDevnode(devnode: ManagedDevnode): Promise<void> {
 }
 
 /**
- * Extract the first devnode network config from resolved config, if any.
+ * Extract devnode network config from resolved config.
+ * Prefers the default network if it is a devnode, otherwise falls back
+ * to the first devnode found in the networks map.
  */
 function findDevnodeNetworkConfig(
   config: LionDenResolvedConfig,
-): { autoBlock?: boolean; network?: "testnet" | "mainnet" | "canary"; privateKey?: string } | undefined {
+): {
+  autoBlock?: boolean;
+  network?: "testnet" | "mainnet" | "canary";
+  privateKey?: string;
+  leoBinary?: string;
+  consensusHeights?: string;
+} | undefined {
+  // Prefer the default network
+  const defaultNet = config.networks[config.defaultNetwork];
+  if (defaultNet?.type === "devnode") {
+    return {
+      autoBlock: defaultNet.autoBlock,
+      network: defaultNet.network,
+      privateKey: defaultNet.privateKey,
+      leoBinary: config.leoBinary,
+      consensusHeights: defaultNet.consensusHeights,
+    };
+  }
+
+  // Fallback: first devnode in the config
   for (const net of Object.values(config.networks)) {
     if (net.type === "devnode") {
       return {
         autoBlock: net.autoBlock,
         network: net.network,
         privateKey: net.privateKey,
+        leoBinary: config.leoBinary,
+        consensusHeights: net.consensusHeights,
       };
     }
   }
