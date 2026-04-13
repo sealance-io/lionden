@@ -42,8 +42,8 @@ Connection creation currently maps:
 
 Current behavior:
 
-- spawns `leo devnode start`
-- supports socket address, auto-block, verbosity, genesis path, and network selection
+- spawns `leo devnode start` (or the binary specified by `leoBinary` in config)
+- supports socket address, auto-block, verbosity, genesis path, network selection, and `consensusHeights` (required for Leo v3.5 devnode constructor programs; Leo v4 devnode defaults to V9-active — see [`leo-version-compatibility.md`](leo-version-compatibility.md))
 - polls the REST API until healthy
 - stops the process with graceful shutdown, then force kill on timeout
 

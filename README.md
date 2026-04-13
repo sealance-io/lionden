@@ -56,7 +56,7 @@ For contributor workflows and realistic end-to-end runs, assume:
 
 - Node.js 20.19+ or 22.12+ (the root package declares `^20.19.0 || >=22.12.0`)
 - npm
-- Leo CLI v4.0.0 available on `PATH`
+- Leo CLI v4.0.0 available on `PATH` (Leo v3.5.0 is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md))
 
 
 Network functionality depends on `@provablehq/sdk@^0.10.1` via `packages/network`.
