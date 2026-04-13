@@ -59,7 +59,7 @@ Plugins are **declarative**: users list them in `defineConfig({ plugins: [...] }
 
 ## Leo v4 Syntax
 
-This repo targets Leo v4 only. Key syntax differences from earlier Leo versions:
+This repo targets Leo v4 by default. Leo v3.5 is supported for deployable programs — see `docs/leo-version-compatibility.md`. Key v4 syntax differences from earlier Leo versions:
 
 - `fn` keyword (not `transition`). Functions that touch on-chain state return `-> Final` (not `-> Future`).
 - Finalize blocks use `return final { ... }` inline. Cross-program finalize composition uses `.run()`.
@@ -81,6 +81,7 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | Repo-wide test strategy, CI lanes, tier taxonomy | `docs/testing-strategy.md` |
 | JSON ABI schema, serde rules, compiler-vs-TS normalization | `docs/json-abi.md` |
 | Package map, examples, scaffolder | `docs/project-layout.md` |
+| Leo version support, v3.5 compat, `leoBinary`, consensus heights | `docs/leo-version-compatibility.md` |
 
 `_docs/` contains design specs and implementation plan — treat as roadmap, not source of truth. When code and plan differ, trust the code.
 
