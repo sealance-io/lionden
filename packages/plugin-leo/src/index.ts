@@ -24,10 +24,11 @@ const configHooks: ConfigHookHandlers = {
   validateUserConfig(config: LionDenUserConfig): ConfigValidationError[] {
     const errors: ConfigValidationError[] = [];
 
-    if (config.leoVersion && config.leoVersion !== "4.0.0") {
+    const supportedVersions = ["4.0.0", "3.5.0"];
+    if (config.leoVersion && !supportedVersions.includes(config.leoVersion)) {
       errors.push({
         path: "leoVersion",
-        message: `LionDen only supports Leo v4.0.0, got "${config.leoVersion}"`,
+        message: `Unsupported Leo version "${config.leoVersion}". Supported: ${supportedVersions.join(", ")}`,
       });
     }
 

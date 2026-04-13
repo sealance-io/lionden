@@ -1,3 +1,4 @@
+import * as os from "node:os";
 import * as path from "node:path";
 import type {
   LionDenUserConfig,
@@ -219,6 +220,7 @@ function buildDefaults(
 
   return {
     leoVersion: config.leoVersion ?? "4.0.0",
+    leoBinary: expandTilde(config.leoBinary ?? "leo"),
     paths,
     networks,
     defaultNetwork,
@@ -254,6 +256,7 @@ function resolveNetworkConfig(
         genesisPath: config.genesisPath,
         network: config.network ?? "testnet",
         privateKey: config.privateKey,
+        consensusHeights: config.consensusHeights,
       };
     case "http":
       return {
@@ -283,6 +286,13 @@ function resolveStringOrVariable(
   if (typeof value === "string") return value;
   if (isConfigVariable(value)) return resolveConfigVariable(value);
   return undefined;
+}
+
+function expandTilde(p: string): string {
+  if (p.startsWith("~/")) {
+    return path.join(os.homedir(), p.slice(2));
+  }
+  return p;
 }
 
 function mergePartial(

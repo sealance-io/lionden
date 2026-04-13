@@ -60,6 +60,11 @@ describe("config validation hooks", () => {
     expect(errors).toHaveLength(0);
   });
 
+  it("accepts leo v3.5.0", () => {
+    const errors = validateUser({ leoVersion: "3.5.0" });
+    expect(errors).toHaveLength(0);
+  });
+
   it("rejects unsupported leo version", () => {
     const errors = validateUser({ leoVersion: "3.0.0" });
     expect(errors.length).toBeGreaterThan(0);

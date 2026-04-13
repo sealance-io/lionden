@@ -146,6 +146,45 @@ describe("DevnodeManager", () => {
     await expect(manager.start()).rejects.toThrow("Failed to start devnode");
   });
 
+  it("start uses custom leoBinary", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ leoBinary: "/usr/local/bin/leo-3.5" });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "/usr/local/bin/leo-3.5",
+      expect.arrayContaining(["devnode", "start"]),
+      expect.any(Object),
+    );
+  });
+
+  it("start passes --consensus-heights when set", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ consensusHeights: "0,1,2,3,4,5,6,7,8" });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "leo",
+      expect.arrayContaining(["--consensus-heights", "0,1,2,3,4,5,6,7,8"]),
+      expect.any(Object),
+    );
+  });
+
+  it("start omits --consensus-heights when not set", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start();
+
+    const args = vi.mocked(spawn).mock.calls[0]![1] as string[];
+    expect(args).not.toContain("--consensus-heights");
+  });
+
   it("throws on non-zero exit code", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);

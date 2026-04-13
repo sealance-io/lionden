@@ -43,7 +43,9 @@ export class DevnodeManager {
     const args = this.buildArgs(options);
     const network = options.network ?? "testnet";
 
-    this.process = spawn("leo", ["devnode", "start", ...args], {
+    const leoBinary = options.leoBinary ?? "leo";
+
+    this.process = spawn(leoBinary, ["devnode", "start", ...args], {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -59,7 +61,7 @@ export class DevnodeManager {
         reject(
           new Error(
             `Failed to start devnode: ${err.message}. ` +
-              `Ensure Leo CLI v4.0.0 is installed and in PATH.`,
+              `Ensure the Leo CLI ("${leoBinary}") is installed and accessible.`,
           ),
         );
       });
@@ -137,6 +139,10 @@ export class DevnodeManager {
     }
 
     args.push("--private-key", options.privateKey ?? DEFAULT_PRIVATE_KEY);
+
+    if (options.consensusHeights) {
+      args.push("--consensus-heights", options.consensusHeights);
+    }
 
     return args;
   }

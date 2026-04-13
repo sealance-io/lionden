@@ -23,6 +23,11 @@ export interface DevnodeNetworkConfig {
   readonly network?: AleoNetwork;
   /** Private key for the devnode validator. Default: well-known test key */
   readonly privateKey?: string;
+  /**
+   * Consensus heights for devnode startup (e.g., "0,1,2,3,4,5,6,7,8").
+   * Required for V9/constructor support on devnode.
+   */
+  readonly consensusHeights?: string;
 }
 
 export interface HttpNetworkConfig {
@@ -82,6 +87,19 @@ export interface TaskDefinitionRef {
 export interface LionDenUserConfig {
   /** Leo version requirement. Default: "4.0.0" */
   readonly leoVersion?: string;
+
+  /**
+   * Path to the Leo CLI binary.
+   * When omitted, LionDen uses the `leo` binary found on `PATH`.
+   * Useful for projects that target a specific Leo version (e.g., v3.5.0)
+   * installed alongside the default.
+   *
+   * Tilde (`~/`) is expanded to the user's home directory during config resolution.
+   *
+   * @example "~/.leo/bin/leo-3.5"
+   * @example "/Users/alice/.leo/bin/leo-3.5"
+   */
+  readonly leoBinary?: string;
 
   /** Path to Leo programs directory (relative to project root). Default: "programs" */
   readonly programsDir?: string;
@@ -207,6 +225,7 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly genesisPath?: string;
   readonly network: AleoNetwork;
   readonly privateKey?: string;
+  readonly consensusHeights?: string;
 }
 
 export interface ResolvedHttpNetworkConfig {
@@ -223,6 +242,8 @@ export type ResolvedNetworkConfig =
 
 export interface LionDenResolvedConfig {
   readonly leoVersion: string;
+  /** Resolved path to the Leo CLI binary. Default: "leo" */
+  readonly leoBinary: string;
   readonly paths: ResolvedPaths;
   readonly networks: Record<string, ResolvedNetworkConfig>;
   readonly defaultNetwork: string;

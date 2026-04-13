@@ -19,6 +19,7 @@ let artifactsDir: string;
 function mockConfig(): LionDenResolvedConfig {
   return {
     leoVersion: "4.0.0",
+    leoBinary: "leo",
     paths: {
       root: tmpDir,
       programs: programsDir,

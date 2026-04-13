@@ -19,6 +19,7 @@ import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
 function makeConfig(networks: Record<string, unknown> = {}): LionDenResolvedConfig {
   return {
     leoVersion: "4.0.0",
+    leoBinary: "leo",
     defaultNetwork: "devnode",
     paths: {
       root: "/tmp/test",
@@ -74,6 +75,53 @@ describe("devnode-lifecycle", () => {
         expect.objectContaining({
           socketAddr: "127.0.0.1:4040",
           autoBlock: false,
+        }),
+      );
+    });
+
+    it("passes leoBinary and consensusHeights from config to manager.start()", async () => {
+      const config = makeConfig({
+        devnode: {
+          type: "devnode",
+          autoBlock: true,
+          network: "testnet",
+          consensusHeights: "0,1,2,3,4,5,6,7,8",
+        },
+      });
+      // Override leoBinary on the config
+      const configWithBinary = { ...config, leoBinary: "/usr/local/bin/leo-3.5" };
+
+      const result = await startDevnode(configWithBinary);
+
+      expect(result.manager.start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leoBinary: "/usr/local/bin/leo-3.5",
+          consensusHeights: "0,1,2,3,4,5,6,7,8",
+        }),
+      );
+    });
+
+    it("falls back to devnode config when defaultNetwork is HTTP", async () => {
+      const config = makeConfig({
+        testnet: {
+          type: "http",
+          endpoint: "https://api.explorer.provable.com/v1",
+          network: "testnet",
+        },
+        local: {
+          type: "devnode",
+          autoBlock: true,
+          network: "testnet",
+          consensusHeights: "0,1,2,3",
+        },
+      });
+      const httpDefaultConfig = { ...config, defaultNetwork: "testnet" };
+
+      const result = await startDevnode(httpDefaultConfig);
+
+      expect(result.manager.start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consensusHeights: "0,1,2,3",
         }),
       );
     });

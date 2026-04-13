@@ -5,6 +5,7 @@ import type { NetworkConnection } from "./types.js";
 
 const mockConfig: LionDenResolvedConfig = {
   leoVersion: "4.0.0",
+  leoBinary: "leo",
   paths: {
     root: "/tmp",
     programs: "/tmp/programs",
