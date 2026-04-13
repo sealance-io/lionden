@@ -15,7 +15,7 @@ Leo v3.5.0 programs can be compiled, deployed, upgraded, and executed through Li
 
 ## Configuration
 
-A v3.5 project must set `leoVersion` and `leoBinary` in config:
+A v3.5 project must set `leoVersion`; set `leoBinary` when the desired v3.5 binary is not the `leo` on `PATH`:
 
 ```typescript
 import { defineConfig } from "@lionden/config";
