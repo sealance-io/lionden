@@ -15,6 +15,6 @@
   "dependencies": {
     "@lionden/config": "*",
     "@lionden/core": "*",
-    "@provablehq/sdk": "^0.10.1"
+    "@provablehq/sdk": "^0.10.2"
   }
 }

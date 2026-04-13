@@ -222,7 +222,7 @@ export class AleoConnection implements NetworkConnection {
     if (this.type === "devnode") {
       const { checkDevnodeSdkSupport, initConsensusHeights } =
         await import("./sdk-adapter.js");
-      // Enforce SDK v0.10.1 baseline for devnode operations
+      // Enforce SDK v0.10.2 baseline for devnode operations
       await checkDevnodeSdkSupport();
       await initConsensusHeights();
     }
