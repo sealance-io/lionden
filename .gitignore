@@ -58,7 +58,3 @@ temp/
 
 # Intentionally local-only docs
 _docs
-
-# Ephemeral devnode deployment state
-**/deployments/devnode/
-**/deployments/_exports/devnode.json
