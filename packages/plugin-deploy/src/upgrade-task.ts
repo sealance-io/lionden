@@ -1,13 +1,15 @@
 /**
  * Upgrade task implementation.
  *
- * Validates that the program's constructor permits upgrade, checks ABI
- * compatibility between the deployed and new versions, then builds and
- * broadcasts an upgrade transaction.
+ * Uses DeploymentManager (lre.deployments) for all state.
+ * Order: connect → recover → read state → validate → compile → preflight → broadcast → record.
+ *
+ * No fallback to the old deploy-manifest.ts system.
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import {
@@ -16,13 +18,19 @@ import {
   type DiscoveredProgram,
 } from "@lionden/leo-compiler";
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
-import { readDeployManifest, writeDeployManifest, type DeployManifest } from "./deploy-manifest.js";
-import { checkAbiCompatibility, type AbiViolation } from "./abi-compat.js";
+import type { CompleteDeploymentRecord, DeploymentRecord, PendingDeployment } from "./deployment-types.js";
+import type { DeploymentManager } from "./deployment-manager.js";
+import { readAbiSnapshot } from "./deployment-state.js";
 import {
   parseConstructor,
   extractConstructorFingerprint,
+  type ConstructorInfo,
 } from "./constructor-parser.js";
-import { DeployError, readLeoSourcesFromDir } from "./deploy-task.js";
+import { checkAbiCompatibility, type AbiViolation } from "./abi-compat.js";
+import { DeployError } from "./errors.js";
+import { readLeoSourcesFromDir } from "./leo-sources.js";
+import { runUpgradePreflight } from "./preflight.js";
+import { validateAdminSigner } from "./admin-signer.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -72,49 +80,89 @@ export async function upgradeAction(
   const config = lre.config;
   const artifactsDir = config.paths.artifacts;
   const programsDir = config.paths.programs;
+  const deploymentsDir = config.paths.deployments;
+  const manager = lre.deployments as DeploymentManager | null;
 
   // Normalize program ID
   const programId = options.program.endsWith(".aleo")
     ? options.program
     : `${options.program}.aleo`;
 
-  // 1. Read existing deploy manifest
-  const manifest = readDeployManifest(artifactsDir, programId);
-  if (!manifest) {
+  // 1. Connect to network
+  const networkName = options.network ?? config.defaultNetwork;
+  const networkManager = lre.network as NetworkManager;
+  const connection = await networkManager.connect(networkName);
+
+  // 2. Recover pending deployments from previous runs
+  if (manager) {
+    await manager.recoverPendingDeployments(networkName, connection);
+  }
+
+  // 3. Read existing deployment state
+  let existingRecord: DeploymentRecord | null = null;
+  if (manager) {
+    existingRecord = await manager.getDeployment(programId, networkName);
+  }
+
+  if (!existingRecord) {
     throw new DeployError(
-      `No deploy manifest found for "${programId}". ` +
+      `No deployment record found for "${programId}". ` +
         `Deploy the program first with \`lionden deploy --program ${options.program}\`.`,
     );
   }
 
-  // 2. Validate constructor permits upgrade
-  validateUpgradePermission(manifest, programId);
+  // 4. Record-status-aware setup
+  // For degraded/recovered records with null constructor type, derive from local Leo sources
+  // and build an effective record with the local constructor merged in so that permission
+  // and immutability checks can enforce it.
+  let effectiveRecord: DeploymentRecord = existingRecord;
+  if (!existingRecord.constructor.type) {
+    const discovered = discoverUnits(programsDir);
+    const programs = discovered.filter((u): u is DiscoveredProgram => u.kind === "program");
+    const prog = programs.find((p) => p.programId === programId);
+    const leoSources = prog ? readLeoSourcesFromDir(prog.sourceDir) : "";
+    const localConstructor = parseConstructor(leoSources);
 
-  // 3. Read old ABI and old compiled source BEFORE recompilation
-  //    (compilation overwrites both abi.json and main.aleo on disk)
-  const oldAbi = readOldAbi(artifactsDir, programId);
+    if (!localConstructor) {
+      throw new DeployError(
+        `Upgrade validation requires either a prior complete deployment record or ` +
+          `local compilation artifacts. Program "${programId}" has a degraded deployment ` +
+          `record (detected on-chain without full provenance) and no local Leo sources with ` +
+          `a constructor annotation. Compile the program locally first, or perform a fresh deploy.`,
+      );
+    }
+    // Synthesize an effective record with the locally-derived constructor for validation.
+    // The original existingRecord is unchanged (we keep it for recording purposes later).
+    effectiveRecord = {
+      ...existingRecord,
+      constructor: {
+        type: localConstructor.type,
+        adminAddress: localConstructor.adminAddress,
+        checksumMapping: localConstructor.checksumMapping,
+        checksumKey: localConstructor.checksumKey,
+      },
+    } as DeploymentRecord;
+  }
+
+  // 5. Read old ABI — from ABI snapshot first, fall back to artifacts dir
+  const oldAbi =
+    readAbiSnapshot(deploymentsDir, networkName, programId) ??
+    readAbiFromArtifacts(artifactsDir, programId);
+
   if (!oldAbi) {
     throw new DeployError(
-      `No ABI artifact found for "${programId}" at ` +
-        `${path.join(artifactsDir, programId, "abi.json")}. ` +
+      `No ABI found for "${programId}". ` +
+        `Expected at deployments/${networkName}/${programId}.abi.json ` +
+        `or artifacts/${programId}/abi.json. ` +
         `Cannot verify upgrade compatibility without the deployed ABI. ` +
         `Re-compile the deployed version first, or re-deploy.`,
     );
   }
-  const oldAleoSource = readOldAleoSource(artifactsDir, programId);
-  if (!oldAleoSource && manifest.constructorFingerprint === undefined) {
-    throw new DeployError(
-      `No compiled source artifact found for "${programId}" at ` +
-        `${path.join(artifactsDir, programId, "main.aleo")}. ` +
-        `Cannot verify constructor immutability without the deployed source. ` +
-        `Re-compile the deployed version first, or re-deploy.`,
-    );
-  }
 
-  // 4. Compile the updated program
+  // 6. Compile the updated program
   await lre.tasks.run("compile", { program: options.program });
 
-  // 5. Read new ABI from compilation artifacts
+  // 7. Read new ABI from compilation artifacts
   const newAbi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
   if (!newAbi) {
     throw new DeployError(
@@ -122,13 +170,7 @@ export async function upgradeAction(
     );
   }
 
-  // 6. Check ABI compatibility (old vs new)
-  const compat = checkAbiCompatibility(oldAbi, newAbi);
-  if (!compat.compatible) {
-    throw new UpgradeCompatibilityError(programId, compat.violations);
-  }
-
-  // 6b. Read compiled Aleo source (needed for constructor fingerprint)
+  // 8. Read compiled Aleo source
   const aleoSource = lre.artifacts.getAleoSource(programId);
   if (!aleoSource) {
     throw new DeployError(
@@ -136,15 +178,11 @@ export async function upgradeAction(
     );
   }
 
-  // 7. Discover source directory for constructor parsing (Fix 2)
+  // 9. Discover Leo source directory for constructor parsing
   const discovered = discoverUnits(programsDir);
-  const programs = discovered.filter(
-    (u): u is DiscoveredProgram => u.kind === "program",
-  );
+  const programs = discovered.filter((u): u is DiscoveredProgram => u.kind === "program");
   const prog = programs.find((p) => p.programId === programId);
-  const leoSources = prog
-    ? readLeoSourcesFromDir(prog.sourceDir)
-    : "";
+  const leoSources = prog ? readLeoSourcesFromDir(prog.sourceDir) : "";
 
   const newConstructor = parseConstructor(leoSources);
   if (!newConstructor) {
@@ -154,77 +192,78 @@ export async function upgradeAction(
     );
   }
 
-  // 7b. Validate constructor hasn't changed (immutable per ARC-0006)
-  if (newConstructor.type !== manifest.constructorType) {
-    throw new DeployError(
-      `Program "${programId}" constructor type changed from ` +
-        `"${manifest.constructorType}" to "${newConstructor.type}". ` +
-        `Constructors are immutable after first deployment.`,
-    );
-  }
-  if (
-    newConstructor.type === "admin" &&
-    manifest.constructorAdmin &&
-    newConstructor.adminAddress !== manifest.constructorAdmin
-  ) {
-    throw new DeployError(
-      `Program "${programId}" @admin address changed from ` +
-        `"${manifest.constructorAdmin}" to "${newConstructor.adminAddress}". ` +
-        `Constructor admin address is immutable after first deployment.`,
-    );
-  }
-  if (
-    newConstructor.type === "checksum" &&
-    manifest.checksumMapping &&
-    (newConstructor.checksumMapping !== manifest.checksumMapping ||
-      newConstructor.checksumKey !== manifest.checksumKey)
-  ) {
-    throw new DeployError(
-      `Program "${programId}" @checksum parameters changed. ` +
-        `Constructor parameters are immutable after first deployment.`,
-    );
-  }
+  const newFingerprint = extractConstructorFingerprint(aleoSource, newConstructor.type);
 
-  // 7c. Compare constructor fingerprint (catches @custom body changes)
-  const newFingerprint = extractConstructorFingerprint(
-    aleoSource,
-    manifest.constructorType,
-  );
-  if (manifest.constructorFingerprint !== undefined) {
-    // Manifest has a stored fingerprint — compare directly
-    if (newFingerprint !== manifest.constructorFingerprint) {
-      throw new DeployError(
-        `Program "${programId}" constructor body changed between versions. ` +
-          `Constructors are immutable after first deployment.`,
-      );
+  // 10. Check upgrade permission (noupgrade → immediate error)
+  // Uses effectiveRecord so degraded/recovered records with a locally-derived constructor type
+  // are subject to the same @noupgrade enforcement as complete records.
+  validateUpgradePermission(effectiveRecord, programId);
+
+  // 11. Run upgrade pre-flight (ABI compat, constructor immutability, admin signer, edition check)
+  const preflightResult = await runUpgradePreflight({
+    programId,
+    oldRecord: effectiveRecord,
+    oldAbi,
+    newConstructor,
+    newAbi,
+    newFingerprint,
+    connection,
+    config,
+    networkName,
+  });
+
+  if (!preflightResult.passed) {
+    const errorMessages = preflightResult.errors
+      .map((e) => `  [${e.code}] ${e.message}`)
+      .join("\n");
+    // Use UpgradeCompatibilityError when the only failures are ABI violations
+    const onlyAbiErrors = preflightResult.errors.every((e) => e.code === "ABI_INCOMPATIBLE");
+    if (onlyAbiErrors) {
+      const violations: AbiViolation[] = preflightResult.errors.flatMap((e) => {
+        // Re-run compat to extract typed violations for UpgradeCompatibilityError
+        const compat = checkAbiCompatibility(oldAbi, newAbi);
+        return [...compat.violations];
+      });
+      throw new UpgradeCompatibilityError(programId, violations);
     }
-  } else if (oldAleoSource) {
-    // Old manifest predates fingerprinting — backfill from the old
-    // compiled source that was on disk before recompilation.
-    const oldFingerprint = extractConstructorFingerprint(
-      oldAleoSource,
-      manifest.constructorType,
-    );
-    if (newFingerprint !== oldFingerprint) {
-      throw new DeployError(
-        `Program "${programId}" constructor body changed between versions. ` +
-          `Constructors are immutable after first deployment.`,
-      );
-    }
+    throw new DeployError(`Upgrade pre-flight failed:\n${errorMessages}`);
   }
 
-  // 8. Connect to network
-  const networkName = options.network ?? config.defaultNetwork;
-  const manager = lre.network as NetworkManager;
-  const connection = await manager.connect(networkName);
-
-  // 9. For @admin upgrades, prevalidate the deployer address (Fix 3)
-  if (manifest.constructorType === "admin" && manifest.constructorAdmin) {
-    await validateAdminSigner(connection, config, networkName, manifest, programId);
+  // Log any warnings
+  for (const w of preflightResult.warnings) {
+    console.warn(`Warning [${w.code}]: ${w.message}`);
   }
 
-  // 10. Build and broadcast upgrade transaction
-  const newEdition = manifest.edition + 1;
+  // 11. Set pending marker before broadcast
+  const previousEdition = existingRecord.edition;
+  const newEdition = previousEdition + 1;
+  const newAbiHash = computeAbiHash(newAbi);
+  const deployerAddress = await resolveDeployerAddress(connection, config, networkName);
+
+  if (manager) {
+    const pending: PendingDeployment = {
+      programId,
+      action: "upgrade",
+      startedAt: new Date().toISOString(),
+      expectedEdition: newEdition,
+      deployerAddress: deployerAddress ?? "unknown",
+      priorityFee: options.priorityFee ?? config.deploy.defaultPriorityFee,
+      privateFee: config.deploy.privateFee,
+      constructor: {
+        type: newConstructor.type,
+        adminAddress: newConstructor.adminAddress,
+        checksumMapping: newConstructor.checksumMapping,
+        checksumKey: newConstructor.checksumKey,
+        fingerprint: newFingerprint,
+      },
+      abiHash: newAbiHash,
+      network: networkName,
+      endpoint: connection.endpoint,
+    };
+    await manager.setPending(pending);
+  }
+
+  // 12. Build and broadcast upgrade transaction
   const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
 
   const txId = await buildAndBroadcastUpgrade({
@@ -236,7 +275,7 @@ export async function upgradeAction(
     edition: newEdition,
   });
 
-  // 11. Wait for confirmation
+  // 13. Wait for confirmation
   let blockHeight = 0;
   const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
   if (shouldConfirm) {
@@ -252,155 +291,107 @@ export async function upgradeAction(
     blockHeight = confirmed.blockHeight;
   }
 
-  // 12. Update deploy manifest (always persist fingerprint for backfill)
-  const updatedManifest: DeployManifest = {
-    ...manifest,
-    txId,
-    blockHeight,
-    edition: newEdition,
-    constructorFingerprint: newFingerprint,
-    deployedAt: new Date().toISOString(),
-  };
+  // 14. Compute ABI changes for history
+  const abiChanges = computeAbiChanges(oldAbi, newAbi);
 
-  writeDeployManifest(artifactsDir, updatedManifest);
+  // 15. Record in deployment state (promotes degraded/recovered to complete)
+  if (manager) {
+    const oldDeployerAddress =
+      existingRecord.status === "complete" || existingRecord.status === "recovered"
+        ? existingRecord.deployerAddress
+        : "unknown";
+
+    const updatedRecord: CompleteDeploymentRecord = {
+      status: "complete",
+      programId,
+      edition: newEdition,
+      constructor: {
+        type: newConstructor.type,
+        adminAddress: newConstructor.adminAddress,
+        checksumMapping: newConstructor.checksumMapping,
+        checksumKey: newConstructor.checksumKey,
+        fingerprint: newFingerprint,
+      },
+      abiHash: newAbiHash,
+      network: networkName,
+      endpoint: connection.endpoint,
+      updatedAt: new Date().toISOString(),
+      historyCount: existingRecord.historyCount + 1,
+      txId,
+      blockHeight,
+      deployerAddress: deployerAddress ?? oldDeployerAddress,
+      deployedAt: new Date().toISOString(),
+      feePaid: fee,
+    };
+
+    await manager.record(updatedRecord, "upgrade", {
+      abi: newAbi,
+      historyEntry: {
+        previousEdition,
+        ...(abiChanges ? { abiChanges } : {}),
+      },
+    });
+  }
 
   console.log(
     `Upgraded ${programId} to edition ${newEdition} (tx: ${txId}, block: ${blockHeight})`,
   );
 
+  // 16. Fire upgrade hook
+  await lre.hooks.serial("deployment", "programUpgraded", {
+    programId,
+    txId,
+    blockHeight,
+    edition: newEdition,
+    constructorType: newConstructor.type,
+    network: networkName,
+    previousEdition,
+  });
+
+  // 17. Export if autoExport
+  if (manager && config.deploy.autoExport) {
+    await manager.export(networkName);
+  }
+
   return { programId, txId, blockHeight, newEdition };
 }
 
 // ---------------------------------------------------------------------------
-// Upgrade validation
+// Upgrade permission (still exported for external use)
 // ---------------------------------------------------------------------------
 
 /**
  * Check that the existing deployment's constructor permits upgrade.
+ * @deprecated Use runUpgradePreflight() — it now includes this check.
  */
 export function validateUpgradePermission(
-  manifest: DeployManifest,
+  record: DeploymentRecord,
   programId: string,
 ): void {
-  switch (manifest.constructorType) {
+  const type = record.constructor.type;
+
+  switch (type) {
     case "noupgrade":
       throw new DeployError(
         `Program "${programId}" was deployed with @noupgrade and cannot be upgraded.`,
       );
-
     case "admin":
-      // Admin upgrade is allowed — signer check happens in validateAdminSigner
-      break;
-
     case "checksum":
-      // Checksum upgrade is allowed — on-chain checksum validation happens during broadcast
-      break;
-
     case "custom":
-      console.warn(
-        `Warning: Program "${programId}" uses @custom constructor. ` +
-          `Custom constructor logic will be evaluated on-chain during upgrade.`,
-      );
       break;
-
+    case null:
+      // Degraded record — constructor type unknown, proceed and let preflight validate
+      break;
     default:
       throw new DeployError(
-        `Program "${programId}" has unknown constructor type "${manifest.constructorType}". ` +
+        `Program "${programId}" has unknown constructor type "${type}". ` +
           `Cannot determine upgrade eligibility.`,
       );
   }
 }
 
-/**
- * Prevalidate that the configured signer matches the @admin address (Fix 3).
- *
- * Resolves the deployer's address from the network config's private key and
- * compares it to the manifest's admin address. Rejects early if they don't
- * match, instead of deferring to the SDK at broadcast time.
- */
-export async function validateAdminSigner(
-  connection: NetworkConnection,
-  config: import("@lionden/config").LionDenResolvedConfig,
-  networkName: string,
-  manifest: DeployManifest,
-  programId: string,
-): Promise<void> {
-  const adminAddress = manifest.constructorAdmin;
-  if (!adminAddress) return;
-
-  // Determine the deployer's address from the network configuration
-  const networkConfig = config.networks[networkName];
-  if (!networkConfig) {
-    throw new DeployError(
-      `Cannot upgrade "${programId}": network "${networkName}" not found in config. ` +
-        `The program has @admin(address="${adminAddress}") and the signer must be verified before upgrade.`,
-    );
-  }
-
-  let signerAddress: string | undefined;
-
-  if (networkConfig.type === "devnode") {
-    // For devnode: use first configured account, or fall back to well-known account-0
-    if (networkConfig.accounts.length > 0) {
-      // We have the private key — derive the address via the SDK
-      signerAddress = await deriveAddressFromKey(
-        networkConfig.accounts[0]!.privateKey,
-        connection,
-      );
-    } else {
-      // Fall back to well-known devnode account-0
-      const { DEVNODE_ACCOUNTS } = await import("@lionden/network");
-      signerAddress = DEVNODE_ACCOUNTS[0]!.address;
-    }
-  } else if (networkConfig.type === "http" && networkConfig.privateKey) {
-    signerAddress = await deriveAddressFromKey(
-      networkConfig.privateKey,
-      connection,
-    );
-  }
-
-  if (!signerAddress) {
-    throw new DeployError(
-      `Cannot upgrade "${programId}": unable to determine the signer address ` +
-        `for network "${networkName}". The program has @admin(address="${adminAddress}") ` +
-        `and the signer must be verified before upgrade. ` +
-        `Ensure the network config includes a private key or uses a devnode with accounts.`,
-    );
-  }
-
-  if (signerAddress !== adminAddress) {
-    throw new DeployError(
-      `Program "${programId}" has @admin(address="${adminAddress}") but the ` +
-        `configured signer address is "${signerAddress}". ` +
-        `Only the admin address can upgrade this program.`,
-    );
-  }
-}
-
-/**
- * Derive the Aleo address from a private key using the SDK.
- */
-async function deriveAddressFromKey(
-  privateKey: string,
-  connection: NetworkConnection,
-): Promise<string | undefined> {
-  try {
-    const { createSdkObjects } = await import("@lionden/network");
-    const sdk = await createSdkObjects({
-      network: connection.networkId,
-      endpoint: connection.endpoint,
-      privateKey,
-      apiKey: connection.apiKey,
-    });
-    return sdk.account.address().to_string();
-  } catch (err) {
-    console.warn(
-      `Warning: SDK address derivation failed: ${err instanceof Error ? err.message : String(err)}. ` +
-        `Admin signer prevalidation skipped.`,
-    );
-  }
-  return undefined;
-}
+// Re-export for backward compatibility
+export { validateAdminSigner } from "./admin-signer.js";
 
 // ---------------------------------------------------------------------------
 // ABI compatibility error
@@ -454,9 +445,7 @@ async function buildAndBroadcastUpgrade(
     apiKey: connection.apiKey,
   });
 
-  if (
-    connection.type === "devnode"
-  ) {
+  if (connection.type === "devnode") {
     const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
       program: aleoSource,
       priorityFee: fee,
@@ -492,23 +481,80 @@ async function buildAndBroadcastUpgrade(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function readOldAbi(
+function readAbiFromArtifacts(
   artifactsDir: string,
   programId: string,
 ): ProgramABI | null {
   const abiPath = path.join(artifactsDir, programId, "abi.json");
   if (!fs.existsSync(abiPath)) return null;
-
   const raw = fs.readFileSync(abiPath, "utf-8");
   return parseAbi(raw);
 }
 
-function readOldAleoSource(
-  artifactsDir: string,
-  programId: string,
-): string | null {
-  const sourcePath = path.join(artifactsDir, programId, "main.aleo");
-  if (!fs.existsSync(sourcePath)) return null;
-  return fs.readFileSync(sourcePath, "utf-8");
+function computeAbiHash(abi: ProgramABI): string {
+  return crypto.createHash("sha256").update(JSON.stringify(abi)).digest("hex");
 }
 
+async function resolveDeployerAddress(
+  connection: NetworkConnection,
+  config: import("@lionden/config").LionDenResolvedConfig,
+  networkName: string,
+): Promise<string | undefined> {
+  const networkConfig = config.networks[networkName];
+  if (!networkConfig) return undefined;
+
+  const privateKey =
+    connection.privateKey ??
+    (networkConfig.type === "devnode" && networkConfig.accounts.length > 0
+      ? networkConfig.accounts[0]!.privateKey
+      : undefined);
+
+  if (!privateKey) return undefined;
+
+  try {
+    const { createSdkObjects } = await import("@lionden/network");
+    const sdk = await createSdkObjects({
+      network: connection.networkId,
+      endpoint: connection.endpoint,
+      privateKey,
+    });
+    const account = sdk.account as any;
+    return typeof account.address === "function"
+      ? account.address().to_string()
+      : String(account.address ?? account);
+  } catch {
+    return undefined;
+  }
+}
+
+function computeAbiChanges(
+  oldAbi: ProgramABI,
+  newAbi: ProgramABI,
+): {
+  added: {
+    mappings: string[];
+    structs: string[];
+    records: string[];
+    transitions: string[];
+  };
+} | undefined {
+  const oldMappingNames = new Set(oldAbi.mappings.map((m) => m.name));
+  const oldStructPaths = new Set(oldAbi.structs.map((s) => s.path.join("::")));
+  const oldRecordPaths = new Set(oldAbi.records.map((r) => r.path.join("::")));
+  const oldTransitionNames = new Set(oldAbi.transitions.map((t) => t.name));
+
+  const added = {
+    mappings: newAbi.mappings.map((m) => m.name).filter((n) => !oldMappingNames.has(n)),
+    structs: newAbi.structs.map((s) => s.path.join("::")).filter((p) => !oldStructPaths.has(p)),
+    records: newAbi.records.map((r) => r.path.join("::")).filter((p) => !oldRecordPaths.has(p)),
+    transitions: newAbi.transitions.map((t) => t.name).filter((n) => !oldTransitionNames.has(n)),
+  };
+
+  const hasChanges =
+    added.mappings.length > 0 ||
+    added.structs.length > 0 ||
+    added.records.length > 0 ||
+    added.transitions.length > 0;
+
+  return hasChanges ? { added } : undefined;
+}

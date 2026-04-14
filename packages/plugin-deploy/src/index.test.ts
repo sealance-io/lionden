@@ -4,7 +4,7 @@ import { createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
 import { validateConstructor, DeployError } from "./deploy-task.js";
 import { validateUpgradePermission, UpgradeCompatibilityError } from "./upgrade-task.js";
-import type { DeployManifest } from "./deploy-manifest.js";
+import type { CompleteDeploymentRecord } from "./deployment-types.js";
 
 const mockConfig = createMockConfig();
 
@@ -18,10 +18,11 @@ describe("plugin-deploy", () => {
     expect(pluginDeploy.name).toBe("Deploy Plugin");
   });
 
-  it("registers deploy and upgrade tasks", () => {
+  it("registers deploy, upgrade, and export tasks", () => {
     const taskIds = pluginDeploy.tasks?.map((t) => t.id) ?? [];
     expect(taskIds).toContain("deploy");
     expect(taskIds).toContain("upgrade");
+    expect(taskIds).toContain("export");
   });
 
   it("has config hook handlers", () => {
@@ -29,7 +30,7 @@ describe("plugin-deploy", () => {
     expect(pluginDeploy.hookHandlers!.config).toBeDefined();
   });
 
-  it("deploy task has program, priorityFee, network options and skipConfirm flag", () => {
+  it("deploy task has program, priorityFee, network options and all flags", () => {
     const deployTask = pluginDeploy.tasks?.find((t) => t.id === "deploy");
     expect(deployTask).toBeDefined();
 
@@ -40,6 +41,32 @@ describe("plugin-deploy", () => {
 
     const flagNames = deployTask!.flags?.map((f) => f.name) ?? [];
     expect(flagNames).toContain("skipConfirm");
+    expect(flagNames).toContain("dryRun");
+    expect(flagNames).toContain("noSkipDeployed");
+    expect(flagNames).toContain("preflight");
+    expect(flagNames).toContain("export");
+  });
+
+  it("export task has network and out options", () => {
+    const exportTask = pluginDeploy.tasks?.find((t) => t.id === "export");
+    expect(exportTask).toBeDefined();
+
+    const optionNames = exportTask!.options?.map((o) => o.name) ?? [];
+    expect(optionNames).toContain("network");
+    expect(optionNames).toContain("out");
+  });
+
+  it("has extendLre function", () => {
+    expect(pluginDeploy.extendLre).toBeDefined();
+    expect(typeof pluginDeploy.extendLre).toBe("function");
+  });
+
+  it("extendLre injects lre.deployments", () => {
+    const lre = createLre({
+      config: mockConfig,
+      plugins: [pluginDeploy],
+    });
+    expect(lre.deployments).not.toBeNull();
   });
 
   it("upgrade task has required program option", () => {
@@ -71,6 +98,7 @@ describe("plugin-deploy", () => {
 
     expect(lre.tasks.has("deploy")).toBe(true);
     expect(lre.tasks.has("upgrade")).toBe(true);
+    expect(lre.tasks.has("export")).toBe(true);
   });
 });
 
@@ -143,55 +171,58 @@ describe("validateConstructor", () => {
 // ---------------------------------------------------------------------------
 
 describe("validateUpgradePermission", () => {
-  const baseManifest: DeployManifest = {
+  const baseRecord: CompleteDeploymentRecord = {
+    status: "complete",
     programId: "hello.aleo",
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     txId: "at1test",
     blockHeight: 42,
     edition: 0,
-    constructorType: "noupgrade",
-    constructorAdmin: null,
+    constructor: { type: "noupgrade" },
+    abiHash: null,
+    deployerAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
     deployedAt: "2026-04-08T12:00:00.000Z",
+    updatedAt: "2026-04-08T12:00:00.000Z",
+    historyCount: 1,
   };
 
   it("throws for @noupgrade programs", () => {
     expect(() =>
-      validateUpgradePermission(baseManifest, "hello.aleo"),
+      validateUpgradePermission(baseRecord, "hello.aleo"),
     ).toThrow("@noupgrade");
     expect(() =>
-      validateUpgradePermission(baseManifest, "hello.aleo"),
+      validateUpgradePermission(baseRecord, "hello.aleo"),
     ).toThrow("cannot be upgraded");
   });
 
   it("allows @admin programs", () => {
-    const manifest: DeployManifest = {
-      ...baseManifest,
-      constructorType: "admin",
-      constructorAdmin: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    const record: CompleteDeploymentRecord = {
+      ...baseRecord,
+      constructor: { type: "admin", adminAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px" },
     };
     expect(() =>
-      validateUpgradePermission(manifest, "hello.aleo"),
+      validateUpgradePermission(record, "hello.aleo"),
     ).not.toThrow();
   });
 
   it("allows @custom programs (with warning)", () => {
-    const manifest: DeployManifest = {
-      ...baseManifest,
-      constructorType: "custom",
+    const record: CompleteDeploymentRecord = {
+      ...baseRecord,
+      constructor: { type: "custom" },
     };
     expect(() =>
-      validateUpgradePermission(manifest, "hello.aleo"),
+      validateUpgradePermission(record, "hello.aleo"),
     ).not.toThrow();
   });
 
   it("throws for unknown constructor type", () => {
-    const manifest: DeployManifest = {
-      ...baseManifest,
-      constructorType: "unknown" as any,
+    const record: CompleteDeploymentRecord = {
+      ...baseRecord,
+      constructor: { type: "unknown" as any },
     };
     expect(() =>
-      validateUpgradePermission(manifest, "hello.aleo"),
+      validateUpgradePermission(record, "hello.aleo"),
     ).toThrow("unknown constructor type");
   });
 });

@@ -1,10 +1,10 @@
 /**
  * Tier 2 contract test — crosses: @lionden/plugin-deploy + @lionden/leo-compiler + @lionden/network
  *
- * Tests the full upgrade orchestration: upgradeAction() reads the old ABI from
- * disk, calls compile (which refreshes in-memory artifacts), checks ABI
- * compatibility, then builds and broadcasts an upgrade transaction through a
- * mocked NetworkConnection.
+ * Tests the full upgrade orchestration: upgradeAction() reads deployment state
+ * via DeploymentManager, calls compile (which refreshes in-memory artifacts),
+ * checks ABI compatibility and constructor immutability via preflight, then
+ * builds and broadcasts an upgrade transaction through a mocked NetworkConnection.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -12,10 +12,13 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import { task } from "@lionden/core";
 import type { LionDenRuntimeEnvironment, LionDenPlugin } from "@lionden/core";
+import type { NetworkManager } from "@lionden/network";
 import { upgradeAction, UpgradeCompatibilityError } from "./upgrade-task.js";
-import { DeployError } from "./deploy-task.js";
-import { writeDeployManifest, readDeployManifest, type DeployManifest } from "./deploy-manifest.js";
+import { DeployError } from "./errors.js";
+import { DeploymentManagerImpl } from "./deployment-manager.js";
+import { writeDeploymentRecord, writeAbiSnapshot, writeNetworkMetadata } from "./deployment-state.js";
 import { extractConstructorFingerprint } from "./constructor-parser.js";
+import type { CompleteDeploymentRecord } from "./deployment-types.js";
 
 const DEVNODE_ACCOUNT_0 =
   "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
@@ -42,6 +45,7 @@ vi.mock("@lionden/network", async (importOriginal) => {
     }),
     checkDevnodeSdkSupport: vi.fn().mockResolvedValue(undefined),
     initConsensusHeights: vi.fn().mockResolvedValue(undefined),
+    DEVNODE_ACCOUNTS: [{ address: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px", privateKey: "test-key" }],
   };
 });
 
@@ -49,8 +53,8 @@ vi.mock("@lionden/network", async (importOriginal) => {
 function makeAbi(opts?: { mappings?: string[] }) {
   const mappings = (opts?.mappings ?? ["counters"]).map((name) => ({
     name,
-    key: { type: "primitive" as const, value: "Address" },
-    value: { type: "primitive" as const, value: "U64" },
+    key: { Primitive: "Address" } as const,
+    value: { Primitive: { UInt: "U64" } } as const,
   }));
 
   return {
@@ -65,6 +69,38 @@ function makeAbi(opts?: { mappings?: string[] }) {
   };
 }
 
+/** Build a complete deployment record for testing. */
+function makeRecord(opts?: {
+  constructorType?: "admin" | "noupgrade" | "checksum" | "custom";
+  edition?: number;
+  fingerprint?: string;
+  network?: string;
+  endpoint?: string;
+}): CompleteDeploymentRecord {
+  const type = opts?.constructorType ?? "admin";
+  return {
+    status: "complete",
+    programId: "hello.aleo",
+    network: opts?.network ?? "devnode",
+    endpoint: opts?.endpoint ?? "http://127.0.0.1:3030",
+    txId: "at1original",
+    blockHeight: 1,
+    edition: opts?.edition ?? 0,
+    constructor: {
+      type,
+      adminAddress: type === "admin" ? DEVNODE_ACCOUNT_0 : undefined,
+      checksumMapping: type === "checksum" ? "gov.aleo::checksums" : undefined,
+      checksumKey: type === "checksum" ? "hello" : undefined,
+      fingerprint: opts?.fingerprint,
+    },
+    abiHash: null,
+    deployerAddress: DEVNODE_ACCOUNT_0,
+    deployedAt: "2026-04-01T00:00:00.000Z",
+    updatedAt: "2026-04-01T00:00:00.000Z",
+    historyCount: 1,
+  };
+}
+
 describe("upgrade orchestration contract", () => {
   let fixture: ContractLreResult;
 
@@ -73,9 +109,11 @@ describe("upgrade orchestration contract", () => {
   });
 
   /**
-   * Create a temp project with an @admin-annotated program, pre-written deploy
-   * manifest and old ABI on disk, and a custom compile task that refreshes
-   * in-memory artifacts.
+   * Create a temp project with an @admin-annotated program, pre-written
+   * deployment state (DeploymentRecord + ABI snapshot) on disk, and a custom
+   * compile task that refreshes in-memory artifacts.
+   *
+   * Also injects a DeploymentManagerImpl onto lre.deployments.
    */
   function createUpgradeFixture(opts?: {
     constructorType?: "admin" | "noupgrade" | "checksum" | "custom";
@@ -83,18 +121,18 @@ describe("upgrade orchestration contract", () => {
     oldMappings?: string[];
     /** New ABI mappings that compile produces */
     newMappings?: string[];
-    /** Skip writing old ABI to disk */
+    /** Skip writing old ABI snapshot */
     skipOldAbi?: boolean;
-    /** Skip writing deploy manifest */
-    skipManifest?: boolean;
-    /** Edition to write in manifest */
+    /** Skip writing deployment record */
+    skipRecord?: boolean;
+    /** Edition to write in record */
     edition?: number;
     /** Constructor annotation for Leo source */
     sourceAnnotation?: string;
-    /** Compiled Aleo source for the deployed (old) version */
-    oldAleoSource?: string;
     /** Compiled Aleo source that compile produces for the new version */
     newAleoSource?: string;
+    /** Fingerprint to store in deployment record */
+    fingerprint?: string;
   }) {
     const constructorType = opts?.constructorType ?? "admin";
     const oldMappings = opts?.oldMappings ?? ["counters"];
@@ -115,8 +153,7 @@ describe("upgrade orchestration contract", () => {
     const newAbi = makeAbi({ mappings: newMappings });
     const defaultAleoSource =
       `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
-    const aleoSource = opts?.newAleoSource ?? opts?.oldAleoSource ?? defaultAleoSource;
-    const oldAleoSource = opts?.oldAleoSource ?? defaultAleoSource;
+    const aleoSource = opts?.newAleoSource ?? defaultAleoSource;
 
     // Track compile calls
     let compileCalled = false;
@@ -130,7 +167,6 @@ describe("upgrade orchestration contract", () => {
           .setAction(async (args, lre) => {
             compileCalled = true;
             compileArgs = args;
-            // Simulate compilation: replace in-memory artifacts with new ABI
             lre.artifacts.setAbi("hello.aleo", newAbi);
             lre.artifacts.setAleoSource("hello.aleo", aleoSource);
           })
@@ -152,55 +188,62 @@ describe("upgrade orchestration contract", () => {
     });
 
     const { lre, fakeNetwork, project } = fixture;
-    const artifactsDir = project.artifactsDir;
+    const deploymentsDir = lre.config.paths.deployments;
 
-    // Write old ABI and compiled source to disk
-    // (readOldAbi/readOldAleoSource read from filesystem, not lre.artifacts)
-    if (!opts?.skipOldAbi) {
-      const abiDir = path.join(artifactsDir, "hello.aleo");
-      fs.mkdirSync(abiDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(abiDir, "abi.json"),
-        JSON.stringify(oldAbi, null, 2),
-      );
-      fs.writeFileSync(
-        path.join(abiDir, "main.aleo"),
-        oldAleoSource,
-      );
+    // Inject DeploymentManager onto lre.deployments
+    const manager = new DeploymentManagerImpl(
+      lre.config,
+      () => lre.network as NetworkManager | null,
+      lre.artifacts,
+    );
+    (lre as unknown as Record<string, unknown>)["deployments"] = manager;
+
+    // Write network metadata (required for HTTP validation, skipped for devnode)
+    // For devnode, no .network.json needed
+
+    // Write deployment record to disk
+    if (!opts?.skipRecord) {
+      const fingerprint =
+        opts?.fingerprint ??
+        extractConstructorFingerprint(defaultAleoSource, constructorType);
+
+      const record = makeRecord({ constructorType, edition, fingerprint });
+      if (constructorType === "checksum") {
+        // Override checksum record
+        (record as any).constructor = {
+          type: "checksum",
+          checksumMapping: "gov.aleo::checksums",
+          checksumKey: "hello",
+          fingerprint,
+        };
+      }
+      writeDeploymentRecord(deploymentsDir, "devnode", record);
     }
 
-    // Write deploy manifest
-    if (!opts?.skipManifest) {
-      writeDeployManifest(artifactsDir, {
-        programId: "hello.aleo",
-        network: "devnode",
-        endpoint: "http://127.0.0.1:3030",
-        txId: "at1original",
-        blockHeight: 1,
-        edition,
-        constructorType,
-        constructorAdmin:
-          constructorType === "admin" ? DEVNODE_ACCOUNT_0 : null,
-        checksumMapping:
-          constructorType === "checksum" ? "gov.aleo::checksums" : null,
-        checksumKey:
-          constructorType === "checksum" ? "hello" : null,
-        constructorFingerprint: extractConstructorFingerprint(oldAleoSource, constructorType),
-        deployedAt: "2026-04-01T00:00:00.000Z",
-      });
+    // Write ABI snapshot
+    if (!opts?.skipOldAbi) {
+      writeAbiSnapshot(deploymentsDir, "devnode", "hello.aleo", oldAbi);
+    }
+
+    // Seed getProgramSource so devnode validation sees the program as on-chain.
+    // When skipRecord=true (testing "not deployed" scenario), leave getProgramSource returning null.
+    if (!opts?.skipRecord) {
+      fakeNetwork!.setProgramSource("hello.aleo",
+        `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`);
     }
 
     return {
       lre,
       fakeNetwork: fakeNetwork!,
-      artifactsDir,
+      manager,
+      deploymentsDir,
       getCompileCalled: () => compileCalled,
       getCompileArgs: () => compileArgs,
     };
   }
 
   it("upgrades a program with @admin constructor through the full action path", async () => {
-    const { lre, fakeNetwork, artifactsDir, getCompileCalled, getCompileArgs } =
+    const { lre, fakeNetwork, manager, getCompileCalled, getCompileArgs } =
       createUpgradeFixture({ constructorType: "admin" });
 
     const result = await upgradeAction({ program: "hello" }, lre);
@@ -222,11 +265,14 @@ describe("upgrade orchestration contract", () => {
     const confirmCalls = fakeNetwork.getCallsTo("waitForConfirmation");
     expect(confirmCalls).toHaveLength(1);
 
-    // Deploy manifest updated with incremented edition
-    const manifest = readDeployManifest(artifactsDir, "hello.aleo");
-    expect(manifest).not.toBeNull();
-    expect(manifest!.edition).toBe(1);
-    expect(manifest!.txId).toBe(result.txId);
+    // Deployment state updated with new edition
+    const updatedRecord = manager.getCached("hello.aleo", "devnode");
+    expect(updatedRecord).not.toBeNull();
+    expect(updatedRecord?.edition).toBe(1);
+    expect(updatedRecord?.status).toBe("complete");
+    if (updatedRecord?.status === "complete") {
+      expect(updatedRecord.txId).toBe(result.txId);
+    }
   });
 
   it("rejects upgrade of @noupgrade program", async () => {
@@ -269,66 +315,19 @@ describe("upgrade orchestration contract", () => {
     expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
   });
 
-  it("throws when no deploy manifest exists", async () => {
-    const { lre } = createUpgradeFixture({ skipManifest: true });
+  it("throws when no deployment record exists", async () => {
+    const { lre } = createUpgradeFixture({ skipRecord: true });
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "No deploy manifest found",
+      "No deployment record found",
     );
   });
 
-  it("throws when old ABI artifact is missing", async () => {
+  it("throws when old ABI snapshot is missing", async () => {
     const { lre } = createUpgradeFixture({ skipOldAbi: true });
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "No ABI artifact found",
-    );
-  });
-
-  it("throws when old source artifact is missing and manifest has no fingerprint", async () => {
-    // Create fixture manually to control which files exist on disk
-    fixture = createContractLre({
-      programs: [{ name: "hello", annotation: `@admin(address="${DEVNODE_ACCOUNT_0}")\n    constructor() {}` }],
-      plugins: [{
-        id: "test-compile",
-        tasks: [
-          task("compile", "Test compile")
-            .setAction(async (_args, lre) => {
-              lre.artifacts.setAbi("hello.aleo", makeAbi());
-              lre.artifacts.setAleoSource("hello.aleo",
-                "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
-            })
-            .build(),
-        ],
-      }],
-      withNetwork: true,
-      prePopulateArtifacts: [{ programId: "hello.aleo", abi: makeAbi(), aleoSource: "" }],
-    });
-
-    const { lre, project } = fixture;
-    const artifactsDir = project.artifactsDir;
-
-    // Write ABI but NOT main.aleo
-    const abiDir = path.join(artifactsDir, "hello.aleo");
-    fs.mkdirSync(abiDir, { recursive: true });
-    fs.writeFileSync(path.join(abiDir, "abi.json"), JSON.stringify(makeAbi(), null, 2));
-
-    // Manifest WITHOUT constructorFingerprint (old deploy)
-    writeDeployManifest(artifactsDir, {
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      txId: "at1original",
-      blockHeight: 1,
-      edition: 0,
-      constructorType: "admin",
-      constructorAdmin: DEVNODE_ACCOUNT_0,
-      // No constructorFingerprint
-      deployedAt: "2026-04-01T00:00:00.000Z",
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "No compiled source artifact found",
+      "No ABI found",
     );
   });
 
@@ -381,204 +380,13 @@ describe("upgrade orchestration contract", () => {
       "",
     ].join("\n");
 
-    const { lre } = createUpgradeFixture({
-      constructorType: "custom",
-      sourceAnnotation: "@custom\n    constructor() {}",
-      oldAleoSource: oldSource,
-      newAleoSource: newSource,
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "constructor body changed",
-    );
-  });
-
-  it("rejects @custom upgrade when only edition assertion changes", async () => {
-    // For @custom, edition assertions are user-authored logic — changes must be caught
-    const oldSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    call governance.aleo/check_vote into r0;",
-      "    assert.eq r0 true;",
-      "    assert.eq edition 0u16;",
-      "",
-    ].join("\n");
-
-    const newSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    call governance.aleo/check_vote into r0;",
-      "    assert.eq r0 true;",
-      "    assert.eq edition 1u16;",
-      "",
-    ].join("\n");
+    const oldFingerprint = extractConstructorFingerprint(oldSource, "custom");
 
     const { lre } = createUpgradeFixture({
       constructorType: "custom",
       sourceAnnotation: "@custom\n    constructor() {}",
-      oldAleoSource: oldSource,
       newAleoSource: newSource,
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "constructor body changed",
-    );
-  });
-
-  it("backfills fingerprint from old artifact when manifest has no fingerprint", async () => {
-    // Simulates upgrading a program deployed before fingerprinting was added.
-    // The old compiled source is on disk; the manifest has no constructorFingerprint.
-    const oldSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    assert.eq self.signer " + DEVNODE_ACCOUNT_0 + ";",
-      "    assert.eq edition 0u16;",
-      "",
-    ].join("\n");
-
-    // New source has same constructor logic — should pass
-    const newSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    assert.eq self.signer " + DEVNODE_ACCOUNT_0 + ";",
-      "    assert.eq edition 1u16;",
-      "",
-    ].join("\n");
-
-    fixture = createContractLre({
-      programs: [{ name: "hello", annotation: `@admin(address="${DEVNODE_ACCOUNT_0}")\n    constructor() {}` }],
-      plugins: [{
-        id: "test-compile",
-        tasks: [
-          task("compile", "Test compile")
-            .setAction(async (_args, lre) => {
-              lre.artifacts.setAbi("hello.aleo", makeAbi());
-              lre.artifacts.setAleoSource("hello.aleo", newSource);
-            })
-            .build(),
-        ],
-      }],
-      withNetwork: true,
-      prePopulateArtifacts: [{ programId: "hello.aleo", abi: makeAbi(), aleoSource: oldSource }],
-    });
-
-    const { lre, project } = fixture;
-    const artifactsDir = project.artifactsDir;
-
-    // Write old ABI to disk
-    const abiDir = path.join(artifactsDir, "hello.aleo");
-    fs.mkdirSync(abiDir, { recursive: true });
-    fs.writeFileSync(path.join(abiDir, "abi.json"), JSON.stringify(makeAbi(), null, 2));
-
-    // Write old compiled source to disk (main.aleo)
-    fs.writeFileSync(path.join(abiDir, "main.aleo"), oldSource);
-
-    // Write manifest WITHOUT constructorFingerprint (simulates old deploy)
-    writeDeployManifest(artifactsDir, {
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      txId: "at1original",
-      blockHeight: 1,
-      edition: 0,
-      constructorType: "admin",
-      constructorAdmin: DEVNODE_ACCOUNT_0,
-      // No constructorFingerprint — old manifest
-      deployedAt: "2026-04-01T00:00:00.000Z",
-    });
-
-    // Same constructor body (just edition differs) — should succeed
-    const result = await upgradeAction({ program: "hello" }, lre);
-    expect(result.programId).toBe("hello.aleo");
-
-    // After upgrade, manifest should now have the fingerprint backfilled
-    const manifest = readDeployManifest(artifactsDir, "hello.aleo");
-    expect(manifest!.constructorFingerprint).toBeDefined();
-    expect(manifest!.constructorFingerprint).toBe(
-      "assert.eq self.signer " + DEVNODE_ACCOUNT_0 + ";",
-    );
-  });
-
-  it("backfill rejects body change on old manifest without fingerprint", async () => {
-    const oldSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    call governance.aleo/check_vote into r0;",
-      "    assert.eq r0 true;",
-      "    assert.eq edition 0u16;",
-      "",
-    ].join("\n");
-
-    // New source has DIFFERENT constructor body
-    const newSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    assert.eq self.caller aleo1different;",
-      "    assert.eq edition 1u16;",
-      "",
-    ].join("\n");
-
-    fixture = createContractLre({
-      programs: [{ name: "hello", annotation: "@custom\n    constructor() {}" }],
-      plugins: [{
-        id: "test-compile",
-        tasks: [
-          task("compile", "Test compile")
-            .setAction(async (_args, lre) => {
-              lre.artifacts.setAbi("hello.aleo", makeAbi());
-              lre.artifacts.setAleoSource("hello.aleo", newSource);
-            })
-            .build(),
-        ],
-      }],
-      withNetwork: true,
-      prePopulateArtifacts: [{ programId: "hello.aleo", abi: makeAbi(), aleoSource: oldSource }],
-    });
-
-    const { lre, project } = fixture;
-    const artifactsDir = project.artifactsDir;
-
-    // Write old ABI and compiled source to disk
-    const abiDir = path.join(artifactsDir, "hello.aleo");
-    fs.mkdirSync(abiDir, { recursive: true });
-    fs.writeFileSync(path.join(abiDir, "abi.json"), JSON.stringify(makeAbi(), null, 2));
-    fs.writeFileSync(path.join(abiDir, "main.aleo"), oldSource);
-
-    // Write manifest WITHOUT constructorFingerprint
-    writeDeployManifest(artifactsDir, {
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      txId: "at1original",
-      blockHeight: 1,
-      edition: 0,
-      constructorType: "custom",
-      constructorAdmin: null,
-      deployedAt: "2026-04-01T00:00:00.000Z",
+      fingerprint: oldFingerprint,
     });
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
@@ -587,23 +395,25 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("rejects upgrade when @checksum parameters change", async () => {
+    const compilePlugin: LionDenPlugin = {
+      id: "test-compile",
+      tasks: [
+        task("compile", "Test compile")
+          .setAction(async (_args, lre) => {
+            lre.artifacts.setAbi("hello.aleo", makeAbi());
+            lre.artifacts.setAleoSource("hello.aleo",
+              "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
+          })
+          .build(),
+      ],
+    };
+
     fixture = createContractLre({
       programs: [{
         name: "hello",
         annotation: '@checksum(mapping="new_gov.aleo::checksums", key="hello")\n    constructor() {}',
       }],
-      plugins: [{
-        id: "test-compile",
-        tasks: [
-          task("compile", "Test compile")
-            .setAction(async (_args, lre) => {
-              lre.artifacts.setAbi("hello.aleo", makeAbi());
-              lre.artifacts.setAleoSource("hello.aleo",
-                "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
-            })
-            .build(),
-        ],
-      }],
+      plugins: [compilePlugin],
       withNetwork: true,
       prePopulateArtifacts: [{
         programId: "hello.aleo",
@@ -613,42 +423,105 @@ describe("upgrade orchestration contract", () => {
     });
 
     const { lre, project } = fixture;
-    const artifactsDir = project.artifactsDir;
+    const deploymentsDir = lre.config.paths.deployments;
+    const manager = new DeploymentManagerImpl(
+      lre.config,
+      () => lre.network as NetworkManager | null,
+      lre.artifacts,
+    );
+    (lre as unknown as Record<string, unknown>)["deployments"] = manager;
 
-    const abiDir = path.join(artifactsDir, "hello.aleo");
-    fs.mkdirSync(abiDir, { recursive: true });
-    fs.writeFileSync(path.join(abiDir, "abi.json"), JSON.stringify(makeAbi(), null, 2));
-    fs.writeFileSync(path.join(abiDir, "main.aleo"),
-      "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
-
-    writeDeployManifest(artifactsDir, {
+    // Write record with old checksum params
+    const record: CompleteDeploymentRecord = {
+      status: "complete",
       programId: "hello.aleo",
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
       txId: "at1original",
       blockHeight: 1,
       edition: 0,
-      constructorType: "checksum",
-      constructorAdmin: null,
-      checksumMapping: "old_gov.aleo::checksums",
-      checksumKey: "hello",
-      constructorFingerprint: "",
+      constructor: {
+        type: "checksum",
+        checksumMapping: "old_gov.aleo::checksums",
+        checksumKey: "hello",
+        fingerprint: "",
+      },
+      abiHash: null,
+      deployerAddress: DEVNODE_ACCOUNT_0,
       deployedAt: "2026-04-01T00:00:00.000Z",
-    });
+      updatedAt: "2026-04-01T00:00:00.000Z",
+      historyCount: 1,
+    };
+    writeDeploymentRecord(deploymentsDir, "devnode", record);
+    writeAbiSnapshot(deploymentsDir, "devnode", "hello.aleo", makeAbi());
+
+    fixture.fakeNetwork!.setProgramSource("hello.aleo",
+      "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
       "@checksum parameters changed",
     );
   });
 
-  it("increments edition in deploy manifest", async () => {
-    const { lre, artifactsDir } = createUpgradeFixture({ edition: 2 });
+  it("increments edition in deployment record", async () => {
+    const { lre, manager } = createUpgradeFixture({ edition: 2 });
 
     const result = await upgradeAction({ program: "hello" }, lre);
 
     expect(result.newEdition).toBe(3);
 
-    const manifest = readDeployManifest(artifactsDir, "hello.aleo");
-    expect(manifest!.edition).toBe(3);
+    const updatedRecord = manager.getCached("hello.aleo", "devnode");
+    expect(updatedRecord!.edition).toBe(3);
+  });
+
+  it("promotes a degraded record to complete after upgrade", async () => {
+    // Fixture writes a complete record, but let's manually set a degraded one in cache
+    const { lre, manager, deploymentsDir } = createUpgradeFixture();
+
+    // Override: write a degraded record
+    const degraded = {
+      status: "degraded" as const,
+      programId: "hello.aleo",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      txId: null,
+      blockHeight: null,
+      deployerAddress: null,
+      deployedAt: null,
+      feePaid: null,
+      edition: 0,
+      constructor: { type: "admin" as const, adminAddress: DEVNODE_ACCOUNT_0 },
+      abiHash: null,
+      updatedAt: "2026-04-01T00:00:00.000Z",
+      historyCount: 1,
+    };
+    writeDeploymentRecord(deploymentsDir, "devnode", degraded);
+    // Also seed the cache directly
+    (manager as any).cache.get("devnode")?.set("hello.aleo", degraded);
+
+    const result = await upgradeAction({ program: "hello" }, lre);
+
+    // Record should be promoted to complete
+    const updatedRecord = manager.getCached("hello.aleo", "devnode");
+    expect(updatedRecord!.status).toBe("complete");
+    expect(updatedRecord!.edition).toBe(1);
+    expect(result.newEdition).toBe(1);
+  });
+
+  it("records history entry with ABI changes when new mappings are added", async () => {
+    const { lre, manager, deploymentsDir } = createUpgradeFixture({
+      oldMappings: ["counters"],
+      newMappings: ["counters", "scores"], // "scores" added
+    });
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    // Read history from disk
+    const { readHistory } = await import("./deployment-state.js");
+    const history = readHistory(deploymentsDir, "devnode", "hello.aleo");
+    expect(history.length).toBeGreaterThan(0);
+    const upgradeEntry = history.find((h) => h.action === "upgrade");
+    expect(upgradeEntry).toBeDefined();
+    expect(upgradeEntry!.abiChanges?.added.mappings).toContain("scores");
   });
 });

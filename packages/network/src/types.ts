@@ -104,6 +104,12 @@ export interface NetworkConnection {
   /** Get the current block height. */
   getBlockHeight(): Promise<number>;
 
+  /**
+   * Fetch the compiled Aleo source for a deployed program.
+   * Returns null if the program does not exist on-chain (404 / not found).
+   */
+  getProgramSource(programId: string): Promise<string | null>;
+
   /** Broadcast a serialized transaction to the network. Returns the transaction ID. */
   broadcastTransaction(transaction: unknown): Promise<string>;
 

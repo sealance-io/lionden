@@ -27,12 +27,13 @@ function makeConfig(networks: Record<string, unknown> = {}): LionDenResolvedConf
       artifacts: "/tmp/test/artifacts",
       typechain: "/tmp/test/typechain",
       cache: "/tmp/test/artifacts/.cache",
+      deployments: "/tmp/test/deployments",
     },
     networks: networks as LionDenResolvedConfig["networks"],
     compiler: { enableDce: false, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
   };
 }
 

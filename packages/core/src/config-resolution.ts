@@ -162,6 +162,7 @@ function buildDefaults(
   const typechainDir = config.typechainDir ?? "typechain";
   // codegen.outDir takes precedence over typechainDir when explicitly set
   const codegenOutDir = config.codegen?.outDir ?? typechainDir;
+  const deploymentsDir = config.deploy?.deploymentsDir ?? "deployments";
 
   const paths: ResolvedPaths = {
     root: projectRoot,
@@ -169,6 +170,7 @@ function buildDefaults(
     artifacts: path.resolve(projectRoot, artifactsDir),
     typechain: path.resolve(projectRoot, codegenOutDir),
     cache: path.resolve(projectRoot, artifactsDir, ".cache"),
+    deployments: path.resolve(projectRoot, deploymentsDir),
   };
 
   const compiler: ResolvedCompilerConfig = {
@@ -194,6 +196,10 @@ function buildDefaults(
     privateFee: config.deploy?.privateFee ?? false,
     confirmTransactions: config.deploy?.confirmTransactions ?? true,
     confirmationTimeout: config.deploy?.confirmationTimeout ?? 60_000,
+    deploymentsDir: deploymentsDir,
+    skipDeployed: config.deploy?.skipDeployed ?? true,
+    interDeploymentDelay: config.deploy?.interDeploymentDelay,
+    autoExport: config.deploy?.autoExport ?? false,
   };
 
   // Resolve networks

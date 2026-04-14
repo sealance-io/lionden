@@ -34,6 +34,7 @@ export function createMockConfig(
     artifacts: `${root}/artifacts`,
     typechain: `${root}/typechain`,
     cache: `${root}/cache`,
+    deployments: `${root}/deployments`,
   };
 
   return {
@@ -64,6 +65,10 @@ export function createMockConfig(
       privateFee: false,
       confirmTransactions: true,
       confirmationTimeout: 60_000,
+      deploymentsDir: "deployments",
+      skipDeployed: true,
+      interDeploymentDelay: undefined,
+      autoExport: false,
     },
     ...rest,
   } as LionDenResolvedConfig;

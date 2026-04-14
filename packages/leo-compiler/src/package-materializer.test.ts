@@ -22,6 +22,7 @@ function mockConfig(): LionDenResolvedConfig {
       artifacts: artifactsDir,
       typechain: path.join(tmpDir, "typechain"),
       cache: path.join(tmpDir, ".cache"),
+      deployments: path.join(tmpDir, "deployments"),
     },
     networks: {
       devnode: {
@@ -42,7 +43,7 @@ function mockConfig(): LionDenResolvedConfig {
     },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
   };
 }
 

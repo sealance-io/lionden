@@ -96,6 +96,7 @@ export function createContractLre(
       artifacts: project.artifactsDir,
       typechain: `${project.root}/typechain`,
       cache: `${project.root}/cache`,
+      deployments: `${project.root}/deployments`,
     },
     ...configOverrides,
   });

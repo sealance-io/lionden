@@ -372,6 +372,7 @@ describe("compilePipeline network dep handling", () => {
         artifacts: artifactsDir,
         typechain: path.join(tmpDir, "typechain"),
         cache: path.join(tmpDir, ".cache"),
+        deployments: path.join(tmpDir, "deployments"),
       },
       networks: {
         devnode: {
@@ -397,6 +398,9 @@ describe("compilePipeline network dep handling", () => {
         privateFee: false,
         confirmTransactions: true,
         confirmationTimeout: 60_000,
+        deploymentsDir: "deployments",
+        skipDeployed: true,
+        autoExport: false,
       },
       ...overrides,
     };

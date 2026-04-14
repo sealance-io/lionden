@@ -97,6 +97,7 @@ describe("config validation hooks", () => {
           artifacts: path.join(tmpDir, "artifacts"),
           typechain: path.join(tmpDir, "typechain"),
           cache: path.join(tmpDir, "cache"),
+          deployments: path.join(tmpDir, "deployments"),
         },
       });
       const errors = validateResolved(config);

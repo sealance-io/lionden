@@ -8,11 +8,13 @@
  * and deployed first in topological order.
  */
 
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { ResolvedNetworkConfig } from "@lionden/config";
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
+import type { ProgramABI } from "@lionden/leo-compiler";
 import {
   discoverUnits,
   resolveDependencies,
@@ -25,7 +27,12 @@ import {
   extractConstructorFingerprint,
   type ConstructorInfo,
 } from "./constructor-parser.js";
-import { writeDeployManifest, type DeployManifest } from "./deploy-manifest.js";
+import type { DeploymentManager } from "./deployment-manager.js";
+import type { CompleteDeploymentRecord, PendingDeployment } from "./deployment-types.js";
+import { runDeployPreflight, type DeployPreflightResult } from "./preflight.js";
+import { createDegradedRecord } from "./on-chain-check.js";
+import { DeployError } from "./errors.js";
+import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +49,14 @@ export interface DeployOptions {
   network?: string;
   /** Skip compilation before deploying (artifacts must already exist) */
   noCompile?: boolean;
+  /** Run pre-flight checks only — do not deploy */
+  preflight?: boolean;
+  /** Build transaction but do not broadcast (devnode only) */
+  dryRun?: boolean;
+  /** Fail if any program is already deployed on-chain */
+  noSkipDeployed?: boolean;
+  /** Export deployment bundle after deploying */
+  export?: boolean;
 }
 
 export interface DeployResult {
@@ -51,6 +66,17 @@ export interface DeployResult {
   readonly constructorType: string;
 }
 
+export interface DryRunResult {
+  readonly programId: string;
+  readonly transaction: unknown;
+  readonly estimatedFee: bigint;
+}
+
+export type DeployTaskResult =
+  | { readonly mode: "deploy"; readonly results: DeployResult[] }
+  | { readonly mode: "preflight"; readonly result: DeployPreflightResult }
+  | { readonly mode: "dry-run"; readonly results: DryRunResult[] };
+
 // ---------------------------------------------------------------------------
 // Deploy action
 // ---------------------------------------------------------------------------
@@ -58,46 +84,56 @@ export interface DeployResult {
 export async function deployAction(
   args: Record<string, unknown>,
   lre: LionDenRuntimeEnvironment,
-): Promise<DeployResult[]> {
+): Promise<DeployTaskResult> {
   const options: DeployOptions = {
     program: args["program"] as string | undefined,
     priorityFee: args["priorityFee"] as number | undefined,
     skipConfirm: args["skipConfirm"] as boolean | undefined,
     network: args["network"] as string | undefined,
     noCompile: args["noCompile"] as boolean | undefined,
+    preflight: args["preflight"] as boolean | undefined,
+    dryRun: args["dryRun"] as boolean | undefined,
+    noSkipDeployed: args["noSkipDeployed"] as boolean | undefined,
+    export: args["export"] as boolean | undefined,
   };
 
   const config = lre.config;
   const artifactsDir = config.paths.artifacts;
   const programsDir = config.paths.programs;
+  const manager = lre.deployments as DeploymentManager | null;
 
-  // 1. Compile first (unless --noCompile)
-  if (!options.noCompile) {
+  // 1. Compile first (unless --noCompile or --preflight)
+  if (!options.noCompile && !options.preflight) {
     await lre.tasks.run("compile");
   }
 
-  // 2. Discover all units (programs + libraries) for source-dir mapping
-  //    and dependency ordering. discoverUnits is fast — directory scan only.
+  // 2. Discover all units for source-dir mapping and dependency ordering
   const discovered = discoverUnits(programsDir);
   const programs = discovered.filter(
     (u): u is DiscoveredProgram => u.kind === "program",
   );
   const programMap = new Map(programs.map((p) => [p.programId, p]));
-
-  // 3. Build dependency graph for topological deploy ordering
   const graph = resolveDependencies(discovered);
 
-  // 4. Get compiled program IDs from artifacts
+  // 3. Determine candidate program IDs for target resolution.
+  // In --preflight mode compilation is skipped, so artifacts may be absent.
+  // Use discovered program IDs so runDeployPreflight() can emit MISSING_ARTIFACTS
+  // per program rather than throwing here before any structured result is produced.
+  // In normal (deploy/dry-run) mode, only compiled IDs are valid targets.
   const compiledIds = lre.artifacts.getProgramIds();
-  if (compiledIds.length === 0) {
+  const candidateIds = options.preflight
+    ? programs.map((p) => p.programId)
+    : compiledIds;
+
+  if (!options.preflight && compiledIds.length === 0) {
     throw new DeployError(
       "No compiled programs found. Run `lionden compile` first.",
     );
   }
 
-  // 5. Resolve deploy targets in topological order (deps first)
+  // 4. Resolve deploy targets in topological order (deps first)
   const targetIds = resolveDeployTargets(
-    compiledIds,
+    candidateIds,
     programMap,
     graph,
     options.program,
@@ -113,44 +149,291 @@ export async function deployAction(
     );
   }
 
-  const manager = lre.network as NetworkManager;
-  const connection = await manager.connect(networkName);
+  const networkManager = lre.network as NetworkManager;
+  const connection = await networkManager.connect(networkName);
 
-  // 6. Deploy each program in order
-  const results: DeployResult[] = [];
-  const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
-  const privateFee = config.deploy.privateFee;
-  const shouldConfirm =
-    !options.skipConfirm && config.deploy.confirmTransactions;
-  const confirmTimeout = config.deploy.confirmationTimeout;
+  // 6. Recover pending deployments from previous runs
+  if (manager) {
+    await manager.recoverPendingDeployments(networkName, connection);
+  }
 
+  // 7. Build local sources map (compiled Aleo sources for all targets)
+  const localSources = new Map<string, string>();
+  for (const programId of targetIds) {
+    const source = lre.artifacts.getAleoSource(programId);
+    if (source) localSources.set(programId, source);
+  }
+
+  // 8. Build preflight program entries
+  // Use getDeployment() (async, validates disk/on-chain) instead of getCached() so that HTTP
+  // disk state is loaded into the preflight even on a cold-cache (fresh CLI process).
+  const preflightPrograms: Array<{
+    programId: string;
+    constructor: ConstructorInfo | null;
+    aleoSource: string | undefined;
+    existingRecord: import("./deployment-types.js").DeploymentRecord | null;
+  }> = [];
   for (const programId of targetIds) {
     const prog = programMap.get(programId);
+    const leoSources = prog ? readLeoSourcesFromDirImpl(prog.sourceDir) : "";
+    const constructor = parseConstructor(leoSources);
+    const aleoSourceRaw = lre.artifacts.getAleoSource(programId);
+    const aleoSource = typeof aleoSourceRaw === "string" ? aleoSourceRaw : undefined;
+    // Devnode: use sync cache — it's populated as programs are deployed in this session
+    //          and avoids unnecessary getProgramSource() calls before the program exists.
+    // HTTP: use async getDeployment() to load validated disk state on a cold-cache process.
+    const existingRecord = manager
+      ? connection.type === "devnode"
+        ? manager.getCached(programId, networkName) ?? null
+        : await manager.getDeployment(programId, networkName)
+      : null;
+    preflightPrograms.push({ programId, constructor, aleoSource, existingRecord });
+  }
 
-    const result = await deploySingleProgram({
-      programId,
-      sourceDir: prog?.sourceDir,
-      artifactsDir,
-      connection,
-      networkConfig,
-      networkName,
-      fee,
-      privateFee,
-      shouldConfirm,
-      confirmTimeout,
-      lre,
-    });
-    results.push(result);
-    console.log(
-      `Deployed ${programId} (tx: ${result.txId}, block: ${result.blockHeight})`,
+  // 9. Run pre-flight validation
+  const skipDeployed = !options.noSkipDeployed && config.deploy.skipDeployed;
+  const deployTargets = new Set(targetIds);
+
+  const preflightResult = await runDeployPreflight({
+    programs: preflightPrograms,
+    connection,
+    networkConfig,
+    config,
+    skipDeployed,
+    deployTargets,
+    localSources,
+    graph,
+  });
+
+  // 10. If --preflight, return pure check result (no state mutations)
+  if (options.preflight) {
+    return { mode: "preflight", result: preflightResult };
+  }
+
+  // 11. Fail if preflight has errors (not just warnings)
+  if (!preflightResult.passed) {
+    const errorMessages = preflightResult.errors
+      .map((e) => `  [${e.code}] ${e.message}`)
+      .join("\n");
+    throw new DeployError(
+      `Pre-flight validation failed:\n${errorMessages}`,
     );
   }
 
-  return results;
+  // 12. Filter to programs that need deploying from preflight outcomes
+  const toDeployIds = preflightResult.programs
+    .filter((p) => p.action === "deploy")
+    .map((p) => p.programId);
+
+  // 13. If --dry-run, build transactions without broadcasting (devnode only).
+  // This must happen BEFORE reconciliation so dry-run never mutates deployment state.
+  if (options.dryRun) {
+    if (connection.type !== "devnode") {
+      throw new DeployError(
+        `Dry-run is not supported for HTTP networks in v1. ` +
+          `Use --preflight for validation without deployment.`,
+      );
+    }
+
+    const dryRunResults: DryRunResult[] = [];
+    for (const programId of toDeployIds) {
+      const aleoSource = lre.artifacts.getAleoSource(programId);
+      if (!aleoSource) continue;
+
+      const tx = await buildDeployTransaction({
+        programId,
+        aleoSource,
+        connection,
+        networkConfig,
+        fee: options.priorityFee ?? config.deploy.defaultPriorityFee,
+        privateFee: config.deploy.privateFee,
+      });
+
+      dryRunResults.push({
+        programId,
+        transaction: tx,
+        estimatedFee: 0n,
+      });
+    }
+
+    return { mode: "dry-run", results: dryRunResults };
+  }
+
+  // 14. Reconcile: create degraded records for skipped+already-deployed programs with no state.
+  // Runs AFTER dry-run check so dry-run never writes deployment state.
+  if (manager) {
+    for (const outcome of preflightResult.programs) {
+      if (
+        outcome.action === "skip" &&
+        outcome.reason === "already-deployed" &&
+        !outcome.record
+      ) {
+        // Fetch source for degraded record creation
+        const source = await connection.getProgramSource(outcome.programId);
+        if (source) {
+          const degraded = createDegradedRecord(
+            outcome.programId,
+            networkName,
+            connection.endpoint,
+            source,
+          );
+          await manager.record(degraded, "deploy");
+        }
+      }
+    }
+  }
+
+  // 15. Deploy each program in order
+  const results: DeployResult[] = [];
+  const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
+  const privateFee = config.deploy.privateFee;
+  const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
+  const confirmTimeout = config.deploy.confirmationTimeout;
+
+  // Inter-deployment delay for HTTP
+  const isHttp = networkConfig.type === "http";
+  const interDelay = config.deploy.interDeploymentDelay ?? (isHttp ? 12_000 : 0);
+
+  for (let i = 0; i < toDeployIds.length; i++) {
+    const programId = toDeployIds[i]!;
+    const prog = programMap.get(programId);
+    const leoSources = prog ? readLeoSourcesFromDirImpl(prog.sourceDir) : "";
+    const constructor = parseConstructor(leoSources)!;
+
+    const aleoSource = lre.artifacts.getAleoSource(programId);
+    if (!aleoSource) {
+      throw new DeployError(
+        `No compiled .aleo source found for "${programId}". Run \`lionden compile\` first.`,
+      );
+    }
+
+    const abi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
+    if (!abi) {
+      throw new DeployError(
+        `No compiled ABI found for "${programId}". ` +
+          `Run \`lionden compile\` first, or pass --noCompile only when artifacts already exist.`,
+      );
+    }
+    const abiHash = computeAbiHash(abi);
+
+    // Derive deployer address from connection
+    const deployerAddress = await resolveDeployerAddress(connection, networkConfig);
+
+    // Before broadcast: write pending marker
+    if (manager) {
+      const pending: PendingDeployment = {
+        programId,
+        action: "deploy",
+        startedAt: new Date().toISOString(),
+        expectedEdition: 0,
+        deployerAddress: deployerAddress ?? "unknown",
+        priorityFee: fee,
+        privateFee,
+        constructor: {
+          type: constructor.type,
+          adminAddress: constructor.adminAddress,
+          checksumMapping: constructor.checksumMapping,
+          checksumKey: constructor.checksumKey,
+          fingerprint: extractConstructorFingerprint(aleoSource, constructor.type),
+        },
+        abiHash,
+        network: networkName,
+        endpoint: connection.endpoint,
+      };
+      await manager.setPending(pending);
+    }
+
+    // Build and broadcast
+    const txId = await deployToNetwork({
+      programId,
+      aleoSource,
+      connection,
+      networkConfig,
+      fee,
+      privateFee,
+    });
+
+    // Wait for confirmation
+    let blockHeight = 0;
+    if (shouldConfirm) {
+      const confirmed = await connection.waitForConfirmation(txId, confirmTimeout);
+      if (confirmed.status === "rejected") {
+        throw new DeployError(`Deploy transaction ${txId} was rejected on-chain.`);
+      }
+      blockHeight = confirmed.blockHeight;
+    }
+
+    // Record in deployment state
+    if (manager) {
+      const record: CompleteDeploymentRecord = {
+        status: "complete",
+        programId,
+        edition: 0,
+        constructor: {
+          type: constructor.type,
+          adminAddress: constructor.adminAddress,
+          checksumMapping: constructor.checksumMapping,
+          checksumKey: constructor.checksumKey,
+          fingerprint: extractConstructorFingerprint(aleoSource, constructor.type),
+        },
+        abiHash,
+        network: networkName,
+        endpoint: connection.endpoint,
+        updatedAt: new Date().toISOString(),
+        historyCount: 1,
+        txId,
+        blockHeight,
+        deployerAddress: deployerAddress ?? "unknown",
+        deployedAt: new Date().toISOString(),
+        feePaid: fee,
+      };
+      await manager.record(record, "deploy", { abi });
+    }
+
+    const result: DeployResult = {
+      programId,
+      txId,
+      blockHeight,
+      constructorType: constructor.type,
+    };
+    results.push(result);
+
+    console.log(`Deployed ${programId} (tx: ${txId}, block: ${blockHeight})`);
+
+    // Fire deployment hook
+    await lre.hooks.serial("deployment", "programDeployed", {
+      programId,
+      txId,
+      blockHeight,
+      edition: 0,
+      constructorType: constructor.type,
+      network: networkName,
+    });
+
+    // Inter-deployment delay (HTTP only, between dependent programs only).
+    // The next program may only need the propagation time if it imports from
+    // a program just deployed. Unrelated programs in the same batch skip the wait.
+    if (isHttp && interDelay > 0 && i < toDeployIds.length - 1) {
+      const nextProgramId = toDeployIds[i + 1]!;
+      const nextImports = graph.imports.get(nextProgramId) ?? [];
+      const deployedSoFar = toDeployIds.slice(0, i + 1);
+      const nextDependsOnDeployed = nextImports.some((dep) => deployedSoFar.includes(dep));
+      if (nextDependsOnDeployed) {
+        await sleep(interDelay);
+      }
+    }
+  }
+
+  // 16. Export if requested
+  if (manager && (options.export || config.deploy.autoExport)) {
+    await manager.export(networkName);
+  }
+
+  return { mode: "deploy", results };
 }
 
 // ---------------------------------------------------------------------------
-// Deploy target resolution (Fix 2 + Fix 4)
+// Deploy target resolution
 // ---------------------------------------------------------------------------
 
 /**
@@ -168,7 +451,6 @@ export function resolveDeployTargets(
 ): string[] {
   if (!targetProgram) {
     // Deploy all compiled programs in dependency order from the graph.
-    // graph.order is topologically sorted (dependencies before dependents).
     const ordered: string[] = [];
     for (const unit of graph.order) {
       if (unit.kind === "program" && compiledIds.includes(unit.programId)) {
@@ -189,8 +471,8 @@ export function resolveDeployTargets(
 
   if (!compiledIds.includes(normalized)) {
     throw new DeployError(
-      `Program "${targetProgram}" not found in compiled artifacts. ` +
-        `Available: ${compiledIds.join(", ")}`,
+      `Program "${targetProgram}" not found. ` +
+        `Available: ${compiledIds.join(", ") || "none"}`,
     );
   }
 
@@ -211,11 +493,6 @@ export function resolveDeployTargets(
   return ordered;
 }
 
-/**
- * Recursively collect transitive local program dependencies by
- * traversing the dependency graph. Follows through libraries (which
- * are not deployed) to discover transitive program deps.
- */
 function collectTransitiveProgramDeps(
   unitId: string,
   graph: DependencyGraph,
@@ -226,123 +503,15 @@ function collectTransitiveProgramDeps(
   if (visited.has(unitId)) return;
   visited.add(unitId);
 
-  // If this is a deployable program, add it
   if (programMap.has(unitId)) {
     collected.add(unitId);
   }
 
-  // Traverse all local deps (both programs and libraries)
   const deps = graph.imports.get(unitId) ?? [];
   for (const dep of deps) {
-    if (graph.networkDeps.has(dep)) continue; // skip network deps
+    if (graph.networkDeps.has(dep)) continue;
     collectTransitiveProgramDeps(dep, graph, programMap, collected, visited);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Single program deploy
-// ---------------------------------------------------------------------------
-
-interface DeploySingleOptions {
-  programId: string;
-  /** Absolute path to the discovered source directory (from discoverUnits) */
-  sourceDir?: string;
-  artifactsDir: string;
-  connection: NetworkConnection;
-  networkConfig: ResolvedNetworkConfig;
-  networkName: string;
-  fee: number;
-  privateFee: boolean;
-  shouldConfirm: boolean;
-  confirmTimeout: number;
-  lre: LionDenRuntimeEnvironment;
-}
-
-async function deploySingleProgram(
-  opts: DeploySingleOptions,
-): Promise<DeployResult> {
-  const {
-    programId,
-    sourceDir,
-    artifactsDir,
-    connection,
-    networkConfig,
-    networkName,
-    fee,
-    privateFee,
-    shouldConfirm,
-    confirmTimeout,
-    lre,
-  } = opts;
-
-  // Read the compiled .aleo source
-  const aleoSource = lre.artifacts.getAleoSource(programId);
-  if (!aleoSource) {
-    throw new DeployError(
-      `No compiled .aleo source found for "${programId}". ` +
-        `Run \`lionden compile\` first.`,
-    );
-  }
-
-  // Read Leo source files for constructor parsing using the discovered
-  // source directory (Fix 2: do NOT derive from programId)
-  const leoSources = sourceDir
-    ? readLeoSourcesFromDir(sourceDir)
-    : "";
-
-  // Parse constructor annotation
-  const constructor = parseConstructor(leoSources);
-  validateConstructor(constructor, programId);
-
-  // Build and broadcast deployment transaction
-  const txId = await buildAndBroadcastDeploy({
-    programId,
-    aleoSource,
-    connection,
-    networkConfig,
-    fee,
-    privateFee,
-  });
-
-  // Wait for confirmation
-  let blockHeight = 0;
-  if (shouldConfirm) {
-    const confirmed = await connection.waitForConfirmation(txId, confirmTimeout);
-    if (confirmed.status === "rejected") {
-      throw new DeployError(
-        `Deploy transaction ${txId} was rejected on-chain.`,
-      );
-    }
-    blockHeight = confirmed.blockHeight;
-  }
-
-  // Write deploy manifest
-  const manifest: DeployManifest = {
-    programId,
-    network: networkName,
-    endpoint: connection.endpoint,
-    txId,
-    blockHeight,
-    edition: 0,
-    constructorType: constructor!.type,
-    constructorAdmin:
-      constructor!.type === "admin" ? (constructor!.adminAddress ?? null) : null,
-    checksumMapping:
-      constructor!.type === "checksum" ? (constructor!.checksumMapping ?? null) : null,
-    checksumKey:
-      constructor!.type === "checksum" ? (constructor!.checksumKey ?? null) : null,
-    constructorFingerprint: extractConstructorFingerprint(aleoSource, constructor!.type),
-    deployedAt: new Date().toISOString(),
-  };
-
-  writeDeployManifest(artifactsDir, manifest);
-
-  return {
-    programId,
-    txId,
-    blockHeight,
-    constructorType: constructor!.type,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +585,7 @@ export function validateConstructor(
 }
 
 // ---------------------------------------------------------------------------
-// Transaction building
+// Transaction building — split for dry-run support
 // ---------------------------------------------------------------------------
 
 interface BuildDeployOptions {
@@ -428,20 +597,70 @@ interface BuildDeployOptions {
   privateFee: boolean;
 }
 
-async function buildAndBroadcastDeploy(
+/**
+ * Build a deployment transaction without broadcasting.
+ * Only supported on devnode (HTTP deploy() is atomic).
+ */
+export async function buildDeployTransaction(
   opts: BuildDeployOptions,
-): Promise<string> {
-  const { programId, aleoSource, connection, networkConfig, fee, privateFee } = opts;
+): Promise<unknown> {
+  if (opts.connection.type !== "devnode") {
+    throw new DeployError(
+      `Dry-run is not supported for HTTP networks in v1. ` +
+        `Use --preflight for validation without deployment.`,
+    );
+  }
 
-  // Use SDK to build and broadcast the deployment transaction
+  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
+    await import("@lionden/network");
+
+  await checkDevnodeSdkSupport();
+  await initConsensusHeights();
+
+  const sdk = await createSdkObjects({
+    network: opts.connection.networkId,
+    endpoint: opts.connection.endpoint,
+    privateKey: opts.connection.privateKey,
+    apiKey: opts.connection.apiKey,
+  });
+
+  return sdk.programManager.buildDevnodeDeploymentTransaction({
+    program: opts.aleoSource,
+    priorityFee: opts.fee,
+    privateFee: opts.privateFee,
+  });
+}
+
+/**
+ * Full deploy: build and broadcast. Returns transaction ID.
+ */
+async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
+  const { aleoSource, connection, networkConfig, fee, privateFee } = opts;
+
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
   if (connection.type === "devnode") {
     await checkDevnodeSdkSupport();
     await initConsensusHeights();
+
+    const sdk = await createSdkObjects({
+      network: connection.networkId,
+      endpoint: connection.endpoint,
+      privateKey: connection.privateKey,
+      apiKey: connection.apiKey,
+    });
+
+    const tx = await sdk.programManager.buildDevnodeDeploymentTransaction({
+      program: aleoSource,
+      priorityFee: fee,
+      privateFee,
+    });
+
+    return connection.broadcastTransaction(tx);
   }
 
+  // HTTP: atomic build+broadcast
   const sdk = await createSdkObjects({
     network: connection.networkId,
     endpoint: connection.endpoint,
@@ -449,61 +668,58 @@ async function buildAndBroadcastDeploy(
     apiKey: connection.apiKey,
   });
 
-  if (
-    connection.type === "devnode"
-  ) {
-    // Devnode-specific deployment
-    const tx = await sdk.programManager.buildDevnodeDeploymentTransaction({
-      program: aleoSource,
-      priorityFee: fee,
-      privateFee,
-    });
-
-    // Broadcast via SDK network client
-    return connection.broadcastTransaction(tx);
-  }
-
-  // Standard deployment — deploy() takes positional args
-  return sdk.programManager.deploy(
-    aleoSource,
-    fee,
-    privateFee,
-  );
+  return sdk.programManager.deploy(aleoSource, fee, privateFee);
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-export class DeployError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DeployError";
-  }
+export { DeployError } from "./errors.js";
+export { readLeoSourcesFromDir } from "./leo-sources.js";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
- * Read all .leo source files from an absolute source directory.
- * Uses the discovered sourceDir (from discoverUnits) rather than
- * deriving the path from the program ID.
+ * Compute SHA-256 hex hash of an ABI for deduplication/fingerprinting.
  */
-export function readLeoSourcesFromDir(sourceDir: string): string {
-  if (!fs.existsSync(sourceDir)) return "";
-
-  const sources: string[] = [];
-  collectLeoFiles(sourceDir, sources);
-  return sources.join("\n");
+export function computeAbiHash(abi: ProgramABI): string {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(abi))
+    .digest("hex");
 }
 
-function collectLeoFiles(dir: string, results: string[]): void {
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      collectLeoFiles(fullPath, results);
-    } else if (entry.name.endsWith(".leo")) {
-      results.push(fs.readFileSync(fullPath, "utf-8"));
-    }
+/**
+ * Resolve the deployer's address from the network config or connection.
+ * Best-effort — returns undefined if derivation fails.
+ */
+async function resolveDeployerAddress(
+  connection: NetworkConnection,
+  networkConfig: ResolvedNetworkConfig,
+): Promise<string | undefined> {
+  const privateKey =
+    connection.privateKey ??
+    (networkConfig.type === "devnode" && networkConfig.accounts.length > 0
+      ? networkConfig.accounts[0]!.privateKey
+      : undefined);
+
+  if (!privateKey) return undefined;
+
+  try {
+    const { createSdkObjects } = await import("@lionden/network");
+    const sdk = await createSdkObjects({
+      network: connection.networkId,
+      endpoint: connection.endpoint,
+      privateKey,
+    });
+    const account = sdk.account as any;
+    return typeof account.address === "function"
+      ? account.address().to_string()
+      : String(account.address ?? account);
+  } catch {
+    return undefined;
   }
 }
-

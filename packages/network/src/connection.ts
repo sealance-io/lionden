@@ -355,6 +355,31 @@ export class AleoConnection implements NetworkConnection {
     return height;
   }
 
+  async getProgramSource(programId: string): Promise<string | null> {
+    this.assertOpen();
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+
+    try {
+      const source: string | undefined = await nc.getProgram(programId);
+      if (source === undefined || source === null) return null;
+      return typeof source === "string" ? source : String(source);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        message.includes("404") ||
+        message.includes("not found") ||
+        message.includes("Not Found") ||
+        message.includes("500") // devnode returns 500 for non-existent programs
+      ) {
+        return null;
+      }
+      throw new Error(
+        `Failed to fetch program source for "${programId}": ${message}`,
+      );
+    }
+  }
+
   async close(): Promise<void> {
     this._closed = true;
 

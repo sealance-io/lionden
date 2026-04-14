@@ -54,6 +54,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   private confirmBehavior: "accept" | "reject" = "accept";
   private blockHeight: number;
   private txCounter = 0;
+  private programSources = new Map<string, string>();
 
   constructor(options: FakeNetworkOptions = {}) {
     this.name = options.name ?? "devnode";
@@ -109,6 +110,14 @@ export class FakeNetworkConnection implements NetworkConnection {
 
   setBlockHeight(height: number): void {
     this.blockHeight = height;
+  }
+
+  setProgramSource(programId: string, source: string): void {
+    this.programSources.set(programId, source);
+  }
+
+  clearProgramSource(programId: string): void {
+    this.programSources.delete(programId);
   }
 
   // -------------------------------------------------------------------------
@@ -189,6 +198,11 @@ export class FakeNetworkConnection implements NetworkConnection {
   async getBlockHeight(): Promise<number> {
     this.calls.push({ method: "getBlockHeight", args: [], timestamp: Date.now() });
     return this.blockHeight;
+  }
+
+  async getProgramSource(programId: string): Promise<string | null> {
+    this.calls.push({ method: "getProgramSource", args: [programId], timestamp: Date.now() });
+    return this.programSources.get(programId) ?? null;
   }
 
   async broadcastTransaction(transaction: unknown): Promise<string> {

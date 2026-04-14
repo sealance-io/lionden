@@ -120,6 +120,7 @@ export function createLre(options: CreateLreOptions): LionDenRuntimeEnvironment 
   const lre: LionDenRuntimeEnvironment = {
     config,
     network: null, // Set by @lionden/plugin-network via extendLre
+    deployments: null, // Set by @lionden/plugin-deploy via extendLre
     tasks,
     hooks,
     artifacts,
