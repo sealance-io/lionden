@@ -33,6 +33,7 @@ import {
   readDeploymentRecord,
   readAllDeploymentRecords,
   writeAbiSnapshot,
+  deleteAbiSnapshot,
   readAbiSnapshot,
   appendHistory,
   readHistory,
@@ -318,6 +319,34 @@ export class DeploymentManagerImpl implements DeploymentManager {
       );
     }
 
+    // Do not downgrade a complete or recovered record to degraded when the existing
+    // record still describes the same on-chain state (same edition, same network endpoint).
+    // This guards against the fresh-process cache miss: on devnode, the deploy task
+    // uses getCached() (sync) to populate preflight.existingRecord. If the process
+    // restarted, getCached() returns null even though a complete record exists on disk.
+    // The reconciliation block then calls record(degraded) — without this guard that
+    // would overwrite the complete record and append a spurious history entry.
+    //
+    // The edition + endpoint check keeps the guard narrow: if the on-chain program was
+    // upgraded or redeployed out-of-band (different edition), or if the endpoint changed,
+    // the incoming degraded record reflects the current observed state and must be written.
+    if (record.status === "degraded") {
+      const nc = this.networkCache(net);
+      const existing =
+        nc.get(programId) ??
+        readDeploymentRecord(this.deploymentsDir, net, programId);
+      if (
+        existing &&
+        (existing.status === "complete" || existing.status === "recovered") &&
+        existing.edition === record.edition &&
+        existing.endpoint === record.endpoint
+      ) {
+        // Load into cache and skip the write — the existing record is still valid.
+        nc.set(programId, existing);
+        return;
+      }
+    }
+
     // Write network metadata on first record() for HTTP networks
     const networkConfig = this.config.networks[net];
     if (networkConfig?.type === "http") {
@@ -340,6 +369,12 @@ export class DeploymentManagerImpl implements DeploymentManager {
 
     // Write deployment record
     writeDeploymentRecord(this.deploymentsDir, net, record);
+
+    // Degraded records have unknown ABI (abiHash: null). Delete any existing snapshot so
+    // a subsequent upgradeAction() cannot validate against a stale prior-edition ABI.
+    if (record.status === "degraded") {
+      deleteAbiSnapshot(this.deploymentsDir, net, programId);
+    }
 
     // Append history
     const historyEntry: DeploymentHistoryEntry = {
