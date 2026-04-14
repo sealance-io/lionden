@@ -14,7 +14,6 @@ import { resolveDeployTargets, readLeoSourcesFromDir } from "./deploy-task.js";
 import { validateAdminSigner } from "./upgrade-task.js";
 import { DeployError } from "./deploy-task.js";
 import type { DiscoveredProgram, DependencyGraph } from "@lionden/leo-compiler";
-import type { DeployManifest } from "./deploy-manifest.js";
 import { createMockConnection } from "@lionden/test-internals";
 
 // ---------------------------------------------------------------------------
@@ -293,7 +292,7 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
     expect(result).toEqual(["hello.aleo"]);
   });
 
-  it("throws when target program not found in compiled artifacts", () => {
+  it("throws when target program not found", () => {
     const graph = makeGraph([], {});
     const programMap = new Map<string, DiscoveredProgram>();
     expect(() =>
@@ -301,7 +300,7 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
     ).toThrow(DeployError);
     expect(() =>
       resolveDeployTargets(["other.aleo"], programMap, graph, "missing"),
-    ).toThrow("not found in compiled artifacts");
+    ).toThrow("not found");
   });
 
   it("includes compiled programs not in graph (safety fallback)", () => {
@@ -429,18 +428,7 @@ describe("upgrade ABI ordering (Fix 1)", () => {
 
 describe("validateAdminSigner (Fix 3)", () => {
   const adminAddress = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
-
-  const baseManifest: DeployManifest = {
-    programId: "token.aleo",
-    network: "devnode",
-    endpoint: "http://127.0.0.1:3030",
-    txId: "at1test",
-    blockHeight: 42,
-    edition: 0,
-    constructorType: "admin",
-    constructorAdmin: adminAddress,
-    deployedAt: "2026-04-08T12:00:00.000Z",
-  };
+  const account1Address = "aleo1s3ws5tra87fjycnjrwsjcrnw2qz7vrcqa96naxdzj0tpv3qvqugqxk6rn0";
 
   const mockConnection = createMockConnection({
     getBalance: vi.fn(),
@@ -456,30 +444,14 @@ describe("validateAdminSigner (Fix 3)", () => {
     vi.restoreAllMocks();
   });
 
-  it("does not throw when manifest has no admin address", async () => {
-    const manifestNoAdmin: DeployManifest = {
-      ...baseManifest,
-      constructorAdmin: null,
-    };
-    const config = {
-      networks: {
-        devnode: { type: "devnode" as const, socketAddr: "127.0.0.1:3030", autoBlock: true, verbosity: 0, accounts: [], network: "testnet" as const },
-      },
-    } as any;
-
-    await expect(
-      validateAdminSigner(mockConnection, config, "devnode", manifestNoAdmin, "token.aleo"),
-    ).resolves.not.toThrow();
-  });
-
   it("throws when network config not found", async () => {
     const config = { networks: {} } as any;
 
     await expect(
-      validateAdminSigner(mockConnection, config, "nonexistent", baseManifest, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "nonexistent", adminAddress, "token.aleo"),
     ).rejects.toThrow(DeployError);
     await expect(
-      validateAdminSigner(mockConnection, config, "nonexistent", baseManifest, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "nonexistent", adminAddress, "token.aleo"),
     ).rejects.toThrow("network \"nonexistent\" not found in config");
   });
 
@@ -497,10 +469,10 @@ describe("validateAdminSigner (Fix 3)", () => {
     } as any;
 
     await expect(
-      validateAdminSigner(mockConnection, config, "testnet", baseManifest, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "testnet", adminAddress, "token.aleo"),
     ).rejects.toThrow(DeployError);
     await expect(
-      validateAdminSigner(mockConnection, config, "testnet", baseManifest, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "testnet", adminAddress, "token.aleo"),
     ).rejects.toThrow("unable to determine the signer address");
   });
 
@@ -520,15 +492,11 @@ describe("validateAdminSigner (Fix 3)", () => {
 
     // The well-known account-0 address IS the admin address, so no throw
     await expect(
-      validateAdminSigner(mockConnection, config, "devnode", baseManifest, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "devnode", adminAddress, "token.aleo"),
     ).resolves.not.toThrow();
   });
 
   it("throws when devnode account-0 address does not match admin", async () => {
-    const manifestDiffAdmin: DeployManifest = {
-      ...baseManifest,
-      constructorAdmin: "aleo1s3ws5tra87fjycnjrwsjcrnw2qz7vrcqa96naxdzj0tpv3qvqugqxk6rn0", // account-1
-    };
     const config = {
       networks: {
         devnode: {
@@ -544,10 +512,10 @@ describe("validateAdminSigner (Fix 3)", () => {
 
     // Account-0 address does NOT match account-1 admin address
     await expect(
-      validateAdminSigner(mockConnection, config, "devnode", manifestDiffAdmin, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "devnode", account1Address, "token.aleo"),
     ).rejects.toThrow(DeployError);
     await expect(
-      validateAdminSigner(mockConnection, config, "devnode", manifestDiffAdmin, "token.aleo"),
+      validateAdminSigner(mockConnection, config, "devnode", account1Address, "token.aleo"),
     ).rejects.toThrow("configured signer address");
   });
 });

@@ -171,6 +171,14 @@ export interface DeployConfig {
   readonly confirmTransactions?: boolean;
   /** Confirmation timeout in ms. Default: 60000 */
   readonly confirmationTimeout?: number;
+  /** Directory for deployment state (relative to project root). Default: "deployments" */
+  readonly deploymentsDir?: string;
+  /** Skip programs already deployed on-chain. Default: true */
+  readonly skipDeployed?: boolean;
+  /** Delay between dependent program deployments in ms (HTTP only). Default: 12000ms for HTTP, 0 for devnode */
+  readonly interDeploymentDelay?: number;
+  /** Automatically export deployment bundle after each deploy/upgrade. Default: false */
+  readonly autoExport?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +196,8 @@ export interface ResolvedPaths {
   readonly typechain: string;
   /** Absolute path to cache directory */
   readonly cache: string;
+  /** Absolute path to deployment state directory */
+  readonly deployments: string;
 }
 
 export interface ResolvedCompilerConfig {
@@ -213,6 +223,10 @@ export interface ResolvedDeployConfig {
   readonly privateFee: boolean;
   readonly confirmTransactions: boolean;
   readonly confirmationTimeout: number;
+  readonly deploymentsDir: string;
+  readonly skipDeployed: boolean;
+  readonly interDeploymentDelay?: number;
+  readonly autoExport: boolean;
 }
 
 /** Resolved network config — discriminated by type, all fields populated */

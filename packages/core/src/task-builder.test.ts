@@ -156,13 +156,13 @@ describe("createLre config-level tasks", () => {
   const mockConfig = {
     leoVersion: "4.0.0",
     leoBinary: "leo",
-    paths: { root: "/tmp", programs: "/tmp/programs", artifacts: "/tmp/artifacts", typechain: "/tmp/typechain", cache: "/tmp/cache" },
+    paths: { root: "/tmp", programs: "/tmp/programs", artifacts: "/tmp/artifacts", typechain: "/tmp/typechain", cache: "/tmp/cache", deployments: "/tmp/deployments" },
     networks: {},
     defaultNetwork: "devnode",
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
   } satisfies LionDenResolvedConfig;
 
   it("registers config-level tasks alongside plugin tasks", async () => {
@@ -200,13 +200,14 @@ describe("artifact store", () => {
       artifacts: path.join(tempRoot, "artifacts"),
       typechain: path.join(tempRoot, "typechain"),
       cache: path.join(tempRoot, "cache"),
+      deployments: path.join(tempRoot, "deployments"),
     },
     networks: {},
     defaultNetwork: "devnode",
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain" },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000 },
+    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
   } satisfies LionDenResolvedConfig;
 
   it("exposes setAbi/setAleoSource on the artifact store interface", () => {

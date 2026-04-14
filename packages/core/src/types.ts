@@ -96,6 +96,30 @@ export interface TestingHookHandlers {
   testTeardown?(context: unknown): Promise<void> | void;
 }
 
+// ---------------------------------------------------------------------------
+// Deployment hook context types
+// ---------------------------------------------------------------------------
+
+export interface ProgramDeployedContext {
+  readonly programId: string;
+  readonly txId: string;
+  readonly blockHeight: number;
+  readonly edition: number;
+  readonly constructorType: string;
+  readonly network: string;
+}
+
+export interface ProgramUpgradedContext extends ProgramDeployedContext {
+  readonly previousEdition: number;
+}
+
+export interface DeploymentHookHandlers {
+  /** Called after a program is successfully deployed on-chain. */
+  programDeployed?(ctx: ProgramDeployedContext): Promise<void> | void;
+  /** Called after a program is successfully upgraded on-chain. */
+  programUpgraded?(ctx: ProgramUpgradedContext): Promise<void> | void;
+}
+
 /** Stub types — will be fully defined in @lionden/leo-compiler */
 export interface CompilationContext {
   readonly config: LionDenResolvedConfig;
@@ -112,13 +136,14 @@ export interface CompilationResult {
 // Hook categories map
 // ---------------------------------------------------------------------------
 
-export type HookCategory = "config" | "compilation" | "network" | "testing";
+export type HookCategory = "config" | "compilation" | "network" | "testing" | "deployment";
 
 export type HookHandlerMap = {
   config: ConfigHookHandlers;
   compilation: CompilationHookHandlers;
   network: NetworkHookHandlers;
   testing: TestingHookHandlers;
+  deployment: DeploymentHookHandlers;
 };
 
 type HookHandlersFor<C extends HookCategory> = HookHandlerMap[C];
@@ -257,6 +282,8 @@ export interface LionDenRuntimeEnvironment {
   readonly config: LionDenResolvedConfig;
   /** Network manager — create connections, manage devnode lifecycle */
   readonly network: unknown; // NetworkManager, defined in @lionden/network
+  /** Deployment manager — track and query deployment state */
+  readonly deployments: unknown; // DeploymentManager, defined in @lionden/plugin-deploy
   /** Task runner — execute tasks programmatically */
   readonly tasks: TaskRunner;
   /** Hook dispatcher — invoke hooks programmatically */

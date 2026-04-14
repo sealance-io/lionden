@@ -35,6 +35,7 @@ export function createMockConnection(
       status: "accepted",
     }),
     getBlockHeight: vi.fn().mockResolvedValue(100),
+    getProgramSource: vi.fn().mockResolvedValue(null),
     advanceBlocks: vi.fn().mockResolvedValue(undefined),
     broadcastTransaction: vi.fn().mockResolvedValue("at1mock"),
     close: vi.fn(),

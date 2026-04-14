@@ -6,6 +6,7 @@ function makeLre(): LionDenRuntimeEnvironment {
   return {
     config: {} as LionDenRuntimeEnvironment["config"],
     network: null,
+    deployments: null,
     tasks: {} as LionDenRuntimeEnvironment["tasks"],
     hooks: {} as LionDenRuntimeEnvironment["hooks"],
     artifacts: {} as LionDenRuntimeEnvironment["artifacts"],

@@ -13,6 +13,7 @@ import type { ManagedDevnode } from "./devnode-lifecycle.js";
 import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
 import { clearFixtures } from "./fixtures.js";
 import { createTestLre } from "./lre-factory.js";
+import type { DeploymentCacheAccessor } from "./deployment-cache.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -127,14 +128,41 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     connection,
 
     async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
-      const result = await lre.tasks.run("deploy", {
+      const normalizedId = programName.endsWith(".aleo")
+        ? programName
+        : `${programName}.aleo`;
+
+      // Check deployment cache first (sync, zero-latency for previously deployed programs)
+      const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
+      if (deploymentCache) {
+        const cached = deploymentCache.getCached(normalizedId, "devnode");
+        if (cached && cached.status === "complete" && cached.txId) {
+          return { programId: cached.programId, txId: cached.txId };
+        }
+      }
+
+      const taskResult = await lre.tasks.run("deploy", {
         program: programName,
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,
         noCompile: deployOpts?.noCompile,
       });
 
-      const results = result as Array<{ programId: string; txId: string }>;
+      // Unwrap DeployTaskResult discriminated union
+      const wrapped = taskResult as { mode?: string; results?: unknown[] };
+      if (wrapped.mode && wrapped.mode !== "deploy") {
+        throw new Error(
+          `Expected deploy task to return mode "deploy", got "${wrapped.mode}". ` +
+            `This may indicate --preflight or --dry-run was passed unexpectedly.`,
+        );
+      }
+
+      // Support both the new { mode, results } shape and legacy array shape
+      const results: Array<{ programId: string; txId: string }> =
+        wrapped.mode === "deploy" && Array.isArray(wrapped.results)
+          ? (wrapped.results as Array<{ programId: string; txId: string }>)
+          : (taskResult as Array<{ programId: string; txId: string }>);
+
       const last = results[results.length - 1];
       if (!last) {
         throw new Error(`Deploy task returned no results for "${programName}".`);
@@ -165,6 +193,13 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
     async teardown(): Promise<void> {
       clearFixtures();
+      // Invalidate the deployment cache for devnode so the next test starts fresh.
+      // Disk state is left for cross-process sharing; stale disk records are
+      // re-validated against on-chain state on the next async read.
+      const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
+      if (deploymentCache) {
+        deploymentCache.invalidateSession("devnode");
+      }
       await manager.disconnectAll();
       if (managedDevnode) {
         await stopDevnode(managedDevnode);

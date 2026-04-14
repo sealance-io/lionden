@@ -12,6 +12,7 @@ const mockConfig: LionDenResolvedConfig = {
     artifacts: "/tmp/artifacts",
     typechain: "/tmp/typechain",
     cache: "/tmp/cache",
+    deployments: "/tmp/deployments",
   },
   networks: {
     devnode: {
@@ -42,6 +43,9 @@ const mockConfig: LionDenResolvedConfig = {
     privateFee: false,
     confirmTransactions: true,
     confirmationTimeout: 60_000,
+    deploymentsDir: "deployments",
+    skipDeployed: true,
+    autoExport: false,
   },
 };
 

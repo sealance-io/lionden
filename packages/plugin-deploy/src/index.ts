@@ -1,12 +1,19 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import {
   type LionDenPlugin,
+  type LionDenRuntimeEnvironment,
   type ConfigHookHandlers,
   type ConfigValidationError,
   task,
 } from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import type { NetworkManager } from "@lionden/network";
 import { deployAction } from "./deploy-task.js";
 import { upgradeAction } from "./upgrade-task.js";
+import type { DeploymentManager } from "./deployment-manager.js";
+import { DeploymentManagerImpl } from "./deployment-manager.js";
+import { DeployError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
 // Config hooks
@@ -16,7 +23,6 @@ const configHooks: ConfigHookHandlers = {
   validateResolvedConfig(config: LionDenResolvedConfig): ConfigValidationError[] {
     const errors: ConfigValidationError[] = [];
 
-    // Validate deploy config values
     if (config.deploy.defaultPriorityFee < 0) {
       errors.push({
         path: "deploy.defaultPriorityFee",
@@ -28,6 +34,27 @@ const configHooks: ConfigHookHandlers = {
       errors.push({
         path: "deploy.confirmationTimeout",
         message: "Confirmation timeout must be positive",
+      });
+    }
+
+    if (
+      config.deploy.interDeploymentDelay !== undefined &&
+      config.deploy.interDeploymentDelay < 0
+    ) {
+      errors.push({
+        path: "deploy.interDeploymentDelay",
+        message: "Inter-deployment delay cannot be negative",
+      });
+    }
+
+    if (
+      "deploymentsDir" in config.deploy &&
+      typeof (config.deploy as any).deploymentsDir === "string" &&
+      (config.deploy as any).deploymentsDir.trim() === ""
+    ) {
+      errors.push({
+        path: "deploy.deploymentsDir",
+        message: "Deployments directory cannot be empty",
       });
     }
 
@@ -57,6 +84,22 @@ const deployTask = task("deploy", "Deploy Aleo programs to a network")
   .addFlag({
     name: "noCompile",
     description: "Skip compilation before deploying (artifacts must already exist)",
+  })
+  .addFlag({
+    name: "preflight",
+    description: "Run pre-flight checks only — do not deploy",
+  })
+  .addFlag({
+    name: "dryRun",
+    description: "Build transaction but do not broadcast (devnode only)",
+  })
+  .addFlag({
+    name: "noSkipDeployed",
+    description: "Fail if any program is already deployed on-chain",
+  })
+  .addFlag({
+    name: "export",
+    description: "Export deployment bundle after deploying",
   })
   .addOption({
     name: "network",
@@ -90,6 +133,50 @@ const upgradeTask = task("upgrade", "Upgrade a deployed Aleo program")
   .setAction(upgradeAction)
   .build();
 
+const exportTask = task("export", "Export deployment addresses and ABIs for frontend consumption")
+  .addOption({
+    name: "network",
+    type: "string",
+    description: "Target network (overrides default)",
+  })
+  .addOption({
+    name: "out",
+    type: "string",
+    description: "Output file path (default: deployments/_exports/<network>.json)",
+  })
+  .setAction(exportAction)
+  .build();
+
+async function exportAction(
+  args: Record<string, unknown>,
+  lre: LionDenRuntimeEnvironment,
+): Promise<unknown> {
+  const networkName =
+    (args["network"] as string | undefined) ?? lre.config.defaultNetwork;
+  const outPath = args["out"] as string | undefined;
+
+  const manager = lre.deployments as DeploymentManager | null;
+  if (!manager) {
+    throw new DeployError(
+      "DeploymentManager not available. Ensure @lionden/plugin-deploy is registered as a plugin.",
+    );
+  }
+
+  const bundle = await manager.export(networkName);
+
+  if (outPath) {
+    fs.mkdirSync(path.dirname(path.resolve(outPath)), { recursive: true });
+    fs.writeFileSync(path.resolve(outPath), JSON.stringify(bundle, null, 2));
+    console.log(`Exported ${Object.keys(bundle.programs).length} programs to ${outPath}`);
+  } else {
+    console.log(
+      `Exported ${Object.keys(bundle.programs).length} programs for network "${networkName}"`,
+    );
+  }
+
+  return bundle;
+}
+
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
@@ -100,40 +187,91 @@ const pluginDeploy: LionDenPlugin = {
   hookHandlers: {
     config: configHooks,
   },
-  tasks: [deployTask, upgradeTask],
+  tasks: [deployTask, upgradeTask, exportTask],
+  extendLre(lre: LionDenRuntimeEnvironment): void {
+    const networkAccessor = () => lre.network as NetworkManager | null;
+    (lre as unknown as Record<string, unknown>)["deployments"] = new DeploymentManagerImpl(
+      lre.config,
+      networkAccessor,
+      lre.artifacts,
+    );
+  },
 };
 
 export default pluginDeploy;
 
-// Re-export public types and utilities
+// ---------------------------------------------------------------------------
+// Re-exports — public API
+// ---------------------------------------------------------------------------
+
+// Deployment state types
+export type {
+  DeploymentRecord,
+  CompleteDeploymentRecord,
+  DegradedDeploymentRecord,
+  RecoveredDeploymentRecord,
+  DeploymentHistoryEntry,
+  NetworkMetadata,
+  PendingDeployment,
+  ExportBundle,
+  ExportedProgram,
+  RecordConstructorInfo,
+} from "./deployment-types.js";
+
+// Deployment manager
+export type { DeploymentManager, PreflightOptions, RecordOptions } from "./deployment-manager.js";
+export { DeploymentManagerImpl } from "./deployment-manager.js";
+
+// Preflight types
+export type {
+  DeployPreflightResult,
+  UpgradePreflightResult,
+  PreflightWarning,
+  PreflightError,
+  ProgramPreflightOutcome,
+} from "./preflight.js";
+
+// On-chain check
+export { checkProgramOnChain } from "./on-chain-check.js";
+
+// Deploy task
 export {
   DeployError,
   validateConstructor,
   readLeoSourcesFromDir,
   resolveDeployTargets,
 } from "./deploy-task.js";
-export type { DeployOptions, DeployResult } from "./deploy-task.js";
+export type {
+  DeployOptions,
+  DeployResult,
+  DeployTaskResult,
+  DryRunResult,
+} from "./deploy-task.js";
+
+// Upgrade task
 export {
   UpgradeCompatibilityError,
   validateUpgradePermission,
   validateAdminSigner,
 } from "./upgrade-task.js";
 export type { UpgradeOptions, UpgradeResult } from "./upgrade-task.js";
+
+// Constructor parser
 export {
   parseConstructor,
   parseConstructorFromFiles,
   isValidAleoAddress,
-  type ConstructorInfo,
-  type ConstructorType,
 } from "./constructor-parser.js";
-export {
-  checkAbiCompatibility,
-  type AbiCompatResult,
-  type AbiViolation,
-} from "./abi-compat.js";
+export type { ConstructorInfo, ConstructorType } from "./constructor-parser.js";
+
+// ABI compatibility
+export { checkAbiCompatibility } from "./abi-compat.js";
+export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
+
+// Legacy exports (deploy-manifest.ts is left unused; kept for external code that may reference it)
 export {
   readDeployManifest,
   writeDeployManifest,
   deployManifestPath,
-  type DeployManifest,
 } from "./deploy-manifest.js";
+export type { DeployManifest } from "./deploy-manifest.js";
