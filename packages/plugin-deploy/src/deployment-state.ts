@@ -154,6 +154,14 @@ export function readAbiSnapshot(
   }
 }
 
+export function deleteAbiSnapshot(
+  deploymentsDir: string,
+  network: string,
+  programId: string,
+): void {
+  fs.rmSync(abiSnapshotPath(deploymentsDir, network, programId), { force: true });
+}
+
 // ---------------------------------------------------------------------------
 // History
 // ---------------------------------------------------------------------------

@@ -9,13 +9,17 @@ import type { NetworkManager } from "@lionden/network";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
 import {
   writeDeploymentRecord,
+  readDeploymentRecord,
+  writeAbiSnapshot,
   readPendingMarker,
   readAbiSnapshot,
   readNetworkMetadata,
+  readHistory,
 } from "./deployment-state.js";
 import type {
   CompleteDeploymentRecord,
   DegradedDeploymentRecord,
+  RecoveredDeploymentRecord,
   PendingDeployment,
 } from "./deployment-types.js";
 import type { ProgramABI } from "@lionden/leo-compiler";
@@ -344,6 +348,142 @@ describe("record()", () => {
 
     // Cache updated
     expect(dm.getCached("hello.aleo")).not.toBeNull();
+  });
+
+  it("does not downgrade a complete on-disk record to degraded when edition matches (fresh-process cache miss guard)", async () => {
+    // Simulate devnode fresh-process restart: disk has a complete record but
+    // the in-memory cache is cold (new DeploymentManagerImpl instance).
+    const config = makeConfig();
+    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
+    // Write complete record directly to disk (as if a previous process did it)
+    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
+
+    // Now call record() with a degraded record at the same edition — must NOT overwrite
+    const degraded: DegradedDeploymentRecord = {
+      status: "degraded",
+      programId: "hello.aleo",
+      edition: 1, // same as completeRecord.edition
+      constructor: { type: null },
+      abiHash: null,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: new Date().toISOString(),
+      historyCount: 0,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: null,
+      deployedAt: null,
+      feePaid: null,
+    };
+    await dm.record(degraded, "deploy");
+
+    // Cache should hold the complete record (loaded from disk), not the degraded one
+    const cached = dm.getCached("hello.aleo");
+    expect(cached?.status).toBe("complete");
+    expect(cached?.txId).toBe("at1abc");
+
+    // Disk should still have the complete record
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("complete");
+
+    // No history entry should have been appended — the early return skips appendHistory()
+    const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
+    expect(history).toHaveLength(0);
+  });
+
+  it("does not downgrade a recovered on-disk record to degraded when edition matches", async () => {
+    // Same invariant as complete: a recovered record at the same edition/endpoint must
+    // survive a degraded write from a fresh-process cache miss.
+    const recovered: RecoveredDeploymentRecord = {
+      status: "recovered",
+      programId: "hello.aleo",
+      edition: 1,
+      constructor: { type: "noupgrade" },
+      abiHash: "abc123",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      historyCount: 1,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: "aleo1abc",
+      deployedAt: "2026-01-01T00:00:00.000Z",
+      feePaid: null,
+    };
+    const config = makeConfig();
+    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
+    writeDeploymentRecord(config.paths.deployments, "devnode", recovered);
+
+    const degraded: DegradedDeploymentRecord = {
+      status: "degraded",
+      programId: "hello.aleo",
+      edition: 1,
+      constructor: { type: null },
+      abiHash: null,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: new Date().toISOString(),
+      historyCount: 0,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: null,
+      deployedAt: null,
+      feePaid: null,
+    };
+    await dm.record(degraded, "deploy");
+
+    const cached = dm.getCached("hello.aleo");
+    expect(cached?.status).toBe("recovered");
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("recovered");
+
+    // No history entry appended
+    const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
+    expect(history).toHaveLength(0);
+  });
+
+  it("writes degraded record and deletes ABI snapshot when edition differs from on-disk complete (out-of-band upgrade guard)", async () => {
+    // Disk has a complete record at edition 1 with an ABI snapshot, but on-chain the
+    // program is now at edition 2 (upgraded outside LionDen). The degraded record carries
+    // the observed edition 2 and must overwrite the stale disk state. The old ABI snapshot
+    // must also be deleted so upgradeAction() cannot validate against the prior edition's ABI.
+    const config = makeConfig();
+    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
+    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord); // edition: 1
+    // Seed the ABI snapshot as a prior complete deploy would have written it
+    writeAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo", mockAbi);
+    expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).not.toBeNull();
+
+    const degradedEdition2: DegradedDeploymentRecord = {
+      status: "degraded",
+      programId: "hello.aleo",
+      edition: 2, // differs from disk edition 1
+      constructor: { type: null },
+      abiHash: null,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: new Date().toISOString(),
+      historyCount: 0,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: null,
+      deployedAt: null,
+      feePaid: null,
+    };
+    await dm.record(degradedEdition2, "deploy");
+
+    // The degraded record at edition 2 should have been written
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("degraded");
+    expect(onDisk?.edition).toBe(2);
+
+    // A history entry must exist for the write
+    const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
+    expect(history).toHaveLength(1);
+
+    // The ABI snapshot must be deleted — stale prior-edition ABI must not be usable by upgradeAction()
+    expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
   });
 });
 
