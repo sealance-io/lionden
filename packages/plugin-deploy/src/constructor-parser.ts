@@ -12,6 +12,9 @@
  *   constructor() { ... }
  */
 
+import { isValidAleoAddress } from "@lionden/config";
+export { isValidAleoAddress } from "@lionden/config";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -48,9 +51,6 @@ const CHECKSUM_RE =
 // Match @custom annotation followed by [async] constructor
 const CUSTOM_RE =
   /@custom\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
-
-// Aleo address format: aleo1 followed by 58 bech32 characters
-const ALEO_ADDRESS_RE = /^aleo1[a-z0-9]{58}$/;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -94,13 +94,6 @@ export function parseConstructor(leoSource: string): ConstructorInfo | null {
   }
 
   return null;
-}
-
-/**
- * Validate that an admin address is a well-formed Aleo address.
- */
-export function isValidAleoAddress(address: string): boolean {
-  return ALEO_ADDRESS_RE.test(address);
 }
 
 /**

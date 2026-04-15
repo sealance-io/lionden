@@ -154,7 +154,7 @@ afterAll(async () => {
 
 describe("hello program", () => {
   it("adds two numbers", async () => {
-    const result = await ctx!.execute("hello.aleo", "main", ["3u32", "5u32"]);
+    const result = await ctx!.execute("hello.aleo", "main", ["3u32", "5u32"], { mode: "local" });
     expect(result.outputs[0]).toBe("8u32");
   });
 });
@@ -191,6 +191,15 @@ export default defineConfig({
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
+  },
+  namedAccounts: {
+    deployer: {
+      default: 0,
+      // testnet: configVariable("DEPLOYER_KEY"),
+    },
+    treasury: {
+      default: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5",
+    },
   },
   testing: { timeout: 120_000 },
   deploy: { confirmTransactions: true },
@@ -253,9 +262,9 @@ program token.aleo {
 const TOKEN_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext, assertMappingValue } from "@lionden/testing";
+import { isSignable } from "@lionden/config";
 
 let ctx: TestContext | undefined;
-const RECEIVER = "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
 
 beforeAll(async () => {
   ctx = await setup();
@@ -273,14 +282,15 @@ afterAll(async () => {
 });
 
 describe("token program", () => {
-  it("mints public tokens", async () => {
-    await ctx!.execute("token.aleo", "mint_public", [RECEIVER, "1000u64"]);
+  it("mints public tokens to treasury", async () => {
+    const treasury = ctx!.namedAccounts["treasury"]!;
+    await ctx!.execute("token.aleo", "mint_public", [treasury.address, "1000u64"]);
 
     await assertMappingValue(
       ctx!.connection,
       "token.aleo",
       "balances",
-      RECEIVER,
+      treasury.address,
       "1000u64",
     );
   });
@@ -315,6 +325,21 @@ describe("token program", () => {
       "100u64",
     ], { mode: "local" });
     expect(result.outputs).toHaveLength(1);
+  });
+
+  describe("namedAccounts", () => {
+    it("deployer resolves to a signable devnode account", () => {
+      const deployer = ctx!.namedAccounts["deployer"];
+      expect(deployer).toBeDefined();
+      expect(isSignable(deployer!)).toBe(true);
+      expect(deployer!.address).toMatch(/^aleo1/);
+    });
+
+    it("treasury resolves to an address-only account", () => {
+      const treasury = ctx!.namedAccounts["treasury"];
+      expect(treasury).toBeDefined();
+      expect(treasury!.type).toBe("address-only");
+    });
   });
 });
 `;

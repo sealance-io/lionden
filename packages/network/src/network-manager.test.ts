@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NetworkManagerImpl } from "./network-manager.js";
-import type { LionDenResolvedConfig } from "@lionden/config";
+import type { LionDenResolvedConfig, ResolvedNamedAccountsConfig } from "@lionden/config";
 import type { NetworkConnection } from "./types.js";
+import { DEVNODE_ACCOUNTS } from "./accounts.js";
 
 const mockConfig: LionDenResolvedConfig = {
   leoVersion: "4.0.0",
@@ -49,6 +50,7 @@ const mockConfig: LionDenResolvedConfig = {
     skipDeployed: true,
     autoExport: false,
   },
+  namedAccounts: {},
 };
 
 describe("NetworkManagerImpl", () => {
@@ -180,5 +182,131 @@ describe("NetworkManagerImpl", () => {
     const mgr = new NetworkManagerImpl(configWithAccount as LionDenResolvedConfig);
     const conn = await mgr.connect("devnode") as any;
     expect(conn.privateKey).toBe("APrivateKey1zkpCustomKey123");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Named account lifecycle integration tests
+// ---------------------------------------------------------------------------
+
+describe("NetworkManagerImpl — named account lifecycle", () => {
+  const DEPLOYER_ADDR_0 = DEVNODE_ACCOUNTS[0]!.address;
+  const DEPLOYER_KEY_0 = DEVNODE_ACCOUNTS[0]!.privateKey;
+  const DEPLOYER_ADDR_1 = DEVNODE_ACCOUNTS[1]!.address;
+
+  // Two devnode networks; deployer uses index 0 by default, index 1 for netB.
+  const namedAccountsConfig = {
+    ...mockConfig,
+    networks: {
+      netA: {
+        type: "devnode" as const,
+        socketAddr: "127.0.0.1:3030",
+        autoBlock: true,
+        verbosity: 0,
+        accounts: [],
+        network: "testnet" as const,
+        ephemeral: true,
+      },
+      netB: {
+        type: "devnode" as const,
+        socketAddr: "127.0.0.1:3031",
+        autoBlock: true,
+        verbosity: 0,
+        accounts: [],
+        network: "testnet" as const,
+        ephemeral: true,
+      },
+    },
+    defaultNetwork: "netA",
+    namedAccounts: {
+      deployer: {
+        networks: { netB: { type: "index" as const, index: 1 } },
+        default: { type: "index" as const, index: 0 },
+      },
+    } satisfies ResolvedNamedAccountsConfig,
+  } as LionDenResolvedConfig;
+
+  it("getNamedAccounts returns {} before any connect", () => {
+    const mgr = new NetworkManagerImpl(namedAccountsConfig);
+    expect(mgr.getNamedAccounts()).toEqual({});
+  });
+
+  it("getNamedAccounts returns resolved accounts after connect", async () => {
+    const mgr = new NetworkManagerImpl(namedAccountsConfig);
+    await mgr.connect("netA");
+    expect(mgr.getNamedAccounts()["deployer"]).toEqual({
+      type: "signable",
+      name: "deployer",
+      address: DEPLOYER_ADDR_0,
+      privateKey: DEPLOYER_KEY_0,
+    });
+  });
+
+  it("switching networks restores correct cached named accounts", async () => {
+    const mgr = new NetworkManagerImpl(namedAccountsConfig);
+
+    await mgr.connect("netA");
+    expect(mgr.getNamedAccounts()["deployer"]!.address).toBe(DEPLOYER_ADDR_0);
+
+    await mgr.connect("netB");
+    expect(mgr.getNamedAccounts()["deployer"]!.address).toBe(DEPLOYER_ADDR_1);
+
+    // Switching back restores from cache — does not re-resolve
+    await mgr.connect("netA");
+    expect(mgr.getNamedAccounts()["deployer"]!.address).toBe(DEPLOYER_ADDR_0);
+  });
+
+  it("failed named-account resolution preserves previous active connection and accounts", async () => {
+    // HTTP network with an index-based deployer → throws when resolving
+    const failConfig = {
+      ...mockConfig,
+      networks: {
+        devnode: mockConfig.networks["devnode"]!,
+        testnet: {
+          type: "http" as const,
+          endpoint: "https://api.explorer.provable.com/v1",
+          network: "testnet" as const,
+          ephemeral: false,
+        },
+      },
+      namedAccounts: {
+        deployer: {
+          networks: {},
+          default: { type: "index" as const, index: 0 }, // index on HTTP → throws
+        },
+      } satisfies ResolvedNamedAccountsConfig,
+    } as LionDenResolvedConfig;
+
+    const mgr = new NetworkManagerImpl(failConfig);
+
+    const conn1 = await mgr.connect("devnode");
+    expect(mgr.getNamedAccounts()["deployer"]!.address).toBe(DEPLOYER_ADDR_0);
+
+    await expect(mgr.connect("testnet")).rejects.toThrow(/HTTP/i);
+
+    // Previous active connection preserved
+    expect(mgr.getConnection()).toBe(conn1);
+    // Previous named accounts preserved
+    expect(mgr.getNamedAccounts()["deployer"]!.address).toBe(DEPLOYER_ADDR_0);
+  });
+
+  it("disconnectAll clears named accounts", async () => {
+    const mgr = new NetworkManagerImpl(namedAccountsConfig);
+    await mgr.connect("netA");
+    expect(Object.keys(mgr.getNamedAccounts())).toHaveLength(1);
+
+    await mgr.disconnectAll();
+    expect(mgr.getNamedAccounts()).toEqual({});
+  });
+
+  it("getNamedAccounts returns a defensive copy — mutations do not affect internal state", async () => {
+    const mgr = new NetworkManagerImpl(namedAccountsConfig);
+    await mgr.connect("netA");
+
+    const copy = mgr.getNamedAccounts() as Record<string, unknown>;
+    delete copy["deployer"];
+
+    // Internal state unaffected
+    expect(mgr.getNamedAccounts()["deployer"]).toBeDefined();
   });
 });

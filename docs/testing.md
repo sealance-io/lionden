@@ -35,6 +35,7 @@ The resulting `TestContext` includes:
 
 - `lre`
 - `accounts`
+- `namedAccounts` — resolved named accounts for the active network (see [deployment.md § Named Accounts](deployment.md#named-accounts))
 - `connection`
 - `network`
 - `deploy()`
@@ -45,6 +46,8 @@ The resulting `TestContext` includes:
 This is the interface used by the example tests in `examples/`.
 
 `deploy()` checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same session. `teardown()` invalidates the deployment cache for the connected network so the next test context revalidates state against the active network. The `network` property on `TestContext` exposes the connected network name. `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so deployment recipes can be called directly from test fixtures without any explicit type casting.
+
+`namedAccounts` is populated from `lre.namedAccounts` after `connect()`. It holds `{}` when no `namedAccounts` field is present in the project config — existing tests continue to work unchanged.
 
 ## Devnode Lifecycle In Tests
 

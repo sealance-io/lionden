@@ -102,6 +102,7 @@ function makeNetworkManager(connection = createMockConnection()): NetworkManager
     getConnection: vi.fn().mockReturnValue(connection),
     disconnectAll: vi.fn().mockResolvedValue(undefined),
     getAccounts: vi.fn().mockReturnValue([]),
+    getNamedAccounts: vi.fn().mockReturnValue({}),
     execute: vi.fn(),
     getMappingValue: vi.fn(),
   };
@@ -196,6 +197,7 @@ describe("devnode: getDeployment validates on-chain", () => {
       getConnection: vi.fn().mockReturnValue(null),
       disconnectAll: vi.fn(),
       getAccounts: vi.fn().mockReturnValue([]),
+      getNamedAccounts: vi.fn().mockReturnValue({}),
       execute: vi.fn(),
       getMappingValue: vi.fn(),
     };

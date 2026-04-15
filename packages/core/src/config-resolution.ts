@@ -11,8 +11,13 @@ import type {
   ResolvedNetworkConfig,
   NetworkUserConfig,
   ConfigVariable,
+  NamedAccountConfig,
+  NamedAccountValue,
+  ResolvedNamedAccountValue,
+  ResolvedNamedAccountEntry,
+  ResolvedNamedAccountsConfig,
 } from "@lionden/config";
-import { isConfigVariable, resolveConfigVariable } from "@lionden/config";
+import { isConfigVariable, resolveConfigVariable, isValidAleoAddress } from "@lionden/config";
 import type { LionDenPlugin, ConfigValidationError } from "./types.js";
 
 export class ConfigResolutionError extends Error {
@@ -227,6 +232,8 @@ function buildDefaults(
 
   const defaultNetwork = config.defaultNetwork ?? "devnode";
 
+  const namedAccounts = resolveNamedAccountsConfig(config.namedAccounts ?? {});
+
   return {
     leoVersion: config.leoVersion ?? "4.0.0",
     leoBinary: expandTilde(config.leoBinary ?? "leo"),
@@ -237,6 +244,7 @@ function buildDefaults(
     codegen,
     testing,
     deploy,
+    namedAccounts,
   };
 }
 
@@ -300,6 +308,115 @@ function resolveStringOrVariable(
   return undefined;
 }
 
+// ---------------------------------------------------------------------------
+// Named accounts resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve user-provided namedAccounts config to the fully classified form.
+ * This is synchronous — ConfigVariable values are resolved eagerly (existing
+ * convention). Address derivation from private keys is deferred to runtime.
+ *
+ * Validation:
+ * - Numeric index: must be a finite non-negative integer
+ * - String starting with "aleo1": must pass full address shape validation
+ * - String starting with "APrivateKey1": accepted as-is (private key)
+ * - Other strings: config error
+ */
+function resolveNamedAccountsConfig(
+  userNamedAccounts: Record<string, NamedAccountConfig>,
+): ResolvedNamedAccountsConfig {
+  const resolved: Record<string, ResolvedNamedAccountEntry> = {};
+
+  for (const [accountName, accountConfig] of Object.entries(userNamedAccounts)) {
+    const networks: Record<string, ResolvedNamedAccountValue> = {};
+
+    for (const [key, value] of Object.entries(accountConfig)) {
+      if (value === undefined) continue;
+
+      const resolvedValue = resolveNamedAccountValue(accountName, key, value);
+      if (key === "default") {
+        // handled below via accountConfig.default
+        continue;
+      }
+      networks[key] = resolvedValue;
+    }
+
+    const defaultValue =
+      accountConfig.default !== undefined
+        ? resolveNamedAccountValue(accountName, "default", accountConfig.default)
+        : undefined;
+
+    resolved[accountName] = { networks, default: defaultValue };
+  }
+
+  return resolved;
+}
+
+function resolveNamedAccountValue(
+  accountName: string,
+  keyName: string,
+  value: NamedAccountValue,
+): ResolvedNamedAccountValue {
+  // Resolve ConfigVariable first
+  let raw: string | number;
+  if (typeof value === "number") {
+    raw = value;
+  } else if (typeof value === "string") {
+    raw = value;
+  } else if (isConfigVariable(value)) {
+    const resolved = resolveConfigVariable(value);
+    // After variable resolution, treat as string
+    raw = resolved;
+  } else {
+    throw new ConfigResolutionError(
+      `Named account "${accountName}" (${keyName}): unsupported value type.`,
+      [{ path: `namedAccounts.${accountName}.${keyName}`, message: "Value must be a number, string, or ConfigVariable." }],
+    );
+  }
+
+  if (typeof raw === "number") {
+    // Validate: finite non-negative integer
+    if (!Number.isFinite(raw) || !Number.isInteger(raw) || raw < 0) {
+      throw new ConfigResolutionError(
+        `Named account "${accountName}" (${keyName}): index must be a non-negative integer, got ${raw}.`,
+        [{
+          path: `namedAccounts.${accountName}.${keyName}`,
+          message: `Index must be a non-negative integer, got ${raw}.`,
+        }],
+      );
+    }
+    return { type: "index", index: raw };
+  }
+
+  // raw is a string
+  if (raw.startsWith("aleo1")) {
+    if (!isValidAleoAddress(raw)) {
+      throw new ConfigResolutionError(
+        `Named account "${accountName}" (${keyName}): "${raw}" looks like an Aleo address but has an invalid format. ` +
+          `Expected "aleo1" followed by exactly 58 lowercase alphanumeric characters.`,
+        [{
+          path: `namedAccounts.${accountName}.${keyName}`,
+          message: `Invalid Aleo address format. Expected "aleo1" + 58 lowercase alphanumeric chars.`,
+        }],
+      );
+    }
+    return { type: "address", address: raw };
+  }
+
+  if (raw.startsWith("APrivateKey1")) {
+    return { type: "privateKey", privateKey: raw };
+  }
+
+  throw new ConfigResolutionError(
+    `Named account "${accountName}" (${keyName}): string "${raw}" is not a recognized Aleo address (aleo1...) or private key (APrivateKey1...).`,
+    [{
+      path: `namedAccounts.${accountName}.${keyName}`,
+      message: `Must be an Aleo address (aleo1...), a private key (APrivateKey1...), or a devnode account index (number).`,
+    }],
+  );
+}
+
 function expandTilde(p: string): string {
   if (p.startsWith("~/")) {
     return path.join(os.homedir(), p.slice(2));
@@ -323,5 +440,6 @@ function mergePartial(
     testing: { ...base.testing, ...(partial.testing ?? {}) },
     deploy: { ...base.deploy, ...(partial.deploy ?? {}) },
     networks: { ...base.networks, ...(partial.networks ?? {}) },
+    namedAccounts: { ...base.namedAccounts, ...(partial.namedAccounts ?? {}) },
   } as LionDenResolvedConfig;
 }

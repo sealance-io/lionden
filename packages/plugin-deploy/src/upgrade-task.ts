@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import { isSignable } from "@lionden/config";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import {
   discoverUnits,
@@ -92,6 +93,19 @@ export async function upgradeAction(
   const networkName = options.network ?? config.defaultNetwork;
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
+
+  // 1b. Resolve admin signer from namedAccounts (if configured)
+  let adminSignerKey: string | undefined;
+  let namedAdminAddress: string | undefined;
+  const namedAdmin = lre.namedAccounts["admin"];
+  if (namedAdmin !== undefined) {
+    if (isSignable(namedAdmin)) {
+      adminSignerKey = namedAdmin.privateKey;
+    } else {
+      // Address-only admin — used for drift warning in preflight
+      namedAdminAddress = namedAdmin.address;
+    }
+  }
 
   // 2. Recover pending deployments from previous runs
   if (manager) {
@@ -213,6 +227,8 @@ export async function upgradeAction(
     connection,
     config,
     networkName,
+    signerPrivateKey: adminSignerKey,
+    namedAdminAddress,
   });
 
   if (!preflightResult.passed) {
@@ -241,7 +257,7 @@ export async function upgradeAction(
   const previousEdition = existingRecord.edition;
   const newEdition = previousEdition + 1;
   const newAbiHash = computeAbiHash(newAbi);
-  const deployerAddress = await resolveDeployerAddress(connection, config, networkName);
+  const deployerAddress = await resolveDeployerAddress(connection, config, networkName, adminSignerKey);
 
   if (manager) {
     const pending: PendingDeployment = {
@@ -276,6 +292,7 @@ export async function upgradeAction(
     fee,
     privateFee: config.deploy.privateFee,
     edition: newEdition,
+    signerPrivateKey: adminSignerKey,
   });
 
   // 13. Wait for confirmation
@@ -426,12 +443,14 @@ interface BuildUpgradeOptions {
   fee: number;
   privateFee: boolean;
   edition: number;
+  /** Override signing key. When set, overrides connection.privateKey. */
+  signerPrivateKey?: string;
 }
 
 async function buildAndBroadcastUpgrade(
   opts: BuildUpgradeOptions,
 ): Promise<string> {
-  const { programId, aleoSource, connection, fee, privateFee, edition } = opts;
+  const { programId, aleoSource, connection, fee, privateFee, edition, signerPrivateKey } = opts;
 
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
@@ -444,7 +463,7 @@ async function buildAndBroadcastUpgrade(
   const sdk = await createSdkObjects({
     network: connection.networkId,
     endpoint: connection.endpoint,
-    privateKey: connection.privateKey,
+    privateKey: signerPrivateKey ?? connection.privateKey,
     apiKey: connection.apiKey,
   });
 
@@ -502,11 +521,13 @@ async function resolveDeployerAddress(
   connection: NetworkConnection,
   config: import("@lionden/config").LionDenResolvedConfig,
   networkName: string,
+  signerPrivateKey?: string,
 ): Promise<string | undefined> {
   const networkConfig = config.networks[networkName];
   if (!networkConfig) return undefined;
 
   const privateKey =
+    signerPrivateKey ??
     connection.privateKey ??
     (networkConfig.type === "devnode" && networkConfig.accounts.length > 0
       ? networkConfig.accounts[0]!.privateKey

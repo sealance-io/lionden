@@ -6,6 +6,7 @@ import {
   type TestContext,
   assertMappingValue,
 } from "@lionden/testing";
+import { isSignable } from "@lionden/config";
 import { createTokenContract } from "../typechain/index.js";
 
 const RECEIVERS = {
@@ -144,6 +145,25 @@ describe("token program", () => {
       const heightAfter = await ctx!.connection.getBlockHeight();
 
       expect(heightAfter).toBeGreaterThanOrEqual(heightBefore + 3);
+    });
+  });
+
+  describe("namedAccounts", () => {
+    it("deployer resolves to a signable devnode account", () => {
+      const deployer = ctx!.namedAccounts["deployer"];
+      expect(deployer).toBeDefined();
+      expect(isSignable(deployer!)).toBe(true);
+      // default: 0 in config → DEVNODE_ACCOUNTS[0]
+      expect(deployer!.address).toMatch(/^aleo1/);
+    });
+
+    it("treasury resolves to an address-only account and can be used as a recipient", async () => {
+      const treasury = ctx!.namedAccounts["treasury"];
+      expect(treasury).toBeDefined();
+      expect(treasury!.type).toBe("address-only");
+
+      // Mint to treasury using its address from namedAccounts rather than a hardcoded string
+      await ctx!.execute("token.aleo", "mint_public", [treasury!.address, "100u64"]);
     });
   });
 });

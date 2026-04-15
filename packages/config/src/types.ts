@@ -4,6 +4,47 @@ import type { ConfigVariable } from "./config-variable.js";
 export type { ConfigVariable } from "./config-variable.js";
 
 // ---------------------------------------------------------------------------
+// Named accounts — user-facing config types
+// ---------------------------------------------------------------------------
+
+/**
+ * A single value for a named account entry.
+ * - number: devnode account index (e.g. 0 → DEVNODE_ACCOUNTS[0])
+ * - string matching "aleo1...": a literal Aleo address (address-only)
+ * - string matching "APrivateKey1...": a literal private key (signable)
+ * - ConfigVariable: resolved eagerly to a string, then classified by prefix
+ */
+export type NamedAccountValue = number | string | ConfigVariable;
+
+/**
+ * Per-account named account config.
+ * The `default` key applies when no network-specific override is found.
+ */
+export interface NamedAccountConfig {
+  readonly default?: NamedAccountValue;
+  readonly [networkName: string]: NamedAccountValue | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Named accounts — resolved config types
+// ---------------------------------------------------------------------------
+
+/** A resolved named account value after config variable resolution. */
+export type ResolvedNamedAccountValue =
+  | { readonly type: "index"; readonly index: number }
+  | { readonly type: "address"; readonly address: string }
+  | { readonly type: "privateKey"; readonly privateKey: string };
+
+/** A fully resolved named account entry with per-network overrides and default. */
+export interface ResolvedNamedAccountEntry {
+  readonly networks: Readonly<Record<string, ResolvedNamedAccountValue>>;
+  readonly default?: ResolvedNamedAccountValue;
+}
+
+/** All resolved named accounts from config. */
+export type ResolvedNamedAccountsConfig = Readonly<Record<string, ResolvedNamedAccountEntry>>;
+
+// ---------------------------------------------------------------------------
 // Network configurations
 // ---------------------------------------------------------------------------
 
@@ -147,6 +188,19 @@ export interface LionDenUserConfig {
 
   /** Deploy settings */
   readonly deploy?: DeployConfig;
+
+  /**
+   * Named accounts — human-readable roles mapped to per-network account values.
+   *
+   * @example
+   * ```typescript
+   * namedAccounts: {
+   *   deployer: { default: 0, testnet: configVariable("DEPLOYER_KEY") },
+   *   treasury: { default: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5" },
+   * }
+   * ```
+   */
+  readonly namedAccounts?: Record<string, NamedAccountConfig>;
 }
 
 export interface CompilerConfig {
@@ -289,4 +343,6 @@ export interface LionDenResolvedConfig {
   readonly codegen: ResolvedCodegenConfig;
   readonly testing: ResolvedTestingConfig;
   readonly deploy: ResolvedDeployConfig;
+  /** Resolved named accounts. Empty record when not configured. */
+  readonly namedAccounts: ResolvedNamedAccountsConfig;
 }

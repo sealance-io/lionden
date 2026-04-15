@@ -14,6 +14,7 @@ import {
   checkAbiCompatible,
   checkConstructorImmutable,
   checkEditionContinuity,
+  checkAdminSigner,
   runDeployPreflight,
   runUpgradePreflight,
 } from "./preflight.js";
@@ -595,5 +596,62 @@ describe("runUpgradePreflight", () => {
       networkName: "devnode",
     });
     expect(result.warnings.some((w) => w.code === "CUSTOM_CONSTRUCTOR")).toBe(true);
+  });
+
+  // address-only admin: matching @admin but wrong network signer
+  // Regression test for the bug where namedAdminAddress === adminAddress caused
+  // validateAdminSigner() to be skipped entirely, letting an invalid signer through.
+  it("still validates network signer when address-only admin matches @admin address", async () => {
+    // DEVNODE_ACCOUNTS[0].address is the well-known account-0. Use a different
+    // address as @admin so account-0 (the default devnode signer) fails signer check.
+    const nonSignerAdminAddress = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz15iwyf2vd3d7jkqqe0yv8s2zs0za";
+    const adminRecord: DeploymentRecord = {
+      ...completeRecord,
+      constructor: { type: "admin", adminAddress: nonSignerAdminAddress },
+    };
+    const conn = createMockConnection();
+    const { warning, error } = await checkAdminSigner(
+      conn,
+      config,
+      "devnode",
+      adminRecord,
+      "hello.aleo",
+      undefined, // no signerPrivateKey
+      nonSignerAdminAddress, // namedAdminAddress matches @admin — no drift
+    );
+    // No drift: addresses match
+    expect(warning).toBeNull();
+    // Signer error: devnode account-0 ≠ nonSignerAdminAddress
+    expect(error).not.toBeNull();
+    expect(error!.code).toBe("ADMIN_SIGNER_MISMATCH");
+  });
+
+  // address-only admin: drift warning is non-fatal, preflight passes when signer is correct
+  it("emits NAMED_ADMIN_DRIFT warning without failing preflight when signer is correct", async () => {
+    // @admin address = devnode account-0 (signer check will pass)
+    const account0Address = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
+    const differentAddress = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz15iwyf2vd3d7jkqqe0yv8s2zs0za";
+    const adminRecord: DeploymentRecord = {
+      ...completeRecord,
+      constructor: { type: "admin", adminAddress: account0Address },
+    };
+    const conn = createMockConnection();
+    const result = await runUpgradePreflight({
+      programId: "hello.aleo",
+      oldRecord: adminRecord,
+      oldAbi: mockAbi,
+      newConstructor: { type: "admin", adminAddress: account0Address }, // same as oldRecord
+      newAbi: mockAbi,
+      newFingerprint: "",
+      connection: conn,
+      config,
+      networkName: "devnode",
+      namedAdminAddress: differentAddress, // drifts from @admin address
+    });
+    // Drift warning fires
+    expect(result.warnings.some((w) => w.code === "NAMED_ADMIN_DRIFT")).toBe(true);
+    // Preflight still passes: signer (account-0) matches @admin, drift is a warning only
+    expect(result.passed).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 });

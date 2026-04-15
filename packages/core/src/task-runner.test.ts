@@ -12,6 +12,7 @@ function makeLre(): LionDenRuntimeEnvironment {
     artifacts: {} as LionDenRuntimeEnvironment["artifacts"],
     plugins: [],
     globalOptions: {},
+    namedAccounts: {},
   };
 }
 

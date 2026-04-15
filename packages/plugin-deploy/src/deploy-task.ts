@@ -13,6 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { ResolvedNetworkConfig } from "@lionden/config";
+import { isSignable } from "@lionden/config";
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import {
@@ -152,6 +153,20 @@ export async function deployAction(
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
 
+  // 5b. Resolve deployer signer from namedAccounts (if configured)
+  let deployerSignerKey: string | undefined;
+  const namedDeployer = lre.namedAccounts["deployer"];
+  if (namedDeployer !== undefined) {
+    if (!isSignable(namedDeployer)) {
+      throw new DeployError(
+        `Named account "deployer" is configured as address-only for network "${networkName}". ` +
+          `The deployer role requires a signable account (private key or devnode account index). ` +
+          `Provide a private key or devnode index in your namedAccounts config.`,
+      );
+    }
+    deployerSignerKey = namedDeployer.privateKey;
+  }
+
   // 6. Recover pending deployments from previous runs
   if (manager) {
     await manager.recoverPendingDeployments(networkName, connection);
@@ -203,6 +218,7 @@ export async function deployAction(
     deployTargets,
     localSources,
     graph,
+    signerPrivateKey: deployerSignerKey,
   });
 
   // 10. If --preflight, return pure check result (no state mutations)
@@ -247,6 +263,7 @@ export async function deployAction(
         networkConfig,
         fee: options.priorityFee ?? config.deploy.defaultPriorityFee,
         privateFee: config.deploy.privateFee,
+        signerPrivateKey: deployerSignerKey,
       });
 
       dryRunResults.push({
@@ -316,8 +333,8 @@ export async function deployAction(
     }
     const abiHash = computeAbiHash(abi);
 
-    // Derive deployer address from connection
-    const deployerAddress = await resolveDeployerAddress(connection, networkConfig);
+    // Derive deployer address from connection (prefer namedAccounts.deployer key)
+    const deployerAddress = await resolveDeployerAddress(connection, networkConfig, deployerSignerKey);
 
     // Before broadcast: write pending marker
     if (manager) {
@@ -351,6 +368,7 @@ export async function deployAction(
       networkConfig,
       fee,
       privateFee,
+      signerPrivateKey: deployerSignerKey,
     });
 
     // Wait for confirmation
@@ -595,6 +613,8 @@ interface BuildDeployOptions {
   networkConfig: ResolvedNetworkConfig;
   fee: number;
   privateFee: boolean;
+  /** Override the signing key. When set, overrides connection.privateKey. */
+  signerPrivateKey?: string;
 }
 
 /**
@@ -620,7 +640,7 @@ export async function buildDeployTransaction(
   const sdk = await createSdkObjects({
     network: opts.connection.networkId,
     endpoint: opts.connection.endpoint,
-    privateKey: opts.connection.privateKey,
+    privateKey: opts.signerPrivateKey ?? opts.connection.privateKey,
     apiKey: opts.connection.apiKey,
   });
 
@@ -640,6 +660,8 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
+  const signerKey = opts.signerPrivateKey ?? connection.privateKey;
+
   if (connection.type === "devnode") {
     await checkDevnodeSdkSupport();
     await initConsensusHeights();
@@ -647,7 +669,7 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
     const sdk = await createSdkObjects({
       network: connection.networkId,
       endpoint: connection.endpoint,
-      privateKey: connection.privateKey,
+      privateKey: signerKey,
       apiKey: connection.apiKey,
     });
 
@@ -664,7 +686,7 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const sdk = await createSdkObjects({
     network: connection.networkId,
     endpoint: connection.endpoint,
-    privateKey: connection.privateKey,
+    privateKey: signerKey,
     apiKey: connection.apiKey,
   });
 
@@ -699,8 +721,10 @@ export function computeAbiHash(abi: ProgramABI): string {
 async function resolveDeployerAddress(
   connection: NetworkConnection,
   networkConfig: ResolvedNetworkConfig,
+  signerPrivateKey?: string,
 ): Promise<string | undefined> {
   const privateKey =
+    signerPrivateKey ??
     connection.privateKey ??
     (networkConfig.type === "devnode" && networkConfig.accounts.length > 0
       ? networkConfig.accounts[0]!.privateKey

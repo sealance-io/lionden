@@ -1,4 +1,4 @@
-import { defineConfig } from "@lionden/config";
+import { defineConfig, configVariable } from "@lionden/config";
 import pluginLeo from "@lionden/plugin-leo";
 import pluginNetwork from "@lionden/plugin-network";
 import pluginDeploy from "@lionden/plugin-deploy";
@@ -10,6 +10,21 @@ export default defineConfig({
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
+    // testnet: {
+    //   type: "http",
+    //   endpoint: "https://api.explorer.provable.com/v1",
+    //   network: "testnet",
+    //   privateKey: configVariable("DEPLOYER_KEY"),
+    // },
+  },
+  namedAccounts: {
+    deployer: {
+      default: 0,
+      // testnet: configVariable("DEPLOYER_KEY"),
+    },
+    treasury: {
+      default: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5",
+    },
   },
   testing: { timeout: 120_000 },
   deploy: { confirmTransactions: true },

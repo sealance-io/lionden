@@ -27,8 +27,20 @@ export type {
   ResolvedDeployConfig,
   LionDenPluginRef,
   TaskDefinitionRef,
+  NamedAccountValue,
+  NamedAccountConfig,
+  ResolvedNamedAccountValue,
+  ResolvedNamedAccountEntry,
+  ResolvedNamedAccountsConfig,
 } from "./types.js";
 export type {
   LionDenUserConfigExtensions,
   LionDenResolvedConfigExtensions,
 } from "./declaration-merging.js";
+export type {
+  NamedAccount,
+  SignableNamedAccount,
+  AddressOnlyNamedAccount,
+} from "./named-account.js";
+export { isSignable, asSigner } from "./named-account.js";
+export { isValidAleoAddress } from "./aleo-address.js";

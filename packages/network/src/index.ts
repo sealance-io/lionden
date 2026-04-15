@@ -14,3 +14,4 @@ export { NetworkManagerImpl } from "./network-manager.js";
 export { DevnodeManager } from "./devnode-manager.js";
 export { DEVNODE_ACCOUNTS, getDefaultAccount } from "./accounts.js";
 export { initSdk, createSdkObjects, createSignerSdkObjects, checkDevnodeSdkSupport, initConsensusHeights, type CreateSdkObjectsOptions, type SignerSdkObjects, type CreateSignerSdkObjectsOptions } from "./sdk-adapter.js";
+export { NamedAccountManager } from "./named-account-manager.js";
