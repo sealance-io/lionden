@@ -69,12 +69,14 @@ This keeps the repo source layout ergonomic while still using the Leo CLI as the
 
 ## Network Dependencies
 
-`compilePipeline()` fetches network dependencies through `defaultFetchNetworkDep()`, which requests deployed program source from node REST endpoints. Cached network dependencies are stored under the artifacts cache area and reused when available.
+`compilePipeline()` fetches network dependencies through `defaultFetchNetworkDep()`, which requests deployed program source from node REST endpoints using `GET /{network}/program/{programId}`. Cached network dependencies are stored under the artifacts cache area and reused when available.
 
 When the default network is:
 
 - `http`: LionDen uses the configured endpoint
 - `devnode`: LionDen derives `http://<socketAddr>`
+
+The network segment in the URL is driven by the `networkHint` on the dependency (typically `"testnet"`). When no hint is configured, `defaultFetchNetworkDep()` tries `testnet`, `mainnet`, and `canary` in order and uses the first successful response.
 
 ## Caching
 
