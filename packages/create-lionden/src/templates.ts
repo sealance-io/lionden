@@ -71,7 +71,7 @@ export function sharedFiles(projectName: string): TemplateFile[] {
             outDir: "dist",
             declaration: true,
           },
-          include: ["test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"],
+          include: ["recipes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"],
         },
         null,
         2,
@@ -178,6 +178,56 @@ export default async function (lre: LionDenRuntimeEnvironment) {
 // token template
 // ---------------------------------------------------------------------------
 
+const TOKEN_RECIPE = `\
+import type { DeploymentRecipe } from "@lionden/plugin-deploy";
+import { isSignable } from "@lionden/config";
+
+export interface TokenSetupResult {
+  readonly programId: string;
+  readonly treasury: string;
+  readonly initialSupply: bigint;
+}
+
+const INITIAL_SUPPLY = 1_000_000n;
+
+/**
+ * Deploy token.aleo and mint initial supply to the treasury.
+ *
+ * Run from CLI:   lionden recipe --file recipes/setup.ts
+ * Run from tests: await setupToken(ctx)  (TestContext satisfies DeploymentContext)
+ *
+ * Note: this recipe is intended for first-time deployment only. Re-running it
+ * on a network where token.aleo is already deployed will fail because the
+ * deploy step returns no results when skipDeployed skips all targets and
+ * DeploymentContext.deploy() does not accept a noSkipDeployed override.
+ */
+export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
+  // Validate named accounts before deploying so misconfiguration fails fast.
+  const deployer = ctx.namedAccounts["deployer"];
+  const treasury = ctx.namedAccounts["treasury"];
+
+  if (!deployer || !isSignable(deployer)) {
+    throw new Error(\`"deployer" must be a signable named account\`);
+  }
+  if (!treasury) {
+    throw new Error(\`"treasury" named account is not configured\`);
+  }
+
+  const { programId } = await ctx.deploy("token");
+
+  await ctx.execute(
+    "token.aleo",
+    "mint_public",
+    [treasury.address, \`\${INITIAL_SUPPLY}u64\`],
+    { signer: deployer },
+  );
+
+  return { programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
+};
+
+export default setupToken;
+`;
+
 const TOKEN_CONFIG = `\
 import { defineConfig } from "@lionden/config";
 import pluginLeo from "@lionden/plugin-leo";
@@ -263,13 +313,14 @@ const TOKEN_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext, assertMappingValue } from "@lionden/testing";
 import { isSignable } from "@lionden/config";
+import { setupToken } from "../recipes/setup.js";
 
 let ctx: TestContext | undefined;
 
 beforeAll(async () => {
   ctx = await setup();
   try {
-    await ctx.deploy("token");
+    await setupToken(ctx);
   } catch (error) {
     await ctx.teardown();
     ctx = undefined;
@@ -282,16 +333,14 @@ afterAll(async () => {
 });
 
 describe("token program", () => {
-  it("mints public tokens to treasury", async () => {
+  it("recipe minted initial supply to treasury", async () => {
     const treasury = ctx!.namedAccounts["treasury"]!;
-    await ctx!.execute("token.aleo", "mint_public", [treasury.address, "1000u64"]);
-
     await assertMappingValue(
       ctx!.connection,
       "token.aleo",
       "balances",
       treasury.address,
-      "1000u64",
+      "1000000u64",
     );
   });
 
@@ -347,14 +396,15 @@ describe("token program", () => {
 const TOKEN_DEPLOY = `\
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 
+/**
+ * Deploy the token program and mint initial supply to the treasury.
+ * Usage: lionden run scripts/deploy.ts
+ *
+ * Targets lre.config.defaultNetwork. For a different network use:
+ *   lionden recipe --file recipes/setup.ts --network <name>
+ */
 export default async function (lre: LionDenRuntimeEnvironment) {
-  console.log("Compiling...");
-  await lre.tasks.run("compile");
-
-  console.log("Deploying token.aleo...");
-  const results = await lre.tasks.run("deploy", { program: "token" });
-  const deploy = (results as Array<{ programId: string; txId: string }>)[0]!;
-  console.log(\`Deployed \${deploy.programId} — tx: \${deploy.txId}\`);
+  await lre.tasks.run("recipe", { file: "recipes/setup.ts" });
 }
 `;
 
@@ -379,6 +429,7 @@ export const TEMPLATES: readonly Template[] = [
     files: [
       { path: "lionden.config.ts", content: TOKEN_CONFIG },
       { path: "programs/token/main.leo", content: TOKEN_PROGRAM },
+      { path: "recipes/setup.ts", content: TOKEN_RECIPE },
       { path: "test/token.test.ts", content: TOKEN_TEST },
       { path: "scripts/deploy.ts", content: TOKEN_DEPLOY },
     ],

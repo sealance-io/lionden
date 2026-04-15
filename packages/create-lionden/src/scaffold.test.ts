@@ -70,6 +70,7 @@ describe("scaffold", () => {
     expect(result.filesCreated).toBeGreaterThan(0);
     expect(existsSync(join(dir, "programs/token/main.leo"))).toBe(true);
     expect(existsSync(join(dir, "test/token.test.ts"))).toBe(true);
+    expect(existsSync(join(dir, "recipes/setup.ts"))).toBe(true);
 
     // Token program should have mapping
     const leo = readFileSync(join(dir, "programs/token/main.leo"), "utf-8");

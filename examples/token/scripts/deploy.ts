@@ -1,29 +1,12 @@
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 
 /**
- * Deploy the token program to the active network.
+ * Deploy the token program and mint initial supply to the treasury.
  * Usage: lionden run scripts/deploy.ts
+ *
+ * Targets lre.config.defaultNetwork. For a different network use:
+ *   lionden recipe --file recipes/setup.ts --network <name>
  */
 export default async function (lre: LionDenRuntimeEnvironment) {
-  console.log("Compiling token program...");
-  await lre.tasks.run("compile");
-
-  console.log("Deploying token.aleo...");
-  const results = await lre.tasks.run("deploy", { program: "token" });
-  const deployResult = (results as Array<{ programId: string; txId: string }>)[0]!;
-
-  console.log(`Deployed ${deployResult.programId} — tx: ${deployResult.txId}`);
-
-  // Mint some initial tokens to account-0
-  const accounts = (await import("@lionden/testing")).DEVNODE_ACCOUNTS;
-  const receiver = accounts[0]!.address;
-
-  console.log(`Minting 10000 tokens to ${receiver}...`);
-  const network = lre.network as any;
-  const connection = network.getConnection();
-  await connection.execute("token.aleo", "mint_public", [receiver, "10000u64"], {
-    mode: "onchain",
-  });
-
-  console.log("Done!");
+  await lre.tasks.run("recipe", { file: "recipes/setup.ts" });
 }
