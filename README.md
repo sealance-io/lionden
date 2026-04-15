@@ -16,7 +16,7 @@ Implemented in the repo today:
 - `@lionden/cli` for config discovery, help output, argument parsing, and task dispatch
 - `@lionden/leo-compiler` for source discovery, dependency resolution, package materialization, Leo compilation, ABI parsing, caching, and TypeScript binding generation
 - `@lionden/network` for devnode/HTTP connections and SDK initialization helpers
-- default plugins for compilation, network tasks, deploy/upgrade, and testing
+- default plugins for compilation, network tasks, deploy/upgrade/export, and testing
 - `@lionden/testing` for devnode lifecycle, fixtures, assertions, and test setup helpers
 - `create-lionden` scaffolding with `hello-world` and `token` templates
 - example projects under `examples/`
@@ -39,7 +39,7 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `packages/testing` | Test context, fixtures, assertions, managed devnode helpers |
 | `packages/plugin-leo` | `compile` and `clean` tasks |
 | `packages/plugin-network` | `node` and `run` tasks, LRE network service |
-| `packages/plugin-deploy` | `deploy` and `upgrade` tasks |
+| `packages/plugin-deploy` | `deploy`, `upgrade`, and `export` tasks |
 | `packages/plugin-test` | `test` task with Vitest integration |
 | `packages/create-lionden` | Project scaffolder |
 | `examples/hello-world` | Minimal example project |
@@ -127,6 +127,7 @@ The default plugins in this repo register these primary tasks:
 - `run <script>`: execute a TypeScript deployment or utility script with LRE context
 - `deploy`: deploy compiled programs to the target network
 - `upgrade`: upgrade a deployed program
+- `export`: export deployment addresses and ABIs
 - `test`: run Vitest suites with LionDen-managed setup and teardown
 
 From the repo root, a typical source-level workflow is:
@@ -225,7 +226,8 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
 - [`docs/architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
 - [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
-- [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md): network types, devnode/HTTP, run/deploy/upgrade flows
+- [`docs/network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
+- [`docs/deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md): deploy, upgrade, export, deployment state, preflight, and hooks
 - [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
 - [`docs/testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
 - [`AGENTS.md`](/Users/mitzpetel/Workspaces/lionden/AGENTS.md): agent-specific navigation and selective disclosure rules

@@ -77,7 +77,7 @@ Primary targets:
 - `packages/config`
 - `packages/core`
 - most of `packages/leo-compiler`
-- deploy manifest parsing and ABI compatibility logic in `packages/plugin-deploy`
+- deployment state parsing and ABI compatibility logic in `packages/plugin-deploy`
 - scaffolder template rendering in `packages/create-lionden`
 
 Recommended techniques:
@@ -103,7 +103,7 @@ Primary targets:
 - `plugin-test` + Vitest runner configuration
 - `testing` + `network` interactions when devnode lifecycle is stubbed
 - `leo-compiler` orchestration around materialization, cache decisions, and command planning
-- `plugin-deploy` interactions with compiler output, manifest rules, and network calls
+- `plugin-deploy` interactions with compiler output, deployment state rules, and network calls
 
 Recommended techniques:
 - fake `NetworkConnection` and `NetworkManager` implementations
@@ -314,12 +314,12 @@ Primary tiers:
 Coverage focus:
 - constructor annotation parsing
 - ABI compatibility checking
-- deploy manifest read/write
+- deployment state read/write
 - deploy target resolution
 - task-to-network orchestration
 
 Expectation:
-- substantial pure-logic coverage already exists in Tier 1 (constructor parsing, ABI compat, manifest I/O)
+- substantial pure-logic coverage already exists in Tier 1 (constructor parsing, ABI compat, deployment state I/O)
 - deploy orchestration and network interactions belong in Tier 2
 - one smoke path through example deploy belongs in Tier 3
 
