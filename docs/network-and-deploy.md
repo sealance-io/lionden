@@ -59,6 +59,39 @@ The task keeps the process alive until interrupted.
 
 At the platform level, devnode and snarkOS nodes expose the same REST surface for blocks, transactions, programs, mappings, and block height. That is why LionDen can use network endpoints both for runtime interaction and for fetching deployed program sources as compiler dependencies.
 
+## Provable SDK Integration
+
+`packages/network/src/sdk-adapter.ts` is the single point of contact with `@provablehq/sdk`. It loads the SDK module dynamically on first use and initializes the WASM thread pool once per process. All other network and deploy code imports helpers from that module rather than touching the SDK directly.
+
+### SDK objects
+
+`createSdkObjects()` constructs the full SDK object set for a connection: `Account`, `AleoNetworkClient`, `AleoKeyProvider`, `NetworkRecordProvider`, and `ProgramManager`. When a task supplies a custom signer key, `createSignerSdkObjects()` builds an isolated `Account`, `ProgramManager`, and `NetworkRecordProvider` for that signer while sharing the key provider with the default connection.
+
+### Transaction building and broadcasting
+
+The SDK exposes two families of transaction builders: standard methods for real networks and `buildDevnode*` variants that skip proof generation for local development speed. LionDen branches on `connection.type` at every transaction entry point:
+
+| Operation | HTTP network | Devnode |
+|---|---|---|
+| Deploy | `pm.deploy()` — atomic build + broadcast | `pm.buildDevnodeDeploymentTransaction()` + `broadcastTransaction()` |
+| Execute | `pm.execute()` — atomic build + broadcast | `pm.buildDevnodeExecutionTransaction()` + `broadcastTransaction()` (proof-skipping fast path) |
+| Upgrade | `pm.buildUpgradeTransaction()` + `broadcastTransaction()` | `pm.buildDevnodeUpgradeTransaction()` + `broadcastTransaction()` |
+
+`pm.deploy()` and `pm.execute()` are atomic on HTTP networks — they build and submit the transaction internally with no separate broadcast step. Upgrade uses a two-step build-then-broadcast approach on both network types.
+
+`broadcastTransaction()` on `AleoConnection` delegates to `AleoNetworkClient.submitTransaction()` from the SDK, so all devnode broadcasts and HTTP upgrade broadcasts go through the same SDK path.
+
+### Devnode guards
+
+Before any devnode transaction is built, two SDK checks run:
+
+- `checkDevnodeSdkSupport()` — verifies that the loaded SDK exposes `buildDevnodeDeploymentTransaction`, `buildDevnodeExecutionTransaction`, and `buildDevnodeUpgradeTransaction`. Throws if the SDK version predates these methods.
+- `initConsensusHeights()` — calls `sdk.getOrInitConsensusVersionTestHeights()` to prime the SDK's internal consensus version state. Required for devnode transaction builders; non-fatal if the method is absent in older SDK versions.
+
+### Transaction confirmation
+
+After broadcasting, LionDen polls `GET /{networkId}/transaction/confirmed/{txId}` directly via `fetch` rather than through the SDK. The raw response carries a `block_height` field that the SDK's typed wrapper does not expose, which is why the direct fetch is used here. Polling runs at one-second intervals up to a configurable timeout (default 60 seconds). The `--skip-confirm` flag on `deploy` and `upgrade` bypasses this step.
+
 ## Script Execution
 
 The `run` task in `packages/plugin-network/src/index.ts` executes a TypeScript script with the LRE.
