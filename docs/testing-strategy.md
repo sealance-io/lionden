@@ -1,6 +1,6 @@
 # Testing Strategy
 
-When to read this: use this file for the proposed repo-wide testing strategy, test taxonomy, CI lanes, ownership boundaries, and rollout plan. Use [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) for the current testing surface that exists in the codebase today.
+When to read this: use this file for the proposed repo-wide testing strategy, test taxonomy, CI lanes, ownership boundaries, and rollout plan. Use [`testing.md`](testing.md) for the current testing surface that exists in the codebase today.
 
 ## Why This Doc Exists
 
@@ -24,13 +24,13 @@ This strategy proposes a testing model that accepts those constraints and organi
 
 The proposal below is based on the current implementation:
 
-- package tests run through the root Vitest config in [`vitest.config.ts`](/Users/mitzpetel/Workspaces/lionden/vitest.config.ts)
-- the root `test` script is currently `vitest run` in [`package.json`](/Users/mitzpetel/Workspaces/lionden/package.json), with `test:agent` and `test:watch` also defined
-- project tests run through the `test` task in [`packages/plugin-test/src/index.ts`](/Users/mitzpetel/Workspaces/lionden/packages/plugin-test/src/index.ts)
-- the programmatic test runner discovers `test/**/*.test.ts` under the project root in [`packages/plugin-test/src/test-runner.ts`](/Users/mitzpetel/Workspaces/lionden/packages/plugin-test/src/test-runner.ts)
-- `setup()` creates or reuses an LRE, optionally starts a devnode, connects to a network, and returns deploy/execute helpers in [`packages/testing/src/test-context.ts`](/Users/mitzpetel/Workspaces/lionden/packages/testing/src/test-context.ts)
-- fixture caching exists in [`packages/testing/src/fixtures.ts`](/Users/mitzpetel/Workspaces/lionden/packages/testing/src/fixtures.ts)
-- the network layer already supports `mode: "local" | "onchain"` execution in [`packages/network/src/types.ts`](/Users/mitzpetel/Workspaces/lionden/packages/network/src/types.ts) and [`packages/network/src/connection.ts`](/Users/mitzpetel/Workspaces/lionden/packages/network/src/connection.ts)
+- package tests run through the root Vitest config in [`vitest.config.ts`](../vitest.config.ts)
+- the root `test` script is currently `vitest run` in [`package.json`](../package.json), with `test:agent` and `test:watch` also defined
+- project tests run through the `test` task in [`packages/plugin-test/src/index.ts`](../packages/plugin-test/src/index.ts)
+- the programmatic test runner discovers `test/**/*.test.ts` under the project root in [`packages/plugin-test/src/test-runner.ts`](../packages/plugin-test/src/test-runner.ts)
+- `setup()` creates or reuses an LRE, optionally starts a devnode, connects to a network, and returns deploy/execute helpers in [`packages/testing/src/test-context.ts`](../packages/testing/src/test-context.ts)
+- fixture caching exists in [`packages/testing/src/fixtures.ts`](../packages/testing/src/fixtures.ts)
+- the network layer already supports `mode: "local" | "onchain"` execution in [`packages/network/src/types.ts`](../packages/network/src/types.ts) and [`packages/network/src/connection.ts`](../packages/network/src/connection.ts)
 
 ## Strategy Goals
 

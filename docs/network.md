@@ -1,6 +1,6 @@
 # Network
 
-When to read this: use this file for network config types, connection management, devnode lifecycle, SDK integration, transaction confirmation, and script execution. For deploy, upgrade, export, and deployment state, use [`deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md).
+When to read this: use this file for network config types, connection management, devnode lifecycle, SDK integration, transaction confirmation, and script execution. For deploy, upgrade, export, and deployment state, use [`deployment.md`](deployment.md).
 
 ## Current Network Model
 
@@ -51,7 +51,7 @@ Current behavior:
 - polls the REST API until healthy
 - stops the process with graceful shutdown, then force kill on timeout
 
-`consensusHeights` is required for Leo v3.5 devnode constructor programs. Leo v4 devnode defaults to V9-active. See [`leo-version-compatibility.md`](/Users/mitzpetel/Workspaces/lionden/docs/leo-version-compatibility.md).
+`consensusHeights` is required for Leo v3.5 devnode constructor programs. Leo v4 devnode defaults to V9-active. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
 `@lionden/plugin-network` exposes devnode startup through the `node` task.
 
@@ -122,8 +122,8 @@ This is the path used by the example deployment scripts.
 - default network must exist
 - HTTP networks must specify an endpoint
 
-Deploy-specific validation is documented in [`deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md).
+Deploy-specific validation is documented in [`deployment.md`](deployment.md).
 
 ## Design Direction
 
-For the broader network abstraction, devnode-first rationale, and SDK baseline, use [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md). Use the current network package and plugin source for the implementation contract that exists today.
+For the broader network abstraction, devnode-first rationale, and SDK baseline, use [`vision-and-roadmap.md`](vision-and-roadmap.md). Use the current network package and plugin source for the implementation contract that exists today.

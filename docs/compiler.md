@@ -128,4 +128,4 @@ Deploy state is tracked separately by the deploy plugin.
 
 ## Design Direction
 
-For the broader rationale behind source-first compilation, ABI-driven wrappers, and the Leo v4 baseline, use [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md). Use the current compiler package for actual behavior in this repo.
+For the broader rationale behind source-first compilation, ABI-driven wrappers, and the Leo v4 baseline, use [`vision-and-roadmap.md`](vision-and-roadmap.md). Use the current compiler package for actual behavior in this repo.

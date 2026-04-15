@@ -143,4 +143,4 @@ That bundle provides the current user-facing task surface.
 
 ## Design Direction
 
-For product intent, roadmap framing, and the broader Hardhat-style target model, use [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md). Use the code paths above when you need the current implementation contract.
+For product intent, roadmap framing, and the broader Hardhat-style target model, use [`vision-and-roadmap.md`](vision-and-roadmap.md). Use the code paths above when you need the current implementation contract.
