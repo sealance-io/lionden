@@ -128,6 +128,7 @@ The default plugins in this repo register these primary tasks:
 - `deploy`: deploy compiled programs to the target network
 - `upgrade`: upgrade a deployed program
 - `export`: export deployment addresses and ABIs
+- `recipe`: run a reusable deployment recipe from a TypeScript module
 - `test`: run Vitest suites with LionDen-managed setup and teardown
 
 From the repo root, a typical source-level workflow is:
