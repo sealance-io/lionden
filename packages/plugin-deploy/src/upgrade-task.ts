@@ -144,9 +144,12 @@ export async function upgradeAction(
     } as DeploymentRecord;
   }
 
-  // 5. Read old ABI — from ABI snapshot first, fall back to artifacts dir
+  // 5. Read old ABI — disk snapshot for non-ephemeral, memory cache for ephemeral, then artifacts
   const oldAbi =
-    readAbiSnapshot(deploymentsDir, networkName, programId) ??
+    (manager && !manager.isEphemeral(networkName)
+      ? readAbiSnapshot(deploymentsDir, networkName, programId)
+      : null) ??
+    manager?.getCachedAbi(programId, networkName) ??
     readAbiFromArtifacts(artifactsDir, programId);
 
   if (!oldAbi) {

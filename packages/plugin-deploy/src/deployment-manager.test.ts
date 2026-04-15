@@ -47,9 +47,14 @@ const mockAbi: ProgramABI = {
   transitions: [],
 };
 
-function makeConfig(networkType: "devnode" | "http" = "devnode") {
+function makeConfig(opts: { networkType?: "devnode" | "http"; ephemeral?: boolean } = {}) {
+  const { networkType = "devnode", ephemeral } = opts;
   if (networkType === "devnode") {
-    return createMockConfig({ root: tmpDir });
+    const config = createMockConfig({ root: tmpDir });
+    if (ephemeral !== undefined) {
+      (config.networks["devnode"] as any).ephemeral = ephemeral;
+    }
+    return config;
   }
   return createMockConfig({
     root: tmpDir,
@@ -104,11 +109,12 @@ function makeNetworkManager(connection = createMockConnection()): NetworkManager
 
 function makeManager(opts: {
   networkType?: "devnode" | "http";
+  ephemeral?: boolean;
   connection?: ReturnType<typeof createMockConnection>;
   networkManager?: NetworkManager;
   artifacts?: ArtifactStore;
 } = {}) {
-  const config = opts.networkType === "http" ? makeHttpConfig() : makeConfig();
+  const config = opts.networkType === "http" ? makeHttpConfig() : makeConfig({ ephemeral: opts.ephemeral });
   const conn = opts.connection ?? createMockConnection();
   const manager = opts.networkManager ?? makeNetworkManager(conn);
   const artifacts = opts.artifacts ?? makeArtifactStore();
@@ -317,7 +323,7 @@ describe("HTTP: metadata validation", () => {
 
 describe("record()", () => {
   it("persists record, writes ABI snapshot, updates cache, clears pending marker", async () => {
-    const config = makeConfig();
+    const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
 
     // Write a pending marker first
@@ -353,7 +359,8 @@ describe("record()", () => {
   it("does not downgrade a complete on-disk record to degraded when edition matches (fresh-process cache miss guard)", async () => {
     // Simulate devnode fresh-process restart: disk has a complete record but
     // the in-memory cache is cold (new DeploymentManagerImpl instance).
-    const config = makeConfig();
+    // Uses ephemeral: false so disk reads/writes are exercised.
+    const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
     // Write complete record directly to disk (as if a previous process did it)
     writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
@@ -410,7 +417,7 @@ describe("record()", () => {
       deployedAt: "2026-01-01T00:00:00.000Z",
       feePaid: null,
     };
-    const config = makeConfig();
+    const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
     writeDeploymentRecord(config.paths.deployments, "devnode", recovered);
 
@@ -448,7 +455,7 @@ describe("record()", () => {
     // program is now at edition 2 (upgraded outside LionDen). The degraded record carries
     // the observed edition 2 and must overwrite the stale disk state. The old ABI snapshot
     // must also be deleted so upgradeAction() cannot validate against the prior edition's ABI.
-    const config = makeConfig();
+    const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
     writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord); // edition: 1
     // Seed the ABI snapshot as a prior complete deploy would have written it
@@ -485,6 +492,39 @@ describe("record()", () => {
     // The ABI snapshot must be deleted — stale prior-edition ABI must not be usable by upgradeAction()
     expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
   });
+
+  it("clears in-memory ABI cache when a complete record is downgraded to degraded", async () => {
+    // Regression: disk snapshot is deleted on degraded write, but the in-memory abiCache
+    // must also be cleared so getCachedAbi() cannot return a stale ABI that the degraded
+    // record no longer trusts (same invariant as the disk deletion, applied to memory).
+    const { dm } = makeManager({ ephemeral: true }); // ephemeral so we verify memory-only path
+
+    // 1. Record complete deployment — populates abiCache
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+    expect(dm.getCachedAbi("hello.aleo", "devnode")).not.toBeNull();
+
+    // 2. Downgrade to degraded (different edition so guard does not short-circuit)
+    const degraded: DegradedDeploymentRecord = {
+      status: "degraded",
+      programId: "hello.aleo",
+      edition: 2, // differs from completeRecord.edition (1) — bypasses degraded guard
+      constructor: { type: null },
+      abiHash: null,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: new Date().toISOString(),
+      historyCount: 0,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: null,
+      deployedAt: null,
+      feePaid: null,
+    };
+    await dm.record(degraded, "deploy");
+
+    // 3. ABI cache must be cleared — stale ABI must not be accessible
+    expect(dm.getCachedAbi("hello.aleo", "devnode")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -514,7 +554,7 @@ describe("recoverPendingDeployments", () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(source),
     });
-    const config = makeConfig();
+    const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(conn), makeArtifactStore());
 
     const pending: PendingDeployment = {
@@ -546,7 +586,7 @@ describe("recoverPendingDeployments", () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(null),
     });
-    const config = makeConfig();
+    const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(conn), makeArtifactStore());
 
     const pending: PendingDeployment = {
@@ -631,5 +671,45 @@ describe("invalidateSession()", () => {
 
     dm.invalidateSession("devnode");
     expect(dm.getCached("hello.aleo")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ABI cache normalization
+// ---------------------------------------------------------------------------
+
+describe("getCachedAbi() normalization", () => {
+  it("normalizes compiler-format ABI (functions key) to internal format (transitions key)", async () => {
+    // The ArtifactStore's lazy disk fallback returns raw JSON.parse() output, which
+    // uses the Leo compiler's `functions` key instead of the internal `transitions` key.
+    // record() must normalize via parseAbi() so getCachedAbi() always returns a fully
+    // normalized ProgramABI — otherwise upgrade ABI compatibility checks fail with
+    // "oldItems is not iterable" when iterating oldAbi.transitions.
+    const { dm } = makeManager({ ephemeral: true });
+
+    const compilerFormatAbi = {
+      program: "hello.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      functions: [
+        { name: "increment", is_final: true, inputs: [], outputs: [] },
+      ],
+    } as unknown as ProgramABI; // compiler format — has `functions`, not `transitions`
+
+    await dm.record(completeRecord, "deploy", { abi: compilerFormatAbi });
+
+    const cached = dm.getCachedAbi("hello.aleo", "devnode");
+    expect(cached).not.toBeNull();
+
+    // Must have `transitions` (internal format), not raw `functions`
+    expect(cached!.transitions).toBeDefined();
+    expect(Array.isArray(cached!.transitions)).toBe(true);
+    expect(cached!.transitions).toHaveLength(1);
+    expect(cached!.transitions[0]!.name).toBe("increment");
+
+    // The raw `functions` key must NOT leak through to the cached ABI
+    expect((cached as any)["functions"]).toBeUndefined();
   });
 });

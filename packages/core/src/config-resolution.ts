@@ -206,6 +206,8 @@ function buildDefaults(
   const networks: Record<string, ResolvedNetworkConfig> = {};
   const userNetworks = config.networks ?? {};
 
+  const deployEphemeral = config.deploy?.ephemeral;
+
   // Always provide a default devnode network if none specified
   if (Object.keys(userNetworks).length === 0) {
     networks["devnode"] = {
@@ -215,10 +217,11 @@ function buildDefaults(
       verbosity: 0,
       accounts: [],
       network: "testnet",
+      ephemeral: deployEphemeral ?? true,
     };
   } else {
     for (const [name, netConfig] of Object.entries(userNetworks)) {
-      networks[name] = resolveNetworkConfig(name, netConfig);
+      networks[name] = resolveNetworkConfig(name, netConfig, deployEphemeral);
     }
   }
 
@@ -240,6 +243,7 @@ function buildDefaults(
 function resolveNetworkConfig(
   networkName: string,
   config: NetworkUserConfig,
+  deployEphemeral?: boolean,
 ): ResolvedNetworkConfig {
   switch (config.type) {
     case "devnode":
@@ -263,6 +267,7 @@ function resolveNetworkConfig(
         network: config.network ?? "testnet",
         privateKey: config.privateKey,
         consensusHeights: config.consensusHeights,
+        ephemeral: config.ephemeral ?? deployEphemeral ?? true,
       };
     case "http":
       return {
@@ -271,6 +276,7 @@ function resolveNetworkConfig(
         network: config.network,
         privateKey: resolveStringOrVariable(config.privateKey),
         apiKey: resolveStringOrVariable(config.apiKey),
+        ephemeral: config.ephemeral ?? deployEphemeral ?? false,
       };
     default: {
       const unknownType = (config as { type: string }).type;

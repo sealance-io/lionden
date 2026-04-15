@@ -33,10 +33,12 @@ export interface SetupOptions {
 export interface TestContext {
   /** The LionDen runtime environment. */
   readonly lre: LionDenRuntimeEnvironment;
-  /** Pre-funded devnode accounts. */
+  /** Pre-funded devnode accounts (empty on non-devnode networks). */
   readonly accounts: readonly DevnodeAccount[];
   /** Active network connection. */
   readonly connection: NetworkConnection;
+  /** The network name this context is connected to. */
+  readonly network: string;
   /** Deploy a program by name. Returns the deploy result. */
   deploy(programName: string, options?: DeployOptions): Promise<DeployResult>;
   /** Execute a transition on a deployed program. */
@@ -119,13 +121,15 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
   // 2. Connect to the network
   const manager = lre.network as NetworkManager;
-  const connection = await manager.connect(networkName ?? lre.config.defaultNetwork);
+  const connectedNetwork = networkName ?? lre.config.defaultNetwork;
+  const connection = await manager.connect(connectedNetwork);
 
   // 3. Build context
   const ctx: TestContext = {
     lre,
-    accounts: DEVNODE_ACCOUNTS,
+    accounts: connection.type === "devnode" ? DEVNODE_ACCOUNTS : [],
     connection,
+    network: connectedNetwork,
 
     async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
       const normalizedId = programName.endsWith(".aleo")
@@ -135,7 +139,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       // Check deployment cache first (sync, zero-latency for previously deployed programs)
       const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
       if (deploymentCache) {
-        const cached = deploymentCache.getCached(normalizedId, "devnode");
+        const cached = deploymentCache.getCached(normalizedId, connectedNetwork);
         if (cached && cached.status === "complete" && cached.txId) {
           return { programId: cached.programId, txId: cached.txId };
         }
@@ -143,6 +147,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
       const taskResult = await lre.tasks.run("deploy", {
         program: programName,
+        network: connectedNetwork,
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,
         noCompile: deployOpts?.noCompile,
@@ -193,12 +198,10 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
     async teardown(): Promise<void> {
       clearFixtures();
-      // Invalidate the deployment cache for devnode so the next test starts fresh.
-      // Disk state is left for cross-process sharing; stale disk records are
-      // re-validated against on-chain state on the next async read.
+      // Invalidate the deployment cache so the next test starts fresh.
       const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
       if (deploymentCache) {
-        deploymentCache.invalidateSession("devnode");
+        deploymentCache.invalidateSession(connectedNetwork);
       }
       await manager.disconnectAll();
       if (managedDevnode) {

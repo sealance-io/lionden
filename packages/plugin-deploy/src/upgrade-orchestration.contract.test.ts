@@ -16,7 +16,7 @@ import type { NetworkManager } from "@lionden/network";
 import { upgradeAction, UpgradeCompatibilityError } from "./upgrade-task.js";
 import { DeployError } from "./errors.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
-import { writeDeploymentRecord, writeAbiSnapshot, writeNetworkMetadata } from "./deployment-state.js";
+import { writeAbiSnapshot } from "./deployment-state.js";
 import { extractConstructorFingerprint } from "./constructor-parser.js";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
 
@@ -115,7 +115,7 @@ describe("upgrade orchestration contract", () => {
    *
    * Also injects a DeploymentManagerImpl onto lre.deployments.
    */
-  function createUpgradeFixture(opts?: {
+  async function createUpgradeFixture(opts?: {
     constructorType?: "admin" | "noupgrade" | "checksum" | "custom";
     /** Old ABI mappings to write to disk */
     oldMappings?: string[];
@@ -198,10 +198,8 @@ describe("upgrade orchestration contract", () => {
     );
     (lre as unknown as Record<string, unknown>)["deployments"] = manager;
 
-    // Write network metadata (required for HTTP validation, skipped for devnode)
-    // For devnode, no .network.json needed
-
-    // Write deployment record to disk
+    // Seed deployment state via the manager so both disk (non-ephemeral) and
+    // in-memory cache (ephemeral) are populated.
     if (!opts?.skipRecord) {
       const fingerprint =
         opts?.fingerprint ??
@@ -217,11 +215,14 @@ describe("upgrade orchestration contract", () => {
           fingerprint,
         };
       }
-      writeDeploymentRecord(deploymentsDir, "devnode", record);
-    }
-
-    // Write ABI snapshot
-    if (!opts?.skipOldAbi) {
+      if (opts?.skipOldAbi) {
+        // Seed record directly into cache, bypassing record() ABI enforcement
+        (manager as any).networkCache("devnode").set("hello.aleo", record);
+      } else {
+        await manager.record(record, "deploy", { abi: oldAbi });
+      }
+    } else if (!opts?.skipOldAbi) {
+      // No record but ABI needed — write directly to disk (non-ephemeral fallback test)
       writeAbiSnapshot(deploymentsDir, "devnode", "hello.aleo", oldAbi);
     }
 
@@ -244,7 +245,7 @@ describe("upgrade orchestration contract", () => {
 
   it("upgrades a program with @admin constructor through the full action path", async () => {
     const { lre, fakeNetwork, manager, getCompileCalled, getCompileArgs } =
-      createUpgradeFixture({ constructorType: "admin" });
+      await createUpgradeFixture({ constructorType: "admin" });
 
     const result = await upgradeAction({ program: "hello" }, lre);
 
@@ -276,7 +277,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("rejects upgrade of @noupgrade program", async () => {
-    const { lre } = createUpgradeFixture({ constructorType: "noupgrade" });
+    const { lre } = await createUpgradeFixture({ constructorType: "noupgrade" });
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
       "@noupgrade",
@@ -287,7 +288,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("rejects upgrade when new ABI is not compatible (mapping removed)", async () => {
-    const { lre } = createUpgradeFixture({
+    const { lre } = await createUpgradeFixture({
       oldMappings: ["counters", "scores"],
       newMappings: ["counters"], // "scores" mapping removed
     });
@@ -298,7 +299,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("throws DeployError when confirmation returns rejected status", async () => {
-    const { lre, fakeNetwork } = createUpgradeFixture();
+    const { lre, fakeNetwork } = await createUpgradeFixture();
 
     fakeNetwork.setConfirmBehavior("reject");
 
@@ -308,7 +309,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("skips confirmation when skipConfirm is true", async () => {
-    const { lre, fakeNetwork } = createUpgradeFixture();
+    const { lre, fakeNetwork } = await createUpgradeFixture();
 
     await upgradeAction({ program: "hello", skipConfirm: true }, lre);
 
@@ -316,7 +317,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("throws when no deployment record exists", async () => {
-    const { lre } = createUpgradeFixture({ skipRecord: true });
+    const { lre } = await createUpgradeFixture({ skipRecord: true });
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
       "No deployment record found",
@@ -324,7 +325,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("throws when old ABI snapshot is missing", async () => {
-    const { lre } = createUpgradeFixture({ skipOldAbi: true });
+    const { lre } = await createUpgradeFixture({ skipOldAbi: true });
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
       "No ABI found",
@@ -332,7 +333,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("rejects upgrade when constructor type changes", async () => {
-    const { lre } = createUpgradeFixture({
+    const { lre } = await createUpgradeFixture({
       constructorType: "admin",
       sourceAnnotation: "@noupgrade\n    constructor() {}",
     });
@@ -343,7 +344,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("rejects upgrade when admin address changes", async () => {
-    const { lre } = createUpgradeFixture({
+    const { lre } = await createUpgradeFixture({
       constructorType: "admin",
       sourceAnnotation:
         '@admin(address="aleo1qnr4dkkvkgfqph0vzc3y6z2eu975wnpz2925ntjccd5cfqxtyu8s7pyjh9")\n    constructor() {}',
@@ -382,7 +383,7 @@ describe("upgrade orchestration contract", () => {
 
     const oldFingerprint = extractConstructorFingerprint(oldSource, "custom");
 
-    const { lre } = createUpgradeFixture({
+    const { lre } = await createUpgradeFixture({
       constructorType: "custom",
       sourceAnnotation: "@custom\n    constructor() {}",
       newAleoSource: newSource,
@@ -422,8 +423,7 @@ describe("upgrade orchestration contract", () => {
       }],
     });
 
-    const { lre, project } = fixture;
-    const deploymentsDir = lre.config.paths.deployments;
+    const { lre } = fixture;
     const manager = new DeploymentManagerImpl(
       lre.config,
       () => lre.network as NetworkManager | null,
@@ -452,8 +452,7 @@ describe("upgrade orchestration contract", () => {
       updatedAt: "2026-04-01T00:00:00.000Z",
       historyCount: 1,
     };
-    writeDeploymentRecord(deploymentsDir, "devnode", record);
-    writeAbiSnapshot(deploymentsDir, "devnode", "hello.aleo", makeAbi());
+    await manager.record(record, "deploy", { abi: makeAbi() });
 
     fixture.fakeNetwork!.setProgramSource("hello.aleo",
       "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
@@ -464,7 +463,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("increments edition in deployment record", async () => {
-    const { lre, manager } = createUpgradeFixture({ edition: 2 });
+    const { lre, manager } = await createUpgradeFixture({ edition: 2 });
 
     const result = await upgradeAction({ program: "hello" }, lre);
 
@@ -476,7 +475,7 @@ describe("upgrade orchestration contract", () => {
 
   it("promotes a degraded record to complete after upgrade", async () => {
     // Fixture writes a complete record, but let's manually set a degraded one in cache
-    const { lre, manager, deploymentsDir } = createUpgradeFixture();
+    const { lre, manager, deploymentsDir } = await createUpgradeFixture();
 
     // Override: write a degraded record
     const degraded = {
@@ -495,9 +494,9 @@ describe("upgrade orchestration contract", () => {
       updatedAt: "2026-04-01T00:00:00.000Z",
       historyCount: 1,
     };
-    writeDeploymentRecord(deploymentsDir, "devnode", degraded);
-    // Also seed the cache directly
-    (manager as any).cache.get("devnode")?.set("hello.aleo", degraded);
+    // Directly seed the degraded record into cache — record() would skip it
+    // due to the degraded guard (same edition/endpoint as the existing complete record).
+    (manager as any).networkCache("devnode").set("hello.aleo", degraded);
 
     const result = await upgradeAction({ program: "hello" }, lre);
 
@@ -508,20 +507,25 @@ describe("upgrade orchestration contract", () => {
     expect(result.newEdition).toBe(1);
   });
 
-  it("records history entry with ABI changes when new mappings are added", async () => {
-    const { lre, manager, deploymentsDir } = createUpgradeFixture({
+  it("allows upgrade when new mappings are added (additive ABI change)", async () => {
+    const { lre, manager } = await createUpgradeFixture({
       oldMappings: ["counters"],
-      newMappings: ["counters", "scores"], // "scores" added
+      newMappings: ["counters", "scores"], // "scores" added — additive, so allowed
     });
 
-    await upgradeAction({ program: "hello" }, lre);
+    const result = await upgradeAction({ program: "hello" }, lre);
 
-    // Read history from disk
-    const { readHistory } = await import("./deployment-state.js");
-    const history = readHistory(deploymentsDir, "devnode", "hello.aleo");
-    expect(history.length).toBeGreaterThan(0);
-    const upgradeEntry = history.find((h) => h.action === "upgrade");
-    expect(upgradeEntry).toBeDefined();
-    expect(upgradeEntry!.abiChanges?.added.mappings).toContain("scores");
+    // Upgrade should succeed (additive ABI changes are allowed)
+    expect(result.programId).toBe("hello.aleo");
+    expect(result.newEdition).toBe(1);
+
+    // Record updated
+    const updatedRecord = manager.getCached("hello.aleo", "devnode");
+    expect(updatedRecord).not.toBeNull();
+    expect(updatedRecord?.edition).toBe(1);
+
+    // History is only available in non-ephemeral mode (devnode defaults to ephemeral)
+    const history = await manager.getHistory("hello.aleo", "devnode");
+    expect(history).toEqual([]);
   });
 });

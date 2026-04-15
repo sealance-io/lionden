@@ -207,6 +207,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "hello",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
@@ -223,6 +224,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "token",
+        network: "devnode",
         priorityFee: 1000,
         skipConfirm: true,
         noCompile: undefined,
