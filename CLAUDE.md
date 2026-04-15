@@ -50,12 +50,28 @@ Plugins are **declarative**: users list them in `defineConfig({ plugins: [...] }
 ## Key Patterns
 
 - **All imports use `.js` extensions** (ESM NodeNext resolution). Write `import { foo } from "./bar.js"` even though the source file is `bar.ts`.
-- **Tests are colocated** with source as `*.test.ts` (unit) and `*.contract.test.ts` (cross-package) under `packages/*/src/`. See `docs/testing-strategy.md` for the tier taxonomy.
-- **Agent test runs should prefer Vitest's `agent` reporter** to reduce token-heavy passing output. Use `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs.
+- **Tests are colocated** with source as `*.test.ts` (unit) and `*.contract.test.ts` (cross-package) under `packages/*/src/`. See `docs/testing-strategy.md` for the tier taxonomy (Tier 1: fast deterministic, Tier 2: contract/boundary, Tier 3: workflow smoke, Tier 4: proof/compat).
+- **Agent test runs should prefer Vitest's `agent` reporter** to reduce token-heavy passing output. Use `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs. Do not add a fixed `reporters` setting to the shared Vitest config unless you intentionally want to override agent-aware reporter auto-detection.
 - **Plugin shape**: `{ id, name, hookHandlers?, tasks?, globalOptions?, extendLre? }` — see `packages/core/src/types.ts` for `LionDenPlugin`.
 - **Task builder API**: `task(id, desc).addOption({...}).setAction(fn).build()` and `overrideTask(id).setAction(fn).build()` — see `packages/core/src/task-builder.ts`.
 - **Source-first Leo layout**: users write `.leo` files in `programs/` without `program.json`. The compiler materializes Leo CLI packages internally during `compilePipeline()`.
 - **Config variable resolution is eager**: `configVariable()` values are resolved for ALL networks during config resolution, not lazily for the active network. A `configVariable()` without a default will throw even on devnode runs if the env var is unset.
+- **nvm fallback**: if `node` or `npm` is missing from `PATH`, load nvm before concluding the toolchain is unavailable: `source "$HOME/.nvm/nvm.sh" && nvm use`.
+
+## Contributor Entry Points
+
+Key files for common subsystem navigation:
+
+| Subsystem | Entry point |
+| --- | --- |
+| CLI behavior | `packages/cli/src/index.ts` |
+| Config lifecycle | `packages/core/src/config-resolution.ts` |
+| Plugin ordering | `packages/core/src/plugin-loader.ts` |
+| Task execution | `packages/core/src/task-runner.ts` |
+| Compile orchestration | `packages/leo-compiler/src/compiler.ts` |
+| Network service injection | `packages/plugin-network/src/index.ts` |
+| Deployment state + task registration | `packages/plugin-deploy/src/index.ts` |
+| Test context | `packages/testing/src/test-context.ts` |
 
 ## Leo v4 Syntax
 
@@ -83,6 +99,8 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | JSON ABI schema, serde rules, compiler-vs-TS normalization | `docs/json-abi.md` |
 | Package map, examples, scaffolder | `docs/project-layout.md` |
 | Leo version support, v3.5 compat, `leoBinary`, consensus heights | `docs/leo-version-compatibility.md` |
+| Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | `docs/vision-and-roadmap.md` |
+| Agent-driven bug-hunt workflow, probe structure, bug handling loop | `docs/agent-bug-hunt-workflow.md` |
 
 `_docs/` contains design specs and implementation plan — treat as roadmap, not source of truth. When code and plan differ, trust the code.
 
