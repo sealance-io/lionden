@@ -14,7 +14,7 @@ LionDen is a workspace monorepo with code grouped by responsibility:
 - `packages/testing`: test LRE creation, managed devnode lifecycle, fixtures, assertions, account helpers
 - `packages/plugin-leo`: `compile` and `clean`
 - `packages/plugin-network`: `node`, `run`, and LRE network injection
-- `packages/plugin-deploy`: `deploy`, `upgrade`, constructor and manifest helpers
+- `packages/plugin-deploy`: `deploy`, `upgrade`, `export`, constructor checks, and deployment state
 - `packages/plugin-test`: `test` and Vitest integration
 - `packages/create-lionden`: interactive scaffolding
 
@@ -38,6 +38,7 @@ Useful starting points for common repo tasks:
 - task execution: `packages/core/src/task-runner.ts`
 - compile orchestration: `packages/leo-compiler/src/compiler.ts`
 - network service injection: `packages/plugin-network/src/index.ts`
+- deployment state and task registration: `packages/plugin-deploy/src/index.ts`
 - test context: `packages/testing/src/test-context.ts`
 
 ## Examples
@@ -106,7 +107,8 @@ Use this doc for navigation only. For behavior-level detail:
 
 - plugin/task/config mechanics: [`architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md)
 - compile pipeline: [`compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md)
-- networks and deployment: [`network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md)
+- network behavior: [`network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md)
+- deployment behavior: [`deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md)
 - test helpers: [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md)
 - repo-wide test strategy and CI: [`testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md)
 - JSON ABI schema and codegen types: [`json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md)

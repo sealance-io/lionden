@@ -37,7 +37,7 @@ Good targets usually sit at package boundaries:
 - local execution versus broadcast semantics
 - signer switching and network execution
 - dependency resolution plus deploy ordering
-- upgrade compatibility plus deployment manifests
+- upgrade compatibility plus deployment state
 - network dependency fetching and compiler cache behavior
 - config permutations (devnode vs HTTP, different networks, endpoint switching) that exercise different code paths through the same pipeline
 
@@ -293,7 +293,7 @@ Use this ownership guide:
 compile/materialization/typechain      -> packages/leo-compiler or packages/plugin-leo
 task parsing/dispatch/config loading   -> packages/cli or packages/core
 devnode/network execution              -> packages/network or packages/plugin-network
-deploy/upgrade/manifest behavior       -> packages/plugin-deploy
+deploy/upgrade/deployment state        -> packages/plugin-deploy
 test setup/helpers                     -> packages/testing or packages/plugin-test
 ```
 

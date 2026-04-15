@@ -39,7 +39,8 @@ Open the smallest relevant doc first:
 | --- | --- |
 | Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md) |
 | Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md) |
-| Network configs, devnode/HTTP, `node`, `run`, `deploy`, `upgrade` | [`docs/network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md) |
+| Network configs, devnode/HTTP, `node`, `run`, SDK integration | [`docs/network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md) |
+| Deployment state, `deploy`, `upgrade`, `export`, preflight, upgradability | [`docs/deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md) |
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) |
 | Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md) |
 | JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md) |

@@ -34,6 +34,9 @@ Resolved config fills defaults and converts paths into absolute paths. Current d
 - a default `devnode` network when no networks are configured
 - testing timeout of `120_000`
 - deploy confirmation timeout of `60_000`
+- deployment state directory of `deployments`
+- deployed-program skipping enabled by default
+- deployment auto-export disabled by default
 
 Config variables are supported through `configVariable()` and resolved during config resolution.
 
@@ -73,6 +76,7 @@ Hook categories currently defined in core are:
 - `compilation`
 - `network`
 - `testing`
+- `deployment`
 
 `HookDispatcherImpl` is responsible for plugin hook registration and lazy handler loading. The config lifecycle resolves config hooks directly during config resolution; the runtime dispatcher handles the broader hook categories once the LRE exists.
 
@@ -100,6 +104,7 @@ The current LRE includes:
 
 - resolved config
 - network service placeholder, later injected by plugins
+- deployment manager placeholder, later injected by plugins
 - task runner
 - hook dispatcher
 - in-memory artifact store
@@ -107,6 +112,8 @@ The current LRE includes:
 - collected global option values
 
 `@lionden/plugin-network` currently uses `extendLre` to inject `NetworkManagerImpl` into `lre.network`.
+
+`@lionden/plugin-deploy` currently uses `extendLre` to inject `DeploymentManagerImpl` into `lre.deployments`.
 
 ## CLI Boot Flow
 

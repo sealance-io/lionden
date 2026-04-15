@@ -43,6 +43,8 @@ The resulting `TestContext` includes:
 
 This is the interface used by the example tests in `examples/`.
 
+`deploy()` checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same devnode session. `teardown()` invalidates the devnode deployment cache so the next test context revalidates state against the active devnode.
+
 ## Devnode Lifecycle In Tests
 
 `packages/testing/src/devnode-lifecycle.ts` wraps `DevnodeManager` for test suites.

@@ -62,7 +62,7 @@ The implementation work is organized conceptually in these layers:
 1. Foundation: config, core plugin model, task system, CLI boot flow.
 2. Compilation: source discovery, dependency resolution, temporary package materialization, `leo build`, ABI parsing, code generation.
 3. Network abstraction: devnode/HTTP connections, runtime network manager, `node` and `run`.
-4. Deployment: deploy and upgrade flows, constructor enforcement, deploy manifests.
+4. Deployment: deploy, upgrade, export, constructor enforcement, and deployment state.
 5. Testing: managed devnode lifecycle, reusable test context, fixtures, assertions, Vitest integration.
 6. Scaffolding and examples: `create-lionden`, starter templates, example projects.
 
@@ -96,5 +96,6 @@ For implementation detail, switch back to the focused subsystem docs:
 - [`project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md)
 - [`architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md)
 - [`compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md)
-- [`network-and-deploy.md`](/Users/mitzpetel/Workspaces/lionden/docs/network-and-deploy.md)
+- [`network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md)
+- [`deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md)
 - [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md)
