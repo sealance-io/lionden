@@ -49,6 +49,7 @@ export function createMockConfig(
         verbosity: 0,
         accounts: [],
         network: "testnet",
+        ephemeral: true,
       },
     },
     defaultNetwork: "devnode",

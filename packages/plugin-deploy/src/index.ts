@@ -11,6 +11,7 @@ import type { LionDenResolvedConfig } from "@lionden/config";
 import type { NetworkManager } from "@lionden/network";
 import { deployAction } from "./deploy-task.js";
 import { upgradeAction } from "./upgrade-task.js";
+import { recipeAction } from "./recipe-task.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
 import { DeployError } from "./errors.js";
@@ -147,6 +148,30 @@ const exportTask = task("export", "Export deployment addresses and ABIs for fron
   .setAction(exportAction)
   .build();
 
+const recipeTask = task("recipe", "Run a deployment recipe")
+  .addOption({
+    name: "file",
+    type: "string",
+    description: "Path to recipe file (relative to project root)",
+    required: true,
+  })
+  .addOption({
+    name: "export",
+    type: "string",
+    description: "Named export to run (default: 'default')",
+  })
+  .addOption({
+    name: "network",
+    type: "string",
+    description: "Target network (overrides default)",
+  })
+  .addFlag({
+    name: "noCompile",
+    description: "Skip compilation before running recipe",
+  })
+  .setAction(recipeAction)
+  .build();
+
 async function exportAction(
   args: Record<string, unknown>,
   lre: LionDenRuntimeEnvironment,
@@ -187,7 +212,7 @@ const pluginDeploy: LionDenPlugin = {
   hookHandlers: {
     config: configHooks,
   },
-  tasks: [deployTask, upgradeTask, exportTask],
+  tasks: [deployTask, upgradeTask, exportTask, recipeTask],
   extendLre(lre: LionDenRuntimeEnvironment): void {
     const networkAccessor = () => lre.network as NetworkManager | null;
     (lre as unknown as Record<string, unknown>)["deployments"] = new DeploymentManagerImpl(
@@ -267,6 +292,16 @@ export type { ConstructorInfo, ConstructorType } from "./constructor-parser.js";
 // ABI compatibility
 export { checkAbiCompatibility } from "./abi-compat.js";
 export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
+
+// Recipe types
+export type {
+  DeploymentContext,
+  DeploymentRecipe,
+  RecipeDeployOptions,
+  RecipeDeployResult,
+  RecipeExecuteOptions,
+  RecipeExecuteResult,
+} from "./recipe-types.js";
 
 // Legacy exports (deploy-manifest.ts is left unused; kept for external code that may reference it)
 export {

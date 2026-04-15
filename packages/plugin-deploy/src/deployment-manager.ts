@@ -11,6 +11,7 @@ import type { ProgramABI } from "@lionden/leo-compiler";
 import {
   discoverUnits,
   resolveDependencies,
+  parseAbi,
   type DiscoveredProgram,
 } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
@@ -98,6 +99,10 @@ export interface DeploymentManager {
   // --- Export ---
   export(network?: string): Promise<ExportBundle>;
 
+  // --- Ephemeral ---
+  isEphemeral(network: string): boolean;
+  getCachedAbi(programId: string, network?: string): ProgramABI | null;
+
   // --- Session ---
   invalidateSession(network: string): void;
 }
@@ -113,6 +118,9 @@ export class DeploymentManagerImpl implements DeploymentManager {
 
   /** In-memory cache: network → programId → record */
   private readonly cache = new Map<string, Map<string, DeploymentRecord>>();
+
+  /** In-memory ABI cache: network → programId → ABI (populated by record() for all networks) */
+  private readonly abiCache = new Map<string, Map<string, ProgramABI>>();
 
   /** Memoized metadata validation results: network → "valid" | "invalid" | null */
   private readonly metadataValidated = new Map<string, boolean>();
@@ -142,6 +150,29 @@ export class DeploymentManagerImpl implements DeploymentManager {
       this.cache.set(network, nc);
     }
     return nc;
+  }
+
+  private networkAbiCache(network: string): Map<string, ProgramABI> {
+    let ac = this.abiCache.get(network);
+    if (!ac) {
+      ac = new Map();
+      this.abiCache.set(network, ac);
+    }
+    return ac;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Ephemeral
+  // ---------------------------------------------------------------------------
+
+  isEphemeral(network: string): boolean {
+    const nc = this.config.networks[network];
+    return nc?.ephemeral ?? (nc?.type === "devnode");
+  }
+
+  getCachedAbi(programId: string, network?: string): ProgramABI | null {
+    const net = this.resolveNetwork(network);
+    return this.abiCache.get(net)?.get(programId) ?? null;
   }
 
   // ---------------------------------------------------------------------------
@@ -225,12 +256,11 @@ export class DeploymentManagerImpl implements DeploymentManager {
       }
 
       // On-chain — return existing record (cache preferred, disk as fallback).
-      // Disk state for devnode is not guaranteed to be current (another process or a previous
-      // session may have left stale records), but it is the best available source of provenance
-      // data (constructor type, edition, admin address) for programs that are still on-chain.
-      // Bulk operations (getAllDeployments) remain cache-only to avoid loading stale records
-      // that are no longer on-chain.
-      const existing = nc.get(programId) ?? readDeploymentRecord(this.deploymentsDir, net, programId);
+      // Disk fallback only for non-ephemeral devnode (ephemeral: false opt-in).
+      // When ephemeral (default), disk state is never read — it may be stale from
+      // a previous session or process.
+      const existing = nc.get(programId)
+        ?? (this.isEphemeral(net) ? null : readDeploymentRecord(this.deploymentsDir, net, programId));
       if (existing) {
         nc.set(programId, existing);
         return existing;
@@ -242,6 +272,11 @@ export class DeploymentManagerImpl implements DeploymentManager {
     }
 
     // HTTP network
+    if (this.isEphemeral(net)) {
+      // Ephemeral HTTP: cache-only, skip metadata validation and disk reads
+      return nc.get(programId) ?? null;
+    }
+
     await this.validateHttpMetadata(net);
 
     // Cache hit
@@ -263,13 +298,15 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const networkConfig = this.config.networks[net];
     const nc = this.networkCache(net);
 
-    if (networkConfig?.type === "devnode") {
-      // Devnode: return cache only (disk may be stale from a previous session)
+    if (this.isEphemeral(net)) {
+      // Ephemeral (devnode default, or any network with ephemeral: true): cache-only
       return [...nc.values()];
     }
 
-    // HTTP: validate metadata then read from disk
-    await this.validateHttpMetadata(net);
+    // Non-ephemeral: validate metadata (HTTP) then read from disk
+    if (networkConfig?.type === "http") {
+      await this.validateHttpMetadata(net);
+    }
     const records = readAllDeploymentRecords(this.deploymentsDir, net);
     for (const r of records) {
       if (!nc.has(r.programId)) {
@@ -284,7 +321,9 @@ export class DeploymentManagerImpl implements DeploymentManager {
   }
 
   async getHistory(programId: string, network?: string): Promise<DeploymentHistoryEntry[]> {
-    return readHistory(this.deploymentsDir, this.resolveNetwork(network), programId);
+    const net = this.resolveNetwork(network);
+    if (this.isEphemeral(net)) return [];
+    return readHistory(this.deploymentsDir, net, programId);
   }
 
   // ---------------------------------------------------------------------------
@@ -334,7 +373,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
       const nc = this.networkCache(net);
       const existing =
         nc.get(programId) ??
-        readDeploymentRecord(this.deploymentsDir, net, programId);
+        (this.isEphemeral(net) ? null : readDeploymentRecord(this.deploymentsDir, net, programId));
       if (
         existing &&
         (existing.status === "complete" || existing.status === "recovered") &&
@@ -347,56 +386,81 @@ export class DeploymentManagerImpl implements DeploymentManager {
       }
     }
 
-    // Write network metadata on first record() for HTTP networks
-    const networkConfig = this.config.networks[net];
-    if (networkConfig?.type === "http") {
-      const existing = readNetworkMetadata(this.deploymentsDir, net);
-      if (!existing) {
-        const meta: NetworkMetadata = {
-          type: "http",
-          networkId: networkConfig.network,
-          endpoint: networkConfig.endpoint,
-        };
-        writeNetworkMetadata(this.deploymentsDir, net, meta);
-        this.metadataValidated.set(net, true);
+    const ephemeral = this.isEphemeral(net);
+
+    if (!ephemeral) {
+      // Write network metadata on first record() for HTTP networks
+      const networkConfig = this.config.networks[net];
+      if (networkConfig?.type === "http") {
+        const existing = readNetworkMetadata(this.deploymentsDir, net);
+        if (!existing) {
+          const meta: NetworkMetadata = {
+            type: "http",
+            networkId: networkConfig.network,
+            endpoint: networkConfig.endpoint,
+          };
+          writeNetworkMetadata(this.deploymentsDir, net, meta);
+          this.metadataValidated.set(net, true);
+        }
       }
+
+      // Write ABI snapshot if provided
+      if (options?.abi) {
+        writeAbiSnapshot(this.deploymentsDir, net, programId, options.abi);
+      }
+
+      // Write deployment record
+      writeDeploymentRecord(this.deploymentsDir, net, record);
+
+      // Degraded records have unknown ABI (abiHash: null). Delete any existing snapshot so
+      // a subsequent upgradeAction() cannot validate against a stale prior-edition ABI.
+      if (record.status === "degraded") {
+        deleteAbiSnapshot(this.deploymentsDir, net, programId);
+      }
+
+      // Append history
+      const historyEntry: DeploymentHistoryEntry = {
+        record,
+        action,
+        ...(options?.historyEntry ?? {}),
+      };
+      appendHistory(this.deploymentsDir, net, programId, historyEntry);
     }
 
-    // Write ABI snapshot if provided
+    // Always: populate in-memory ABI cache when ABI provided.
+    // Normalize through parseAbi() so getCachedAbi() always returns a fully-normalized
+    // ProgramABI with `transitions` (not the compiler's `functions` format). The artifact
+    // store's lazy disk fallback returns raw JSON.parse() output (compiler format), so
+    // options.abi may arrive un-normalized when it came through lre.artifacts.getAbi().
+    // Degraded records have an unknown ABI — clear any stale cached entry so
+    // getCachedAbi() cannot return an ABI the degraded record no longer trusts.
     if (options?.abi) {
-      writeAbiSnapshot(this.deploymentsDir, net, programId, options.abi);
+      const raw = options.abi as ProgramABI;
+      const normalized = parseAbi(JSON.stringify(raw));
+      this.networkAbiCache(net).set(programId, normalized);
+    } else if (record.status === "degraded") {
+      this.networkAbiCache(net).delete(programId);
     }
 
-    // Write deployment record
-    writeDeploymentRecord(this.deploymentsDir, net, record);
-
-    // Degraded records have unknown ABI (abiHash: null). Delete any existing snapshot so
-    // a subsequent upgradeAction() cannot validate against a stale prior-edition ABI.
-    if (record.status === "degraded") {
-      deleteAbiSnapshot(this.deploymentsDir, net, programId);
-    }
-
-    // Append history
-    const historyEntry: DeploymentHistoryEntry = {
-      record,
-      action,
-      ...(options?.historyEntry ?? {}),
-    };
-    appendHistory(this.deploymentsDir, net, programId, historyEntry);
-
-    // Update cache
+    // Always: update in-memory record cache
     this.networkCache(net).set(programId, record);
 
-    // Clear pending marker (atomically committed)
-    deletePendingMarker(this.deploymentsDir, net, programId);
+    if (!ephemeral) {
+      // Clear pending marker (atomically committed)
+      deletePendingMarker(this.deploymentsDir, net, programId);
+    }
   }
 
   async setPending(pending: PendingDeployment): Promise<void> {
-    writePendingMarker(this.deploymentsDir, pending.network, pending);
+    if (!this.isEphemeral(pending.network)) {
+      writePendingMarker(this.deploymentsDir, pending.network, pending);
+    }
   }
 
   async clearPending(network: string, programId: string): Promise<void> {
-    deletePendingMarker(this.deploymentsDir, network, programId);
+    if (!this.isEphemeral(network)) {
+      deletePendingMarker(this.deploymentsDir, network, programId);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -407,6 +471,8 @@ export class DeploymentManagerImpl implements DeploymentManager {
     network: string,
     connection: NetworkConnection,
   ): Promise<RecoveredDeploymentRecord[]> {
+    if (this.isEphemeral(network)) return []; // No markers to recover in ephemeral mode
+
     const markerIds = listPendingMarkers(this.deploymentsDir, network);
     const recovered: RecoveredDeploymentRecord[] = [];
 
@@ -573,25 +639,30 @@ export class DeploymentManagerImpl implements DeploymentManager {
   async export(network?: string): Promise<ExportBundle> {
     const net = this.resolveNetwork(network);
     const networkConfig = this.config.networks[net];
+    const ephemeral = this.isEphemeral(net);
 
     let records: DeploymentRecord[];
 
-    if (networkConfig?.type === "devnode") {
-      // Devnode: cache-only
+    if (ephemeral) {
+      // Ephemeral: cache-only
       records = [...this.networkCache(net).values()];
     } else {
-      // HTTP: read from disk
-      await this.validateHttpMetadata(net);
+      // Non-ephemeral: disk-backed
+      if (networkConfig?.type === "http") {
+        await this.validateHttpMetadata(net);
+      }
       records = await this.getAllDeployments(net);
     }
 
     const programs: Record<string, ExportedProgram> = {};
 
     for (const record of records) {
-      // Read ABI from snapshot first, fall back to artifact store
-      const snapshotAbi = readAbiSnapshot(this.deploymentsDir, net, record.programId);
+      // Ephemeral: skip disk ABI snapshot, use memory cache → artifacts
+      // Non-ephemeral: disk snapshot → memory cache → artifacts
+      const snapshotAbi = ephemeral ? null : readAbiSnapshot(this.deploymentsDir, net, record.programId);
+      const cachedAbi = this.getCachedAbi(record.programId, net);
       const artifactAbi = this.artifacts.getAbi(record.programId);
-      const abi = snapshotAbi ?? (artifactAbi as ProgramABI | undefined) ?? null;
+      const abi = snapshotAbi ?? cachedAbi ?? (artifactAbi as ProgramABI | undefined) ?? null;
 
       programs[record.programId] = {
         programId: record.programId,
@@ -632,6 +703,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
 
   invalidateSession(network: string): void {
     this.cache.delete(network);
+    this.abiCache.delete(network);
     this.metadataValidated.delete(network);
   }
 }

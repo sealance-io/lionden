@@ -363,6 +363,7 @@ describe("runDeployPreflight", () => {
     type: "http" as const,
     endpoint: "https://api.example.com",
     network: "testnet" as const,
+    ephemeral: false,
   };
 
   it("skips deployed programs on devnode when skipDeployed=true", async () => {

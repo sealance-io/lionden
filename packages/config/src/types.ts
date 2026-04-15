@@ -28,6 +28,13 @@ export interface DevnodeNetworkConfig {
    * Required for V9/constructor support on devnode.
    */
   readonly consensusHeights?: string;
+  /**
+   * Skip disk writes/reads for deployment state on this network.
+   * When true, deployment records, ABI snapshots, history, and pending
+   * markers are kept in memory only.
+   * Default: true (devnode chain dies on process exit).
+   */
+  readonly ephemeral?: boolean;
 }
 
 export interface HttpNetworkConfig {
@@ -40,6 +47,13 @@ export interface HttpNetworkConfig {
   readonly privateKey?: string | ConfigVariable;
   /** Optional API key for explorer */
   readonly apiKey?: string | ConfigVariable;
+  /**
+   * Skip disk writes/reads for deployment state on this network.
+   * When true, deployment records, ABI snapshots, history, and pending
+   * markers are kept in memory only.
+   * Default: false (HTTP chains persist across restarts).
+   */
+  readonly ephemeral?: boolean;
 }
 
 export type NetworkUserConfig =
@@ -179,6 +193,12 @@ export interface DeployConfig {
   readonly interDeploymentDelay?: number;
   /** Automatically export deployment bundle after each deploy/upgrade. Default: false */
   readonly autoExport?: boolean;
+  /**
+   * Global override for deployment state ephemeral mode.
+   * Overrides the per-network-type default (devnode=true, http=false)
+   * but is itself overridden by per-network `ephemeral` settings.
+   */
+  readonly ephemeral?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +260,8 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly network: AleoNetwork;
   readonly privateKey?: string;
   readonly consensusHeights?: string;
+  /** Deployment state ephemeral mode. Default: true (devnode chain dies on exit). */
+  readonly ephemeral: boolean;
 }
 
 export interface ResolvedHttpNetworkConfig {
@@ -248,6 +270,8 @@ export interface ResolvedHttpNetworkConfig {
   readonly network: AleoNetwork;
   readonly privateKey?: string;
   readonly apiKey?: string;
+  /** Deployment state ephemeral mode. Default: false (HTTP chains persist). */
+  readonly ephemeral: boolean;
 }
 
 export type ResolvedNetworkConfig =

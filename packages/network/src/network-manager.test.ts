@@ -22,11 +22,13 @@ const mockConfig: LionDenResolvedConfig = {
       verbosity: 0,
       accounts: [],
       network: "testnet",
+      ephemeral: true,
     },
     testnet: {
       type: "http",
       endpoint: "https://api.explorer.provable.com/v1",
       network: "testnet",
+      ephemeral: false,
     },
   },
   defaultNetwork: "devnode",
