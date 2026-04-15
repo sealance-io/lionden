@@ -78,6 +78,7 @@ function createCliDeploymentContext(
     connection,
     network: networkName,
     accounts: connection.type === "devnode" ? DEVNODE_ACCOUNTS : [],
+    namedAccounts: lre.namedAccounts,
 
     async deploy(programName, opts) {
       const taskResult = await lre.tasks.run("deploy", {

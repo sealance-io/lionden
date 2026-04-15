@@ -9,6 +9,7 @@
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkConnection, NetworkManager, DevnodeAccount, Signer } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
+import type { NamedAccount } from "@lionden/config";
 import type { ManagedDevnode } from "./devnode-lifecycle.js";
 import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
 import { clearFixtures } from "./fixtures.js";
@@ -39,6 +40,11 @@ export interface TestContext {
   readonly connection: NetworkConnection;
   /** The network name this context is connected to. */
   readonly network: string;
+  /**
+   * Resolved named accounts for the active network.
+   * Empty object ({}) when no namedAccounts are configured in the project.
+   */
+  readonly namedAccounts: Readonly<Record<string, NamedAccount>>;
   /** Deploy a program by name. Returns the deploy result. */
   deploy(programName: string, options?: DeployOptions): Promise<DeployResult>;
   /** Execute a transition on a deployed program. */
@@ -130,6 +136,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     accounts: connection.type === "devnode" ? DEVNODE_ACCOUNTS : [],
     connection,
     network: connectedNetwork,
+    namedAccounts: lre.namedAccounts,
 
     async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
       const normalizedId = programName.endsWith(".aleo")

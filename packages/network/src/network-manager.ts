@@ -5,7 +5,7 @@
  * Contract wrappers call execute() and getMappingValue() on this object.
  */
 
-import type { LionDenResolvedConfig, ResolvedNetworkConfig } from "@lionden/config";
+import type { LionDenResolvedConfig, ResolvedNetworkConfig, NamedAccount } from "@lionden/config";
 import type {
   NetworkManager,
   NetworkConnection,
@@ -15,14 +15,23 @@ import type {
 } from "./types.js";
 import { AleoConnection } from "./connection.js";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
+import { NamedAccountManager } from "./named-account-manager.js";
 
 export class NetworkManagerImpl implements NetworkManager {
   private readonly config: LionDenResolvedConfig;
   private activeConnection: NetworkConnection | null = null;
   private readonly connections = new Map<string, NetworkConnection>();
+  private readonly namedAccountManager: NamedAccountManager;
+  /** Per-network named account cache (survives connection close/reopen). */
+  private readonly resolvedNamedAccountsCache = new Map<
+    string,
+    Readonly<Record<string, NamedAccount>>
+  >();
+  private activeNamedAccounts: Readonly<Record<string, NamedAccount>> = {};
 
   constructor(config: LionDenResolvedConfig) {
     this.config = config;
+    this.namedAccountManager = new NamedAccountManager(config.namedAccounts);
   }
 
   async connect(name?: string): Promise<NetworkConnection> {
@@ -41,15 +50,40 @@ export class NetworkManagerImpl implements NetworkManager {
     if (existing) {
       if (existing.closed) {
         this.connections.delete(networkName);
+        // Fall through to create a new connection below
       } else {
         this.activeConnection = existing;
+        // Restore named accounts from per-network cache
+        const cachedAccounts = this.resolvedNamedAccountsCache.get(networkName);
+        this.activeNamedAccounts = cachedAccounts ?? {};
         return existing;
       }
     }
 
+    // Create new connection first (may throw)
     const connection = this.createConnection(networkName, networkConfig);
+
+    // Resolve named accounts — if this throws, close only the new connection
+    // and preserve the previous active state (transactional).
+    let resolvedAccounts: Readonly<Record<string, NamedAccount>>;
+    try {
+      resolvedAccounts = await this.namedAccountManager.resolveForNetwork({
+        networkName,
+        networkType: networkConfig.type,
+        networkId: networkConfig.network,
+        endpoint: connection.endpoint,
+        apiKey: networkConfig.type === "http" ? networkConfig.apiKey : undefined,
+      });
+    } catch (err) {
+      await connection.close().catch(() => {});
+      throw err;
+    }
+
+    // Both connection creation and named-account resolution succeeded — swap state.
     this.connections.set(networkName, connection);
     this.activeConnection = connection;
+    this.resolvedNamedAccountsCache.set(networkName, resolvedAccounts);
+    this.activeNamedAccounts = resolvedAccounts;
 
     return connection;
   }
@@ -62,12 +96,19 @@ export class NetworkManagerImpl implements NetworkManager {
     const conns = [...this.connections.values()];
     this.connections.clear();
     this.activeConnection = null;
+    this.activeNamedAccounts = {};
+    this.resolvedNamedAccountsCache.clear();
+    this.namedAccountManager.invalidate();
 
     await Promise.all(conns.map((c) => c.close()));
   }
 
   getAccounts(): DevnodeAccount[] {
     return [...DEVNODE_ACCOUNTS];
+  }
+
+  getNamedAccounts(): Readonly<Record<string, NamedAccount>> {
+    return { ...this.activeNamedAccounts };
   }
 
   async execute(

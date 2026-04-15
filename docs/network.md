@@ -26,10 +26,14 @@ The framework is intentionally devnode-first. That assumption shapes the default
 Current responsibilities:
 
 - connect to a named network and reuse active connections
+- resolve named accounts for the connected network (via `NamedAccountManager`) and cache them per network name
 - expose the active connection
-- disconnect all open connections
+- expose named accounts for the active network (`getNamedAccounts()` returns a shallow copy)
+- disconnect all open connections and clear named account state
 - expose devnode accounts
 - proxy `execute()` and `getMappingValue()` to the active connection
+
+`connect()` is transactional: if named-account resolution fails after a new connection is created, only the new connection is closed and the previous active connection and named accounts are preserved. Switching back to a previously-connected network restores named accounts from the per-network cache without re-resolving.
 
 Connection creation currently maps:
 

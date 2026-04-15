@@ -37,6 +37,7 @@ function mockLre(): LionDenRuntimeEnvironment {
     getConnection: vi.fn().mockReturnValue(connection),
     disconnectAll: vi.fn().mockResolvedValue(undefined),
     getAccounts: vi.fn().mockReturnValue([]),
+    getNamedAccounts: vi.fn().mockReturnValue({}),
     execute: vi.fn(),
     getMappingValue: vi.fn(),
   };
@@ -88,6 +89,7 @@ function mockLre(): LionDenRuntimeEnvironment {
     },
     plugins: [],
     globalOptions: {},
+    namedAccounts: {},
   } as unknown as LionDenRuntimeEnvironment;
 }
 

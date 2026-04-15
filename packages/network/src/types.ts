@@ -1,4 +1,4 @@
-import type { AleoNetwork } from "@lionden/config";
+import type { AleoNetwork, NamedAccount } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
 // Transaction types
@@ -140,6 +140,13 @@ export interface NetworkManager {
 
   /** Get well-known devnode accounts. */
   getAccounts(): DevnodeAccount[];
+
+  /**
+   * Get resolved named accounts for the currently active network.
+   * Returns a shallow copy — mutating the returned object has no effect.
+   * Returns {} before connect() or when no namedAccounts are configured.
+   */
+  getNamedAccounts(): Readonly<Record<string, NamedAccount>>;
 
   /**
    * Execute a transition on the active connection.

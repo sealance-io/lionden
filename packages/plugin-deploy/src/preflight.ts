@@ -229,13 +229,14 @@ export async function checkFeeEstimate(
   programId: string,
   aleoSource: string,
   importSources: Map<string, string>,
+  signerPrivateKey?: string,
 ): Promise<{ estimate: bigint | undefined; warning: PreflightWarning | null }> {
   try {
     const { createSdkObjects } = await import("@lionden/network");
     const sdk = await createSdkObjects({
       network: connection.networkId,
       endpoint: connection.endpoint,
-      privateKey: connection.privateKey,
+      privateKey: signerPrivateKey ?? connection.privateKey,
       apiKey: connection.apiKey,
     });
     const pm = sdk.programManager as any;
@@ -284,12 +285,13 @@ export async function checkFeeEstimate(
 export async function checkBalanceSufficient(
   connection: NetworkConnection,
   totalEstimate: bigint,
+  signerAddress?: string,
 ): Promise<{ warning: PreflightWarning | null; error: PreflightError | null }> {
   if (totalEstimate === 0n) {
     return { warning: null, error: null };
   }
 
-  const balance = await connection.getBalance();
+  const balance = await connection.getBalance(signerAddress);
   const bufferThreshold = (totalEstimate * 3n) / 2n; // 1.5x
 
   if (balance < totalEstimate) {
@@ -417,6 +419,14 @@ export function checkConstructorImmutable(
 /**
  * Check that the admin signer address matches the @admin constructor address.
  * Delegates to validateAdminSigner, converting DeployError to PreflightError.
+ *
+ * Returns { warning, error } where:
+ * - warning: NAMED_ADMIN_DRIFT when address-only namedAccounts.admin drifts from @admin(address)
+ * - error: ADMIN_SIGNER_MISMATCH when the actual transaction signer is not the admin
+ *
+ * The drift warning is additive: it fires when namedAdminAddress differs from adminAddress,
+ * but signer validation still runs independently unless signerPrivateKey is provided
+ * (in which case signerPrivateKey IS the selected signer and covers both).
  */
 export async function checkAdminSigner(
   connection: NetworkConnection,
@@ -424,25 +434,50 @@ export async function checkAdminSigner(
   networkName: string,
   record: DeploymentRecord,
   programId: string,
-): Promise<PreflightError | null> {
+  signerPrivateKey?: string,
+  namedAdminAddress?: string,
+): Promise<{ warning: PreflightWarning | null; error: PreflightError | null }> {
   if (record.constructor.type !== "admin" || !record.constructor.adminAddress) {
-    return null;
+    return { warning: null, error: null };
   }
 
+  const adminAddress = record.constructor.adminAddress!;
+
+  // Drift check: when an address-only named admin is provided (no private key),
+  // warn if it doesn't match the program's @admin address.
+  // This is purely additive — signer validation still runs below.
+  let driftWarning: PreflightWarning | null = null;
+  if (!signerPrivateKey && namedAdminAddress && namedAdminAddress !== adminAddress) {
+    driftWarning = {
+      code: "NAMED_ADMIN_DRIFT",
+      message:
+        `Named account "admin" address "${namedAdminAddress}" does not match ` +
+        `@admin(address="${adminAddress}") in program "${programId}". ` +
+        `Update your namedAccounts config or the program constructor.`,
+    };
+  }
+
+  // Signer validation: always run. When signerPrivateKey is provided, validateAdminSigner
+  // derives its address and checks against adminAddress — same path as network-config signer,
+  // just using the named account's key instead.
   try {
     await validateAdminSigner(
       connection,
       config,
       networkName,
-      record.constructor.adminAddress!,
+      adminAddress,
       programId,
+      signerPrivateKey,
     );
-    return null;
+    return { warning: driftWarning, error: null };
   } catch (err: unknown) {
     return {
-      code: "ADMIN_SIGNER_MISMATCH",
-      message: err instanceof Error ? err.message : String(err),
-      recoverable: false,
+      warning: driftWarning,
+      error: {
+        code: "ADMIN_SIGNER_MISMATCH",
+        message: err instanceof Error ? err.message : String(err),
+        recoverable: false,
+      },
     };
   }
 }
@@ -499,6 +534,8 @@ export interface RunDeployPreflightOptions {
   localSources: Map<string, string>;
   /** Dependency graph for import checks */
   graph: DependencyGraph;
+  /** Override signing key for fee estimation and balance checks. When set, overrides connection.privateKey. */
+  signerPrivateKey?: string;
 }
 
 /**
@@ -516,6 +553,7 @@ export async function runDeployPreflight(
     deployTargets,
     localSources,
     graph,
+    signerPrivateKey,
   } = opts;
 
   const isDevnode = networkConfig.type === "devnode";
@@ -624,6 +662,7 @@ export async function runDeployPreflight(
           programId,
           aleoSource,
           importSourcesForFee,
+          signerPrivateKey,
         );
         if (feeWarning) warnings.push(feeWarning);
 
@@ -642,8 +681,28 @@ export async function runDeployPreflight(
 
   // 6. Balance check (HTTP only, batch)
   if (!isDevnode && totalFeeEstimate !== undefined && totalFeeEstimate > 0n) {
+    // Derive signer address if a signer key override is provided
+    let signerAddress: string | undefined;
+    if (signerPrivateKey) {
+      try {
+        const { createSdkObjects } = await import("@lionden/network");
+        const sdk = await createSdkObjects({
+          network: connection.networkId,
+          endpoint: connection.endpoint,
+          privateKey: signerPrivateKey,
+          apiKey: connection.apiKey,
+        });
+        const account = sdk.account as any;
+        signerAddress =
+          typeof account.address === "function"
+            ? account.address().to_string()
+            : String(account.address ?? account);
+      } catch {
+        // Best-effort; fall back to connection default
+      }
+    }
     const { warning: balanceWarning, error: balanceError } =
-      await checkBalanceSufficient(connection, totalFeeEstimate);
+      await checkBalanceSufficient(connection, totalFeeEstimate, signerAddress);
     if (balanceWarning) warnings.push(balanceWarning);
     if (balanceError) errors.push(balanceError);
   }
@@ -667,6 +726,13 @@ export interface RunUpgradePreflightOptions {
   connection: NetworkConnection;
   config: LionDenResolvedConfig;
   networkName: string;
+  /** Override signing key for admin validation. When set, overrides the key derived from network config. */
+  signerPrivateKey?: string;
+  /**
+   * Address of an address-only named admin account.
+   * When present (and signerPrivateKey is absent), checked against @admin(address) for drift warning.
+   */
+  namedAdminAddress?: string;
 }
 
 /**
@@ -686,6 +752,8 @@ export async function runUpgradePreflight(
     connection,
     config,
     networkName,
+    signerPrivateKey,
+    namedAdminAddress,
   } = opts;
 
   const isDevnode = config.networks[networkName]?.type === "devnode";
@@ -701,7 +769,16 @@ export async function runUpgradePreflight(
   if (ctorErr) errors.push(ctorErr);
 
   // 3. Admin signer (if applicable)
-  const signerErr = await checkAdminSigner(connection, config, networkName, oldRecord, programId);
+  const { warning: adminDriftWarning, error: signerErr } = await checkAdminSigner(
+    connection,
+    config,
+    networkName,
+    oldRecord,
+    programId,
+    signerPrivateKey,
+    namedAdminAddress,
+  );
+  if (adminDriftWarning) warnings.push(adminDriftWarning);
   if (signerErr) errors.push(signerErr);
 
   // 4. Edition continuity (HTTP only)

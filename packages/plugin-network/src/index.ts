@@ -181,7 +181,15 @@ const pluginNetwork: LionDenPlugin = {
   tasks: [nodeTask, runTask],
 
   extendLre(lre) {
-    (lre as unknown as Record<string, unknown>)["network"] = new NetworkManagerImpl(lre.config);
+    const manager = new NetworkManagerImpl(lre.config);
+    (lre as unknown as Record<string, unknown>)["network"] = manager;
+    // Override the stub namedAccounts: {} with a live getter backed by the manager.
+    // This ensures lre.namedAccounts always reflects the current active network.
+    Object.defineProperty(lre, "namedAccounts", {
+      get: () => manager.getNamedAccounts(),
+      enumerable: true,
+      configurable: true,
+    });
   },
 };
 

@@ -126,6 +126,7 @@ export function createLre(options: CreateLreOptions): LionDenRuntimeEnvironment 
     artifacts,
     plugins,
     globalOptions,
+    namedAccounts: {}, // Overridden by @lionden/plugin-network via extendLre getter
   };
 
   // Allow plugins to inject services (e.g., network manager)

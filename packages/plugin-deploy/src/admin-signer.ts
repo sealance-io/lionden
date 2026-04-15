@@ -51,29 +51,35 @@ export async function validateAdminSigner(
   networkName: string,
   adminAddress: string,
   programId: string,
+  signerPrivateKey?: string,
 ): Promise<void> {
-  const networkConfig = config.networks[networkName];
-  if (!networkConfig) {
-    throw new DeployError(
-      `Cannot upgrade "${programId}": network "${networkName}" not found in config. ` +
-        `The program has @admin(address="${adminAddress}") and the signer must be verified before upgrade.`,
-    );
-  }
-
   let signerAddress: string | undefined;
 
-  if (networkConfig.type === "devnode") {
-    if (networkConfig.accounts.length > 0) {
-      signerAddress = await deriveAddressFromKey(
-        networkConfig.accounts[0]!.privateKey,
-        connection,
+  // If an explicit signer key is provided, use it directly (namedAccounts.admin)
+  if (signerPrivateKey) {
+    signerAddress = await deriveAddressFromKey(signerPrivateKey, connection);
+  } else {
+    const networkConfig = config.networks[networkName];
+    if (!networkConfig) {
+      throw new DeployError(
+        `Cannot upgrade "${programId}": network "${networkName}" not found in config. ` +
+          `The program has @admin(address="${adminAddress}") and the signer must be verified before upgrade.`,
       );
-    } else {
-      const { DEVNODE_ACCOUNTS } = await import("@lionden/network");
-      signerAddress = DEVNODE_ACCOUNTS[0]!.address;
     }
-  } else if (networkConfig.type === "http" && networkConfig.privateKey) {
-    signerAddress = await deriveAddressFromKey(networkConfig.privateKey, connection);
+
+    if (networkConfig.type === "devnode") {
+      if (networkConfig.accounts.length > 0) {
+        signerAddress = await deriveAddressFromKey(
+          networkConfig.accounts[0]!.privateKey,
+          connection,
+        );
+      } else {
+        const { DEVNODE_ACCOUNTS } = await import("@lionden/network");
+        signerAddress = DEVNODE_ACCOUNTS[0]!.address;
+      }
+    } else if (networkConfig.type === "http" && networkConfig.privateKey) {
+      signerAddress = await deriveAddressFromKey(networkConfig.privateKey, connection);
+    }
   }
 
   if (!signerAddress) {

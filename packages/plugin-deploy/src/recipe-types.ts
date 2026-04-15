@@ -9,6 +9,7 @@
 
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkConnection, Signer, DevnodeAccount } from "@lionden/network";
+import type { NamedAccount } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
 // DeploymentContext — the interface recipes receive
@@ -35,6 +36,11 @@ export interface DeploymentContext {
   readonly lre: LionDenRuntimeEnvironment;
   /** The network name this context is connected to. */
   readonly network: string;
+  /**
+   * Resolved named accounts for the active network.
+   * Empty object ({}) when no namedAccounts are configured in the project.
+   */
+  readonly namedAccounts: Readonly<Record<string, NamedAccount>>;
 }
 
 export interface RecipeDeployOptions {

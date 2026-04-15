@@ -343,3 +343,131 @@ describe("resolveConfig", () => {
     expect(resolved.codegen.outDir).toBe("new-path");
   });
 });
+
+// ---------------------------------------------------------------------------
+// namedAccounts resolution
+// ---------------------------------------------------------------------------
+
+describe("resolveNamedAccountsConfig", () => {
+  const root = "/tmp/test-project";
+
+  it("returns empty record when namedAccounts is not configured", async () => {
+    const resolved = await resolve({}, [], root);
+    expect(resolved.namedAccounts).toEqual({});
+  });
+
+  it("resolves a numeric index to { type: 'index' }", async () => {
+    const resolved = await resolve(
+      { namedAccounts: { deployer: { default: 0 } } },
+      [],
+      root,
+    );
+    expect(resolved.namedAccounts["deployer"]).toEqual({
+      networks: {},
+      default: { type: "index", index: 0 },
+    });
+  });
+
+  it("resolves a valid aleo1 address to { type: 'address' }", async () => {
+    const addr = "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
+    const resolved = await resolve(
+      { namedAccounts: { treasury: { default: addr } } },
+      [],
+      root,
+    );
+    expect(resolved.namedAccounts["treasury"]).toEqual({
+      networks: {},
+      default: { type: "address", address: addr },
+    });
+  });
+
+  it("resolves an APrivateKey1 string to { type: 'privateKey' }", async () => {
+    const key = "APrivateKey1zkpFakeKey123456789";
+    const resolved = await resolve(
+      { namedAccounts: { deployer: { default: key } } },
+      [],
+      root,
+    );
+    expect(resolved.namedAccounts["deployer"]).toEqual({
+      networks: {},
+      default: { type: "privateKey", privateKey: key },
+    });
+  });
+
+  it("resolves per-network overrides alongside default", async () => {
+    const resolved = await resolve(
+      {
+        namedAccounts: {
+          deployer: {
+            default: 0,
+            testnet: "APrivateKey1zkpTestnetKey",
+          },
+        },
+      },
+      [],
+      root,
+    );
+    expect(resolved.namedAccounts["deployer"]).toEqual({
+      networks: { testnet: { type: "privateKey", privateKey: "APrivateKey1zkpTestnetKey" } },
+      default: { type: "index", index: 0 },
+    });
+  });
+
+  it("resolves a ConfigVariable by reading the env var", async () => {
+    process.env["TEST_NAMED_KEY"] = "APrivateKey1zkpFromEnv";
+    try {
+      const resolved = await resolve(
+        {
+          namedAccounts: {
+            deployer: { default: configVariable("TEST_NAMED_KEY") },
+          },
+        },
+        [],
+        root,
+      );
+      expect(resolved.namedAccounts["deployer"]!.default).toEqual({
+        type: "privateKey",
+        privateKey: "APrivateKey1zkpFromEnv",
+      });
+    } finally {
+      delete process.env["TEST_NAMED_KEY"];
+    }
+  });
+
+  it("throws ConfigResolutionError for a negative index", async () => {
+    await expect(
+      resolve({ namedAccounts: { deployer: { default: -1 } } }, [], root),
+    ).rejects.toThrow(ConfigResolutionError);
+  });
+
+  it("throws ConfigResolutionError for a non-integer index", async () => {
+    await expect(
+      resolve({ namedAccounts: { deployer: { default: 1.5 } } }, [], root),
+    ).rejects.toThrow(ConfigResolutionError);
+  });
+
+  it("throws ConfigResolutionError for NaN index", async () => {
+    await expect(
+      resolve({ namedAccounts: { deployer: { default: NaN } } }, [], root),
+    ).rejects.toThrow(ConfigResolutionError);
+  });
+
+  it("throws ConfigResolutionError for an aleo1 string with invalid shape (too short)", async () => {
+    await expect(
+      resolve({ namedAccounts: { treasury: { default: "aleo1short" } } }, [], root),
+    ).rejects.toThrow(ConfigResolutionError);
+  });
+
+  it("throws ConfigResolutionError for an aleo1 string with invalid characters", async () => {
+    const bad = "aleo1INVALID!chars" + "a".repeat(45);
+    await expect(
+      resolve({ namedAccounts: { treasury: { default: bad } } }, [], root),
+    ).rejects.toThrow(ConfigResolutionError);
+  });
+
+  it("throws ConfigResolutionError for an unrecognized string", async () => {
+    await expect(
+      resolve({ namedAccounts: { mystery: { default: "not-an-address-or-key" } } }, [], root),
+    ).rejects.toThrow(ConfigResolutionError);
+  });
+});

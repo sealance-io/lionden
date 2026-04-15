@@ -20,6 +20,7 @@ Users define config with `defineConfig()` from `@lionden/config`. The user confi
 - `tasks`
 - `networks`
 - `defaultNetwork`
+- `namedAccounts`
 - `compiler`
 - `codegen`
 - `testing`
@@ -105,13 +106,14 @@ The current LRE includes:
 - resolved config
 - network service placeholder, later injected by plugins
 - deployment manager placeholder, later injected by plugins
+- `namedAccounts` getter — returns resolved named accounts for the active network (populated by `@lionden/plugin-network` after `connect()`, empty before)
 - task runner
 - hook dispatcher
 - in-memory artifact store
 - resolved plugins
 - collected global option values
 
-`@lionden/plugin-network` currently uses `extendLre` to inject `NetworkManagerImpl` into `lre.network`.
+`@lionden/plugin-network` currently uses `extendLre` to inject `NetworkManagerImpl` into `lre.network` and define the `lre.namedAccounts` getter backed by `NetworkManagerImpl.getNamedAccounts()`.
 
 `@lionden/plugin-deploy` currently uses `extendLre` to inject `DeploymentManagerImpl` into `lre.deployments`.
 

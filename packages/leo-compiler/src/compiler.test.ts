@@ -403,6 +403,7 @@ describe("compilePipeline network dep handling", () => {
         skipDeployed: true,
         autoExport: false,
       },
+      namedAccounts: {},
       ...overrides,
     };
   }

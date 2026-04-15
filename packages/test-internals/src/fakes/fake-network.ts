@@ -6,7 +6,7 @@ import type {
   ExecuteOptions,
   DevnodeAccount,
 } from "@lionden/network";
-import type { AleoNetwork } from "@lionden/config";
+import type { AleoNetwork, NamedAccount } from "@lionden/config";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 
 // ---------------------------------------------------------------------------
@@ -277,6 +277,10 @@ export class FakeNetworkManager implements NetworkManager {
 
   getAccounts(): DevnodeAccount[] {
     return this.accounts;
+  }
+
+  getNamedAccounts(): Readonly<Record<string, NamedAccount>> {
+    return {};
   }
 
   async execute(

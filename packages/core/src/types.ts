@@ -2,6 +2,7 @@ import type {
   LionDenUserConfig,
   LionDenResolvedConfig,
   ConfigVariable,
+  NamedAccount,
 } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
@@ -294,6 +295,12 @@ export interface LionDenRuntimeEnvironment {
   readonly plugins: readonly LionDenPlugin[];
   /** Global option values */
   readonly globalOptions: Record<string, unknown>;
+  /**
+   * Resolved named accounts for the currently active network.
+   * Populated by @lionden/plugin-network after connect().
+   * Empty object ({}) when no namedAccounts are configured or before connect().
+   */
+  readonly namedAccounts: Readonly<Record<string, NamedAccount>>;
 }
 
 // ---------------------------------------------------------------------------

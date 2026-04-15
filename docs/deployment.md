@@ -257,6 +257,7 @@ The recipe task compiles all programs once before running the recipe function. I
 - `deploy(programName, opts?)` — deploys a program and returns `{ programId, txId }`
 - `execute(programId, transitionName, args, opts?)` — executes a transition
 - `accounts` — well-known devnode accounts (empty array on HTTP networks)
+- `namedAccounts` — resolved named accounts for the active network (see [Named Accounts](#named-accounts))
 - `connection` — the active `NetworkConnection`
 - `lre` — the full `LionDenRuntimeEnvironment`
 - `network` — the connected network name
@@ -264,6 +265,102 @@ The recipe task compiles all programs once before running the recipe function. I
 `TestContext` in `@lionden/testing` structurally satisfies `DeploymentContext` via TypeScript structural typing — no import or explicit `extends` needed. A recipe written for the CLI can be called directly from a test fixture.
 
 Types are exported from `@lionden/plugin-deploy`: `DeploymentContext`, `DeploymentRecipe`, `RecipeDeployOptions`, `RecipeDeployResult`, `RecipeExecuteOptions`, `RecipeExecuteResult`.
+
+## Named Accounts
+
+Named accounts map human-readable role names (e.g. `deployer`, `admin`, `treasury`) to per-network account values. They solve three problems:
+
+1. **Readability**: `ctx.namedAccounts.deployer` is clearer than `ctx.accounts[0]`.
+2. **Network portability**: the same recipe/test runs on devnode (using pre-funded indices) and testnet/mainnet (using real keys from env vars) without code changes.
+3. **Address-only roles**: a `treasury` receiver only needs an address, not a private key.
+
+### Config
+
+```typescript
+import { defineConfig, configVariable } from "@lionden/config";
+
+export default defineConfig({
+  namedAccounts: {
+    deployer: {
+      default: 0,                                  // devnode: DEVNODE_ACCOUNTS[0]
+      // testnet: configVariable("DEPLOYER_KEY"),  // uncomment when targeting testnet
+    },
+    treasury: {
+      default: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5",
+    },
+  },
+});
+```
+
+> **Eager resolution**: all `configVariable()` values in `namedAccounts` are resolved during config load, before a network is selected. If an entry references an env var (e.g. `configVariable("DEPLOYER_KEY")`), that env var must be set even on devnode runs. Use per-network overrides only for the networks you actively target, and keep others commented out if the env var is not always available.
+
+Value types:
+- **number** — devnode account index (e.g. `0` → `DEVNODE_ACCOUNTS[0]`). Throws if used with an HTTP network.
+- **`aleo1...` string** — a literal Aleo address. Becomes an `AddressOnlyNamedAccount` (no private key).
+- **`APrivateKey1...` string** — a literal private key. Address derived at runtime.
+- **`ConfigVariable`** — resolved eagerly from environment variables, then classified by prefix.
+
+### Runtime types
+
+Two named account shapes exist (from `@lionden/config`):
+
+```typescript
+// Has a private key — can sign transactions
+interface SignableNamedAccount {
+  type: "signable";
+  name: string;
+  address: string;
+  privateKey: string;
+}
+
+// Address only — cannot sign
+interface AddressOnlyNamedAccount {
+  type: "address-only";
+  name: string;
+  address: string;
+}
+
+type NamedAccount = SignableNamedAccount | AddressOnlyNamedAccount;
+```
+
+`SignableNamedAccount` structurally satisfies `Signer` — pass it directly to `ExecuteOptions.signer`.
+
+Helpers exported from `@lionden/config`:
+- `isSignable(account)` — type guard
+- `asSigner(account)` — extracts `{ privateKey, address }`, throws for address-only accounts
+
+### Using named accounts in recipes and tests
+
+```typescript
+import { isSignable } from "@lionden/config";
+import type { DeploymentRecipe } from "@lionden/plugin-deploy";
+
+// In a recipe:
+export const setupToken: DeploymentRecipe = async (ctx) => {
+  // deploy automatically uses namedAccounts.deployer as the signing key
+  await ctx.deploy("token");
+
+  const treasury = ctx.namedAccounts.treasury;
+  await ctx.execute("token.aleo", "mint_public", [treasury.address, "10000u64"]);
+};
+
+// In a test:
+it("admin action uses named admin", async () => {
+  const admin = ctx.namedAccounts.admin;
+  if (!isSignable(admin)) throw new Error("admin must be signable on devnode");
+  await ctx.execute("token.aleo", "admin_only", ["arg"], { signer: admin });
+});
+```
+
+### Deploy/upgrade signer integration
+
+When `namedAccounts.deployer` is configured as a `SignableNamedAccount`, the deploy task uses its private key for transaction signing instead of `connection.privateKey`. The same private key is used for both the transaction and the recorded `deployerAddress`.
+
+When `namedAccounts.deployer` is `AddressOnlyNamedAccount`, the deploy task throws — the deployer role requires a signing key.
+
+When `namedAccounts.admin` is configured for the upgrade task:
+- Signable: used as the transaction signer and for preflight admin validation.
+- Address-only: does **not** sign or authorize the upgrade. The network signer (derived from `connection.privateKey` or the first devnode account) is still validated independently against `@admin(address=...)` in preflight. The address-only value is compared to `@admin(address=...)` as a drift check only — a mismatch emits a warning (`NAMED_ADMIN_DRIFT`), but the upgrade proceeds if the network signer matches.
 
 ## Deployment Hooks
 
