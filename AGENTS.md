@@ -4,9 +4,9 @@ This file is the navigation layer for agents working in the LionDen repo. Load t
 
 ## Start Here
 
-1. Read [`README.md`](/Users/mitzpetel/Workspaces/lionden/README.md) for the project overview and current status.
+1. Read [`README.md`](README.md) for the project overview and current status.
 2. Read the relevant `docs/*.md` file for subsystem detail.
-3. Open [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md) when you need design intent, roadmap context, or platform assumptions.
+3. Open [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) when you need design intent, roadmap context, or platform assumptions.
 
 Do not load every doc up front. Most tasks only need one focused doc plus a few source files.
 
@@ -27,7 +27,7 @@ Do not load every doc up front. Most tasks only need one focused doc plus a few 
 
 - Prefer `README.md` plus one subsystem doc over broad doc loading.
 - Prefer current code over plan docs when documenting or changing shipped behavior.
-- Treat [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md) as design-direction context, not as proof that an interface is already implemented.
+- Treat [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) as design-direction context, not as proof that an interface is already implemented.
 - Check the relevant package entrypoint and tests before making repo-wide claims.
 - Check `examples/` when describing end-user workflows or config shape.
 
@@ -37,16 +37,16 @@ Open the smallest relevant doc first:
 
 | Task | Primary doc |
 | --- | --- |
-| Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md) |
-| Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md) |
-| Network configs, devnode/HTTP, `node`, `run`, SDK integration | [`docs/network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md) |
-| Deployment state, `deploy`, `upgrade`, `export`, preflight, upgradability | [`docs/deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md) |
-| `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md) |
-| Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md) |
-| JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md) |
-| Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md) |
-| Leo version support, v3.5 compatibility, `leoBinary`, devnode consensus heights, `lib.leo` limitations | [`docs/leo-version-compatibility.md`](/Users/mitzpetel/Workspaces/lionden/docs/leo-version-compatibility.md) |
-| Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md) |
+| Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](docs/architecture.md) |
+| Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](docs/compiler.md) |
+| Network configs, devnode/HTTP, `node`, `run`, SDK integration | [`docs/network.md`](docs/network.md) |
+| Deployment state, `deploy`, `upgrade`, `export`, preflight, upgradability | [`docs/deployment.md`](docs/deployment.md) |
+| `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](docs/testing.md) |
+| Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](docs/testing-strategy.md) |
+| JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](docs/json-abi.md) |
+| Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](docs/project-layout.md) |
+| Leo version support, v3.5 compatibility, `leoBinary`, devnode consensus heights, `lib.leo` limitations | [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md) |
+| Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) |
 
 ## Ground Truth Order
 

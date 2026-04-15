@@ -93,9 +93,9 @@ Use this file when you need to answer questions like:
 
 For implementation detail, switch back to the focused subsystem docs:
 
-- [`project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md)
-- [`architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md)
-- [`compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md)
-- [`network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md)
-- [`deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md)
-- [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md)
+- [`project-layout.md`](project-layout.md)
+- [`architecture.md`](architecture.md)
+- [`compiler.md`](compiler.md)
+- [`network.md`](network.md)
+- [`deployment.md`](deployment.md)
+- [`testing.md`](testing.md)

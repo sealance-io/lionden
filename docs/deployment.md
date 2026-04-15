@@ -1,6 +1,6 @@
 # Deployment
 
-When to read this: use this file for `deploy`, `upgrade`, `export`, deployment state, deployment preflight, upgradeability rules, and deployment hooks. For network connection, devnode, SDK, and script execution behavior, use [`network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md).
+When to read this: use this file for `deploy`, `upgrade`, `export`, deployment state, deployment preflight, upgradeability rules, and deployment hooks. For network connection, devnode, SDK, and script execution behavior, use [`network.md`](network.md).
 
 ## Current Deployment Model
 
@@ -212,4 +212,4 @@ Current deployment hooks:
 
 ## Design Direction
 
-For constructor-driven upgrade intent and platform assumptions, use [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md). For Leo version-specific constructor and upgrade compatibility, use [`leo-version-compatibility.md`](/Users/mitzpetel/Workspaces/lionden/docs/leo-version-compatibility.md). Use the current deploy plugin source for the implementation contract that exists today.
+For constructor-driven upgrade intent and platform assumptions, use [`vision-and-roadmap.md`](vision-and-roadmap.md). For Leo version-specific constructor and upgrade compatibility, use [`leo-version-compatibility.md`](leo-version-compatibility.md). Use the current deploy plugin source for the implementation contract that exists today.

@@ -23,7 +23,7 @@ Implemented in the repo today:
 
 Important design-direction material is captured in:
 
-- [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md)
+- [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md)
 
 When the code and the plan differ, treat the current codebase as the source of truth for shipped behavior.
 
@@ -222,15 +222,15 @@ For subsystem detail, use the focused docs in `docs/` instead of loading everyth
 
 Start here for overview, then open only the subsystem docs you need:
 
-- [`docs/project-layout.md`](/Users/mitzpetel/Workspaces/lionden/docs/project-layout.md): package map, examples, scaffolding, contributor entry points
-- [`docs/vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
-- [`docs/architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
-- [`docs/compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
-- [`docs/network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
-- [`docs/deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md): deploy, upgrade, export, deployment state, preflight, and hooks
-- [`docs/testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
-- [`docs/testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
-- [`AGENTS.md`](/Users/mitzpetel/Workspaces/lionden/AGENTS.md): agent-specific navigation and selective disclosure rules
+- [`docs/project-layout.md`](docs/project-layout.md): package map, examples, scaffolding, contributor entry points
+- [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
+- [`docs/architecture.md`](docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
+- [`docs/compiler.md`](docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
+- [`docs/network.md`](docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
+- [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, preflight, and hooks
+- [`docs/testing.md`](docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
+- [`docs/testing-strategy.md`](docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
+- [`AGENTS.md`](AGENTS.md): agent-specific navigation and selective disclosure rules
 
 ## Roadmap Framing
 

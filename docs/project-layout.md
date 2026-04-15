@@ -105,15 +105,15 @@ The template registry lives in `packages/create-lionden/src/templates.ts`.
 
 Use this doc for navigation only. For behavior-level detail:
 
-- plugin/task/config mechanics: [`architecture.md`](/Users/mitzpetel/Workspaces/lionden/docs/architecture.md)
-- compile pipeline: [`compiler.md`](/Users/mitzpetel/Workspaces/lionden/docs/compiler.md)
-- network behavior: [`network.md`](/Users/mitzpetel/Workspaces/lionden/docs/network.md)
-- deployment behavior: [`deployment.md`](/Users/mitzpetel/Workspaces/lionden/docs/deployment.md)
-- test helpers: [`testing.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing.md)
-- repo-wide test strategy and CI: [`testing-strategy.md`](/Users/mitzpetel/Workspaces/lionden/docs/testing-strategy.md)
-- JSON ABI schema and codegen types: [`json-abi.md`](/Users/mitzpetel/Workspaces/lionden/docs/json-abi.md)
-- product goals and roadmap: [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md)
+- plugin/task/config mechanics: [`architecture.md`](architecture.md)
+- compile pipeline: [`compiler.md`](compiler.md)
+- network behavior: [`network.md`](network.md)
+- deployment behavior: [`deployment.md`](deployment.md)
+- test helpers: [`testing.md`](testing.md)
+- repo-wide test strategy and CI: [`testing-strategy.md`](testing-strategy.md)
+- JSON ABI schema and codegen types: [`json-abi.md`](json-abi.md)
+- product goals and roadmap: [`vision-and-roadmap.md`](vision-and-roadmap.md)
 
 ## Design Direction
 
-For roadmap context and intended future package behavior beyond what the current code exposes, use [`vision-and-roadmap.md`](/Users/mitzpetel/Workspaces/lionden/docs/vision-and-roadmap.md).
+For roadmap context and intended future package behavior beyond what the current code exposes, use [`vision-and-roadmap.md`](vision-and-roadmap.md).
