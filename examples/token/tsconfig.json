@@ -9,5 +9,5 @@
     "outDir": "dist",
     "declaration": true
   },
-  "include": ["test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"]
+  "include": ["recipes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"]
 }

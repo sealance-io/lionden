@@ -76,6 +76,12 @@ describe("templates", () => {
     }
   });
 
+  it("token template includes a recipe file", () => {
+    const t = getTemplate("token")!;
+    const paths = t.files.map((f) => f.path);
+    expect(paths).toContain("recipes/setup.ts");
+  });
+
   describe("getTemplate", () => {
     it("returns template by id", () => {
       const t = getTemplate("hello-world");

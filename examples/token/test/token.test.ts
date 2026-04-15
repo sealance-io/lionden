@@ -8,9 +8,9 @@ import {
 } from "@lionden/testing";
 import { isSignable } from "@lionden/config";
 import { createTokenContract } from "../typechain/index.js";
+import { setupToken } from "../recipes/setup.js";
 
 const RECEIVERS = {
-  publicMint: "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5",
   publicTransfer: "aleo1gnkqe9m4f5wdl3q904xsf6ed9kavj0e6fnggtwyt8v8apw05gy9syz34cz",
   privateMint: "aleo1q25acjdgqgvkeyxdhfm2jx00yt5m0eztsjesx7f063l7q975559qvdtjw7",
 } as const;
@@ -18,7 +18,7 @@ const RECEIVERS = {
 async function deployToken() {
   const ctx = await setup();
   try {
-    await ctx.deploy("token", { noCompile: true });
+    await setupToken(ctx);
     return { ctx };
   } catch (error) {
     await ctx.teardown();
@@ -43,16 +43,14 @@ afterAll(async () => {
 
 describe("token program", () => {
   describe("mint_public", () => {
-    it("mints tokens to a receiver", async () => {
-      const receiver = RECEIVERS.publicMint;
-      await ctx!.execute("token.aleo", "mint_public", [receiver, "1000u64"]);
-
+    it("recipe minted initial supply to treasury", async () => {
+      const treasury = ctx!.namedAccounts["treasury"]!;
       await assertMappingValue(
         ctx!.connection,
         "token.aleo",
         "balances",
-        receiver,
-        "1000u64",
+        treasury.address,
+        "1000000u64",
       );
     });
   });
