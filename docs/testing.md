@@ -28,7 +28,7 @@ This testing approach is built around a devnode-first workflow, suite-level isol
 - creates or reuses an LRE
 - optionally starts a managed devnode
 - connects to the selected network
-- exposes well-known devnode accounts
+- exposes well-known devnode accounts when connected to devnode, otherwise an empty account list
 - returns helpers for deploy, execute, advance blocks, and teardown
 
 The resulting `TestContext` includes:
@@ -36,6 +36,7 @@ The resulting `TestContext` includes:
 - `lre`
 - `accounts`
 - `connection`
+- `network`
 - `deploy()`
 - `execute()`
 - `advanceBlocks()`
@@ -43,7 +44,7 @@ The resulting `TestContext` includes:
 
 This is the interface used by the example tests in `examples/`.
 
-`deploy()` checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same devnode session. `teardown()` invalidates the devnode deployment cache so the next test context revalidates state against the active devnode.
+`deploy()` checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same session. `teardown()` invalidates the deployment cache for the connected network so the next test context revalidates state against the active network. The `network` property on `TestContext` exposes the connected network name. `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so deployment recipes can be called directly from test fixtures without any explicit type casting.
 
 ## Devnode Lifecycle In Tests
 

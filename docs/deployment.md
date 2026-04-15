@@ -9,6 +9,7 @@ When to read this: use this file for `deploy`, `upgrade`, `export`, deployment s
 - `deploy`
 - `upgrade`
 - `export`
+- `recipe`
 
 It also injects `DeploymentManagerImpl` into `lre.deployments`.
 
@@ -26,6 +27,9 @@ Deployment and upgrade behavior are shaped by the Leo upgradability model. Const
 - `skipDeployed`: skip programs already deployed on-chain, default `true`
 - `interDeploymentDelay`: delay between dependent HTTP deployments; default `12_000` for HTTP and `0` for devnode
 - `autoExport`: write an export bundle after each deploy or upgrade, default `false`
+- `ephemeral`: global ephemeral override — when `true`, all networks skip deployment-state disk reads/writes except export bundles; when `false`, forces disk-backed deployment state even on devnode (overridden by per-network setting)
+
+Per-network config also accepts `ephemeral?: boolean` to override the type-based default for that network.
 
 Resolved paths include `config.paths.deployments`, the absolute path for deployment state.
 
@@ -49,7 +53,7 @@ Current behavior:
 - deploys either all compiled programs or a selected program plus its transitive local program dependencies
 - connects to the requested network or the default network
 - runs deploy preflight before broadcasting
-- writes deployment state after successful deployment
+- records deployment state after successful deployment (in memory for ephemeral networks, on disk for non-ephemeral networks)
 - fires the `deployment.programDeployed` hook after successful deployment
 - optionally exports deployment data
 
@@ -114,9 +118,32 @@ Record statuses:
 
 Network metadata is written to `.network.json` for HTTP networks. The deployment manager validates it before trusting disk state so a reconfigured network endpoint does not silently reuse stale deployment records.
 
-Devnode state is memory-first: async reads validate against `getProgramSource()`, and bulk reads/export use the in-memory session cache because devnode disk records may be stale across sessions.
+### Ephemeral mode
 
-HTTP state is disk-backed after `.network.json` validation.
+Devnode networks default to **ephemeral mode**: all deployment state is kept in memory only. No records, ABI snapshots, pending markers, or history entries are written to disk, and disk reads are skipped entirely. This prevents stale files from a previous session being rehydrated when a new devnode process starts.
+
+HTTP networks default to **non-ephemeral** (disk-backed) behavior.
+
+The `ephemeral` default can be overridden:
+
+```typescript
+networks: {
+  // Force disk persistence on devnode (unusual — useful for debugging):
+  devnode: { type: "devnode", ephemeral: false },
+  // Ephemeral HTTP (unusual):
+  testnet: { type: "http", endpoint: "...", network: "testnet", ephemeral: true },
+},
+deploy: {
+  // Global fallback — applies to any network that doesn't set ephemeral explicitly:
+  ephemeral: true,
+},
+```
+
+Resolution order: `network.ephemeral ?? deploy.ephemeral ?? (type === "devnode")`.
+
+**Export exception**: `export()` always writes to `deployments/_exports/<network>.json` even in ephemeral mode. Export bundles are intentionally useful for ephemeral devnode (frontend dev integration, CI artifacts).
+
+**In-memory ABI cache**: `record()` populates an in-memory ABI cache alongside the deployment record cache. The upgrade task uses this cache instead of the on-disk ABI snapshot when the network is ephemeral. ABIs stored in the cache are normalized through `parseAbi()` to ensure consistent internal format regardless of how the ABI was originally provided.
 
 ## Deployment Manager
 
@@ -127,18 +154,21 @@ Current responsibilities:
 - validated deployment reads
 - cache-only deployment reads
 - deployment and upgrade record writes
-- ABI snapshot writes and reads
+- ABI snapshot writes and reads (gated by ephemeral mode)
+- in-memory ABI cache (used by upgrade task in ephemeral mode)
 - history reads
 - pending marker writes and recovery
 - programmatic deploy preflight
 - export bundle generation
-- devnode session invalidation
+- session invalidation (clears both record cache and ABI cache)
+
+Key interface methods include `isEphemeral(network)` (returns the resolved ephemeral flag for a network) and `getCachedAbi(programId, network)` (returns the normalized in-memory ABI or null).
 
 The manager depends on the active network manager and artifact store. Plugin authors and scripts should prefer `lre.deployments` for deployment state instead of reading deployment files directly.
 
 ## Pending Recovery
 
-Deploy and upgrade write pending markers before broadcasting. On the next deploy or upgrade, `recoverPendingDeployments()` checks pending markers against the active network.
+On non-ephemeral networks, deploy and upgrade write pending markers before broadcasting. On the next deploy or upgrade, `recoverPendingDeployments()` checks pending markers against the active network. Ephemeral networks skip pending marker writes and pending recovery because the chain and deployment state are memory-only for the session.
 
 If the program is not on-chain, the marker is cleared. If the program is on-chain, the manager records a `recovered` deployment record using the marker's intended action, expected edition, deployer address, constructor snapshot, ABI hash, network, and endpoint.
 
@@ -173,10 +203,10 @@ Current behavior:
 - parses the updated constructor
 - validates upgrade permission
 - runs upgrade preflight
-- writes a pending marker
+- writes a pending marker on non-ephemeral networks
 - builds and broadcasts the upgrade transaction
 - waits for confirmation unless skipped
-- records the updated complete deployment state
+- records the updated complete deployment state (in memory for ephemeral networks, on disk for non-ephemeral networks)
 - fires the `deployment.programUpgraded` hook
 - optionally exports deployment data when `deploy.autoExport` is enabled
 
@@ -196,6 +226,44 @@ Upgrade preflight checks include:
 - `@custom` constructor warning
 
 `@noupgrade` records fail upgrade permission validation. `@admin`, `@checksum`, and `@custom` are treated as upgrade-capable paths subject to their validation rules.
+
+## Deployment Recipes
+
+`packages/plugin-deploy/src/recipe-task.ts` implements the `recipe` task. Recipes are TypeScript modules that export a function accepting a `DeploymentContext` and returning a `Promise`. They provide a reusable, composable way to set up state across both tests and CLI.
+
+```typescript
+// recipes/setup.ts
+import type { DeploymentContext } from "@lionden/plugin-deploy";
+
+export default async function setup(ctx: DeploymentContext) {
+  await ctx.deploy("token");
+  await ctx.deploy("vault");
+}
+```
+
+Run from CLI:
+
+```
+lionden recipe --file ./recipes/setup.ts
+lionden recipe --file ./recipes/setup.ts --export setup  # named export
+lionden recipe --file ./recipes/setup.ts --network testnet
+lionden recipe --file ./recipes/setup.ts --no-compile
+```
+
+The recipe task compiles all programs once before running the recipe function. Individual `ctx.deploy()` calls default to `{ noCompile: true }` to avoid redundant compilation in multi-deploy recipes.
+
+`DeploymentContext` provides:
+
+- `deploy(programName, opts?)` — deploys a program and returns `{ programId, txId }`
+- `execute(programId, transitionName, args, opts?)` — executes a transition
+- `accounts` — well-known devnode accounts (empty array on HTTP networks)
+- `connection` — the active `NetworkConnection`
+- `lre` — the full `LionDenRuntimeEnvironment`
+- `network` — the connected network name
+
+`TestContext` in `@lionden/testing` structurally satisfies `DeploymentContext` via TypeScript structural typing — no import or explicit `extends` needed. A recipe written for the CLI can be called directly from a test fixture.
+
+Types are exported from `@lionden/plugin-deploy`: `DeploymentContext`, `DeploymentRecipe`, `RecipeDeployOptions`, `RecipeDeployResult`, `RecipeExecuteOptions`, `RecipeExecuteResult`.
 
 ## Deployment Hooks
 
