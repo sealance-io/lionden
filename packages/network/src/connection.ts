@@ -300,48 +300,120 @@ export class AleoConnection implements NetworkConnection {
   ): Promise<ConfirmedTransaction> {
     this.assertOpen();
     const effectiveTimeout = timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
-
-    // Poll the node REST API directly — the raw JSON response includes
-    // block_height which is not part of the SDK's typed TransactionJSON.
-    const url = `${this.endpoint}/${this.networkId}/transaction/confirmed/${txId}`;
     const deadline = Date.now() + effectiveTimeout;
     const fetchHeaders: Record<string, string> = {};
     if (this.apiKey) {
       fetchHeaders["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
-    while (Date.now() < deadline) {
+    const base = `${this.endpoint}/${this.networkId}`;
+
+    // Phase 1: poll /transaction/confirmed/<txId> until the tx is in a block.
+    // This response no longer carries block_height; the height is fetched in
+    // phase 2 via the two-step find/blockHash + block/<hash> lookup.
+    const confirmUrl = `${base}/transaction/confirmed/${txId}`;
+    let confirmedBody: Record<string, unknown> | null = null;
+    while (Date.now() < deadline && confirmedBody === null) {
       try {
-        const response = await fetch(url, { headers: fetchHeaders });
+        const response = await fetch(confirmUrl, { headers: fetchHeaders });
         if (response.ok) {
-          const data = (await response.json()) as Record<string, unknown>;
-          const height =
-            typeof data["block_height"] === "number"
-              ? data["block_height"]
-              : 0;
-          // In Aleo, rejected transactions are confirmed as fee-only.
-          // Accepted: type is "execute" or "deploy". Rejected: type is "fee".
-          const txData = data["transaction"] as
-            | Record<string, unknown>
-            | undefined;
-          const txType = txData?.["type"] ?? data["type"];
-          const status: "accepted" | "rejected" =
-            txType === "fee" ? "rejected" : "accepted";
-          return {
-            txId,
-            blockHeight: height as number,
-            status,
-          };
+          confirmedBody = (await response.json()) as Record<string, unknown>;
+          break;
         }
       } catch {
         // Not confirmed yet
       }
       await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
+    if (confirmedBody === null) {
+      throw new Error(
+        `Transaction ${txId} not confirmed within ${effectiveTimeout}ms`,
+      );
+    }
 
-    throw new Error(
-      `Transaction ${txId} not confirmed within ${effectiveTimeout}ms`,
-    );
+    // In Aleo, rejected transactions are confirmed as fee-only.
+    // Accepted: transaction.type is "execute" or "deploy". Rejected: "fee".
+    const txData = confirmedBody["transaction"] as
+      | Record<string, unknown>
+      | undefined;
+    const txType = txData?.["type"] ?? confirmedBody["type"];
+    const status: "accepted" | "rejected" =
+      txType === "fee" ? "rejected" : "accepted";
+
+    // Phase 2: resolve the containing block's height.
+    //   step a: GET /<network>/find/blockHash/<txId>  -> JSON-encoded block hash
+    //   step b: GET /<network>/block/<blockHash>      -> header.metadata.height
+    // Both calls are bounded by the same deadline; transient errors retry.
+    const blockHashUrl = `${base}/find/blockHash/${txId}`;
+    let blockHash: string | null = null;
+    while (Date.now() < deadline && blockHash === null) {
+      try {
+        const response = await fetch(blockHashUrl, { headers: fetchHeaders });
+        if (response.ok) {
+          const raw = (await response.text()).trim();
+          // Body is a JSON-encoded string: `"ab1...."`
+          if (raw.startsWith('"') && raw.endsWith('"')) {
+            blockHash = JSON.parse(raw) as string;
+          } else {
+            blockHash = raw;
+          }
+          break;
+        }
+      } catch {
+        // retry
+      }
+      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
+    }
+    if (blockHash === null) {
+      throw new Error(
+        `Transaction ${txId} confirmed but block-hash lookup did not resolve within ${effectiveTimeout}ms`,
+      );
+    }
+
+    const blockUrl = `${base}/block/${blockHash}`;
+    let blockHeight: number | null = null;
+    while (Date.now() < deadline && blockHeight === null) {
+      try {
+        const response = await fetch(blockUrl, { headers: fetchHeaders });
+        if (response.ok) {
+          const block = (await response.json()) as Record<string, unknown>;
+          const header = block["header"] as
+            | Record<string, unknown>
+            | undefined;
+          const metadata = header?.["metadata"] as
+            | Record<string, unknown>
+            | undefined;
+          const h = metadata?.["height"];
+          if (typeof h === "number") {
+            blockHeight = h;
+            break;
+          }
+          // Block returned 200 but no numeric header.metadata.height. This is
+          // a hard parser disagreement, not transient — fail fast rather than
+          // burning the deadline on a shape that won't change.
+          throw new Error(
+            `Transaction ${txId} confirmed at block ${blockHash} but header.metadata.height is missing or non-numeric`,
+          );
+        }
+      } catch (err) {
+        // Surface the explicit shape-mismatch immediately; only retry transient errors.
+        if (
+          err instanceof Error &&
+          err.message.includes("missing or non-numeric")
+        ) {
+          throw err;
+        }
+        // retry on network/parse errors
+      }
+      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
+    }
+    if (blockHeight === null) {
+      throw new Error(
+        `Transaction ${txId} confirmed but block height could not be resolved within ${effectiveTimeout}ms`,
+      );
+    }
+
+    return { txId, blockHeight, status };
   }
 
   // Assigned dynamically for devnode connections only
