@@ -498,8 +498,56 @@ describe("AleoConnection", () => {
   // waitForConfirmation()
   // -------------------------------------------------------------------------
 
+  // The real shape, captured live against `leo devnode` 4.0.2 — see bug record
+  // `.lionden/bug-hunt/bugs/connection-block-height-field-shape.md`. The
+  // `transaction/confirmed/<txId>` body has no `block_height` anywhere, so
+  // `waitForConfirmation` does a three-call dance per confirmation:
+  //   1. GET /<network>/transaction/confirmed/<txId>  -> tx body (status discriminator)
+  //   2. GET /<network>/find/blockHash/<txId>         -> JSON-encoded block-hash string
+  //   3. GET /<network>/block/<blockHash>             -> header.metadata.height (number)
   describe("waitForConfirmation()", () => {
     let fetchMock: ReturnType<typeof vi.fn>;
+
+    const TEST_BLOCK_HASH =
+      "ab1ajw276h6xe6hqswh87yr5ljjxf7dqtefxd6awhsp5znc36fupsqs8auddq";
+
+    type MockOpts = {
+      txType?: "execute" | "deploy" | "fee" | "missing";
+      height?: number;
+      blockHash?: string;
+    };
+
+    function mockHappyConfirmation({
+      txType = "execute",
+      height = 42,
+      blockHash = TEST_BLOCK_HASH,
+    }: MockOpts = {}) {
+      const txBody: Record<string, unknown> = {
+        status: "accepted",
+        type: "execute",
+        index: 0,
+        finalize: [],
+      };
+      if (txType !== "missing") {
+        txBody["transaction"] = { type: txType, id: "at1test" };
+      }
+      const blockBody = {
+        block_hash: blockHash,
+        header: { metadata: { network: 1, round: height, height } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(blockHash) };
+        }
+        if (url.includes(`/block/${blockHash}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+    }
 
     beforeEach(() => {
       vi.useFakeTimers();
@@ -512,10 +560,7 @@ describe("AleoConnection", () => {
     });
 
     it("returns confirmed transaction on first successful poll", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({ block_height: 42 }),
-      });
+      mockHappyConfirmation({ height: 42 });
       const connection = createDevnodeConnection();
 
       const result = await connection.waitForConfirmation("at1test");
@@ -527,76 +572,122 @@ describe("AleoConnection", () => {
       });
     });
 
-    it("polls the correct URL with networkId and txId", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({ block_height: 1 }),
-      });
+    it("hits all three real endpoints (confirmed, find/blockHash, block) with networkId and txId", async () => {
+      mockHappyConfirmation({ height: 42 });
       const connection = createDevnodeConnection();
 
       await connection.waitForConfirmation("at1test");
 
-      expect(fetchMock).toHaveBeenCalledWith(
+      const calls = fetchMock.mock.calls.map((c) => c[0] as string);
+      expect(calls).toContain(
         "http://127.0.0.1:3030/testnet/transaction/confirmed/at1test",
+      );
+      expect(calls).toContain(
+        "http://127.0.0.1:3030/testnet/find/blockHash/at1test",
+      );
+      expect(calls).toContain(
+        `http://127.0.0.1:3030/testnet/block/${TEST_BLOCK_HASH}`,
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({ headers: {} }),
       );
     });
 
-    it("includes Authorization header when apiKey is set", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({ block_height: 1 }),
-      });
+    it("includes Authorization header on every call when apiKey is set", async () => {
+      mockHappyConfirmation();
       const connection = createDevnodeConnection({ apiKey: "mykey" });
 
       await connection.waitForConfirmation("at1test");
 
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          headers: { Authorization: "Bearer mykey" },
-        }),
-      );
+      expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(3);
+      for (const [, init] of fetchMock.mock.calls) {
+        expect(init).toEqual(
+          expect.objectContaining({
+            headers: { Authorization: "Bearer mykey" },
+          }),
+        );
+      }
     });
 
-    it("retries when fetch returns non-ok, succeeds on next poll", async () => {
-      fetchMock
-        .mockResolvedValueOnce({ ok: false })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ block_height: 10 }),
-        });
-      const connection = createDevnodeConnection();
+    it("retries when the confirmed-tx poll returns non-ok, succeeds on next poll", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      const blockBody = {
+        header: { metadata: { network: 1, round: 10, height: 10 } },
+      };
+      let confirmedHits = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          confirmedHits++;
+          if (confirmedHits === 1) return { ok: false };
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(TEST_BLOCK_HASH),
+          };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
 
+      const connection = createDevnodeConnection();
       const promise = connection.waitForConfirmation("at1test", 10_000);
-      // Advance past the first poll interval to trigger retry
       await vi.advanceTimersByTimeAsync(1_000);
 
       const result = await promise;
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(confirmedHits).toBeGreaterThanOrEqual(2);
       expect(result.status).toBe("accepted");
+      expect(result.blockHeight).toBe(10);
     });
 
-    it("retries when fetch throws (network error), succeeds on next poll", async () => {
-      fetchMock
-        .mockRejectedValueOnce(new Error("ECONNREFUSED"))
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => ({ block_height: 5 }),
-        });
-      const connection = createDevnodeConnection();
+    it("retries when the confirmed-tx poll throws, succeeds on next poll", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      const blockBody = {
+        header: { metadata: { network: 1, round: 5, height: 5 } },
+      };
+      let confirmedHits = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          confirmedHits++;
+          if (confirmedHits === 1) throw new Error("ECONNREFUSED");
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(TEST_BLOCK_HASH),
+          };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
 
+      const connection = createDevnodeConnection();
       const promise = connection.waitForConfirmation("at1test", 10_000);
       await vi.advanceTimersByTimeAsync(1_000);
 
       const result = await promise;
 
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(confirmedHits).toBeGreaterThanOrEqual(2);
       expect(result.blockHeight).toBe(5);
     });
 
-    it("throws after timeout expires", async () => {
+    it("throws after timeout expires when the confirmed-tx poll never succeeds", async () => {
       fetchMock.mockResolvedValue({ ok: false });
       const connection = createDevnodeConnection();
 
@@ -622,13 +713,7 @@ describe("AleoConnection", () => {
     });
 
     it("returns rejected status for fee-only (rejected) transactions", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          transaction: { type: "fee" },
-          block_height: 15,
-        }),
-      });
+      mockHappyConfirmation({ txType: "fee", height: 15 });
       const connection = createDevnodeConnection();
 
       const result = await connection.waitForConfirmation("at1test");
@@ -641,13 +726,7 @@ describe("AleoConnection", () => {
     });
 
     it("returns accepted status for execute transactions", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          transaction: { type: "execute" },
-          block_height: 20,
-        }),
-      });
+      mockHappyConfirmation({ txType: "execute", height: 20 });
       const connection = createDevnodeConnection();
 
       const result = await connection.waitForConfirmation("at1test");
@@ -660,13 +739,7 @@ describe("AleoConnection", () => {
     });
 
     it("returns accepted status for deploy transactions", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          transaction: { type: "deploy" },
-          block_height: 25,
-        }),
-      });
+      mockHappyConfirmation({ txType: "deploy", height: 25 });
       const connection = createDevnodeConnection();
 
       const result = await connection.waitForConfirmation("at1test");
@@ -679,10 +752,7 @@ describe("AleoConnection", () => {
     });
 
     it("defaults to accepted when no transaction type is present", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({ block_height: 42 }),
-      });
+      mockHappyConfirmation({ txType: "missing", height: 42 });
       const connection = createDevnodeConnection();
 
       const result = await connection.waitForConfirmation("at1test");
@@ -690,16 +760,233 @@ describe("AleoConnection", () => {
       expect(result.status).toBe("accepted");
     });
 
-    it("defaults blockHeight to 0 when missing from response JSON", async () => {
-      fetchMock.mockResolvedValue({
-        ok: true,
-        json: async () => ({}), // no block_height field
+    it("throws if the find/blockHash lookup never resolves before the deadline", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: false };
+        }
+        return { ok: false };
+      });
+      const connection = createDevnodeConnection();
+
+      const promise = connection.waitForConfirmation("at1test", 3_000);
+      promise.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(4_000);
+
+      await expect(promise).rejects.toThrow(
+        "block-hash lookup did not resolve",
+      );
+    });
+
+    it("throws if /block/<hash> never returns ok before the deadline (fail-closed)", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(TEST_BLOCK_HASH),
+          };
+        }
+        return { ok: false };
+      });
+      const connection = createDevnodeConnection();
+
+      const promise = connection.waitForConfirmation("at1test", 3_000);
+      promise.catch(() => {});
+
+      await vi.advanceTimersByTimeAsync(4_000);
+
+      await expect(promise).rejects.toThrow(
+        "block height could not be resolved",
+      );
+    });
+
+    it("throws if /block/<hash> returns 200 but header.metadata.height is missing", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      const malformedBlock = {
+        block_hash: TEST_BLOCK_HASH,
+        // header.metadata.height intentionally absent
+        header: { metadata: { network: 1, round: 21 } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(TEST_BLOCK_HASH),
+          };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => malformedBlock };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.waitForConfirmation("at1test"),
+      ).rejects.toThrow("header.metadata.height is missing or non-numeric");
+    });
+
+    it("throws if /block/<hash> returns 200 but header.metadata.height is non-numeric", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      const malformedBlock = {
+        block_hash: TEST_BLOCK_HASH,
+        header: { metadata: { network: 1, round: 21, height: "21" } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(TEST_BLOCK_HASH),
+          };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => malformedBlock };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.waitForConfirmation("at1test"),
+      ).rejects.toThrow("header.metadata.height is missing or non-numeric");
+    });
+
+    it("returns blockHeight 0 when the block JSON explicitly reports height 0 (genesis-adjacent)", async () => {
+      const txBody = {
+        status: "accepted",
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      const genesisBlock = {
+        block_hash: TEST_BLOCK_HASH,
+        header: { metadata: { network: 1, round: 0, height: 0 } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(TEST_BLOCK_HASH),
+          };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => genesisBlock };
+        }
+        throw new Error(`unexpected fetch ${url}`);
       });
       const connection = createDevnodeConnection();
 
       const result = await connection.waitForConfirmation("at1test");
 
-      expect(result.blockHeight).toBe(0);
+      // 0 is now load-bearing: it means the block JSON said height 0, not
+      // that the parser silently fell back. Discriminated by the explicit
+      // numeric type-check at the read site.
+      expect(result).toEqual({
+        txId: "at1test",
+        blockHeight: 0,
+        status: "accepted",
+      });
+    });
+
+    it("parses the block hash whether the find/blockHash body is JSON-quoted or bare", async () => {
+      const txBody = {
+        status: "accepted",
+        transaction: { type: "execute", id: "at1test" },
+      };
+      const blockBody = {
+        header: { metadata: { network: 1, round: 7, height: 7 } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => TEST_BLOCK_HASH };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      const connection = createDevnodeConnection();
+      const result = await connection.waitForConfirmation("at1test");
+
+      expect(result.blockHeight).toBe(7);
+    });
+
+    // Regression test for bug `connection-block-height-field-shape`
+    // (.lionden/bug-hunt/bugs/connection-block-height-field-shape.md).
+    // Mocks the exact captured devnode shape and asserts the parser surfaces
+    // the actual block height (21) rather than the old buggy default of 0.
+    it("returns the real block height from the find/blockHash + block lookup", async () => {
+      const acceptedBody = {
+        status: "accepted",
+        type: "execute",
+        index: 0,
+        transaction: { type: "execute", id: "at1real" },
+        finalize: [],
+      };
+      const blockHash = "ab1ajw276h6xe6hqswh87yr5ljjxf7dqtefxd6awhsp5znc36fupsqs8auddq";
+      const blockBody = {
+        block_hash: blockHash,
+        header: { metadata: { network: 1, round: 21, height: 21 } },
+      };
+
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith("/transaction/confirmed/at1real")) {
+          return { ok: true, json: async () => acceptedBody };
+        }
+        if (url.endsWith("/find/blockHash/at1real")) {
+          return { ok: true, text: async () => JSON.stringify(blockHash) };
+        }
+        if (url.endsWith(`/block/${blockHash}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      const connection = createDevnodeConnection();
+      const result = await connection.waitForConfirmation("at1real");
+
+      expect(result).toEqual({
+        txId: "at1real",
+        blockHeight: 21,
+        status: "accepted",
+      });
     });
   });
 
