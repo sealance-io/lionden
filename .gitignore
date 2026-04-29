@@ -48,6 +48,9 @@ pnpm-debug.log*
 *.swo
 *~
 
+# Bug-hunt orchestration ledger (durable, local-only)
+.lionden/
+
 # OS files
 .DS_Store
 Thumbs.db
