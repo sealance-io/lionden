@@ -86,6 +86,7 @@ const FIXTURE_PAIRS: [string, string][] = [
   ["edge-storage-variables.abi.json", "storage-variables.ts"],
   ["edge-mixed-async.abi.json", "mixed-async.ts"],
   ["edge-dex.abi.json", "dex.ts"],
+  ["edge-optional-nonzeroable-fields.abi.json", "optional-nonzeroable-fields.ts"],
 ];
 
 describe("codegen goldens", () => {

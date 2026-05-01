@@ -644,6 +644,31 @@ describe("Optional type handling", () => {
     expect(output).toContain('{ is_some: false, val: { x: 0u32 } }');
     expect(output).not.toContain('Cannot serialize None for this Optional type');
   });
+
+  it("emits IIFE-throw fallback for non-zeroable Optional inner (external Struct ref)", () => {
+    const abi: ProgramABI = {
+      program: "consumer.aleo",
+      structs: [
+        {
+          path: ["Settings"],
+          fields: [
+            {
+              name: "external",
+              ty: { Optional: { Struct: { path: ["ExternalInfo"], program: "producer.aleo" } } },
+            },
+          ],
+        },
+      ],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain('readonly external: string | null;');
+    expect(output).toContain('Cannot serialize None for this Optional type');
+    expect(output).not.toContain('is_some: false, val:');
+  });
 });
 
 describe("storage variables", () => {
