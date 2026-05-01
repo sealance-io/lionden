@@ -1,0 +1,33 @@
+{
+  "program": "consumer.aleo",
+  "structs": [
+    {
+      "path": ["Settings"],
+      "fields": [
+        { "name": "admin", "ty": { "Primitive": "Address" } },
+        { "name": "external", "ty": { "Optional": { "Struct": { "path": ["ExternalInfo"], "program": "producer.aleo" } } } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "get_settings",
+      "is_async": false,
+      "inputs": [],
+      "outputs": [
+        { "ty": { "Plaintext": { "Struct": { "path": ["Settings"], "program": null } } }, "mode": "None" }
+      ]
+    },
+    {
+      "name": "update",
+      "is_async": false,
+      "inputs": [
+        { "name": "settings", "ty": { "Plaintext": { "Struct": { "path": ["Settings"], "program": null } } }, "mode": "None" }
+      ],
+      "outputs": []
+    }
+  ]
+}
