@@ -1,0 +1,45 @@
+{
+  "program": "governance.aleo",
+  "structs": [
+    {
+      "path": ["StrategyConfig"],
+      "fields": [
+        { "name": "strategy", "ty": { "Primitive": "Identifier" } },
+        { "name": "fallback", "ty": { "Optional": { "Primitive": "Identifier" } } },
+        { "name": "strategies", "ty": { "Array": [{ "Primitive": "Identifier" }, 2] } }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "path": ["Vote"],
+      "fields": [
+        { "name": "owner", "ty": { "Primitive": "Address" }, "mode": "Private" },
+        { "name": "strategy", "ty": { "Primitive": "Identifier" }, "mode": "Private" }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "name": "selected_strategy",
+      "key": { "Primitive": "Identifier" },
+      "value": { "Primitive": "Identifier" }
+    }
+  ],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "route",
+      "is_async": false,
+      "inputs": [
+        { "name": "strategy", "ty": { "Plaintext": { "Primitive": "Identifier" } }, "mode": "None" },
+        { "name": "maybe_strategy", "ty": { "Plaintext": { "Optional": { "Primitive": "Identifier" } } }, "mode": "None" },
+        { "name": "strategies", "ty": { "Plaintext": { "Array": [{ "Primitive": "Identifier" }, 2] } }, "mode": "None" },
+        { "name": "vote", "ty": { "Record": { "path": ["Vote"], "program": null } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Plaintext": { "Primitive": "Identifier" } }, "mode": "None" }
+      ]
+    }
+  ]
+}

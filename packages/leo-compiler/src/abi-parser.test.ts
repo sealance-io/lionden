@@ -769,6 +769,7 @@ describe("parseAbi — all primitive types", () => {
     "Boolean",
     "Field",
     "Group",
+    "Identifier",
     "Scalar",
   ];
 

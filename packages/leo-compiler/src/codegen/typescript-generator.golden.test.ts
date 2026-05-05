@@ -83,6 +83,7 @@ const FIXTURE_PAIRS: [string, string][] = [
   ["edge-module-scoped.abi.json", "module-scoped.ts"],
   ["edge-external-refs.abi.json", "external-refs.ts"],
   ["edge-dynamic-record.abi.json", "dynamic-record.ts"],
+  ["edge-identifier.abi.json", "identifier.ts"],
   ["edge-storage-variables.abi.json", "storage-variables.ts"],
   ["edge-mixed-async.abi.json", "mixed-async.ts"],
   ["edge-dex.abi.json", "dex.ts"],
