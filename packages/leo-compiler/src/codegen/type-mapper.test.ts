@@ -32,7 +32,12 @@ describe("primitiveToTs", () => {
     expect(primitiveToTs("Boolean")).toBe("boolean");
     expect(primitiveToTs("Field")).toBe("string");
     expect(primitiveToTs("Group")).toBe("string");
+    expect(primitiveToTs("Identifier")).toBe("string");
     expect(primitiveToTs("Scalar")).toBe("string");
+  });
+
+  it("does not throw for unsupported string primitives", () => {
+    expect(primitiveToTs("Signature" as any)).toBe("unknown");
   });
 
   it("maps small unsigned ints to number", () => {
@@ -101,8 +106,13 @@ describe("primitiveToLeoSuffix", () => {
     expect(primitiveToLeoSuffix("Address")).toBe("address");
     expect(primitiveToLeoSuffix("Boolean")).toBe("bool");
     expect(primitiveToLeoSuffix("Field")).toBe("field");
+    expect(primitiveToLeoSuffix("Identifier")).toBe("identifier");
     expect(primitiveToLeoSuffix({ UInt: "U64" })).toBe("u64");
     expect(primitiveToLeoSuffix({ Int: "I32" })).toBe("i32");
+  });
+
+  it("does not throw when suffix mapping sees unsupported string primitives", () => {
+    expect(primitiveToLeoSuffix("Signature" as any)).toBe("unknown");
   });
 });
 
@@ -113,5 +123,6 @@ describe("isBigIntType", () => {
     expect(isBigIntType({ Int: "I64" })).toBe(true);
     expect(isBigIntType({ UInt: "U32" })).toBe(false);
     expect(isBigIntType("Address")).toBe(false);
+    expect(isBigIntType("Identifier")).toBe(false);
   });
 });

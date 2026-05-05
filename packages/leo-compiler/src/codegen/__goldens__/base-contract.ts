@@ -187,6 +187,35 @@ export abstract class BaseContract {
     return value;
   }
 
+  /** Serialize a Leo identifier literal. Bare names are wrapped in single quotes. */
+  static serializeIdentifier(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      throw new Error("Identifier cannot be empty");
+    }
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+      BaseContract.assertIdentifierName(trimmed.slice(1, -1));
+      return trimmed;
+    }
+    BaseContract.assertIdentifierName(trimmed);
+    return `'${trimmed}'`;
+  }
+
+  /** Parse a Leo identifier literal to its bare name. */
+  static parseIdentifier(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+      return trimmed.slice(1, -1);
+    }
+    return trimmed;
+  }
+
+  private static assertIdentifierName(value: string): void {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
+      throw new Error(`Invalid Leo identifier: ${value}`);
+    }
+  }
+
   /**
    * Parse a Leo array string into its elements using depth-aware splitting.
    * Format: "[elem1, elem2, ...]"

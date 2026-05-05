@@ -36,11 +36,13 @@ export function primitiveToTs(prim: PrimitiveType): string {
       case "Boolean": return "boolean";
       case "Field": return "string";
       case "Group": return "string";
+      case "Identifier": return "string";
       case "Scalar": return "string";
     }
+    return "unknown";
   }
 
-  if ("UInt" in prim) {
+  if (typeof prim === "object" && prim !== null && "UInt" in prim) {
     switch (prim.UInt) {
       case "U8":
       case "U16":
@@ -52,7 +54,7 @@ export function primitiveToTs(prim: PrimitiveType): string {
     }
   }
 
-  if ("Int" in prim) {
+  if (typeof prim === "object" && prim !== null && "Int" in prim) {
     switch (prim.Int) {
       case "I8":
       case "I16":
@@ -103,12 +105,14 @@ export function primitiveToLeoSuffix(prim: PrimitiveType): string {
       case "Boolean": return "bool";
       case "Field": return "field";
       case "Group": return "group";
+      case "Identifier": return "identifier";
       case "Scalar": return "scalar";
     }
+    return "unknown";
   }
 
-  if ("UInt" in prim) return prim.UInt.toLowerCase();
-  if ("Int" in prim) return prim.Int.toLowerCase();
+  if (typeof prim === "object" && prim !== null && "UInt" in prim) return prim.UInt.toLowerCase();
+  if (typeof prim === "object" && prim !== null && "Int" in prim) return prim.Int.toLowerCase();
 
   return "unknown";
 }

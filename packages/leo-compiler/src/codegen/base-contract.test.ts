@@ -410,6 +410,40 @@ describe("BaseContract runtime", () => {
       });
     });
 
+    describe("identifier helpers", () => {
+      it("serializes bare identifiers as single-quoted Leo literals", () => {
+        expect(BaseContract.serializeIdentifier("voting_power")).toBe("'voting_power'");
+      });
+
+      it("preserves already quoted identifier literals", () => {
+        expect(BaseContract.serializeIdentifier(" 'voting_power' ")).toBe("'voting_power'");
+      });
+
+      it("rejects empty identifier values", () => {
+        expect(() => BaseContract.serializeIdentifier("   ")).toThrow("Identifier cannot be empty");
+      });
+
+      it("rejects one-sided quoted identifier values", () => {
+        expect(() => BaseContract.serializeIdentifier("'voting_power")).toThrow("Invalid Leo identifier");
+      });
+
+      it("rejects identifier values with embedded quotes", () => {
+        expect(() => BaseContract.serializeIdentifier("voting'power")).toThrow("Invalid Leo identifier");
+      });
+
+      it("rejects identifier values that do not start with a letter or underscore", () => {
+        expect(() => BaseContract.serializeIdentifier("1strategy")).toThrow("Invalid Leo identifier");
+      });
+
+      it("parses quoted identifier literals to bare names", () => {
+        expect(BaseContract.parseIdentifier("'voting_power'")).toBe("voting_power");
+      });
+
+      it("trims bare identifier values", () => {
+        expect(BaseContract.parseIdentifier(" voting_power ")).toBe("voting_power");
+      });
+    });
+
     describe("parseArray", () => {
       it("parses simple elements", () => {
         const result = BaseContract.parseArray("[1u32, 2u32, 3u32]");

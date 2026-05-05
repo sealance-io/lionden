@@ -11,6 +11,7 @@ export type PrimitiveType =
   | "Boolean"
   | "Field"
   | "Group"
+  | "Identifier"
   | "Scalar"
   | { UInt: UIntSize }
   | { Int: IntSize };

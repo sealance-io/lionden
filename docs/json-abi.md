@@ -79,6 +79,8 @@ Simple variants serialize as bare strings. Wrapper variants serialize as single-
 { "Primitive": { "Int": "I32" } }
 ```
 
+Leo identifier values are represented as single-quoted literals on the wire, for example `'voting_power'`. Generated TypeScript bindings expose `Identifier` as `string`, serialize bare names like `voting_power` to `'voting_power'`, accept already quoted literals unchanged, and parse outputs back to bare names.
+
 ## Plaintext Types
 
 `Plaintext` represents any non-encrypted type. Used for struct fields, record fields, mapping keys/values, and storage variables.
@@ -440,7 +442,6 @@ LionDen's TypeScript types (`packages/leo-compiler/src/abi-types.ts`) preserve m
 | `StorageType::Plaintext \| Vector` | `StorageType` | Preserved — `{ Plaintext } \| { Vector }` |
 | `{ Array: { element, length } }` | `{ Array: [PlaintextType, number] }` | Object → tuple normalization |
 | `Mode::Constant` | — | Not in `Mode` union |
-| `Primitive::Identifier` | — | Not in `PrimitiveType` |
 | `Primitive::Signature` | — | Not in `PrimitiveType` |
 
 Relevant source files:

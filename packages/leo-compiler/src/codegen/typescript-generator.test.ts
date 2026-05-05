@@ -959,6 +959,76 @@ describe("serialization of all primitive types", () => {
     expect(output).toContain('b.toString() + "i64"');
   });
 
+  it("serializes and deserializes Identifier primitives", () => {
+    const abi: ProgramABI = {
+      program: "governance.aleo",
+      structs: [
+        {
+          path: ["StrategyConfig"],
+          fields: [
+            { name: "strategy", ty: { Primitive: "Identifier" } },
+            { name: "fallback", ty: { Optional: { Primitive: "Identifier" } } },
+            { name: "strategies", ty: { Array: [{ Primitive: "Identifier" }, 2] } },
+          ],
+        },
+      ],
+      records: [
+        {
+          path: ["Vote"],
+          fields: [
+            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" as const },
+            { name: "strategy", ty: { Primitive: "Identifier" }, mode: "Private" as const },
+          ],
+        },
+      ],
+      mappings: [
+        {
+          name: "selected_strategy",
+          key: { Primitive: "Identifier" as const },
+          value: { Primitive: "Identifier" as const },
+        },
+      ],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "route",
+          is_async: false,
+          inputs: [
+            { name: "strategy", ty: { Plaintext: { Primitive: "Identifier" } }, mode: "None" as const },
+            {
+              name: "maybe_strategy",
+              ty: { Plaintext: { Optional: { Primitive: "Identifier" } } },
+              mode: "None" as const,
+            },
+            {
+              name: "strategies",
+              ty: { Plaintext: { Array: [{ Primitive: "Identifier" }, 2] } },
+              mode: "None" as const,
+            },
+            { name: "vote", ty: { Record: rref("Vote") }, mode: "None" as const },
+          ],
+          outputs: [
+            { ty: { Plaintext: { Primitive: "Identifier" } }, mode: "None" as const },
+          ],
+        },
+      ],
+    };
+
+    const output = generateBindings(abi);
+    expect(output).toContain("strategy: string,");
+    expect(output).toContain("maybe_strategy: string | null,");
+    expect(output).toContain("strategies: string[],");
+    expect(output).toContain("BaseContract.serializeIdentifier(strategy)");
+    expect(output).toContain("BaseContract.serializeIdentifier(value.strategy)");
+    expect(output).toContain("BaseContract.serializeIdentifier(e)");
+    expect(output).toContain("{ is_some: false, val: 'lionden_zero' }");
+    expect(output).toContain("BaseContract.parseIdentifier(_result.outputs[0]!)");
+    expect(output).toContain("async getSelected_strategy(key: string): Promise<string | null>");
+    expect(output).toContain('this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key))');
+    expect(output).toContain("BaseContract.parseIdentifier(_result)");
+    expectGeneratedToTypecheck("Governance", output);
+  });
+
   it("serializes array inputs using map", () => {
     const abi: ProgramABI = {
       program: "test.aleo",

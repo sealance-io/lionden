@@ -443,11 +443,14 @@ function deserializePrimitiveExpr(expr: string, prim: PrimitiveType): string {
       case "Group":
       case "Scalar":
         return `BaseContract.parseString(${expr})`;
+      case "Identifier":
+        return `BaseContract.parseIdentifier(${expr})`;
       case "Boolean":
         return `BaseContract.parseBoolean(${expr})`;
     }
+    return expr;
   }
-  if ("UInt" in prim || "Int" in prim) {
+  if (typeof prim === "object" && prim !== null && ("UInt" in prim || "Int" in prim)) {
     if (isBigIntType(prim)) {
       return `BaseContract.parseBigInt(${expr})`;
     }
@@ -464,9 +467,12 @@ function serializePrimitive(expr: string, prim: PrimitiveType): string {
       case "Group":
       case "Scalar":
         return expr;
+      case "Identifier":
+        return `BaseContract.serializeIdentifier(${expr})`;
       case "Boolean":
         return `String(${expr})`;
     }
+    return `String(${expr})`;
   }
 
   const suffix = primitiveToLeoSuffix(prim);
@@ -494,12 +500,16 @@ function zeroLeoValue(
           return "0field";
         case "Group":
           return "0group";
+        case "Identifier":
+          // Leo has no canonical zero identifier; Optional::None ignores val.
+          return "'lionden_zero'";
         case "Scalar":
           return "0scalar";
       }
+      return null;
     }
-    if ("UInt" in prim) return `0${prim.UInt.toLowerCase()}`;
-    if ("Int" in prim) return `0${prim.Int.toLowerCase()}`;
+    if (typeof prim === "object" && prim !== null && "UInt" in prim) return `0${prim.UInt.toLowerCase()}`;
+    if (typeof prim === "object" && prim !== null && "Int" in prim) return `0${prim.Int.toLowerCase()}`;
   }
 
   if ("Array" in ty) {
