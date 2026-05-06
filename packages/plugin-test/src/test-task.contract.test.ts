@@ -67,6 +67,20 @@ describe("test task contract", () => {
     expect(vitestConfig.testNamePattern).toBe("mint");
   });
 
+  it("forces one-shot vitest mode", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("test", { noCompile: true });
+
+    const { startVitest } = await import("vitest/node");
+    const callArgs = (startVitest as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const vitestConfig = callArgs[2] as Record<string, unknown>;
+
+    expect(callArgs[0]).toBe("test");
+    expect(vitestConfig.run).toBe(true);
+    expect(vitestConfig.watch).toBe(false);
+  });
+
   it("runs vitest with project-local discovery only", async () => {
     const lre = createTestLre();
 
