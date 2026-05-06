@@ -47,11 +47,13 @@ function scanDir(dir: string, units: DiscoveredUnit[]): void {
 
 /**
  * Extract the program ID from a main.leo file by finding the
- * `program <name>.aleo { ... }` declaration.
+ * `program <name>.aleo { ... }` or `program <name>.aleo : Interface { ... }`
+ * declaration. The optional `: Interface` clause is Leo v4 syntax declaring
+ * that the program implements a named interface for dynamic dispatch.
  */
 export function extractProgramId(mainLeoPath: string): string | null {
   const content = fs.readFileSync(mainLeoPath, "utf-8");
-  const match = content.match(/program\s+([\w]+\.aleo)\s*\{/);
+  const match = content.match(/program\s+([\w]+\.aleo)\s*(?::\s*\w+\s*)?\{/);
   return match ? match[1]! : null;
 }
 
