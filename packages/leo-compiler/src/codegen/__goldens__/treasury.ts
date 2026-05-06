@@ -22,7 +22,7 @@ export class Treasury extends BaseContract {
     const _result = await this.executeLocal("deposit", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async depositBroadcast(
     amount: bigint,
     options?: BroadcastOptions,
@@ -43,7 +43,7 @@ export class Treasury extends BaseContract {
     const _result = await this.executeLocal("withdraw", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async withdrawBroadcast(
     amount: bigint,
     options?: BroadcastOptions,

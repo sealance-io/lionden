@@ -61,7 +61,7 @@ export class Grid extends BaseContract {
     const _result = await this.executeLocal("get_board", _args, options ?? {});
     return deserializeBoard(_result.outputs[0]!);
   }
-  
+
   async get_boardBroadcast(
     options?: BroadcastOptions,
   ): Promise<TransitionCallResult> {
@@ -86,7 +86,7 @@ export class Grid extends BaseContract {
     const _result = await this.executeLocal("set_cell", _args, options ?? {});
     return deserializeBoard(_result.outputs[0]!);
   }
-  
+
   async set_cellBroadcast(
     board: Board,
     row: number,

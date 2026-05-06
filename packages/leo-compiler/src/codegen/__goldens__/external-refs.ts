@@ -22,7 +22,7 @@ export class Consumer extends BaseContract {
     const _result = await this.executeLocal("submit", _args, options ?? {});
     return _result.outputs[0]!;
   }
-  
+
   async submitBroadcast(
     info: string,
     options?: BroadcastOptions,
@@ -43,7 +43,7 @@ export class Consumer extends BaseContract {
     const _result = await this.executeLocal("forward", _args, options ?? {});
     return _result.outputs[0]!;
   }
-  
+
   async forwardBroadcast(
     record: string,
     options?: BroadcastOptions,

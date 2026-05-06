@@ -44,7 +44,7 @@ export class Consumer extends BaseContract {
     const _result = await this.executeLocal("get_settings", _args, options ?? {});
     return deserializeSettings(_result.outputs[0]!);
   }
-  
+
   async get_settingsBroadcast(
     options?: BroadcastOptions,
   ): Promise<TransitionCallResult> {
@@ -62,7 +62,7 @@ export class Consumer extends BaseContract {
     ];
     const _result = await this.executeLocal("update", _args, options ?? {});
   }
-  
+
   async updateBroadcast(
     settings: Settings,
     options?: BroadcastOptions,
