@@ -140,8 +140,20 @@ export interface TaskDefinitionRef {
 // ---------------------------------------------------------------------------
 
 export interface LionDenUserConfig {
-  /** Leo version requirement. Default: "4.0.0" */
+  /**
+   * Leo compatibility declaration. Default: "4.0.0".
+   * Supported lines are currently 4.0.x and 3.5.x.
+   */
   readonly leoVersion?: string;
+
+  /**
+   * Skip LionDen's Leo version compatibility comparison.
+   *
+   * This still requires the configured `leoBinary` to be executable and its
+   * `--version` command to exit successfully. It only disables parsing and
+   * comparing the reported version against `leoVersion`.
+   */
+  readonly skipLeoVersionCheck?: boolean;
 
   /**
    * Path to the Leo CLI binary.
@@ -334,6 +346,7 @@ export type ResolvedNetworkConfig =
 
 export interface LionDenResolvedConfig {
   readonly leoVersion: string;
+  readonly skipLeoVersionCheck: boolean;
   /** Resolved path to the Leo CLI binary. Default: "leo" */
   readonly leoBinary: string;
   readonly paths: ResolvedPaths;

@@ -11,6 +11,14 @@ import * as path from "node:path";
 import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import pluginLeo from "./index.js";
 
+vi.mock("@lionden/core", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@lionden/core")>();
+  return {
+    ...original,
+    preflightLeo: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 // Mock leo-compiler's pipeline to avoid real Leo CLI invocation
 vi.mock("@lionden/leo-compiler", async (importOriginal) => {
   const original = await importOriginal<typeof import("@lionden/leo-compiler")>();
@@ -102,6 +110,9 @@ describe("compile task contract", () => {
   it("compile task calls compilePipeline and populates artifacts", async () => {
     const lre = createTestLre();
     await lre.tasks.run("compile");
+
+    const { preflightLeo } = await import("@lionden/core");
+    expect(preflightLeo).toHaveBeenCalledWith(lre.config);
 
     // Cross-package: compile task in plugin-leo populates lre.artifacts (from core)
     expect(lre.artifacts.getAbi("hello.aleo")).toBeDefined();

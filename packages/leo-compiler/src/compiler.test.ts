@@ -365,6 +365,7 @@ describe("compilePipeline network dep handling", () => {
   function makeConfig(overrides?: Partial<LionDenResolvedConfig>): LionDenResolvedConfig {
     return {
       leoVersion: "4.0.0",
+      skipLeoVersionCheck: false,
       leoBinary: "leo",
       paths: {
         root: tmpDir,
@@ -407,6 +408,54 @@ describe("compilePipeline network dep handling", () => {
       ...overrides,
     };
   }
+
+  it("passes --disable-update-check before build", async () => {
+    writeProgram(
+      "app",
+      "program app.aleo {\n  fn main() {}\n}\n",
+    );
+
+    const binDir = path.join(tmpDir, "bin");
+    const argsLog = path.join(tmpDir, "leo-args.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        "printf '%s\\n' \"$@\" > \"$LIONDEN_LEO_ARGS_LOG\"",
+        "pkg=\"\"",
+        "prev=\"\"",
+        "for arg in \"$@\"; do",
+        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
+        "  prev=\"$arg\"",
+        "done",
+        "id=$(basename \"$pkg\")",
+        "mkdir -p \"$pkg/build\"",
+        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$pkg/build/abi.json\"",
+        "printf 'program %s {}\\n' \"$id\" > \"$pkg/build/main.aleo\"",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.LIONDEN_LEO_ARGS_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+    process.env.LIONDEN_LEO_ARGS_LOG = argsLog;
+
+    try {
+      await compilePipeline(makeConfig());
+
+      const args = fs.readFileSync(argsLog, "utf-8").trim().split("\n");
+      expect(args.slice(0, 2)).toEqual(["--disable-update-check", "build"]);
+    } finally {
+      process.env.PATH = originalPath;
+      if (originalLog === undefined) {
+        delete process.env.LIONDEN_LEO_ARGS_LOG;
+      } else {
+        process.env.LIONDEN_LEO_ARGS_LOG = originalLog;
+      }
+    }
+  });
 
   it("passes config network as hint to fetchNetworkDep", async () => {
     writeProgram(

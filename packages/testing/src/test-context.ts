@@ -6,7 +6,7 @@
  * and executing transitions.
  */
 
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import { preflightLeo, type LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkConnection, NetworkManager, DevnodeAccount, Signer } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import type { NamedAccount } from "@lionden/config";
@@ -117,6 +117,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
   // 1. Optionally start a devnode
   if (!skipDevnode && lre.config.testing.autoStartDevnode) {
+    await preflightLeo(lre.config);
     // Only pass autoBlock override if the caller explicitly set it.
     // Otherwise, let startDevnode() read the value from config.
     managedDevnode = await startDevnode(

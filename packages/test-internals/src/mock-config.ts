@@ -39,6 +39,7 @@ export function createMockConfig(
 
   return {
     leoVersion: "4.0.0",
+    skipLeoVersionCheck: false,
     leoBinary: "leo",
     paths,
     networks: {

@@ -5,6 +5,7 @@ import {
   type ConfigHookHandlers,
   type ConfigValidationError,
   ArgumentType,
+  preflightLeo,
   task,
 } from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
@@ -72,6 +73,8 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     const network = args["network"] as "testnet" | "mainnet" | "canary";
 
     const socketAddr = `127.0.0.1:${port}`;
+
+    await preflightLeo(lre.config);
 
     const devnode = new DevnodeManager();
 

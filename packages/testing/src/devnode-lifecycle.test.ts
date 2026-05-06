@@ -19,6 +19,7 @@ import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
 function makeConfig(networks: Record<string, unknown> = {}): LionDenResolvedConfig {
   return {
     leoVersion: "4.0.0",
+    skipLeoVersionCheck: false,
     leoBinary: "leo",
     defaultNetwork: "devnode",
     paths: {

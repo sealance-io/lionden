@@ -21,6 +21,7 @@ describe("resolveConfig", () => {
     const resolved = await resolve({}, [], projectRoot);
 
     expect(resolved.leoVersion).toBe("4.0.0");
+    expect(resolved.skipLeoVersionCheck).toBe(false);
     expect(resolved.defaultNetwork).toBe("devnode");
     expect(resolved.paths.root).toBe(projectRoot);
     expect(resolved.paths.programs).toBe("/tmp/test-project/programs");
@@ -287,6 +288,16 @@ describe("resolveConfig", () => {
   it("defaults leoBinary to 'leo'", async () => {
     const resolved = await resolve({}, [], projectRoot);
     expect(resolved.leoBinary).toBe("leo");
+  });
+
+  it("defaults skipLeoVersionCheck to false", async () => {
+    const resolved = await resolve({}, [], projectRoot);
+    expect(resolved.skipLeoVersionCheck).toBe(false);
+  });
+
+  it("respects user-specified skipLeoVersionCheck", async () => {
+    const resolved = await resolve({ skipLeoVersionCheck: true }, [], projectRoot);
+    expect(resolved.skipLeoVersionCheck).toBe(true);
   });
 
   it("respects user-specified leoBinary", async () => {

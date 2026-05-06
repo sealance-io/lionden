@@ -6,6 +6,7 @@ import { DEVNODE_ACCOUNTS } from "./accounts.js";
 
 const mockConfig: LionDenResolvedConfig = {
   leoVersion: "4.0.0",
+  skipLeoVersionCheck: false,
   leoBinary: "leo",
   paths: {
     root: "/tmp",

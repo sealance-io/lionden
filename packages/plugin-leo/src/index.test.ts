@@ -55,21 +55,74 @@ describe("config validation hooks", () => {
     config: unknown,
   ) => { path: string; message: string }[];
 
-  it("accepts valid leo version", () => {
-    const errors = validateUser({ leoVersion: "4.0.0" });
+  it("accepts supported Leo patch lines", () => {
+    for (const leoVersion of ["4.0.0", "4.0.1", "4.0.2", "3.5.0", "3.5.1"]) {
+      expect(validateUser({ leoVersion })).toHaveLength(0);
+    }
+  });
+
+  it("rejects unsupported or malformed Leo versions", () => {
+    const rejected = [
+      "4.0",
+      "4.0.0-rc1",
+      "4.0.0+build",
+      "^4.0.0",
+      " 4.0.0",
+      "4.0.0 ",
+      "3.4.0",
+      "4.1.0",
+      "5.0.0",
+      "not-a-version",
+    ];
+
+    for (const leoVersion of rejected) {
+      const errors = validateUser({ leoVersion });
+      expect(errors.length, leoVersion).toBeGreaterThan(0);
+      expect(errors[0]!.path).toBe("leoVersion");
+      expect(errors[0]!.message).toContain(leoVersion);
+    }
+  });
+
+  it("accepts any plain stable version when skipLeoVersionCheck is true", () => {
+    const errors = validateUser({
+      leoVersion: "5.0.0",
+      skipLeoVersionCheck: true,
+    });
     expect(errors).toHaveLength(0);
   });
 
-  it("accepts leo v3.5.0", () => {
-    const errors = validateUser({ leoVersion: "3.5.0" });
-    expect(errors).toHaveLength(0);
+  it("still rejects non-stable versions when skipLeoVersionCheck is true", () => {
+    const rejected = [
+      "^5.0.0",
+      " 5.0.0",
+      "5.0.0 ",
+      "5.0.0-rc1",
+      "5.0.0+build",
+      "bad",
+    ];
+
+    for (const leoVersion of rejected) {
+      const errors = validateUser({ leoVersion, skipLeoVersionCheck: true });
+      expect(errors.length, leoVersion).toBeGreaterThan(0);
+      expect(errors[0]!.path).toBe("leoVersion");
+    }
   });
 
-  it("rejects unsupported leo version", () => {
-    const errors = validateUser({ leoVersion: "3.0.0" });
+  it("rejects non-boolean skipLeoVersionCheck", () => {
+    const errors = validateUser({ skipLeoVersionCheck: "yes" });
     expect(errors.length).toBeGreaterThan(0);
-    expect(errors[0]!.path).toBe("leoVersion");
-    expect(errors[0]!.message).toContain("3.0.0");
+    expect(errors[0]!.path).toBe("skipLeoVersionCheck");
+  });
+
+  it("does not use skip mode when skipLeoVersionCheck is truthy but non-boolean", () => {
+    const errors = validateUser({
+      leoVersion: "5.0.0",
+      skipLeoVersionCheck: "yes",
+    });
+    expect(errors.map((e) => e.path)).toEqual([
+      "skipLeoVersionCheck",
+      "leoVersion",
+    ]);
   });
 
   it("accepts config with no leoVersion (defaults handled elsewhere)", () => {

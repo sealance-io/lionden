@@ -246,7 +246,7 @@ async function runLeoBuild(
   id: string,
   config: LionDenResolvedConfig,
 ): Promise<void> {
-  const args = ["build", "--path", packageDir];
+  const args = ["--disable-update-check", "build", "--path", packageDir];
 
   if (config.compiler.enableDce) {
     args.push("--enable-dce");

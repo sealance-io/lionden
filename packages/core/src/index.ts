@@ -49,6 +49,9 @@ export { TaskRunnerImpl, TaskNotFoundError } from "./task-runner.js";
 export { resolveConfig, ConfigResolutionError } from "./config-resolution.js";
 export type { ResolveConfigResult } from "./config-resolution.js";
 
+// Leo CLI preflight
+export { preflightLeo } from "./leo-preflight.js";
+
 // LRE
 export { createLre } from "./lre.js";
 export type { CreateLreOptions } from "./lre.js";
