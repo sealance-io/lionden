@@ -45,7 +45,7 @@ export class DevnodeManager {
 
     const leoBinary = options.leoBinary ?? "leo";
 
-    this.process = spawn(leoBinary, ["devnode", "start", ...args], {
+    this.process = spawn(leoBinary, ["--disable-update-check", "devnode", "start", ...args], {
       stdio: ["ignore", "pipe", "pipe"],
     });
 

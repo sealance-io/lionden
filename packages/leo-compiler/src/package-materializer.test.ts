@@ -15,6 +15,7 @@ let artifactsDir: string;
 function mockConfig(): LionDenResolvedConfig {
   return {
     leoVersion: "4.0.0",
+    skipLeoVersionCheck: false,
     leoBinary: "leo",
     paths: {
       root: tmpDir,
@@ -84,6 +85,7 @@ describe("materializePackage", () => {
     // Verify program.json content
     const programJson = JSON.parse(fs.readFileSync(path.join(pkgDir, "program.json"), "utf-8"));
     expect(programJson.program).toBe("hello.aleo");
+    expect(programJson.leo).toBeUndefined();
   });
 
   it("preserves nested directory structure in src/", () => {

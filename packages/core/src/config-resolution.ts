@@ -236,6 +236,7 @@ function buildDefaults(
 
   return {
     leoVersion: config.leoVersion ?? "4.0.0",
+    skipLeoVersionCheck: config.skipLeoVersionCheck ?? false,
     leoBinary: expandTilde(config.leoBinary ?? "leo"),
     paths,
     networks,

@@ -3,6 +3,14 @@ import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
 import { createMockConnection } from "@lionden/test-internals";
 
+vi.mock("@lionden/core", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@lionden/core")>();
+  return {
+    ...original,
+    preflightLeo: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 // Mock devnode-lifecycle to avoid spawning real processes
 vi.mock("./devnode-lifecycle.js", () => ({
   startDevnode: vi.fn().mockResolvedValue({
@@ -27,6 +35,7 @@ vi.mock("./lre-factory.js", async () => {
 });
 
 import { setup } from "./test-context.js";
+import { preflightLeo } from "@lionden/core";
 
 function mockLre(): LionDenRuntimeEnvironment {
   const connection = createMockConnection({
@@ -45,6 +54,7 @@ function mockLre(): LionDenRuntimeEnvironment {
   return {
     config: {
       leoVersion: "4.0.0",
+      skipLeoVersionCheck: false,
       leoBinary: "leo",
       defaultNetwork: "devnode",
       paths: {
@@ -53,6 +63,7 @@ function mockLre(): LionDenRuntimeEnvironment {
         artifacts: "/tmp/test/artifacts",
         typechain: "/tmp/test/typechain",
         cache: "/tmp/test/artifacts/.cache",
+        deployments: "/tmp/test/deployments",
       },
       networks: {
         devnode: {
@@ -62,12 +73,22 @@ function mockLre(): LionDenRuntimeEnvironment {
           verbosity: 0,
           accounts: [],
           network: "testnet" as const,
+          ephemeral: true,
         },
       },
       compiler: { enableDce: false, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
       codegen: { enabled: true, outDir: "typechain" },
       testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-      deploy: { defaultPriorityFee: 0, confirmTransactions: true, confirmationTimeout: 60_000 },
+      deploy: {
+        defaultPriorityFee: 0,
+        privateFee: false,
+        confirmTransactions: true,
+        confirmationTimeout: 60_000,
+        deploymentsDir: "deployments",
+        skipDeployed: true,
+        autoExport: false,
+      },
+      namedAccounts: {},
     },
     network: manager,
     tasks: {
@@ -137,6 +158,7 @@ describe("test-context", () => {
       await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(preflightLeo).toHaveBeenCalledWith(lre.config);
       expect(startDevnode).toHaveBeenCalledOnce();
     });
 
@@ -145,6 +167,7 @@ describe("test-context", () => {
       await setup({ lre, skipDevnode: true });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(preflightLeo).not.toHaveBeenCalled();
       expect(startDevnode).not.toHaveBeenCalled();
     });
 
@@ -158,6 +181,7 @@ describe("test-context", () => {
       await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(preflightLeo).not.toHaveBeenCalled();
       expect(startDevnode).not.toHaveBeenCalled();
     });
   });

@@ -58,7 +58,15 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
-      ["devnode", "start", "--socket-addr", "127.0.0.1:4040", "--private-key", "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"],
+      [
+        "--disable-update-check",
+        "devnode",
+        "start",
+        "--socket-addr",
+        "127.0.0.1:4040",
+        "--private-key",
+        "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+      ],
       expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
     );
     expect(manager.endpoint).toBe("http://127.0.0.1:4040");
@@ -73,7 +81,13 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
-      ["devnode", "start", "--private-key", "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH"],
+      [
+        "--disable-update-check",
+        "devnode",
+        "start",
+        "--private-key",
+        "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+      ],
       expect.any(Object),
     );
     expect(manager.endpoint).toBe("http://127.0.0.1:3030");
@@ -155,9 +169,24 @@ describe("DevnodeManager", () => {
 
     expect(spawn).toHaveBeenCalledWith(
       "/usr/local/bin/leo-3.5",
-      expect.arrayContaining(["devnode", "start"]),
+      expect.arrayContaining(["--disable-update-check", "devnode", "start"]),
       expect.any(Object),
     );
+  });
+
+  it("passes --disable-update-check before devnode start", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start();
+
+    const args = vi.mocked(spawn).mock.calls[0]![1] as string[];
+    expect(args.slice(0, 3)).toEqual([
+      "--disable-update-check",
+      "devnode",
+      "start",
+    ]);
   });
 
   it("start passes --consensus-heights when set", async () => {

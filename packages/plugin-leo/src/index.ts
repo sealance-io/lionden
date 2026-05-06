@@ -5,6 +5,7 @@ import {
   type ConfigHookHandlers,
   type CompilationHookHandlers,
   type ConfigValidationError,
+  preflightLeo,
   task,
 } from "@lionden/core";
 import type { LionDenUserConfig, LionDenResolvedConfig } from "@lionden/config";
@@ -24,11 +25,30 @@ const configHooks: ConfigHookHandlers = {
   validateUserConfig(config: LionDenUserConfig): ConfigValidationError[] {
     const errors: ConfigValidationError[] = [];
 
-    const supportedVersions = ["4.0.0", "3.5.0"];
-    if (config.leoVersion && !supportedVersions.includes(config.leoVersion)) {
+    if (
+      config.skipLeoVersionCheck !== undefined &&
+      typeof config.skipLeoVersionCheck !== "boolean"
+    ) {
+      errors.push({
+        path: "skipLeoVersionCheck",
+        message: "skipLeoVersionCheck must be a boolean",
+      });
+    }
+
+    const supportedVersion = /^(?:4\.0|3\.5)\.(?:0|[1-9]\d*)$/;
+    const plainStableVersion = /^\d+\.\d+\.\d+$/;
+    const versionCheckSkipped = config.skipLeoVersionCheck === true;
+    const versionPattern = versionCheckSkipped
+      ? plainStableVersion
+      : supportedVersion;
+
+    if (config.leoVersion && !versionPattern.test(config.leoVersion)) {
+      const message = versionCheckSkipped
+        ? `Invalid Leo version "${config.leoVersion}". Expected a stable major.minor.patch version.`
+        : `Unsupported Leo version "${config.leoVersion}". Supported lines: 4.0.x, 3.5.x`;
       errors.push({
         path: "leoVersion",
-        message: `Unsupported Leo version "${config.leoVersion}". Supported: ${supportedVersions.join(", ")}`,
+        message,
       });
     }
 
@@ -78,6 +98,8 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       noTypechain: args["noTypechain"] as boolean | undefined,
       program: args["program"] as string | undefined,
     };
+
+    await preflightLeo(lre.config);
 
     const { results } = await compilePipeline(lre.config, options);
 

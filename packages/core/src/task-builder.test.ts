@@ -155,6 +155,7 @@ describe("task runner", () => {
 describe("createLre config-level tasks", () => {
   const mockConfig = {
     leoVersion: "4.0.0",
+    skipLeoVersionCheck: false,
     leoBinary: "leo",
     paths: { root: "/tmp", programs: "/tmp/programs", artifacts: "/tmp/artifacts", typechain: "/tmp/typechain", cache: "/tmp/cache", deployments: "/tmp/deployments" },
     networks: {},
@@ -194,6 +195,7 @@ describe("artifact store", () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-artifacts-"));
   const mockConfig = {
     leoVersion: "4.0.0",
+    skipLeoVersionCheck: false,
     leoBinary: "leo",
     paths: {
       root: tempRoot,
