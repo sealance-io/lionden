@@ -51,7 +51,7 @@ export class TokenContract extends BaseContract {
     const _result = await this.executeLocal("mint_public", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async mint_publicBroadcast(
     receiver: string,
     amount: bigint,
@@ -76,7 +76,7 @@ export class TokenContract extends BaseContract {
     const _result = await this.executeLocal("transfer_public", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async transfer_publicBroadcast(
     receiver: string,
     amount: bigint,
@@ -101,7 +101,7 @@ export class TokenContract extends BaseContract {
     const _result = await this.executeLocal("mint_private", _args, options ?? {});
     return deserializeToken(_result.outputs[0]!);
   }
-  
+
   async mint_privateBroadcast(
     receiver: string,
     amount: bigint,
@@ -129,7 +129,7 @@ export class TokenContract extends BaseContract {
     const _decoded: [Token, Token] = [deserializeToken(_result.outputs[0]!), deserializeToken(_result.outputs[1]!)];
     return _decoded;
   }
-  
+
   async transfer_privateBroadcast(
     token: Token,
     receiver: string,

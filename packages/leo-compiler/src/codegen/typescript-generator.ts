@@ -244,12 +244,12 @@ function generateContractClass(
 
   for (const transition of abi.transitions) {
     lines.push("");
-    lines.push(...generateTransitionMethod(transition, ctx).map((l) => "  " + l));
+    lines.push(...indentLines(generateTransitionMethod(transition, ctx), "  "));
   }
 
   for (const mapping of abi.mappings) {
     lines.push("");
-    lines.push(...generateMappingAccessor(mapping, ctx).map((l) => "  " + l));
+    lines.push(...indentLines(generateMappingAccessor(mapping, ctx), "  "));
   }
 
   lines.push("}");
@@ -601,4 +601,8 @@ function resolveClassName(abi: ProgramABI): string {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function indentLines(lines: readonly string[], indent: string): string[] {
+  return lines.map((line) => line === "" ? "" : `${indent}${line}`);
 }

@@ -52,7 +52,7 @@ export class Vault extends BaseContract {
     ];
     const _result = await this.executeLocal("set_admin", _args, options ?? {});
   }
-  
+
   async set_adminBroadcast(
     new_admin: string,
     options?: BroadcastOptions,

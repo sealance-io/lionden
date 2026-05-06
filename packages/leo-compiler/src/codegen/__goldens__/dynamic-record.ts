@@ -22,7 +22,7 @@ export class Proxy extends BaseContract {
     const _result = await this.executeLocal("forward", _args, options ?? {});
     return _result.outputs[0]!;
   }
-  
+
   async forwardBroadcast(
     record: string,
     options?: BroadcastOptions,
@@ -46,7 +46,7 @@ export class Proxy extends BaseContract {
     const _decoded: [string, string] = [_result.outputs[0]!, _result.outputs[1]!];
     return _decoded;
   }
-  
+
   async forward_pairBroadcast(
     a: string,
     b: string,

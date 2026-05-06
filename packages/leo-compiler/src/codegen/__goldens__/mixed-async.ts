@@ -51,7 +51,7 @@ export class TokenContract extends BaseContract {
     const _result = await this.executeLocal("mint", _args, options ?? {});
     return deserializeToken(_result.outputs[0]!);
   }
-  
+
   async mintBroadcast(
     receiver: string,
     amount: bigint,
@@ -75,7 +75,7 @@ export class TokenContract extends BaseContract {
     const _decoded: [Token, void] = [deserializeToken(_result.outputs[0]!), undefined as any];
     return _decoded;
   }
-  
+
   async mint_and_finalizeBroadcast(
     receiver: string,
     options?: BroadcastOptions,
@@ -96,7 +96,7 @@ export class TokenContract extends BaseContract {
     const _result = await this.executeLocal("burn", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async burnBroadcast(
     token: Token,
     options?: BroadcastOptions,
@@ -118,7 +118,7 @@ export class TokenContract extends BaseContract {
     const _decoded: [Token, Token] = [deserializeToken(_result.outputs[0]!), deserializeToken(_result.outputs[1]!)];
     return _decoded;
   }
-  
+
   async splitBroadcast(
     token: Token,
     options?: BroadcastOptions,

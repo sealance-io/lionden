@@ -24,7 +24,7 @@ export class Hello extends BaseContract {
     const _result = await this.executeLocal("main", _args, options ?? {});
     return BaseContract.parseNumber(_result.outputs[0]!);
   }
-  
+
   async mainBroadcast(
     a: number,
     b: number,
@@ -49,7 +49,7 @@ export class Hello extends BaseContract {
     const _result = await this.executeLocal("multiply", _args, options ?? {});
     return BaseContract.parseNumber(_result.outputs[0]!);
   }
-  
+
   async multiplyBroadcast(
     a: number,
     b: number,

@@ -22,7 +22,7 @@ export class Rewards extends BaseContract {
     const _result = await this.executeLocal("earn_points", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async earn_pointsBroadcast(
     amount: bigint,
     options?: BroadcastOptions,
@@ -43,7 +43,7 @@ export class Rewards extends BaseContract {
     const _result = await this.executeLocal("claim_reward", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async claim_rewardBroadcast(
     reward_amount: bigint,
     options?: BroadcastOptions,

@@ -87,7 +87,7 @@ export class Geo extends BaseContract {
     const _result = await this.executeLocal("get_triangle", _args, options ?? {});
     return deserializeTriangle(_result.outputs[0]!);
   }
-  
+
   async get_triangleBroadcast(
     options?: BroadcastOptions,
   ): Promise<TransitionCallResult> {
@@ -106,7 +106,7 @@ export class Geo extends BaseContract {
     const _result = await this.executeLocal("get_line", _args, options ?? {});
     return deserializeLine(_result.outputs[0]!);
   }
-  
+
   async get_lineBroadcast(
     triangle: Triangle,
     options?: BroadcastOptions,

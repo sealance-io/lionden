@@ -61,7 +61,7 @@ export class Test extends BaseContract {
     const _result = await this.executeLocal("get_a", _args, options ?? {});
     return deserializeA_Thing(_result.outputs[0]!);
   }
-  
+
   async get_aBroadcast(
     options?: BroadcastOptions,
   ): Promise<TransitionCallResult> {
@@ -78,7 +78,7 @@ export class Test extends BaseContract {
     const _result = await this.executeLocal("get_b", _args, options ?? {});
     return deserializeB_Thing(_result.outputs[0]!);
   }
-  
+
   async get_bBroadcast(
     options?: BroadcastOptions,
   ): Promise<TransitionCallResult> {

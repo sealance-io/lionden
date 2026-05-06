@@ -87,7 +87,7 @@ export class Dex extends BaseContract {
     const _decoded: [LPToken, void] = [deserializeLPToken(_result.outputs[0]!), undefined as any];
     return _decoded;
   }
-  
+
   async add_liquidityBroadcast(
     pair_id: string,
     amount_a: bigint,
@@ -112,7 +112,7 @@ export class Dex extends BaseContract {
     const _result = await this.executeLocal("remove_liquidity", _args, options ?? {});
     return undefined as any;
   }
-  
+
   async remove_liquidityBroadcast(
     lp_token: LPToken,
     options?: BroadcastOptions,
@@ -135,7 +135,7 @@ export class Dex extends BaseContract {
     const _result = await this.executeLocal("swap", _args, options ?? {});
     return BaseContract.parseBigInt(_result.outputs[0]!);
   }
-  
+
   async swapBroadcast(
     pair_id: string,
     amount_in: bigint,
