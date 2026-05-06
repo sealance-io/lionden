@@ -57,6 +57,9 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
 
   const vitest = await startVitest("test", [], {
     root: options.root,
+    // Force one-shot mode; Vitest defaults to watch in TTY sessions.
+    run: true,
+    watch: false,
     // Run against the LionDen project only; repo-level Vitest workspace
     // config should not leak into scaffolded/example project execution.
     config: false,
