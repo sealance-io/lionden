@@ -1,0 +1,26 @@
+{
+  "name": "aleo-port-dynamic-dispatch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "lionden compile",
+    "test": "lionden test"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "devDependencies": {
+    "@lionden/cli": "*",
+    "@lionden/config": "*",
+    "@lionden/core": "*",
+    "@lionden/plugin-deploy": "*",
+    "@lionden/plugin-leo": "*",
+    "@lionden/plugin-network": "*",
+    "@lionden/plugin-test": "*",
+    "@lionden/testing": "*",
+    "tsx": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.0"
+  }
+}
