@@ -39,8 +39,18 @@ export type {
 } from "./declaration-merging.js";
 export type {
   NamedAccount,
+  NamedAccounts,
+  NamedAccountAccessor,
+  NamedAccountRole,
+  NamedAccountSpec,
   SignableNamedAccount,
   AddressOnlyNamedAccount,
 } from "./named-account.js";
-export { isSignable, asSigner } from "./named-account.js";
+export {
+  isSignable,
+  createNamedAccountAccessor,
+  requireNamedAccount,
+  requireSignableNamedAccount,
+  asSigner,
+} from "./named-account.js";
 export { isValidAleoAddress } from "./aleo-address.js";

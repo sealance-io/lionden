@@ -5,7 +5,11 @@
  * Contract wrappers call execute() and getMappingValue() on this object.
  */
 
-import type { LionDenResolvedConfig, ResolvedNetworkConfig, NamedAccount } from "@lionden/config";
+import type {
+  LionDenResolvedConfig,
+  ResolvedNetworkConfig,
+  NamedAccounts,
+} from "@lionden/config";
 import type {
   NetworkManager,
   NetworkConnection,
@@ -23,11 +27,8 @@ export class NetworkManagerImpl implements NetworkManager {
   private readonly connections = new Map<string, NetworkConnection>();
   private readonly namedAccountManager: NamedAccountManager;
   /** Per-network named account cache (survives connection close/reopen). */
-  private readonly resolvedNamedAccountsCache = new Map<
-    string,
-    Readonly<Record<string, NamedAccount>>
-  >();
-  private activeNamedAccounts: Readonly<Record<string, NamedAccount>> = {};
+  private readonly resolvedNamedAccountsCache = new Map<string, NamedAccounts>();
+  private activeNamedAccounts: NamedAccounts = {};
 
   constructor(config: LionDenResolvedConfig) {
     this.config = config;
@@ -65,7 +66,7 @@ export class NetworkManagerImpl implements NetworkManager {
 
     // Resolve named accounts — if this throws, close only the new connection
     // and preserve the previous active state (transactional).
-    let resolvedAccounts: Readonly<Record<string, NamedAccount>>;
+    let resolvedAccounts: NamedAccounts;
     try {
       resolvedAccounts = await this.namedAccountManager.resolveForNetwork({
         networkName,
@@ -107,7 +108,7 @@ export class NetworkManagerImpl implements NetworkManager {
     return [...DEVNODE_ACCOUNTS];
   }
 
-  getNamedAccounts(): Readonly<Record<string, NamedAccount>> {
+  getNamedAccounts(): NamedAccounts {
     return { ...this.activeNamedAccounts };
   }
 

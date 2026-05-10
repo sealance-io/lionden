@@ -15,6 +15,7 @@ import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
+import { createNamedAccountAccessor } from "@lionden/config";
 import type { DeploymentContext } from "./recipe-types.js";
 import { DeployError } from "./errors.js";
 
@@ -79,6 +80,7 @@ function createCliDeploymentContext(
     network: networkName,
     accounts: connection.type === "devnode" ? DEVNODE_ACCOUNTS : [],
     namedAccounts: lre.namedAccounts,
+    named: createNamedAccountAccessor(lre.namedAccounts, networkName),
 
     async deploy(programName, opts) {
       const taskResult = await lre.tasks.run("deploy", {

@@ -180,7 +180,6 @@ export default async function (lre: LionDenRuntimeEnvironment) {
 
 const TOKEN_RECIPE = `\
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
-import { isSignable } from "@lionden/config";
 
 export interface TokenSetupResult {
   readonly programId: string;
@@ -202,16 +201,10 @@ const INITIAL_SUPPLY = 1_000_000n;
  * DeploymentContext.deploy() does not accept a noSkipDeployed override.
  */
 export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
-  // Validate named accounts before deploying so misconfiguration fails fast.
-  const deployer = ctx.namedAccounts["deployer"];
-  const treasury = ctx.namedAccounts["treasury"];
-
-  if (!deployer || !isSignable(deployer)) {
-    throw new Error(\`"deployer" must be a signable named account\`);
-  }
-  if (!treasury) {
-    throw new Error(\`"treasury" named account is not configured\`);
-  }
+  const { deployer, treasury } = ctx.named.require({
+    deployer: "signer",
+    treasury: "address",
+  });
 
   const { programId } = await ctx.deploy("token");
 
@@ -312,7 +305,6 @@ program token.aleo {
 const TOKEN_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext, assertMappingValue } from "@lionden/testing";
-import { isSignable } from "@lionden/config";
 import { setupToken } from "../recipes/setup.js";
 
 let ctx: TestContext | undefined;
@@ -334,7 +326,7 @@ afterAll(async () => {
 
 describe("token program", () => {
   it("recipe minted initial supply to treasury", async () => {
-    const treasury = ctx!.namedAccounts["treasury"]!;
+    const treasury = ctx!.named.address("treasury");
     await assertMappingValue(
       ctx!.connection,
       "token.aleo",
@@ -376,18 +368,15 @@ describe("token program", () => {
     expect(result.outputs).toHaveLength(1);
   });
 
-  describe("namedAccounts", () => {
+  describe("named accounts", () => {
     it("deployer resolves to a signable devnode account", () => {
-      const deployer = ctx!.namedAccounts["deployer"];
-      expect(deployer).toBeDefined();
-      expect(isSignable(deployer!)).toBe(true);
-      expect(deployer!.address).toMatch(/^aleo1/);
+      const deployer = ctx!.named.signer("deployer");
+      expect(deployer.address).toMatch(/^aleo1/);
     });
 
     it("treasury resolves to an address-only account", () => {
-      const treasury = ctx!.namedAccounts["treasury"];
-      expect(treasury).toBeDefined();
-      expect(treasury!.type).toBe("address-only");
+      const treasury = ctx!.named.address("treasury");
+      expect(treasury.type).toBe("address-only");
     });
   });
 });

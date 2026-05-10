@@ -1,4 +1,4 @@
-import type { AleoNetwork, NamedAccount } from "@lionden/config";
+import type { AleoNetwork, NamedAccounts } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
 // Transaction types
@@ -146,7 +146,7 @@ export interface NetworkManager {
    * Returns a shallow copy — mutating the returned object has no effect.
    * Returns {} before connect() or when no namedAccounts are configured.
    */
-  getNamedAccounts(): Readonly<Record<string, NamedAccount>>;
+  getNamedAccounts(): NamedAccounts;
 
   /**
    * Execute a transition on the active connection.

@@ -6,7 +6,6 @@ import {
   type TestContext,
   assertMappingValue,
 } from "@lionden/testing";
-import { isSignable } from "@lionden/config";
 import { createTokenContract } from "../typechain/index.js";
 import { setupToken } from "../recipes/setup.js";
 
@@ -44,7 +43,7 @@ afterAll(async () => {
 describe("token program", () => {
   describe("mint_public", () => {
     it("recipe minted initial supply to treasury", async () => {
-      const treasury = ctx!.namedAccounts["treasury"]!;
+      const treasury = ctx!.named.address("treasury");
       await assertMappingValue(
         ctx!.connection,
         "token.aleo",
@@ -146,22 +145,22 @@ describe("token program", () => {
     });
   });
 
-  describe("namedAccounts", () => {
+  describe("named accounts", () => {
     it("deployer resolves to a signable devnode account", () => {
-      const deployer = ctx!.namedAccounts["deployer"];
-      expect(deployer).toBeDefined();
-      expect(isSignable(deployer!)).toBe(true);
+      const deployer = ctx!.named.signer("deployer");
       // default: 0 in config → DEVNODE_ACCOUNTS[0]
-      expect(deployer!.address).toMatch(/^aleo1/);
+      expect(deployer.address).toMatch(/^aleo1/);
     });
 
     it("treasury resolves to an address-only account and can be used as a recipient", async () => {
-      const treasury = ctx!.namedAccounts["treasury"];
-      expect(treasury).toBeDefined();
-      expect(treasury!.type).toBe("address-only");
+      const treasury = ctx!.named.address("treasury");
+      expect(treasury.type).toBe("address-only");
 
-      // Mint to treasury using its address from namedAccounts rather than a hardcoded string
-      await ctx!.execute("token.aleo", "mint_public", [treasury!.address, "100u64"]);
+      // Mint to treasury using its named address rather than a hardcoded string
+      await ctx!.execute("token.aleo", "mint_public", [
+        treasury.address,
+        "100u64",
+      ]);
     });
   });
 });

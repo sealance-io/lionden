@@ -9,7 +9,7 @@
 
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkConnection, Signer, DevnodeAccount } from "@lionden/network";
-import type { NamedAccount } from "@lionden/config";
+import type { NamedAccountAccessor, NamedAccounts } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
 // DeploymentContext — the interface recipes receive
@@ -40,7 +40,9 @@ export interface DeploymentContext {
    * Resolved named accounts for the active network.
    * Empty object ({}) when no namedAccounts are configured in the project.
    */
-  readonly namedAccounts: Readonly<Record<string, NamedAccount>>;
+  readonly namedAccounts: NamedAccounts;
+  /** Domain-native accessor for required named account roles. */
+  readonly named: NamedAccountAccessor;
 }
 
 export interface RecipeDeployOptions {
