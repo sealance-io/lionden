@@ -134,6 +134,7 @@ program hello.aleo {
 const HELLO_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext } from "@lionden/testing";
+import { createHello } from "../typechain/Hello.js";
 
 let ctx: TestContext | undefined;
 
@@ -153,9 +154,14 @@ afterAll(async () => {
 });
 
 describe("hello program", () => {
+  const hello = createHello();
+
+  beforeAll(() => {
+    hello.connect(ctx!.lre);
+  });
+
   it("adds two numbers", async () => {
-    const result = await ctx!.execute("hello.aleo", "main", ["3u32", "5u32"], { mode: "local" });
-    expect(result.outputs[0]).toBe("8u32");
+    expect(await hello.main(3, 5)).toBe(8);
   });
 });
 `;
@@ -180,6 +186,7 @@ export default async function (lre: LionDenRuntimeEnvironment) {
 
 const TOKEN_RECIPE = `\
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
+import { createTokenContract } from "../typechain/index.js";
 
 export interface TokenSetupResult {
   readonly programId: string;
@@ -208,12 +215,8 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
 
   const { programId } = await ctx.deploy("token");
 
-  await ctx.execute(
-    "token.aleo",
-    "mint_public",
-    [treasury.address, \`\${INITIAL_SUPPLY}u64\`],
-    { signer: deployer },
-  );
+  const token = createTokenContract().connect(ctx.lre);
+  await token.withSigner(deployer).mint_publicBroadcast(treasury.address, INITIAL_SUPPLY);
 
   return { programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };
@@ -304,7 +307,8 @@ program token.aleo {
 
 const TOKEN_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, type TestContext, assertMappingValue } from "@lionden/testing";
+import { setup, type TestContext } from "@lionden/testing";
+import { createTokenContract } from "../typechain/index.js";
 import { setupToken } from "../recipes/setup.js";
 
 let ctx: TestContext | undefined;
@@ -325,47 +329,40 @@ afterAll(async () => {
 });
 
 describe("token program", () => {
+  const token = createTokenContract();
+
+  beforeAll(() => {
+    token.connect(ctx!.lre);
+  });
+
   it("recipe minted initial supply to treasury", async () => {
     const treasury = ctx!.named.address("treasury");
-    await assertMappingValue(
-      ctx!.connection,
-      "token.aleo",
-      "balances",
-      treasury.address,
-      "1000000u64",
-    );
+    expect(await token.getBalances(treasury.address)).toBe(1_000_000n);
   });
 
   it("transfers public tokens from a different signer", async () => {
     const account1 = ctx!.accounts[1]!;
     const receiver = ctx!.accounts[2]!.address;
 
-    // Mint tokens to account-1
-    await ctx!.execute("token.aleo", "mint_public", [account1.address, "5000u64"]);
+    const balance1Before = (await token.getBalances(account1.address)) ?? 0n;
+
+    // Mint tokens to account-1 (default signer is account-0)
+    await token.mint_publicBroadcast(account1.address, 5000n);
 
     // transfer_public reads self.signer to determine the sender.
-    // Using options.signer switches the transaction signer to account-1.
-    await ctx!.execute("token.aleo", "transfer_public", [receiver, "2000u64"], {
-      signer: account1,
-    });
+    // withSigner switches the transaction signer to account-1.
+    await token.withSigner(account1).transfer_publicBroadcast(receiver, 2000n);
 
-    // Verify account-1's balance decreased (5000 - 2000 = 3000)
-    await assertMappingValue(
-      ctx!.connection,
-      "token.aleo",
-      "balances",
-      account1.address,
-      "3000u64",
-    );
+    // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
+    expect(await token.getBalances(account1.address)).toBe(balance1Before + 3000n);
   });
 
-  it("mints private tokens", async () => {
+  it("mints private tokens as a typed Token record", async () => {
     const receiver = ctx!.accounts[1]!.address;
-    const result = await ctx!.execute("token.aleo", "mint_private", [
-      receiver,
-      "100u64",
-    ], { mode: "local" });
-    expect(result.outputs).toHaveLength(1);
+    const record = await token.mint_private(receiver, 100n);
+    // Owner comes back with a \`.private\` visibility suffix on record outputs.
+    expect(record.owner.startsWith(receiver)).toBe(true);
+    expect(record.amount).toBe(100n);
   });
 
   describe("named accounts", () => {

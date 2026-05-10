@@ -4,16 +4,20 @@ import {
   loadFixture,
   clearFixtures,
   type TestContext,
-  assertMappingValue,
 } from "@lionden/testing";
+import { createNftRegistry } from "../typechain/NftRegistry.js";
+
+const nft = createNftRegistry();
 
 async function deployAndCreateCollection() {
   const ctx = await setup();
   try {
     await ctx.deploy("nft_registry", { noCompile: true });
 
+    nft.connect(ctx.lre);
+
     // Create collection with id=1
-    await ctx.execute("nft_registry.aleo", "create_collection", ["1u64"]);
+    await nft.create_collectionBroadcast(1n);
 
     return { ctx };
   } catch (error) {
@@ -27,6 +31,8 @@ let ctx: TestContext | undefined;
 beforeAll(async () => {
   const fixture = await loadFixture(deployAndCreateCollection);
   ctx = fixture.ctx;
+  // Re-bind the LRE in case loadFixture restored from a different context.
+  nft.connect(ctx.lre);
 });
 
 afterAll(async () => {
@@ -42,21 +48,8 @@ describe("nft_registry program", () => {
     it("sets up collection admin and supply mappings", async () => {
       const admin = ctx!.accounts[0]!.address;
 
-      await assertMappingValue(
-        ctx!.connection,
-        "nft_registry.aleo",
-        "collection_admin",
-        "1u64",
-        admin,
-      );
-
-      await assertMappingValue(
-        ctx!.connection,
-        "nft_registry.aleo",
-        "collection_supply",
-        "1u64",
-        "0u64",
-      );
+      expect(await nft.getCollection_admin(1n)).toBe(admin);
+      expect(await nft.getCollection_supply(1n)).toBe(0n);
     });
   });
 
@@ -65,64 +58,33 @@ describe("nft_registry program", () => {
       "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
 
     it("mints first NFT and increments supply", async () => {
-      await ctx!.execute("nft_registry.aleo", "mint_nft", [
-        receiver,
-        "1u64",
-        "1u64",
-        "1field",
-      ]);
+      await nft.mint_nftBroadcast(receiver, 1n, 1n, "1field");
 
-      await assertMappingValue(
-        ctx!.connection,
-        "nft_registry.aleo",
-        "collection_supply",
-        "1u64",
-        "1u64",
-      );
+      expect(await nft.getCollection_supply(1n)).toBe(1n);
     });
 
     it("mints second NFT", async () => {
-      await ctx!.execute("nft_registry.aleo", "mint_nft", [
-        receiver,
-        "1u64",
-        "2u64",
-        "2field",
-      ]);
+      await nft.mint_nftBroadcast(receiver, 1n, 2n, "2field");
 
-      await assertMappingValue(
-        ctx!.connection,
-        "nft_registry.aleo",
-        "collection_supply",
-        "1u64",
-        "2u64",
-      );
+      expect(await nft.getCollection_supply(1n)).toBe(2n);
     });
   });
 
   describe("mint_nft (local mode)", () => {
-    it("produces record output locally without finalize", async () => {
+    it("produces typed Nft record locally without finalize", async () => {
       // Local execution of mint_nft — returns immediately, no finalize.
-      // The Nft record output is produced locally (no txId).
+      // The typed wrapper deserializes the Nft record output.
       const receiver = ctx!.accounts[0]!.address;
-      const result = await ctx!.execute(
-        "nft_registry.aleo",
-        "mint_nft",
-        [receiver, "1u64", "99u64", "99field"],
-        { mode: "local" },
-      );
+      const [record] = await nft.mint_nft(receiver, 1n, 99n, "99field");
 
-      // Local mode produces outputs but no transaction
-      expect(result.outputs.length).toBeGreaterThan(0);
-      expect(result.txId).toBeUndefined();
+      // Address comes back with a `.private` visibility suffix on record
+      // outputs (typechain's address deserializer doesn't strip it).
+      expect(record.owner.startsWith(receiver)).toBe(true);
+      expect(record.metadata.collection_id).toBe(1n);
+      expect(record.metadata.serial).toBe(99n);
 
       // Supply should be unchanged — local mode doesn't run finalize
-      await assertMappingValue(
-        ctx!.connection,
-        "nft_registry.aleo",
-        "collection_supply",
-        "1u64",
-        "2u64",
-      );
+      expect(await nft.getCollection_supply(1n)).toBe(2n);
     });
   });
 });
