@@ -153,6 +153,29 @@ describe("test-context", () => {
       expect(manager.connect).toHaveBeenCalledWith("testnet");
     });
 
+    it("creates a named account accessor for the connected network", async () => {
+      const lre = mockLre();
+      Object.defineProperty(lre, "namedAccounts", {
+        value: {
+          treasury: {
+            type: "address-only",
+            name: "treasury",
+            address: "aleo1treasury",
+          },
+        },
+      });
+
+      const ctx = await setup({ lre, network: "testnet" });
+
+      expect(ctx.named.address("treasury").address).toBe("aleo1treasury");
+      expect(() => ctx.named.address("missing")).toThrow(
+        [
+          `Named accounts contract failed for network "testnet":`,
+          `  - "missing" is not configured`,
+        ].join("\n"),
+      );
+    });
+
     it("starts devnode by default", async () => {
       const lre = mockLre();
       await setup({ lre });

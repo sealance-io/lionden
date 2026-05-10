@@ -8,6 +8,7 @@
 
 import type {
   ResolvedNamedAccountsConfig,
+  NamedAccounts,
   NamedAccount,
   SignableNamedAccount,
   AddressOnlyNamedAccount,
@@ -26,7 +27,7 @@ export interface ResolveForNetworkOptions {
 export class NamedAccountManager {
   private readonly config: ResolvedNamedAccountsConfig;
   /** Cache: networkName → resolved accounts */
-  private readonly cache = new Map<string, Readonly<Record<string, NamedAccount>>>();
+  private readonly cache = new Map<string, NamedAccounts>();
 
   constructor(config: ResolvedNamedAccountsConfig) {
     this.config = config;
@@ -40,7 +41,7 @@ export class NamedAccountManager {
    */
   async resolveForNetwork(
     opts: ResolveForNetworkOptions,
-  ): Promise<Readonly<Record<string, NamedAccount>>> {
+  ): Promise<NamedAccounts> {
     const { networkName } = opts;
 
     const cached = this.cache.get(networkName);

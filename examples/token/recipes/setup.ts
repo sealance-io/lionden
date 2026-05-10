@@ -1,5 +1,4 @@
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
-import { isSignable } from "@lionden/config";
 
 export interface TokenSetupResult {
   readonly programId: string;
@@ -21,16 +20,10 @@ const INITIAL_SUPPLY = 1_000_000n;
  * DeploymentContext.deploy() does not accept a noSkipDeployed override.
  */
 export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
-  // Validate named accounts before deploying so misconfiguration fails fast.
-  const deployer = ctx.namedAccounts["deployer"];
-  const treasury = ctx.namedAccounts["treasury"];
-
-  if (!deployer || !isSignable(deployer)) {
-    throw new Error(`"deployer" must be a signable named account`);
-  }
-  if (!treasury) {
-    throw new Error(`"treasury" named account is not configured`);
-  }
+  const { deployer, treasury } = ctx.named.require({
+    deployer: "signer",
+    treasury: "address",
+  });
 
   const { programId } = await ctx.deploy("token");
 

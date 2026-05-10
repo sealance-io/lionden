@@ -258,6 +258,7 @@ The recipe task compiles all programs once before running the recipe function. I
 - `execute(programId, transitionName, args, opts?)` — executes a transition
 - `accounts` — well-known devnode accounts (empty array on HTTP networks)
 - `namedAccounts` — resolved named accounts for the active network (see [Named Accounts](#named-accounts))
+- `named` — DSL for required named account roles, e.g. `ctx.named.signer("deployer")`
 - `connection` — the active `NetworkConnection`
 - `lre` — the full `LionDenRuntimeEnvironment`
 - `network` — the connected network name
@@ -270,7 +271,7 @@ Types are exported from `@lionden/plugin-deploy`: `DeploymentContext`, `Deployme
 
 Named accounts map human-readable role names (e.g. `deployer`, `admin`, `treasury`) to per-network account values. They solve three problems:
 
-1. **Readability**: `ctx.namedAccounts.deployer` is clearer than `ctx.accounts[0]`.
+1. **Readability**: `ctx.named.signer("deployer")` is clearer than `ctx.accounts[0]`.
 2. **Network portability**: the same recipe/test runs on devnode (using pre-funded indices) and testnet/mainnet (using real keys from env vars) without code changes.
 3. **Address-only roles**: a `treasury` receiver only needs an address, not a private key.
 
@@ -325,32 +326,52 @@ type NamedAccount = SignableNamedAccount | AddressOnlyNamedAccount;
 
 `SignableNamedAccount` structurally satisfies `Signer` — pass it directly to `ExecuteOptions.signer`.
 
-Helpers exported from `@lionden/config`:
-- `isSignable(account)` — type guard
-- `asSigner(account)` — extracts `{ privateKey, address }`, throws for address-only accounts
+`DeploymentContext` and `TestContext` expose `ctx.named`, a DSL for declaring the account role a recipe needs:
+
+- `ctx.named.signer(name)` — returns a required `SignableNamedAccount`
+- `ctx.named.address(name)` — returns a required `NamedAccount`; the role contract is "an address is enough", but the return value is the full named account object, not a bare string
+- `ctx.named.require({ roleName: "signer" | "address" })` — validates several roles at once and returns a typed object
+
+The lower-level `@lionden/config` helpers remain available for compatibility:
+- `isSignable(account)` — type guard for optional or raw named-account values
+- `requireNamedAccount(namedAccounts, name)` — deprecated; prefer `ctx.named.address(...)`
+- `requireSignableNamedAccount(namedAccounts, name)` — deprecated; prefer `ctx.named.signer(...)`
+- `asSigner(account)` — deprecated; values returned by `ctx.named.signer(...)` can be passed directly as signers
 
 ### Using named accounts in recipes and tests
 
 ```typescript
-import { isSignable } from "@lionden/config";
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
 
 // In a recipe:
 export const setupToken: DeploymentRecipe = async (ctx) => {
-  // deploy automatically uses namedAccounts.deployer as the signing key
+  const { deployer, treasury } = ctx.named.require({
+    deployer: "signer",
+    treasury: "address",
+  });
   await ctx.deploy("token");
 
-  const treasury = ctx.namedAccounts.treasury;
-  await ctx.execute("token.aleo", "mint_public", [treasury.address, "10000u64"]);
+  await ctx.execute("token.aleo", "mint_public", [treasury.address, "10000u64"], {
+    signer: deployer,
+  });
 };
 
 // In a test:
 it("admin action uses named admin", async () => {
-  const admin = ctx.namedAccounts.admin;
-  if (!isSignable(admin)) throw new Error("admin must be signable on devnode");
+  const admin = ctx.named.signer("admin");
   await ctx.execute("token.aleo", "admin_only", ["arg"], { signer: admin });
 });
 ```
+
+If a required role is absent from the resolved named-account record, or if an address-only account is used where a signer is required, the accessor throws a contract error for the connected network:
+
+```text
+Named accounts contract failed for network "devnode":
+  - "treasury" is not configured
+  - "deployer" is address-only but the contract requires a signer
+```
+
+Network-specific config gaps, such as a named account with neither a matching network override nor a default, are still reported earlier during network connection.
 
 ### Deploy/upgrade signer integration
 
