@@ -1,4 +1,5 @@
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
+import { createTokenContract } from "../typechain/index.js";
 
 export interface TokenSetupResult {
   readonly programId: string;
@@ -27,12 +28,8 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
 
   const { programId } = await ctx.deploy("token");
 
-  await ctx.execute(
-    "token.aleo",
-    "mint_public",
-    [treasury.address, `${INITIAL_SUPPLY}u64`],
-    { signer: deployer },
-  );
+  const token = createTokenContract().connect(ctx.lre);
+  await token.withSigner(deployer).mint_publicBroadcast(treasury.address, INITIAL_SUPPLY);
 
   return { programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };

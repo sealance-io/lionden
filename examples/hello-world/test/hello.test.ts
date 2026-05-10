@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createHello } from "../typechain/Hello.js";
 
 async function deployHello() {
   const ctx = await setup();
@@ -28,18 +29,21 @@ afterAll(async () => {
 });
 
 describe("hello program", () => {
+  const hello = createHello();
+
+  beforeAll(() => {
+    hello.connect(ctx!.lre);
+  });
+
   it("adds two numbers", async () => {
-    const result = await ctx!.execute("hello.aleo", "main", ["3u32", "5u32"], { mode: "local" });
-    expect(result.outputs[0]).toBe("8u32");
+    expect(await hello.main(3, 5)).toBe(8);
   });
 
   it("multiplies two numbers", async () => {
-    const result = await ctx!.execute("hello.aleo", "multiply", ["4u32", "7u32"], { mode: "local" });
-    expect(result.outputs[0]).toBe("28u32");
+    expect(await hello.multiply(4, 7)).toBe(28);
   });
 
   it("handles zero", async () => {
-    const result = await ctx!.execute("hello.aleo", "main", ["0u32", "42u32"], { mode: "local" });
-    expect(result.outputs[0]).toBe("42u32");
+    expect(await hello.main(0, 42)).toBe(42);
   });
 });

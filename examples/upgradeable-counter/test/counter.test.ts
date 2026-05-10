@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
   loadFixture,
@@ -11,6 +11,7 @@ import {
   assertBalanceAtLeast,
   assertBlockHeightAtLeast,
 } from "@lionden/testing";
+import { createCounter } from "../typechain/Counter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -41,19 +42,18 @@ afterAll(async () => {
 });
 
 describe("counter v1", () => {
+  const counter = createCounter();
   const signer = () => ctx!.accounts[0]!.address;
 
-  it("increments the counter", async () => {
-    await ctx!.execute("counter.aleo", "increment", []);
-    await ctx!.execute("counter.aleo", "increment", []);
+  beforeAll(() => {
+    counter.connect(ctx!.lre);
+  });
 
-    await assertMappingValue(
-      ctx!.connection,
-      "counter.aleo",
-      "counters",
-      signer(),
-      "2u64",
-    );
+  it("increments the counter", async () => {
+    await counter.incrementBroadcast();
+    await counter.incrementBroadcast();
+
+    expect(await counter.getCounters(signer())).toBe(2n);
   });
 
   it("verifies account balance", async () => {
@@ -66,6 +66,7 @@ describe("counter v1", () => {
 });
 
 describe("upgrade to v2", () => {
+  const counter = createCounter();
   const signer = () => ctx!.accounts[0]!.address;
   const programPath = path.resolve(
     __dirname,
@@ -75,6 +76,10 @@ describe("upgrade to v2", () => {
     "main.leo",
   );
   const v2FixturePath = path.resolve(__dirname, "fixtures", "counter_v2.leo");
+
+  beforeAll(() => {
+    counter.connect(ctx!.lre);
+  });
 
   it("upgrades and tests new decrement transition", async () => {
     const v1Source = fs.readFileSync(programPath, "utf-8");
@@ -86,7 +91,10 @@ describe("upgrade to v2", () => {
       // Run upgrade — recompiles, checks ABI compat, broadcasts upgrade tx
       await ctx!.lre.tasks.run("upgrade", { program: "counter" });
 
-      // Test new v2 transition
+      // The v2 transition `decrement` and v2 mapping `decrements` are absent
+      // from the typechain class loaded by this test process (compiled from
+      // v1 source at suite startup). Use the string-based ctx APIs for those
+      // post-upgrade ABI additions; v1 calls keep using the typed wrapper.
       await ctx!.execute("counter.aleo", "decrement", []);
 
       await assertMappingValue(
@@ -97,25 +105,13 @@ describe("upgrade to v2", () => {
         "1u64",
       );
 
-      // Verify old mapping data survived the upgrade
-      await assertMappingValue(
-        ctx!.connection,
-        "counter.aleo",
-        "counters",
-        signer(),
-        "2u64",
-      );
+      // Old v1 mapping survived the upgrade
+      expect(await counter.getCounters(signer())).toBe(2n);
 
-      // Verify old transition still works post-upgrade
-      await ctx!.execute("counter.aleo", "increment", []);
+      // Old v1 transition still works post-upgrade
+      await counter.incrementBroadcast();
 
-      await assertMappingValue(
-        ctx!.connection,
-        "counter.aleo",
-        "counters",
-        signer(),
-        "3u64",
-      );
+      expect(await counter.getCounters(signer())).toBe(3n);
     } finally {
       // Always restore v1 source to avoid polluting the repo
       fs.writeFileSync(programPath, v1Source, "utf-8");

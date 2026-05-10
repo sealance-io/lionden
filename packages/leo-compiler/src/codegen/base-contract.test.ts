@@ -5,7 +5,7 @@
  * this test generates fresh output via generateBaseContract(), transpiles
  * it to JS, writes to a temp .mjs file, and dynamically imports it.
  */
-import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
 import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -213,6 +213,93 @@ describe("BaseContract runtime", () => {
 
       expect(result.txId).toBe("at1ok");
       expect(result.outputs).toEqual(["42u32"]);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // LIONDEN_PROVE injection
+  // -------------------------------------------------------------------------
+
+  describe("LIONDEN_PROVE injection", () => {
+    afterEach(() => {
+      delete process.env["LIONDEN_PROVE"];
+    });
+
+    it("injects prove: true when LIONDEN_PROVE=true and caller didn't specify", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      await contract.testBroadcast("main", ["1u32"], { fee: 100 });
+
+      expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "onchain", prove: true });
+    });
+
+    it("does not inject prove when LIONDEN_PROVE is unset", async () => {
+      delete process.env["LIONDEN_PROVE"];
+
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      await contract.testBroadcast("main", ["1u32"], { fee: 100 });
+
+      expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "onchain" });
+      expect(spy.calls[0]![3].prove).toBeUndefined();
+    });
+
+    it("respects an explicit prove: false even when LIONDEN_PROVE=true", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      await contract.testBroadcast("main", ["1u32"], { fee: 100, prove: false });
+
+      expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "onchain", prove: false });
+    });
+
+    it("does not inject prove when LIONDEN_PROVE is set to a non-'true' value", async () => {
+      process.env["LIONDEN_PROVE"] = "1"; // truthy string but not "true"
+
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async (...args: any[]) => {
+            spy.calls.push(args);
+            return { outputs: [], txId: "at1ok" };
+          },
+        }),
+      );
+
+      await contract.testBroadcast("main", []);
+
+      expect(spy.calls[0]![3].prove).toBeUndefined();
     });
   });
 

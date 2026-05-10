@@ -4,9 +4,9 @@ import {
   loadFixture,
   clearFixtures,
   type TestContext,
-  assertMappingValue,
-  assertMappingEmpty,
 } from "@lionden/testing";
+import { createTreasury } from "../typechain/Treasury.js";
+import { createRewards } from "../typechain/Rewards.js";
 
 async function deployRewards() {
   const ctx = await setup();
@@ -39,82 +39,59 @@ afterAll(async () => {
 });
 
 describe("treasury program", () => {
+  const treasury = createTreasury();
   const signer = () => ctx!.accounts[0]!.address;
 
-  it("deposits funds for the signer", async () => {
-    await ctx!.execute("treasury.aleo", "deposit", ["500u64"]);
+  beforeAll(() => {
+    treasury.connect(ctx!.lre);
+  });
 
-    await assertMappingValue(
-      ctx!.connection,
-      "treasury.aleo",
-      "deposits",
-      signer(),
-      "500u64",
-    );
+  it("deposits funds for the signer", async () => {
+    await treasury.depositBroadcast(500n);
+
+    expect(await treasury.getDeposits(signer())).toBe(500n);
   });
 
   it("accumulates multiple deposits", async () => {
-    await ctx!.execute("treasury.aleo", "deposit", ["300u64"]);
+    await treasury.depositBroadcast(300n);
 
     // 500 from previous test + 300
-    await assertMappingValue(
-      ctx!.connection,
-      "treasury.aleo",
-      "deposits",
-      signer(),
-      "800u64",
-    );
+    expect(await treasury.getDeposits(signer())).toBe(800n);
   });
 
   it("withdraws funds for the signer", async () => {
-    await ctx!.execute("treasury.aleo", "withdraw", ["200u64"]);
+    await treasury.withdrawBroadcast(200n);
 
     // 800 - 200
-    await assertMappingValue(
-      ctx!.connection,
-      "treasury.aleo",
-      "deposits",
-      signer(),
-      "600u64",
-    );
+    expect(await treasury.getDeposits(signer())).toBe(600n);
   });
 });
 
 describe("rewards program", () => {
+  const treasury = createTreasury();
+  const rewards = createRewards();
   const signer = () => ctx!.accounts[0]!.address;
 
-  it("earns reward points", async () => {
-    await ctx!.execute("rewards.aleo", "earn_points", ["75u64"]);
+  beforeAll(() => {
+    treasury.connect(ctx!.lre);
+    rewards.connect(ctx!.lre);
+  });
 
-    await assertMappingValue(
-      ctx!.connection,
-      "rewards.aleo",
-      "points",
-      signer(),
-      "75u64",
-    );
+  it("earns reward points", async () => {
+    await rewards.earn_pointsBroadcast(75n);
+
+    expect(await rewards.getPoints(signer())).toBe(75n);
   });
 
   it("accumulates points across calls", async () => {
-    await ctx!.execute("rewards.aleo", "earn_points", ["50u64"]);
+    await rewards.earn_pointsBroadcast(50n);
 
     // 75 + 50 = 125
-    await assertMappingValue(
-      ctx!.connection,
-      "rewards.aleo",
-      "points",
-      signer(),
-      "125u64",
-    );
+    expect(await rewards.getPoints(signer())).toBe(125n);
   });
 
   it("starts with no claimed status", async () => {
-    await assertMappingEmpty(
-      ctx!.connection,
-      "rewards.aleo",
-      "claimed",
-      signer(),
-    );
+    expect(await rewards.getClaimed(signer())).toBeNull();
   });
 
   describe("claim_reward (cross-program call)", () => {
@@ -122,26 +99,14 @@ describe("rewards program", () => {
       // Signer has 125 points (>= 100 threshold), so claiming should succeed.
       // claim_reward calls treasury.aleo::deposit() cross-program.
       // Both programs use self.signer, so the deposit is keyed by account-0.
-      await ctx!.execute("rewards.aleo", "claim_reward", ["1000u64"]);
+      await rewards.claim_rewardBroadcast(1000n);
 
       // Verify claimed flag is set
-      await assertMappingValue(
-        ctx!.connection,
-        "rewards.aleo",
-        "claimed",
-        signer(),
-        "true",
-      );
+      expect(await rewards.getClaimed(signer())).toBe(true);
 
       // Verify the cross-program deposit landed in treasury under the signer.
       // Prior treasury balance was 600 (from deposit/withdraw tests) + 1000 reward.
-      await assertMappingValue(
-        ctx!.connection,
-        "treasury.aleo",
-        "deposits",
-        signer(),
-        "1600u64",
-      );
+      expect(await treasury.getDeposits(signer())).toBe(1600n);
     });
   });
 });

@@ -91,9 +91,19 @@ export abstract class BaseContract {
     }
 
     // Merge instance-level signer as default; per-call signer overrides.
-    const effectiveOptions = this.signer && !options.signer
-      ? { ...options, signer: this.signer }
-      : options;
+    // Honor LIONDEN_PROVE (set by `lionden test --prove`) when the caller
+    // didn't specify `prove` — keeps typed wrappers aligned with
+    // TestContext.execute so the proof lane verifies typed broadcasts too.
+    const effectiveOptions: CallOptions = { ...options };
+    if (this.signer && !effectiveOptions.signer) {
+      effectiveOptions.signer = this.signer;
+    }
+    if (effectiveOptions.prove === undefined) {
+      const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+      if (env?.["LIONDEN_PROVE"] === "true") {
+        effectiveOptions.prove = true;
+      }
+    }
 
     return network.execute(this.programId, transitionName, args, effectiveOptions);
   }
