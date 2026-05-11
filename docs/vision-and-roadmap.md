@@ -42,6 +42,7 @@ The major decisions preserved from the original planning material are:
 8. Source-first authoring in `programs/`, with LionDen materializing compiler-friendly package layouts internally.
 9. A Hardhat-like declarative plugin surface with config lifecycle hooks and task composition.
 10. A Provable SDK baseline aligned with devnode-aware APIs.
+11. A small external dependency surface. `@provablehq/sdk` and its transitive dependencies are the deliberate heavyweight exception; other third-party runtime dependencies should be rare, justified by clear framework value, and isolated behind narrow package boundaries.
 
 ## Platform Baseline
 
