@@ -5,7 +5,7 @@ import {
   clearFixtures,
   type TestContext,
 } from "@lionden/testing";
-import { createTokenContract, decryptToken, Leo } from "../typechain/index.js";
+import { createTokenContract, Leo } from "../typechain/index.js";
 import { setupToken } from "../recipes/setup.js";
 
 const RECEIVERS = {
@@ -96,14 +96,14 @@ describe("token program", () => {
   });
 
   describe("mint_private", () => {
-    it("decrypts a private Token record from accepted raw outputs", async () => {
+    it("decrypts a private Token record from typed accepted outputs", async () => {
       const receiver = ctx!.accounts[1]!;
       const confirmed = await token.mint_private.accepted({ receiver, amount: 500n });
-      const ciphertext = confirmed.rawOutputs[0]!;
 
-      expect(ciphertext).toMatch(/^record1/);
+      expect(confirmed.outputs.ciphertext).toMatch(/^record1/);
+      expect(confirmed.rawOutputs[0]).toBe(confirmed.outputs.ciphertext);
 
-      const record = await decryptToken(ciphertext, receiver);
+      const record = await confirmed.outputs.decrypt(receiver);
 
       expect(record.owner).toBe(receiver.address);
       expect(record.amount).toBe(500n);

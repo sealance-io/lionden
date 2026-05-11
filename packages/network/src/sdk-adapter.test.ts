@@ -11,8 +11,10 @@ import {
   createSdkObjects,
   createSignerSdkObjects,
   decryptRecordCiphertext,
+  decryptValueCiphertext,
   deriveViewKey,
   NetworkRecordDecryptionError,
+  NetworkValueDecryptionError,
   type SdkObjects,
 } from "./sdk-adapter.js";
 
@@ -193,5 +195,81 @@ describe("deriveViewKey() / decryptRecordCiphertext()", () => {
       kind: "NetworkRecordDecryptionError",
       ciphertextPrefix: "record1garbagepa",
     });
+  });
+});
+
+describe("decryptValueCiphertext()", () => {
+  // Real devnode-captured tpk + ciphertext from
+  // packages/network/src/__fixtures__/devnode-transition-tpk-sample.json.
+  // compare_strategies(balance=10000) on governance.aleo — output[0] (linear,
+  // global index = 1 input + abi index 0 = 1) should decrypt to "10000u64".
+  const REAL_TPK = "3744613180382619741435840858040170311327807885111536643678978944748581058812group";
+  const REAL_CT_LINEAR = "ciphertext1qyqzhjct2nh7a8ajexhyfr9pg3aehxpw5ulvypjleadlx07cpw0ggzgjt5uyj";
+  const REAL_CT_QUADRATIC = "ciphertext1qyqgprwaxfulcpellukavaurqmzk24lrh3qcldjp6nhenq748gjvyyqvw9ek7";
+
+  it("decrypts a real devnode value ciphertext to its plaintext Leo literal", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    const linear = await decryptValueCiphertext(
+      REAL_CT_LINEAR, vk, REAL_TPK, "governance.aleo", "compare_strategies", 1,
+    );
+    expect(linear).toBe("10000u64");
+    const quadratic = await decryptValueCiphertext(
+      REAL_CT_QUADRATIC, vk, REAL_TPK, "governance.aleo", "compare_strategies", 2,
+    );
+    expect(quadratic).toBe("100u64");
+  });
+
+  it("throws NetworkValueDecryptionError on empty ciphertext", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    await expect(
+      decryptValueCiphertext("", vk, REAL_TPK, "p.aleo", "t", 0),
+    ).rejects.toMatchObject({ kind: "NetworkValueDecryptionError" });
+  });
+
+  it("throws NetworkValueDecryptionError when ciphertext lacks ciphertext1 prefix", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    await expect(
+      decryptValueCiphertext("record1abc", vk, REAL_TPK, "p.aleo", "t", 0),
+    ).rejects.toMatchObject({
+      kind: "NetworkValueDecryptionError",
+      message: expect.stringContaining("ciphertext1"),
+    });
+  });
+
+  it("throws NetworkValueDecryptionError when view key doesn't have AViewKey1 prefix", async () => {
+    await expect(
+      decryptValueCiphertext(REAL_CT_LINEAR, "APrivateKey1zkp...", REAL_TPK, "p.aleo", "t", 0),
+    ).rejects.toMatchObject({
+      kind: "NetworkValueDecryptionError",
+      message: expect.stringContaining("AViewKey1"),
+    });
+  });
+
+  it("throws NetworkValueDecryptionError when tpk is empty", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    await expect(
+      decryptValueCiphertext(REAL_CT_LINEAR, vk, "", "p.aleo", "t", 0),
+    ).rejects.toMatchObject({
+      kind: "NetworkValueDecryptionError",
+      message: expect.stringContaining("tpk"),
+    });
+  });
+
+  it("surfaces SDK errors with the ciphertextPrefix populated", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    // Wrong global index — SDK rejects.
+    await expect(
+      decryptValueCiphertext(REAL_CT_LINEAR, vk, REAL_TPK, "governance.aleo", "compare_strategies", 999),
+    ).rejects.toMatchObject({
+      kind: "NetworkValueDecryptionError",
+      ciphertextPrefix: "ciphertext1qyqzh",
+    });
+  });
+
+  it("is exported as a NetworkValueDecryptionError class", () => {
+    const err = new NetworkValueDecryptionError("msg", "prefix");
+    expect(err).toBeInstanceOf(Error);
+    expect(err.kind).toBe("NetworkValueDecryptionError");
+    expect(err.ciphertextPrefix).toBe("prefix");
   });
 });

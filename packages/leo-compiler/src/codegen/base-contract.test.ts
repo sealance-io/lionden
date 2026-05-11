@@ -15,6 +15,10 @@ import { generateBaseContract } from "./typescript-generator.js";
 // The dynamically loaded BaseContract class
 let BaseContract: any;
 let Leo: any;
+let LocalRecordDecryptionError: any;
+let LocalValueDecryptionError: any;
+let RecordDecryptionKeyError: any;
+let TransitionInputError: any;
 let networkStub: any;
 let tmpDir: string;
 
@@ -45,10 +49,20 @@ beforeAll(async () => {
     "    this.ciphertextPrefix = ciphertextPrefix;",
     "  }",
     "}",
+    "export class NetworkValueDecryptionError extends Error {",
+    "  constructor(message, ciphertextPrefix, cause) {",
+    "    super(message, cause === undefined ? undefined : { cause });",
+    "    this.name = 'NetworkValueDecryptionError';",
+    "    this.kind = 'NetworkValueDecryptionError';",
+    "    this.ciphertextPrefix = ciphertextPrefix;",
+    "  }",
+    "}",
     "export let decryptRecordCiphertext = async () => { throw new NetworkRecordDecryptionError('stub', ''); };",
+    "export let decryptValueCiphertext = async () => { throw new NetworkValueDecryptionError('stub', ''); };",
     "export let deriveViewKey = async () => { throw new NetworkRecordDecryptionError('stub deriveViewKey', ''); };",
     "export function __setDecryptStubs(stubs) {",
     "  if (stubs.decryptRecordCiphertext) decryptRecordCiphertext = stubs.decryptRecordCiphertext;",
+    "  if (stubs.decryptValueCiphertext) decryptValueCiphertext = stubs.decryptValueCiphertext;",
     "  if (stubs.deriveViewKey) deriveViewKey = stubs.deriveViewKey;",
     "}",
   ].join("\n"));
@@ -64,6 +78,10 @@ beforeAll(async () => {
   const mod = await import(outPath);
   BaseContract = mod.BaseContract;
   Leo = mod.Leo;
+  LocalRecordDecryptionError = mod.LocalRecordDecryptionError;
+  LocalValueDecryptionError = mod.LocalValueDecryptionError;
+  RecordDecryptionKeyError = mod.RecordDecryptionKeyError;
+  TransitionInputError = mod.TransitionInputError;
 
   // Import the stub module separately so tests can swap the decryption
   // helper implementations via __setDecryptStubs (ESM live bindings).
@@ -100,6 +118,12 @@ function createTestContract(programId = "test.aleo") {
     }
     async testRejected(...args: any[]) {
       return this.expectRejected(...args);
+    }
+    async testSettleTyped(...args: any[]) {
+      return (this as any).settleTyped(...args);
+    }
+    async testExpectAcceptedTyped(...args: any[]) {
+      return (this as any).expectAcceptedTyped(...args);
     }
     async testQueryMapping(...args: any[]) {
       return this.queryMapping(...args);
@@ -305,7 +329,7 @@ describe("BaseContract runtime", () => {
             txId: "at1ok",
             blockHeight: 12,
             status: "accepted",
-            transitions: [{ programId: "hello.aleo", transitionName: "main", rawOutputs: [] }],
+            transitions: [{ programId: "hello.aleo", transitionName: "main", rawOutputs: [], transitionPublicKey: "tpk_test_main" }],
           }),
         }),
       );
@@ -315,6 +339,7 @@ describe("BaseContract runtime", () => {
         blockHeight: 12,
         status: "accepted",
         rawOutputs: [],
+        transitionPublicKey: "tpk_test_main",
       });
     });
 
@@ -1111,8 +1136,8 @@ describe("BaseContract runtime", () => {
             blockHeight: 5,
             status: "accepted",
             transitions: [
-              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [] },
-              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["record1xyz"] },
+              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [], transitionPublicKey: "tpk_test_fee" },
+              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["record1xyz"], transitionPublicKey: "tpk_test_mint" },
             ],
           }),
         }),
@@ -1133,7 +1158,7 @@ describe("BaseContract runtime", () => {
             blockHeight: 5,
             status: "accepted",
             transitions: [
-              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [] },
+              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [], transitionPublicKey: "tpk_test_fee" },
             ],
           }),
         }),
@@ -1155,8 +1180,8 @@ describe("BaseContract runtime", () => {
             blockHeight: 5,
             status: "accepted",
             transitions: [
-              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["a"] },
-              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["b"] },
+              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["a"], transitionPublicKey: "tpk_test_a" },
+              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["b"], transitionPublicKey: "tpk_test_b" },
             ],
           }),
         }),
@@ -1186,6 +1211,322 @@ describe("BaseContract runtime", () => {
         status: "rejected",
         rawOutputs: [],
       });
+    });
+  });
+
+  describe("rawOutputAt", () => {
+    it("returns the raw string at the requested ABI index", () => {
+      const result = BaseContract.rawOutputAt(["foo", "bar"], "p.aleo", "t", 1);
+      expect(result).toBe("bar");
+    });
+
+    it("throws TransactionShapeError with outputIndex populated when entry is missing", () => {
+      try {
+        BaseContract.rawOutputAt([], "token.aleo", "mint_private", 0);
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.outputIndex).toBe(0);
+        expect(err.programId).toBe("token.aleo");
+        expect(err.transition).toBe("mint_private");
+        expect(err.message).toContain("ABI index 0");
+      }
+    });
+
+    it("throws when the entry is not a string", () => {
+      try {
+        BaseContract.rawOutputAt([null as any], "p.aleo", "t", 0);
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.outputIndex).toBe(0);
+      }
+    });
+  });
+
+  describe("makeEncryptedRecord", () => {
+    it("creates a handle wrapping ciphertext + decrypt closure", () => {
+      const handle = BaseContract.makeEncryptedRecord("record1abc", (plaintext: string) => ({ raw: plaintext }));
+      expect(handle.ciphertext).toBe("record1abc");
+      expect(typeof handle.decrypt).toBe("function");
+    });
+
+    it("routes decrypt through BaseContract.decryptRecord with the supplied deserializer", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `{ amount: 100u128, _from: ${ct} }`,
+      });
+      const handle = BaseContract.makeEncryptedRecord(
+        "record1xyz",
+        (plaintext: string) => ({ decoded: plaintext }),
+      );
+      const result = await handle.decrypt("AViewKey1abc");
+      expect(result).toEqual({ decoded: "{ amount: 100u128, _from: record1xyz }" });
+    });
+  });
+
+  describe("makeEncryptedValue", () => {
+    const CT = "ciphertext1qyqxyz";
+    const TPK = "tpk_test_group";
+
+    it("creates a handle wrapping ciphertext + decrypt closure", () => {
+      const handle = BaseContract.makeEncryptedValue(CT, TPK, "p.aleo", "t", 1, BaseContract.parseBigInt);
+      expect(handle.ciphertext).toBe(CT);
+      expect(typeof handle.decrypt).toBe("function");
+    });
+
+    it("routes decrypt through decryptValueCiphertext with tpk/program/function/globalIndex", async () => {
+      let captured: any = null;
+      networkStub.__setDecryptStubs({
+        decryptValueCiphertext: async (
+          ciphertext: string, viewKey: string, tpk: string,
+          programId: string, transitionName: string, globalIndex: number,
+        ) => {
+          captured = { ciphertext, viewKey, tpk, programId, transitionName, globalIndex };
+          return "10000u64";
+        },
+      });
+      const handle = BaseContract.makeEncryptedValue(CT, TPK, "governance.aleo", "compare_strategies", 1, BaseContract.parseBigInt);
+      const value = await handle.decrypt("AViewKey1abc");
+      expect(value).toBe(10000n);
+      expect(captured).toEqual({
+        ciphertext: CT,
+        viewKey: "AViewKey1abc",
+        tpk: TPK,
+        programId: "governance.aleo",
+        transitionName: "compare_strategies",
+        globalIndex: 1,
+      });
+    });
+
+    it("captures ciphertext/tpk/program/function/globalIndex independently per instance", async () => {
+      networkStub.__setDecryptStubs({
+        decryptValueCiphertext: async (_ct: string, _vk: string, _tpk: string, _p: string, _t: string, idx: number) => `${idx}u64`,
+      });
+      const h1 = BaseContract.makeEncryptedValue("ct1", "tpk1", "p.aleo", "t", 1, BaseContract.parseBigInt);
+      const h2 = BaseContract.makeEncryptedValue("ct2", "tpk2", "p.aleo", "t", 2, BaseContract.parseBigInt);
+      expect(await h1.decrypt("AViewKey1abc")).toBe(1n);
+      expect(await h2.decrypt("AViewKey1abc")).toBe(2n);
+    });
+
+    it("wraps NetworkValueDecryptionError from the SDK as LocalValueDecryptionError with outputIndex populated", async () => {
+      networkStub.__setDecryptStubs({
+        decryptValueCiphertext: async () => {
+          throw new networkStub.NetworkValueDecryptionError("bad ciphertext", CT.slice(0, 16));
+        },
+      });
+      const handle = BaseContract.makeEncryptedValue(CT, TPK, "p.aleo", "t", 5, BaseContract.parseBigInt);
+      try {
+        await handle.decrypt("AViewKey1abc");
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(LocalValueDecryptionError);
+        expect(err.kind).toBe("LocalValueDecryptionError");
+        expect(err.outputIndex).toBe(5);
+        expect(err.programId).toBe("p.aleo");
+        expect(err.transition).toBe("t");
+        expect(err.message).toMatch(/bad ciphertext/);
+      }
+    });
+
+    it("wraps deserializer failures (incl. LionDenTypechainError subclasses) as LocalValueDecryptionError", async () => {
+      networkStub.__setDecryptStubs({
+        decryptValueCiphertext: async () => "not-a-bigint",
+      });
+      // Deserializer throws TransitionInputError (a LionDenTypechainError) —
+      // the narrow pass-through rule must still wrap it (not let it leak).
+      const handle = BaseContract.makeEncryptedValue(
+        CT, TPK, "p.aleo", "t", 0,
+        (_plaintext: string) => {
+          throw new TransitionInputError("fake input error");
+        },
+      );
+      try {
+        await handle.decrypt("AViewKey1abc");
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("LocalValueDecryptionError");
+        expect(err.outputIndex).toBe(0);
+        expect(err.cause).toBeInstanceOf(TransitionInputError);
+      }
+    });
+
+    it("passes RecordDecryptionKeyError through unchanged when the key shape is invalid", async () => {
+      const handle = BaseContract.makeEncryptedValue(CT, TPK, "p.aleo", "t", 0, BaseContract.parseBigInt);
+      for (const badKey of ["", "junk", {} as any, null as any]) {
+        try {
+          await handle.decrypt(badKey);
+          throw new Error("expected throw for key=" + JSON.stringify(badKey));
+        } catch (err: any) {
+          expect(err).toBeInstanceOf(RecordDecryptionKeyError);
+          expect(err.kind).toBe("RecordDecryptionKeyError");
+        }
+      }
+    });
+  });
+
+  describe("settleTyped / expectAcceptedTyped", () => {
+    it("settleTyped populates outputs on accepted", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atOk" }),
+          waitForConfirmation: async () => ({
+            txId: "atOk",
+            blockHeight: 7,
+            status: "accepted",
+            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["42u128"], transitionPublicKey: "tpk_test_mint" }],
+          }),
+        }),
+      );
+      const project = (raw: readonly string[]): bigint =>
+        BigInt(BaseContract.rawOutputAt(raw, "token.aleo", "mint", 0).replace(/u128$/, ""));
+      const result = await contract.testSettleTyped("mint", [], {}, project);
+      expect(result.status).toBe("accepted");
+      expect(result.outputs).toBe(42n);
+      expect(result.rawOutputs).toEqual(["42u128"]);
+    });
+
+    it("settleTyped returns RejectedTransition without an outputs field on rejection", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atRej" }),
+          waitForConfirmation: async () => ({
+            txId: "atRej",
+            blockHeight: 7,
+            status: "rejected",
+            transitions: [],
+          }),
+        }),
+      );
+      const result = await contract.testSettleTyped("mint", [], {}, () => 999n);
+      expect(result.status).toBe("rejected");
+      expect((result as any).outputs).toBeUndefined();
+    });
+
+    it("expectAcceptedTyped throws OnChainRejectedError on rejection", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atRej2" }),
+          waitForConfirmation: async () => ({
+            txId: "atRej2",
+            blockHeight: 7,
+            status: "rejected",
+            transitions: [],
+          }),
+        }),
+      );
+      await expect(
+        contract.testExpectAcceptedTyped("mint", [], {}, () => 1n),
+      ).rejects.toMatchObject({ kind: "OnChainRejectedError" });
+    });
+
+    it("rethrows TransactionShapeError from the projector unchanged (with outputIndex)", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atShape" }),
+          waitForConfirmation: async () => ({
+            txId: "atShape",
+            blockHeight: 7,
+            status: "accepted",
+            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: [], transitionPublicKey: "tpk_test_mint" }],
+          }),
+        }),
+      );
+      try {
+        await contract.testSettleTyped("mint", [], {}, (raw: readonly string[]) =>
+          BaseContract.rawOutputAt(raw, "token.aleo", "mint", 0),
+        );
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.outputIndex).toBe(0);
+        // Message must be the original rawOutputAt message, not the wrapper.
+        expect(err.message).toContain("ABI index 0");
+        expect(err.message).not.toContain("On-chain output decoding failed");
+      }
+    });
+
+    it("wraps non-shape projector errors (e.g. TransitionInputError) as TransactionShapeError with .cause", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atWrap" }),
+          waitForConfirmation: async () => ({
+            txId: "atWrap",
+            blockHeight: 7,
+            status: "accepted",
+            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["malformed-addr"], transitionPublicKey: "tpk_test_mint" }],
+          }),
+        }),
+      );
+      try {
+        await contract.testSettleTyped("mint", [], {}, (raw: readonly string[]) =>
+          BaseContract.parseAddress(BaseContract.rawOutputAt(raw, "token.aleo", "mint", 0)),
+        );
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.message).toContain("On-chain output decoding failed");
+        expect(err.cause).toBeDefined();
+        expect((err.cause as any).kind).toBe("TransitionInputError");
+      }
+    });
+
+    it("wraps LocalRecordDecryptionError from projector as TransactionShapeError with .cause", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atLocalDec" }),
+          waitForConfirmation: async () => ({
+            txId: "atLocalDec",
+            blockHeight: 7,
+            status: "accepted",
+            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["record1abc"], transitionPublicKey: "tpk_test_mint" }],
+          }),
+        }),
+      );
+      try {
+        await contract.testSettleTyped("mint", [], {}, () => {
+          // Simulate a per-output decoder that throws LocalRecordDecryptionError.
+          // (Generated projectors build EncryptedRecord handles instead of decrypting
+          // inline, but custom escape-hatch projectors might decrypt synchronously
+          // and propagate this error class.)
+          throw new LocalRecordDecryptionError("ciphertext rejected by SDK");
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.message).toContain("On-chain output decoding failed");
+        expect((err.cause as any).kind).toBe("LocalRecordDecryptionError");
+      }
+    });
+
+    it("wraps native Error from projector as TransactionShapeError with .cause", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "atNative" }),
+          waitForConfirmation: async () => ({
+            txId: "atNative",
+            blockHeight: 7,
+            status: "accepted",
+            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["x"], transitionPublicKey: "tpk_test_mint" }],
+          }),
+        }),
+      );
+      try {
+        await contract.testSettleTyped("mint", [], {}, () => {
+          throw new Error("kaboom");
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.message).toContain("kaboom");
+        expect((err.cause as Error).message).toBe("kaboom");
+      }
     });
   });
 });

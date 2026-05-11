@@ -160,3 +160,117 @@ describe("config validation hooks", () => {
     }
   });
 });
+
+describe("dynamicRecords config validation", () => {
+  const configHooks = pluginLeo.hookHandlers!.config as ConfigHookHandlers;
+  const validateUser = configHooks.validateUserConfig! as (
+    config: unknown,
+  ) => { path: string; message: string }[];
+
+  it("accepts a well-formed dynamicRecords config", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          asPoolToken: {
+            sourceRecord: "Token",
+            schema: {
+              owner: "address.private",
+              amount: "u128.private",
+            },
+          },
+        },
+      },
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it("rejects non-object dynamicRecords map", () => {
+    const errors = validateUser({ codegen: { dynamicRecords: [] } });
+    expect(errors).toContainEqual({
+      path: "codegen.dynamicRecords",
+      message: expect.stringContaining("plain object"),
+    });
+  });
+
+  it("rejects helper names that are not valid TS identifiers", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          "as-pool-token": {
+            sourceRecord: "Token",
+            schema: { owner: "address.private" },
+          },
+        },
+      },
+    });
+    expect(errors[0]!.path).toBe("codegen.dynamicRecords.as-pool-token");
+    expect(errors[0]!.message).toContain("not a valid TypeScript identifier");
+  });
+
+  it("rejects non-object helper values", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          asPoolToken: "Token",
+        },
+      },
+    });
+    expect(errors[0]!.path).toBe("codegen.dynamicRecords.asPoolToken");
+  });
+
+  it("rejects missing or non-string sourceRecord", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          asPoolToken: { schema: { owner: "address.private" } },
+        },
+      },
+    });
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.sourceRecord")).toBe(true);
+  });
+
+  it("rejects sourceProgram not ending in .aleo", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          asPoolToken: {
+            sourceRecord: "Token",
+            sourceProgram: "stable_token",
+            schema: { owner: "address.private" },
+          },
+        },
+      },
+    });
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.sourceProgram")).toBe(true);
+  });
+
+  it("rejects empty schema", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          asPoolToken: { sourceRecord: "Token", schema: {} },
+        },
+      },
+    });
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema")).toBe(true);
+  });
+
+  it("rejects schema entries that don't match the supported-primitives regex", () => {
+    const errors = validateUser({
+      codegen: {
+        dynamicRecords: {
+          asPoolToken: {
+            sourceRecord: "Token",
+            schema: {
+              owner: "address.private",
+              bad: "signature.public",
+              wrongVisibility: "u8.maybe",
+            },
+          },
+        },
+      },
+    });
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.bad")).toBe(true);
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.wrongVisibility")).toBe(true);
+  });
+});

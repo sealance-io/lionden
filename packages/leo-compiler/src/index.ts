@@ -70,5 +70,10 @@ export {
 } from "./compiler.js";
 
 // Codegen
-export { generateBindings, generateBaseContract } from "./codegen/typescript-generator.js";
+export {
+  generateBindings,
+  generateBaseContract,
+  type GenerateBindingsOptions,
+} from "./codegen/typescript-generator.js";
 export { primitiveToTs, plaintextToTs, aleoTypeToTs, pathToTsName } from "./codegen/type-mapper.js";
+export { CodegenError } from "./codegen/codegen-error.js";

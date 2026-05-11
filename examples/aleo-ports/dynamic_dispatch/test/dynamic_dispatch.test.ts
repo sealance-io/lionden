@@ -24,7 +24,7 @@ import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/te
 import { createGovernance } from "../typechain/Governance.js";
 import { createVotingPower } from "../typechain/VotingPower.js";
 import { createQuadraticPower } from "../typechain/QuadraticPower.js";
-import { Leo, type SettledTransition } from "../typechain/BaseContract.js";
+import { Leo } from "../typechain/BaseContract.js";
 
 async function deployDispatch() {
   const ctx = await setup();
@@ -93,54 +93,65 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
     governance.connect(ctx!.lre);
   });
 
-  // Mirrors run.sh stage 2. Dispatch target resolved at call time.
-  async function expectAccepted(promise: Promise<SettledTransition>) {
-    const { txId, status } = await promise;
-    expect(txId).toBeTruthy();
-    expect(status).toBe("accepted");
-  }
+  // The signer for tests is devnode account-0 — its view key decrypts the
+  // private plaintext outputs returned by governance's transitions.
+  const signer = () => ctx!.accounts[0]!.privateKey;
 
-  it("get_voting_power('voting_power', 10000) → linear (accepted)", () =>
-    expectAccepted(governance.get_voting_power.accepted({
+  it("get_voting_power('voting_power', 10000) → status accepted, no decrypt", async () => {
+    const result = await governance.get_voting_power.accepted({
       strategy: Leo.identifier("voting_power"),
       balance: 10000n,
-    })));
+    });
+    expect(result.txId).toBeTruthy();
+    expect(result.status).toBe("accepted");
+    // EncryptedValue<bigint> handle present; decrypt skipped on this case.
+    expect(result.outputs.ciphertext).toMatch(/^ciphertext1/);
+  });
 
-  it("get_voting_power('quadratic_power', 10000) → quadratic (accepted)", () =>
-    expectAccepted(governance.get_voting_power.accepted({
+  it("get_voting_power('voting_power', 42) → outputs.decrypt yields 42n (linear)", async () => {
+    const result = await governance.get_voting_power.accepted({
+      strategy: Leo.identifier("voting_power"),
+      balance: 42n,
+    });
+    expect(await result.outputs.decrypt(signer())).toBe(42n);
+  });
+
+  it("get_voting_power('quadratic_power', 10000) → outputs.decrypt yields 100n (√10000)", async () => {
+    const result = await governance.get_voting_power.accepted({
       strategy: Leo.identifier("quadratic_power"),
       balance: 10000n,
-    })));
+    });
+    expect(await result.outputs.decrypt(signer())).toBe(100n);
+  });
 
   // proposal_passes uses monotonic strategies: for_balance > against_balance
   // implies for_power >= against_power, so both strategies vote the same
   // direction (the whale wins). Upstream run.sh frames this as a *margin*
-  // demo — linear wins by 100x (1_000_000 vs 10_000), quadratic by 10x
-  // (1000 vs 100 per upstream docs). NOTE: upstream's quadratic_power
-  // 8-iter Newton's loop does NOT actually converge for 1_000_000 — it
-  // bottoms out at 2120 instead of 1000 (see Insight 26). The onchain
-  // assertion passes either way because we only check tx acceptance, not
-  // the return value.
-  it("proposal_passes('voting_power', 1000000, 10000) → whale wins linear by 100x (accepted)", () =>
-    expectAccepted(
-      governance.proposal_passes.accepted({
-        strategy: Leo.identifier("voting_power"),
-        for_balance: 1000000n,
-        against_balance: 10000n,
-      }),
-    ));
+  // demo. The typed `outputs` carries an EncryptedValue<boolean> handle.
+  it("proposal_passes('voting_power', 1000000, 10000) → outputs.decrypt yields true (whale wins linear)", async () => {
+    const result = await governance.proposal_passes.accepted({
+      strategy: Leo.identifier("voting_power"),
+      for_balance: 1000000n,
+      against_balance: 10000n,
+    });
+    expect(await result.outputs.decrypt(signer())).toBe(true);
+  });
 
-  it("proposal_passes('quadratic_power', 1000000, 10000) → whale still wins quadratic, smaller margin (accepted)", () =>
-    expectAccepted(
-      governance.proposal_passes.accepted({
-        strategy: Leo.identifier("quadratic_power"),
-        for_balance: 1000000n,
-        against_balance: 10000n,
-      }),
-    ));
+  it("proposal_passes('quadratic_power', 1000000, 10000) → outputs.decrypt yields true (whale still wins, smaller margin)", async () => {
+    const result = await governance.proposal_passes.accepted({
+      strategy: Leo.identifier("quadratic_power"),
+      for_balance: 1000000n,
+      against_balance: 10000n,
+    });
+    expect(await result.outputs.decrypt(signer())).toBe(true);
+  });
 
-  it("compare_strategies(10000) → both run (accepted)", () =>
-    expectAccepted(governance.compare_strategies.accepted({ balance: 10000n })));
+  it("compare_strategies(10000) → tuple outputs decrypt to [10000n (linear), 100n (quadratic)]", async () => {
+    const result = await governance.compare_strategies.accepted({ balance: 10000n });
+    const [linear, quadratic] = result.outputs;
+    expect(await linear.decrypt(signer())).toBe(10000n);
+    expect(await quadratic.decrypt(signer())).toBe(100n);
+  });
 });
 
 // Investigative spike — NOT a parity assertion. Un-skip locally to learn

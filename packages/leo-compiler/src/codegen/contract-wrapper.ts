@@ -6,8 +6,10 @@ export const CONTRACT_WRAPPER_TEMPLATE = String.raw`
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import {
   decryptRecordCiphertext,
+  decryptValueCiphertext,
   deriveViewKey,
   NetworkRecordDecryptionError,
+  NetworkValueDecryptionError,
 } from "@lionden/network";
 
 export type ExecutionMode = "local" | "onchain";
@@ -78,27 +80,88 @@ export interface SubmittedTransition {
   readonly txId: string;
 }
 
-export interface SettledTransition extends SubmittedTransition {
+/**
+ * Settled transition with status pinned to "accepted" but without typed
+ * outputs. Used by \`expectAccepted\` and as the structural base for
+ * AcceptedTransition<TOutputs>.
+ *
+ * \`rawOutputs\` are the outputs of the SPECIFIC transition the caller
+ * invoked, filtered from the confirmed transaction's transitions[] by
+ * transition identity. Record outputs are ciphertexts (\`record1...\`) — pass
+ * them to the per-record \`decryptXxx(ciphertext, key)\` helpers to recover
+ * typed records. Private plaintext outputs are value ciphertexts
+ * (\`ciphertext1...\`) — pass them to \`EncryptedValue<T>.decrypt(key)\`.
+ *
+ * Indexed by the ORIGINAL ABI output position, including Future entries.
+ * The typed \`outputs\` projection on AcceptedTransition<T> drops Futures
+ * from its result shape but still indexes back into the original ABI
+ * position.
+ *
+ * Exactly one matching transition is required (0 or >1 throws
+ * TransactionShapeError).
+ */
+export interface AcceptedTransitionBase extends SubmittedTransition {
   readonly blockHeight: number;
-  readonly status: "accepted" | "rejected";
-  /**
-   * Raw Leo-encoded outputs of the SPECIFIC transition the caller invoked,
-   * filtered from the confirmed transaction's transitions[] by transition
-   * identity. Record outputs are ciphertexts (\`record1...\`) — pass them to
-   * the per-record \`decryptXxx(ciphertext, key)\` helpers to recover typed
-   * records.
-   *
-   * Accepted: exactly one matching transition is required (0 or >1 throws
-   * TransactionShapeError). rawOutputs is that transition's outputs.
-   *
-   * Rejected: typically \`[]\` because Aleo converts rejected executes to
-   * fee-only on inclusion (no execute transitions carried). The selector
-   * stays permissive — if a matching transition entry IS present, its
-   * outputs are surfaced instead of failing; if multiple match, the first
-   * is picked. This preserves \`.rejected()\` semantics for finalizer
-   * failures so the rejection itself isn't masked by a shape error.
-   */
+  readonly status: "accepted";
   readonly rawOutputs: readonly string[];
+  /**
+   * Transition public key (\`tpk\`) from the on-chain confirmed transition.
+   * Required input to value-ciphertext decryption (\`EncryptedValue<T>.decrypt\`).
+   */
+  readonly transitionPublicKey: string;
+}
+
+/**
+ * Accepted on-chain settlement carrying typed outputs in shape TOutputs.
+ *
+ * \`outputs\` carries only client-decodable transition outputs. Future-typed
+ * outputs appear in \`rawOutputs\` at their original ABI index but are not
+ * represented in the typed projection (no client-side decoding exists).
+ * Record outputs become EncryptedRecord<RecordName> handles; private
+ * plaintext outputs become EncryptedValue<T> handles; public plaintext
+ * outputs are decoded eagerly.
+ */
+export interface AcceptedTransition<TOutputs> extends AcceptedTransitionBase {
+  readonly outputs: TOutputs;
+}
+
+/**
+ * Rejected on-chain settlement. No \`outputs\` field: Aleo converts rejected
+ * executes to fee-only on inclusion, so there's no typed-output projection
+ * meaningful for a rejection. Inspect \`rawOutputs\` if a matching transition
+ * happens to be present. No \`transitionPublicKey\` either — rejected execs
+ * usually carry no matching transition, so tpk is not meaningful.
+ */
+export interface RejectedTransition extends SubmittedTransition {
+  readonly blockHeight: number;
+  readonly status: "rejected";
+  readonly rawOutputs: readonly string[];
+}
+
+/**
+ * Discriminated union over settled transitions. Narrow on \`status === "accepted"\`
+ * to reach \`transitionPublicKey\` and the rest of the AcceptedTransitionBase
+ * fields; both arms share \`{ txId, blockHeight, status, rawOutputs }\`.
+ */
+export type SettledTransition = AcceptedTransitionBase | RejectedTransition;
+
+/**
+ * Typed handle for an on-chain record output. Wraps the ciphertext so the
+ * caller can defer decryption to whichever account holds the view key.
+ */
+export interface EncryptedRecord<T> {
+  readonly ciphertext: string;
+  decrypt(key: DecryptionKey): Promise<T>;
+}
+
+/**
+ * Typed handle for an on-chain private plaintext output (Aleo value
+ * ciphertext, \`ciphertext1...\`). Wraps the ciphertext so the caller can
+ * defer decryption to whichever account holds the view key.
+ */
+export interface EncryptedValue<T> {
+  readonly ciphertext: string;
+  decrypt(key: DecryptionKey): Promise<T>;
 }
 
 /**
@@ -107,11 +170,18 @@ export interface SettledTransition extends SubmittedTransition {
  * \`privateKey\` (lionden \`SignerInput\` and similar structures match the
  * \`privateKey\` arm). Unrecognized strings throw \`RecordDecryptionKeyError\`
  * rather than guessing.
+ *
+ * Same shape applies to both record and value decryption — the
+ * \`RecordDecryptionKey\` name is retained for backwards compatibility;
+ * new code may use the neutral alias \`DecryptionKey\`.
  */
 export type RecordDecryptionKey =
   | string
   | { readonly viewKey: string }
   | { readonly privateKey: string };
+
+/** Neutral alias — same shape as RecordDecryptionKey. */
+export type DecryptionKey = RecordDecryptionKey;
 
 // Primitive types lionden has serializers/parsers for. "signature" is
 // intentionally excluded — no serializeSignature exists yet.
@@ -138,7 +208,8 @@ export type TypechainErrorKind =
   | "UnexpectedTransactionStatusError"
   | "TransactionShapeError"
   | "RecordDecryptionKeyError"
-  | "LocalRecordDecryptionError";
+  | "LocalRecordDecryptionError"
+  | "LocalValueDecryptionError";
 
 export type TypechainErrorPhase =
   | "input"
@@ -153,6 +224,7 @@ export interface TypechainErrorContext {
   readonly programId?: string;
   readonly transition?: string;
   readonly input?: string;
+  readonly outputIndex?: number;
   readonly cause?: unknown;
 }
 
@@ -162,6 +234,7 @@ export class LionDenTypechainError extends Error {
   readonly programId?: string;
   readonly transition?: string;
   readonly input?: string;
+  readonly outputIndex?: number;
 
   constructor(kind: TypechainErrorKind, message: string, context: TypechainErrorContext) {
     super(message, context.cause === undefined ? undefined : { cause: context.cause });
@@ -171,6 +244,7 @@ export class LionDenTypechainError extends Error {
     this.programId = context.programId;
     this.transition = context.transition;
     this.input = context.input;
+    this.outputIndex = context.outputIndex;
   }
 }
 
@@ -231,6 +305,12 @@ export class RecordDecryptionKeyError extends LionDenTypechainError {
 export class LocalRecordDecryptionError extends LionDenTypechainError {
   constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
     super("LocalRecordDecryptionError", message, { ...context, phase: "local" });
+  }
+}
+
+export class LocalValueDecryptionError extends LionDenTypechainError {
+  constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
+    super("LocalValueDecryptionError", message, { ...context, phase: "local" });
   }
 }
 
@@ -531,15 +611,25 @@ export abstract class BaseContract {
           { programId: this.programId, transition: transitionName },
         );
       }
-      const rawOutputs = this.selectTransitionOutputs(
+      if (confirmed.status === "accepted") {
+        const { rawOutputs, transitionPublicKey } =
+          this.selectAcceptedTransition(transitionName, confirmed.transitions);
+        return {
+          txId: confirmed.txId,
+          blockHeight: confirmed.blockHeight,
+          status: "accepted",
+          rawOutputs,
+          transitionPublicKey,
+        };
+      }
+      const rawOutputs = this.selectRejectedTransitionOutputs(
         transitionName,
-        confirmed.status,
         confirmed.transitions,
       );
       return {
         txId: confirmed.txId,
         blockHeight: confirmed.blockHeight,
-        status: confirmed.status,
+        status: "rejected",
         rawOutputs,
       };
     } catch (error) {
@@ -570,7 +660,7 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions = {},
-  ): Promise<SettledTransition> {
+  ): Promise<AcceptedTransitionBase> {
     const settled = await this.settleTransition(transitionName, args, options);
     if (settled.status !== "accepted") {
       throw new OnChainRejectedError(
@@ -585,7 +675,7 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions = {},
-  ): Promise<SettledTransition> {
+  ): Promise<RejectedTransition> {
     const settled = await this.settleTransition(transitionName, args, options);
     if (settled.status !== "rejected") {
       throw new UnexpectedTransactionStatusError(
@@ -593,7 +683,177 @@ export abstract class BaseContract {
         { programId: this.programId, transition: transitionName },
       );
     }
-    return settled;
+    return {
+      txId: settled.txId,
+      blockHeight: settled.blockHeight,
+      status: "rejected",
+      rawOutputs: settled.rawOutputs,
+    };
+  }
+
+  /**
+   * Typed-projection variant of \`settleTransition\`. Runs the projector only
+   * on the accepted branch. Rejected settlements pass through with no typed
+   * outputs.
+   *
+   * Error policy: \`TransactionShapeError\` from the projector (typically from
+   * \`rawOutputAt\`) is rethrown unchanged so the precise outputIndex/context
+   * survives. Any other error — including LionDenTypechainError subclasses
+   * like TransitionInputError (e.g. malformed on-chain plaintext failing a
+   * primitive parser) and native Errors — is wrapped as TransactionShapeError
+   * with the original via \`.cause\`. This keeps "bad on-chain data" failures
+   * classified as a shape error rather than misleading the caller that they
+   * provided bad input.
+   */
+  protected async settleTyped<TOutputs>(
+    transitionName: string,
+    args: string[],
+    options: OnChainExecutionOptions,
+    project: (rawOutputs: readonly string[], tpk: string) => TOutputs,
+  ): Promise<AcceptedTransition<TOutputs> | RejectedTransition> {
+    const settled = await this.settleTransition(transitionName, args, options);
+    if (settled.status === "accepted") {
+      const outputs = this.runProjector(transitionName, settled.rawOutputs, settled.transitionPublicKey, project);
+      return {
+        txId: settled.txId,
+        blockHeight: settled.blockHeight,
+        status: "accepted",
+        rawOutputs: settled.rawOutputs,
+        transitionPublicKey: settled.transitionPublicKey,
+        outputs,
+      };
+    }
+    return {
+      txId: settled.txId,
+      blockHeight: settled.blockHeight,
+      status: "rejected",
+      rawOutputs: settled.rawOutputs,
+    };
+  }
+
+  /**
+   * Typed-projection variant of \`expectAccepted\`. Same error policy as
+   * \`settleTyped\` for projector failures; rejections still throw
+   * \`OnChainRejectedError\`.
+   */
+  protected async expectAcceptedTyped<TOutputs>(
+    transitionName: string,
+    args: string[],
+    options: OnChainExecutionOptions,
+    project: (rawOutputs: readonly string[], tpk: string) => TOutputs,
+  ): Promise<AcceptedTransition<TOutputs>> {
+    const accepted = await this.expectAccepted(transitionName, args, options);
+    const outputs = this.runProjector(transitionName, accepted.rawOutputs, accepted.transitionPublicKey, project);
+    return {
+      txId: accepted.txId,
+      blockHeight: accepted.blockHeight,
+      status: "accepted",
+      rawOutputs: accepted.rawOutputs,
+      transitionPublicKey: accepted.transitionPublicKey,
+      outputs,
+    };
+  }
+
+  private runProjector<TOutputs>(
+    transitionName: string,
+    rawOutputs: readonly string[],
+    tpk: string,
+    project: (rawOutputs: readonly string[], tpk: string) => TOutputs,
+  ): TOutputs {
+    try {
+      return project(rawOutputs, tpk);
+    } catch (cause: unknown) {
+      if (cause instanceof TransactionShapeError) throw cause;
+      throw new TransactionShapeError(
+        "On-chain output decoding failed for " + this.programId + "/" + transitionName + ": " + errorMessage(cause),
+        { programId: this.programId, transition: transitionName, cause },
+      );
+    }
+  }
+
+  /**
+   * Fail-fast indexed access into a confirmed transition's rawOutputs. Throws
+   * \`TransactionShapeError\` with outputIndex populated when the entry is
+   * missing or not a string. Used by generated projectors.
+   *
+   * The index parameter is the ORIGINAL ABI output position (Futures still
+   * occupy their position in rawOutputs even though they're excluded from
+   * typed projections).
+   */
+  static rawOutputAt(
+    rawOutputs: readonly string[],
+    programId: string,
+    transitionName: string,
+    abiIndex: number,
+  ): string {
+    const value = rawOutputs[abiIndex];
+    if (typeof value !== "string") {
+      throw new TransactionShapeError(
+        "Expected " + programId + "/" + transitionName + " to have raw output at ABI index " + abiIndex + ", got " + (value === undefined ? "undefined" : typeof value) + ".",
+        { programId, transition: transitionName, outputIndex: abiIndex },
+      );
+    }
+    return value;
+  }
+
+  /**
+   * Build a typed EncryptedRecord<T> handle from a ciphertext. The handle's
+   * \`.decrypt(key)\` routes through \`BaseContract.decryptRecord\` with the
+   * supplied deserializer so it works equally for local and imported records.
+   */
+  static makeEncryptedRecord<T>(
+    ciphertext: string,
+    deserialize: (plaintext: string) => T,
+  ): EncryptedRecord<T> {
+    return {
+      ciphertext,
+      decrypt(key: DecryptionKey): Promise<T> {
+        return BaseContract.decryptRecord(ciphertext, key, deserialize);
+      },
+    };
+  }
+
+  /**
+   * Build a typed EncryptedValue<T> handle from a value ciphertext. The
+   * handle's \`.decrypt(key)\` routes through the value-ciphertext decryption
+   * path: it normalizes the key, calls the SDK's
+   * \`Ciphertext.decryptWithTransitionInfo\`, then runs the supplied
+   * deserializer over the resulting Leo literal.
+   *
+   * Error policy mirrors \`decryptRecord\` but with a NARROW pass-through:
+   * only \`RecordDecryptionKeyError\` (caller-input shape) escapes unwrapped.
+   * Everything else — including other \`LionDenTypechainError\` subclasses
+   * (e.g. \`TransitionInputError\` from a primitive parser on a malformed
+   * decrypted plaintext), \`NetworkValueDecryptionError\`, and native errors
+   * — wraps as \`LocalValueDecryptionError\` so the user-facing error name
+   * matches the decryption phase.
+   */
+  static makeEncryptedValue<T>(
+    ciphertext: string,
+    tpk: string,
+    programId: string,
+    transitionName: string,
+    globalIndex: number,
+    deserialize: (plaintext: string) => T,
+  ): EncryptedValue<T> {
+    return {
+      ciphertext,
+      async decrypt(key: DecryptionKey): Promise<T> {
+        try {
+          const viewKey = await BaseContract.normalizeRecordDecryptionKey(key);
+          const plaintext = await decryptValueCiphertext(
+            ciphertext, viewKey, tpk, programId, transitionName, globalIndex,
+          );
+          return deserialize(plaintext);
+        } catch (cause: unknown) {
+          if (cause instanceof RecordDecryptionKeyError) throw cause;
+          throw new LocalValueDecryptionError(
+            "Failed to decrypt value ciphertext for " + programId + "/" + transitionName + " output #" + globalIndex + ". Cause: " + errorMessage(cause),
+            { programId, transition: transitionName, outputIndex: globalIndex, cause },
+          );
+        }
+      },
+    };
   }
 
   protected outputAt(
@@ -898,29 +1158,21 @@ export abstract class BaseContract {
 
   /**
    * Filter the confirmed transaction's transitions[] to the specific
-   * (programId, transitionName) the caller invoked, returning its rawOutputs.
+   * (programId, transitionName) the caller invoked on the ACCEPTED branch,
+   * returning the matched record's rawOutputs and transitionPublicKey.
    *
-   * Accepted txs: fail-fast on 0 or >1 matches — the caller cannot safely
-   * pick the right outputs without unambiguous identity. Reentrant or
-   * recursive transitions hit this; reach for the raw escape hatch instead.
-   *
-   * Rejected txs: permissive (Aleo converts rejected execs to fee-only on
-   * inclusion, so transitions[] is usually empty). Returns [] when no match.
+   * Fail-fast on 0 or >1 matches — the caller cannot safely pick the right
+   * outputs without unambiguous identity. Reentrant or recursive transitions
+   * hit this; reach for the raw escape hatch instead.
    */
-  protected selectTransitionOutputs(
+  protected selectAcceptedTransition(
     transitionName: string,
-    status: "accepted" | "rejected",
-    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly string[] }[] | undefined,
-  ): readonly string[] {
+    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly string[]; readonly transitionPublicKey: string }[] | undefined,
+  ): { readonly rawOutputs: readonly string[]; readonly transitionPublicKey: string } {
     const list = transitions ?? [];
     const matches = list.filter(
       (t) => t.programId === this.programId && t.transitionName === transitionName,
     );
-    if (status === "rejected") {
-      // Fee-only inclusion is the common rejected shape. Empty rawOutputs
-      // is expected; preserves .rejected() semantics for finalizer failures.
-      return matches.length > 0 ? matches[0]!.rawOutputs : [];
-    }
     if (matches.length === 0) {
       throw new TransactionShapeError(
         "Confirmed transaction did not contain a matching transition for " + this.programId + "/" + transitionName + ". Available: " + list.map((t) => t.programId + "/" + t.transitionName).join(", ") + ".",
@@ -933,7 +1185,26 @@ export abstract class BaseContract {
         { programId: this.programId, transition: transitionName },
       );
     }
-    return matches[0]!.rawOutputs;
+    const match = matches[0]!;
+    return { rawOutputs: match.rawOutputs, transitionPublicKey: match.transitionPublicKey };
+  }
+
+  /**
+   * Permissive selector for the REJECTED branch. Aleo converts rejected
+   * executes to fee-only on inclusion, so transitions[] is usually empty —
+   * returns []. If a matching transition entry happens to be present (e.g.
+   * finalizer-failure case), its rawOutputs are surfaced. No tpk plumbing
+   * because rejected outputs aren't decoded by the typed projection.
+   */
+  protected selectRejectedTransitionOutputs(
+    transitionName: string,
+    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly string[] }[] | undefined,
+  ): readonly string[] {
+    const list = transitions ?? [];
+    const matches = list.filter(
+      (t) => t.programId === this.programId && t.transitionName === transitionName,
+    );
+    return matches.length > 0 ? matches[0]!.rawOutputs : [];
   }
 
   /**

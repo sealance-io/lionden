@@ -5,6 +5,7 @@ import type {
   LionDenResolvedConfig,
   ResolvedCompilerConfig,
   ResolvedCodegenConfig,
+  ResolvedDynamicRecordHelper,
   ResolvedTestingConfig,
   ResolvedDeployConfig,
   ResolvedPaths,
@@ -188,6 +189,7 @@ function buildDefaults(
   const codegen: ResolvedCodegenConfig = {
     enabled: config.codegen?.enabled ?? true,
     outDir: codegenOutDir,
+    dynamicRecords: normalizeDynamicRecords(config.codegen?.dynamicRecords),
   };
 
   const testing: ResolvedTestingConfig = {
@@ -247,6 +249,47 @@ function buildDefaults(
     deploy,
     namedAccounts,
   };
+}
+
+/**
+ * Normalize the user-provided `dynamicRecords` map into the resolved form by
+ * attaching each map key as `helperName`. Defensive against malformed input
+ * (non-object map, non-object entries) — entries that don't look like helper
+ * configs are dropped silently so the resolved shape stays stable. The
+ * plugin-leo `validateUserConfig` hook is responsible for surfacing those
+ * malformed entries as `ConfigValidationError` to the user before this
+ * normalization is consumed by codegen.
+ */
+function normalizeDynamicRecords(
+  raw: unknown,
+): Readonly<Record<string, ResolvedDynamicRecordHelper>> {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const entries: Array<[string, ResolvedDynamicRecordHelper]> = [];
+  for (const [helperName, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (value == null || typeof value !== "object" || Array.isArray(value)) continue;
+    const helper = value as Record<string, unknown>;
+    const sourceRecord = helper["sourceRecord"];
+    const schema = helper["schema"];
+    if (typeof sourceRecord !== "string" || schema == null || typeof schema !== "object" || Array.isArray(schema)) {
+      continue;
+    }
+    const normalizedSchema: Record<string, string> = {};
+    for (const [k, v] of Object.entries(schema as Record<string, unknown>)) {
+      if (typeof v !== "string") continue;
+      normalizedSchema[k] = v;
+    }
+    const sourceProgram = helper["sourceProgram"];
+    entries.push([
+      helperName,
+      {
+        helperName,
+        sourceRecord,
+        ...(typeof sourceProgram === "string" ? { sourceProgram } : {}),
+        schema: normalizedSchema,
+      },
+    ]);
+  }
+  return Object.fromEntries(entries);
 }
 
 function resolveNetworkConfig(

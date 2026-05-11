@@ -185,6 +185,7 @@ export class FakeNetworkConnection implements NetworkConnection {
         programId,
         transitionName,
         rawOutputs: response.outputs,
+        transitionPublicKey: "tpk_synthetic_" + txId,
       });
     }
     return { outputs: response.outputs, txId };

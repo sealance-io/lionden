@@ -5,8 +5,8 @@
 //
 // The tests intentionally use local mode when they need a plaintext Proposal
 // or Ticket before a later transition. Broadcasted record outputs can also be
-// recovered through accepted().rawOutputs + decrypt<Record>(...), as shown in
-// the token examples.
+// recovered through accepted().outputs.decrypt(...), as shown in the token
+// examples.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,

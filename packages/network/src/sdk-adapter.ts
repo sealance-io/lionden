@@ -367,6 +367,88 @@ export async function decryptRecordCiphertext(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Value ciphertext decryption (private plaintext outputs / inputs)
+// ---------------------------------------------------------------------------
+
+export class NetworkValueDecryptionError extends Error {
+  readonly kind = "NetworkValueDecryptionError" as const;
+  readonly ciphertextPrefix: string;
+
+  constructor(message: string, ciphertextPrefix: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "NetworkValueDecryptionError";
+    this.ciphertextPrefix = ciphertextPrefix;
+  }
+}
+
+/**
+ * Decrypt an Aleo value ciphertext (`ciphertext1...`) — the on-wire form for a
+ * private plaintext input or output of a transition. Distinct from record
+ * ciphertexts, which use a different (record-owner-derived) encryption scheme.
+ *
+ * Returns the decrypted Leo literal as a string (e.g. `"10000u64"`, `"true"`,
+ * `"aleo1..."`), suitable for downstream primitive parsers.
+ *
+ * `globalIndex` is the position of the input or output in the transition's
+ * combined input+output list — Aleo's domain separation places inputs first.
+ * For a transition with `N` inputs, output ABI index `i` corresponds to global
+ * index `N + i`.
+ */
+export async function decryptValueCiphertext(
+  ciphertext: string,
+  viewKey: string,
+  tpk: string,
+  programId: string,
+  transitionName: string,
+  globalIndex: number,
+  options?: DecryptOptions,
+): Promise<string> {
+  const prefix = typeof ciphertext === "string" ? ciphertext.slice(0, 16) : "(non-string)";
+  if (typeof ciphertext !== "string" || ciphertext.length === 0) {
+    throw new NetworkValueDecryptionError(
+      "Value ciphertext must be a non-empty string.",
+      prefix,
+    );
+  }
+  if (!ciphertext.startsWith("ciphertext1")) {
+    throw new NetworkValueDecryptionError(
+      `Value ciphertext must start with "ciphertext1". Received prefix ${JSON.stringify(prefix)}.`,
+      prefix,
+    );
+  }
+  if (typeof viewKey !== "string" || !viewKey.startsWith("AViewKey1")) {
+    throw new NetworkValueDecryptionError(
+      "View key must be a string starting with \"AViewKey1\". To pass a private key, call deriveViewKey() first.",
+      prefix,
+    );
+  }
+  if (typeof tpk !== "string" || tpk.length === 0) {
+    throw new NetworkValueDecryptionError(
+      "Transition public key (tpk) must be a non-empty string.",
+      prefix,
+    );
+  }
+  try {
+    const sdk = await loadSdkModule(pickSdkNetwork(options));
+    // WASM objects are consumed by decryptWithTransitionInfo — caller-side
+    // reuse triggers "null pointer passed to rust". Construct fresh per call.
+    const vk = sdk.ViewKey.from_string(viewKey);
+    const tpkGroup = sdk.Group.fromString(tpk);
+    const ct = sdk.Ciphertext.fromString(ciphertext);
+    const plaintext = ct.decryptWithTransitionInfo(vk, tpkGroup, programId, transitionName, globalIndex);
+    return plaintext.toString();
+  } catch (cause: unknown) {
+    if (cause instanceof NetworkValueDecryptionError) throw cause;
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new NetworkValueDecryptionError(
+      `Failed to decrypt value ciphertext (prefix ${JSON.stringify(prefix)}): ${message}`,
+      prefix,
+      cause,
+    );
+  }
+}
+
 /**
  * Derive a view key string (`AViewKey1...`) from a private key string
  * (`APrivateKey1...`). Used by callers that pass private keys to decrypt.

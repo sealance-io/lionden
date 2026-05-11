@@ -13,9 +13,22 @@ import {
   compilePipeline,
   generateBindings,
   generateBaseContract,
+  pathToTsName,
+  CodegenError,
   type CompileOptions,
   type ProgramCompilationResult,
+  type GenerateBindingsOptions,
 } from "@lionden/leo-compiler";
+
+const VALID_TS_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const SCHEMA_ENTRY = /^(?:address|boolean|field|group|scalar|u(?:8|16|32|64|128)|i(?:8|16|32|64|128))\.(?:public|private)$/;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value == null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === null || proto === Object.prototype;
+}
 
 // ---------------------------------------------------------------------------
 // Config hooks
@@ -51,6 +64,8 @@ const configHooks: ConfigHookHandlers = {
         message,
       });
     }
+
+    validateDynamicRecordsConfig(config, errors);
 
     return errors;
   },
@@ -128,9 +143,15 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
 
       // Generate per-program bindings
       const allAbis = programResults.map((result) => result.abi);
+      const helpersByProgram = resolveDynamicRecordHelpers(lre, programResults);
       for (const result of programResults) {
         const className = programIdToClassName(result.unit.programId);
-        const bindings = generateBindings(result.abi, allAbis);
+        const dynamicRecords = helpersByProgram.get(result.unit.programId);
+        const bindings = generateBindings(
+          result.abi,
+          allAbis,
+          dynamicRecords ? { dynamicRecords } : {},
+        );
         fs.writeFileSync(
           path.join(typechainDir, `${className}.ts`),
           bindings,
@@ -193,4 +214,158 @@ function programIdToClassName(programId: string): string {
     .split(/[_\-.]/)
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join("");
+}
+
+/**
+ * Validate `codegen.dynamicRecords` shape in user config. Pushes structured
+ * errors into `errors` so `resolveConfig` aggregates them into the
+ * `ConfigResolutionError` shown to the user.
+ *
+ * Only validates shape — ABI-driven validation (sourceRecord exists, schema
+ * primitives match record fields) runs at codegen time in
+ * `resolveDynamicRecordHelpers` because it needs compiled ABIs.
+ */
+function validateDynamicRecordsConfig(
+  config: LionDenUserConfig,
+  errors: ConfigValidationError[],
+): void {
+  const raw = config.codegen?.dynamicRecords;
+  if (raw === undefined) return;
+  if (!isPlainObject(raw)) {
+    errors.push({
+      path: "codegen.dynamicRecords",
+      message: "codegen.dynamicRecords must be a plain object mapping helper names to helper configs.",
+    });
+    return;
+  }
+  for (const [helperName, helper] of Object.entries(raw)) {
+    const base = `codegen.dynamicRecords.${helperName}`;
+    if (!VALID_TS_IDENTIFIER.test(helperName)) {
+      errors.push({
+        path: base,
+        message: `Helper name "${helperName}" is not a valid TypeScript identifier (must match /^[A-Za-z_][A-Za-z0-9_]*$/).`,
+      });
+      continue;
+    }
+    if (!isPlainObject(helper)) {
+      errors.push({
+        path: base,
+        message: `${base} must be a plain object with sourceRecord/schema fields.`,
+      });
+      continue;
+    }
+    const sourceRecord = helper["sourceRecord"];
+    if (typeof sourceRecord !== "string" || sourceRecord.length === 0) {
+      errors.push({
+        path: `${base}.sourceRecord`,
+        message: "sourceRecord must be a non-empty string (the generated TS record type name).",
+      });
+    } else if (!VALID_TS_IDENTIFIER.test(sourceRecord)) {
+      errors.push({
+        path: `${base}.sourceRecord`,
+        message: `sourceRecord "${sourceRecord}" is not a valid TypeScript identifier.`,
+      });
+    }
+    const sourceProgram = helper["sourceProgram"];
+    if (sourceProgram !== undefined) {
+      if (typeof sourceProgram !== "string" || sourceProgram.length === 0 || !sourceProgram.endsWith(".aleo")) {
+        errors.push({
+          path: `${base}.sourceProgram`,
+          message: "sourceProgram must be a non-empty string ending in \".aleo\".",
+        });
+      }
+    }
+    const schema = helper["schema"];
+    if (!isPlainObject(schema)) {
+      errors.push({
+        path: `${base}.schema`,
+        message: "schema must be a plain object mapping field names to <type>.<visibility> strings.",
+      });
+      continue;
+    }
+    if (Object.keys(schema).length === 0) {
+      errors.push({
+        path: `${base}.schema`,
+        message: "schema must declare at least one field.",
+      });
+    }
+    for (const [fieldName, entry] of Object.entries(schema)) {
+      if (typeof entry !== "string" || !SCHEMA_ENTRY.test(entry)) {
+        errors.push({
+          path: `${base}.schema.${fieldName}`,
+          message: `Schema entry must be "<type>.<visibility>" where type ∈ {address, boolean, field, group, scalar, u8-u128, i8-i128} and visibility ∈ {public, private}. Got ${JSON.stringify(entry)}.`,
+        });
+      }
+    }
+  }
+}
+
+/**
+ * Bind each helper from `lre.config.codegen.dynamicRecords` to a specific
+ * owning programId by scanning compiled ABIs for the source record name.
+ * Throws `CodegenError` on missing/ambiguous/mismatched ownership.
+ *
+ * Returns a per-program list of resolved helpers ready to pass into
+ * `generateBindings`. Programs with no helpers map to an empty array.
+ *
+ * Exported for unit testing — production callers go through the compile task.
+ */
+export function resolveDynamicRecordHelpers(
+  lre: { readonly config: LionDenResolvedConfig },
+  programResults: readonly ProgramCompilationResult[],
+): Map<string, NonNullable<GenerateBindingsOptions["dynamicRecords"]>[number][]> {
+  const helpersByProgram = new Map<
+    string,
+    NonNullable<GenerateBindingsOptions["dynamicRecords"]>[number][]
+  >();
+  const dynamicRecords = lre.config.codegen.dynamicRecords;
+  if (!dynamicRecords || Object.keys(dynamicRecords).length === 0) {
+    return helpersByProgram;
+  }
+
+  const ownership = new Map<string, string[]>();
+  for (const result of programResults) {
+    for (const record of result.abi.records) {
+      const name = pathToTsName(record.path);
+      const owners = ownership.get(name) ?? [];
+      if (!owners.includes(result.unit.programId)) owners.push(result.unit.programId);
+      ownership.set(name, owners);
+    }
+  }
+
+  for (const helper of Object.values(dynamicRecords)) {
+    const candidates = ownership.get(helper.sourceRecord) ?? [];
+    if (candidates.length === 0) {
+      throw new CodegenError(
+        `codegen.dynamicRecords.${helper.helperName}.sourceRecord '${helper.sourceRecord}' does not match any local record in compiled programs.`,
+        { helperName: helper.helperName, sourceRecord: helper.sourceRecord },
+      );
+    }
+    let sourceProgram: string;
+    if (helper.sourceProgram !== undefined) {
+      if (!candidates.includes(helper.sourceProgram)) {
+        throw new CodegenError(
+          `codegen.dynamicRecords.${helper.helperName}.sourceProgram '${helper.sourceProgram}' does not declare record '${helper.sourceRecord}'. Candidates: [${candidates.join(", ")}].`,
+          { helperName: helper.helperName, requested: helper.sourceProgram, candidates },
+        );
+      }
+      sourceProgram = helper.sourceProgram;
+    } else if (candidates.length === 1) {
+      sourceProgram = candidates[0]!;
+    } else {
+      throw new CodegenError(
+        `codegen.dynamicRecords.${helper.helperName} is ambiguous: record '${helper.sourceRecord}' is declared by [${candidates.join(", ")}]. Set \`sourceProgram\` to disambiguate.`,
+        { helperName: helper.helperName, sourceRecord: helper.sourceRecord, candidates },
+      );
+    }
+    const list = helpersByProgram.get(sourceProgram) ?? [];
+    list.push({
+      helperName: helper.helperName,
+      sourceRecord: helper.sourceRecord,
+      sourceProgram,
+      schema: helper.schema,
+    });
+    helpersByProgram.set(sourceProgram, list);
+  }
+  return helpersByProgram;
 }

@@ -8,8 +8,8 @@
 //   - Final-only (mint_public, transfer_public) → accepted(); assert
 //     mapping after via typed getAccount(addr).
 //   - Mixed transitions can either use local mode for plaintext previews, or
-//     accepted().rawOutputs + decryptToken(...) when the broadcasted record is
-//     the output that needs to be chained/asserted.
+//     accepted().outputs.decrypt(...) when the broadcasted record is the output
+//     that needs to be chained/asserted.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
@@ -17,7 +17,7 @@ import {
   clearFixtures,
   type TestContext,
 } from "@lionden/testing";
-import { createTokenContract, decryptToken } from "../typechain/Token.js";
+import { createTokenContract } from "../typechain/Token.js";
 
 async function deployToken() {
   const ctx = await setup();
@@ -110,11 +110,11 @@ describe("token.aleo", () => {
     const confirmed = await token
       .withSigner(alice())
       .transfer_public_to_private.accepted({ receiver: bob(), amount: 40n });
-    const ciphertext = confirmed.rawOutputs[0]!;
 
-    expect(ciphertext).toMatch(/^record1/);
+    expect(confirmed.outputs.ciphertext).toMatch(/^record1/);
+    expect(confirmed.rawOutputs[0]).toBe(confirmed.outputs.ciphertext);
 
-    const recvToken = await decryptToken(ciphertext, bob());
+    const recvToken = await confirmed.outputs.decrypt(bob());
     expect(recvToken.owner).toBe(bob().address);
     expect(recvToken.amount).toBe(40n);
 

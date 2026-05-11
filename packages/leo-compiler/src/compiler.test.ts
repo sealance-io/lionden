@@ -393,7 +393,7 @@ describe("compilePipeline network dep handling", () => {
         buildTests: false,
         extraFlags: [],
       },
-      codegen: { enabled: false, outDir: "typechain" },
+      codegen: { enabled: false, outDir: "typechain", dynamicRecords: {} },
       testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
       deploy: {
         defaultPriorityFee: 0,

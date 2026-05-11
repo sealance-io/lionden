@@ -1045,7 +1045,7 @@ describe("AleoConnection", () => {
       });
     }
 
-    it("parses one execute transition with program/function/outputs into transitions[]", async () => {
+    it("parses one execute transition with program/function/outputs/tpk into transitions[]", async () => {
       mockConfirmation({
         type: "execute",
         transaction: {
@@ -1057,6 +1057,7 @@ describe("AleoConnection", () => {
                 id: "au1one",
                 program: "token.aleo",
                 function: "mint_private",
+                tpk: "1234group",
                 outputs: [
                   { type: "record", id: "out1", value: "record1plaintextish" },
                 ],
@@ -1072,6 +1073,7 @@ describe("AleoConnection", () => {
           programId: "token.aleo",
           transitionName: "mint_private",
           rawOutputs: ["record1plaintextish"],
+          transitionPublicKey: "1234group",
         },
       ]);
     });
@@ -1086,11 +1088,13 @@ describe("AleoConnection", () => {
               {
                 program: "dex.aleo",
                 function: "swap",
+                tpk: "tpk_swap",
                 outputs: [{ type: "future", id: "f", value: "futurevalue" }],
               },
               {
                 program: "token.aleo",
                 function: "transfer_private",
+                tpk: "tpk_transfer",
                 outputs: [
                   { type: "record", id: "r", value: "record1tokenct" },
                 ],
@@ -1103,6 +1107,7 @@ describe("AleoConnection", () => {
       const result = await createDevnodeConnection().waitForConfirmation("at1test");
       expect(result.transitions.map((t) => t.transitionName)).toEqual(["swap", "transfer_private"]);
       expect(result.transitions[1]!.rawOutputs).toEqual(["record1tokenct"]);
+      expect(result.transitions[1]!.transitionPublicKey).toBe("tpk_transfer");
     });
 
     it("returns transitions: [] for fee-only rejected tx", async () => {
@@ -1156,6 +1161,27 @@ describe("AleoConnection", () => {
       });
     });
 
+    it("fails fast on missing tpk field", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          execution: {
+            transitions: [
+              { program: "token.aleo", function: "mint_private", outputs: [] }, // tpk missing
+            ],
+          },
+        },
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "transaction.execution.transitions[0].tpk",
+      });
+    });
+
     it("fails fast when transaction.type is execute but execution field is missing", async () => {
       mockConfirmation({
         type: "execute",
@@ -1194,6 +1220,7 @@ describe("AleoConnection", () => {
               {
                 program: "token.aleo",
                 function: "mint",
+                tpk: "tpk_test",
                 outputs: [{ type: "record", id: "x", value: 123 }], // non-string
               },
             ],

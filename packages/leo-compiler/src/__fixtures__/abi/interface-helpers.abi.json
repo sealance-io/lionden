@@ -1,0 +1,47 @@
+{
+  "program": "stable_token.aleo",
+  "structs": [],
+  "records": [
+    {
+      "path": ["Token"],
+      "fields": [
+        {
+          "name": "amount",
+          "ty": { "Primitive": { "UInt": "U128" } },
+          "mode": "None"
+        },
+        {
+          "name": "_version",
+          "ty": { "Primitive": { "UInt": "U8" } },
+          "mode": "None"
+        }
+      ]
+    }
+  ],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "mint_private",
+      "is_final": false,
+      "inputs": [
+        {
+          "name": "receiver",
+          "ty": { "Plaintext": { "Primitive": "Address" } },
+          "mode": "Private"
+        },
+        {
+          "name": "amount",
+          "ty": { "Plaintext": { "Primitive": { "UInt": "U128" } } },
+          "mode": "Private"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": { "Record": { "program": null, "path": ["Token"] } },
+          "mode": "Private"
+        }
+      ]
+    }
+  ]
+}

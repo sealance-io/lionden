@@ -78,7 +78,7 @@ function mockLre(): LionDenRuntimeEnvironment {
         },
       },
       compiler: { enableDce: false, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
-      codegen: { enabled: true, outDir: "typechain" },
+      codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
       testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
       deploy: {
         defaultPriorityFee: 0,
