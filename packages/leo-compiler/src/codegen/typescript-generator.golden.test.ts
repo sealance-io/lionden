@@ -20,6 +20,18 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
     "/virtual/BaseContract.ts": generateBaseContract(),
     [`/virtual/${programName}.ts`]: output,
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
+    // Virtual @lionden/network surface — keeps the typecheck harness
+    // independent of built dist artifacts. Must match the runtime signatures
+    // imported by the generated BaseContract template.
+    "/virtual/network.d.ts": [
+      "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare class NetworkRecordDecryptionError extends Error {",
+      "  readonly kind: \"NetworkRecordDecryptionError\";",
+      "  readonly ciphertextPrefix: string;",
+      "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
+      "}",
+    ].join("\n"),
   };
 
   const options: ts.CompilerOptions = {
@@ -44,6 +56,13 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
       if (moduleName === "@lionden/core") {
         return {
           resolvedFileName: "/virtual/core.d.ts",
+          extension: ts.Extension.Dts,
+          isExternalLibraryImport: true,
+        };
+      }
+      if (moduleName === "@lionden/network") {
+        return {
+          resolvedFileName: "/virtual/network.d.ts",
           extension: ts.Extension.Dts,
           isExternalLibraryImport: true,
         };

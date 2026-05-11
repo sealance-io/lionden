@@ -5,6 +5,7 @@ export type {
   Signer,
   TransitionCallResult,
   ConfirmedTransaction,
+  ConfirmedTransitionRecord,
   ExecuteOptions,
   DevnodeStartOptions,
   ConfirmationTimeoutStage,
@@ -12,9 +13,22 @@ export type {
 } from "./types.js";
 export { NetworkConfirmationTimeoutError } from "./types.js";
 
-export { AleoConnection, type ConnectionOptions } from "./connection.js";
+export { AleoConnection, type ConnectionOptions, TransactionShapeParseError } from "./connection.js";
 export { NetworkManagerImpl } from "./network-manager.js";
 export { DevnodeManager } from "./devnode-manager.js";
 export { DEVNODE_ACCOUNTS, getDefaultAccount } from "./accounts.js";
-export { initSdk, createSdkObjects, createSignerSdkObjects, checkDevnodeSdkSupport, initConsensusHeights, type CreateSdkObjectsOptions, type SignerSdkObjects, type CreateSignerSdkObjectsOptions } from "./sdk-adapter.js";
+export {
+  initSdk,
+  createSdkObjects,
+  createSignerSdkObjects,
+  checkDevnodeSdkSupport,
+  initConsensusHeights,
+  decryptRecordCiphertext,
+  deriveViewKey,
+  NetworkRecordDecryptionError,
+  type CreateSdkObjectsOptions,
+  type SignerSdkObjects,
+  type CreateSignerSdkObjectsOptions,
+  type DecryptOptions,
+} from "./sdk-adapter.js";
 export { NamedAccountManager } from "./named-account-manager.js";

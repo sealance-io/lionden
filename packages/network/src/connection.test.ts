@@ -530,7 +530,17 @@ describe("AleoConnection", () => {
         finalize: [],
       };
       if (txType !== "missing") {
-        txBody["transaction"] = { type: txType, id: "at1test" };
+        // Provide a minimal valid execute body. The parser is now strict for
+        // "execute" txs — a body with type "execute" must carry
+        // transaction.execution.transitions[] or it's a shape error. These
+        // tests don't exercise the parser surface; they validate the
+        // polling/timeout/block-resolution loops, so a default empty
+        // transitions[] is the right knob.
+        const txObj: Record<string, unknown> = { type: txType, id: "at1test" };
+        if (txType === "execute") {
+          txObj.execution = { transitions: [] };
+        }
+        txBody["transaction"] = txObj;
       }
       const blockBody = {
         block_hash: blockHash,
@@ -570,6 +580,7 @@ describe("AleoConnection", () => {
         txId: "at1test",
         blockHeight: 42,
         status: "accepted",
+        transitions: [],
       });
     });
 
@@ -615,7 +626,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       const blockBody = {
         header: { metadata: { network: 1, round: 10, height: 10 } },
@@ -654,7 +665,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       const blockBody = {
         header: { metadata: { network: 1, round: 5, height: 5 } },
@@ -730,6 +741,7 @@ describe("AleoConnection", () => {
         txId: "at1test",
         blockHeight: 15,
         status: "rejected",
+        transitions: [],
       });
     });
 
@@ -743,6 +755,7 @@ describe("AleoConnection", () => {
         txId: "at1test",
         blockHeight: 20,
         status: "accepted",
+        transitions: [],
       });
     });
 
@@ -756,6 +769,7 @@ describe("AleoConnection", () => {
         txId: "at1test",
         blockHeight: 25,
         status: "accepted",
+        transitions: [],
       });
     });
 
@@ -772,7 +786,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       fetchMock.mockImplementation(async (url: string) => {
         if (url.includes("/transaction/confirmed/")) {
@@ -803,7 +817,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       fetchMock.mockImplementation(async (url: string) => {
         if (url.includes("/transaction/confirmed/")) {
@@ -837,7 +851,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       const malformedBlock = {
         block_hash: TEST_BLOCK_HASH,
@@ -870,7 +884,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       const malformedBlock = {
         block_hash: TEST_BLOCK_HASH,
@@ -902,7 +916,7 @@ describe("AleoConnection", () => {
       const txBody = {
         status: "accepted",
         type: "execute",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       const genesisBlock = {
         block_hash: TEST_BLOCK_HASH,
@@ -934,13 +948,14 @@ describe("AleoConnection", () => {
         txId: "at1test",
         blockHeight: 0,
         status: "accepted",
+        transitions: [],
       });
     });
 
     it("parses the block hash whether the find/blockHash body is JSON-quoted or bare", async () => {
       const txBody = {
         status: "accepted",
-        transaction: { type: "execute", id: "at1test" },
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
       };
       const blockBody = {
         header: { metadata: { network: 1, round: 7, height: 7 } },
@@ -973,7 +988,7 @@ describe("AleoConnection", () => {
         status: "accepted",
         type: "execute",
         index: 0,
-        transaction: { type: "execute", id: "at1real" },
+        transaction: { type: "execute", id: "at1real", execution: { transitions: [] } },
         finalize: [],
       };
       const blockHash = "ab1ajw276h6xe6hqswh87yr5ljjxf7dqtefxd6awhsp5znc36fupsqs8auddq";
@@ -1002,7 +1017,276 @@ describe("AleoConnection", () => {
         txId: "at1real",
         blockHeight: 21,
         status: "accepted",
+        transitions: [],
       });
+    });
+
+    // -----------------------------------------------------------------------
+    // ConfirmedTransaction.transitions parsing — accepted, rejected, and
+    // malformed bodies. Malformed-after-200 must fail fast (no retry loop).
+    // -----------------------------------------------------------------------
+
+    function mockConfirmation(txBody: Record<string, unknown>, height = 99, blockHash = TEST_BLOCK_HASH) {
+      const blockBody = {
+        block_hash: blockHash,
+        header: { metadata: { network: 1, round: height, height } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(blockHash) };
+        }
+        if (url.includes(`/block/${blockHash}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+    }
+
+    it("parses one execute transition with program/function/outputs into transitions[]", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          id: "at1test",
+          execution: {
+            transitions: [
+              {
+                id: "au1one",
+                program: "token.aleo",
+                function: "mint_private",
+                outputs: [
+                  { type: "record", id: "out1", value: "record1plaintextish" },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      const result = await createDevnodeConnection().waitForConfirmation("at1test");
+      expect(result.transitions).toEqual([
+        {
+          programId: "token.aleo",
+          transitionName: "mint_private",
+          rawOutputs: ["record1plaintextish"],
+        },
+      ]);
+    });
+
+    it("parses multi-transition cross-program calls preserving order", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          execution: {
+            transitions: [
+              {
+                program: "dex.aleo",
+                function: "swap",
+                outputs: [{ type: "future", id: "f", value: "futurevalue" }],
+              },
+              {
+                program: "token.aleo",
+                function: "transfer_private",
+                outputs: [
+                  { type: "record", id: "r", value: "record1tokenct" },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      const result = await createDevnodeConnection().waitForConfirmation("at1test");
+      expect(result.transitions.map((t) => t.transitionName)).toEqual(["swap", "transfer_private"]);
+      expect(result.transitions[1]!.rawOutputs).toEqual(["record1tokenct"]);
+    });
+
+    it("returns transitions: [] for fee-only rejected tx", async () => {
+      mockConfirmation({
+        type: "fee",
+        transaction: { type: "fee", id: "at1test" },
+      });
+
+      const result = await createDevnodeConnection().waitForConfirmation("at1test");
+      expect(result.status).toBe("rejected");
+      expect(result.transitions).toEqual([]);
+    });
+
+    it("fails fast with TransactionShapeParseError on missing program field", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          execution: {
+            transitions: [
+              { function: "mint", outputs: [] }, // program missing
+            ],
+          },
+        },
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "transaction.execution.transitions[0].program",
+      });
+    });
+
+    it("fails fast on missing function field", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          execution: {
+            transitions: [{ program: "token.aleo", outputs: [] }],
+          },
+        },
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "transaction.execution.transitions[0].function",
+      });
+    });
+
+    it("fails fast when transaction.type is execute but execution field is missing", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: { type: "execute", id: "at1test" }, // no execution
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "transaction.execution",
+      });
+    });
+
+    it("fails fast when transaction.type is execute but execution.transitions is missing", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: { type: "execute", id: "at1test", execution: {} },
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "transaction.execution.transitions",
+      });
+    });
+
+    it("fails fast on non-string output.value", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          execution: {
+            transitions: [
+              {
+                program: "token.aleo",
+                function: "mint",
+                outputs: [{ type: "record", id: "x", value: 123 }], // non-string
+              },
+            ],
+          },
+        },
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: expect.stringContaining(".outputs[0].value"),
+      });
+    });
+
+    it("fails fast on malformed JSON body in 200 OK confirmation (no retry, no timeout masking)", async () => {
+      const blockBody = {
+        block_hash: TEST_BLOCK_HASH,
+        header: { metadata: { network: 1, round: 1, height: 1 } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return {
+            ok: true,
+            json: async () => {
+              throw new SyntaxError("Unexpected token < in JSON at position 0");
+            },
+          };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(TEST_BLOCK_HASH) };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      await expect(
+        createDevnodeConnection().waitForConfirmation("at1test"),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "body",
+        txId: "at1test",
+      });
+      // Exactly one /transaction/confirmed/ call — no retry loop.
+      const confirmedCalls = fetchMock.mock.calls.filter((c) =>
+        (c[0] as string).includes("/transaction/confirmed/"),
+      );
+      expect(confirmedCalls).toHaveLength(1);
+    });
+
+    it("does retry on transport error from fetch() (regression guard)", async () => {
+      // First call throws (transport), second call succeeds — confirms the
+      // split-try preserves transient-retry behavior for non-200 paths.
+      const blockBody = {
+        block_hash: TEST_BLOCK_HASH,
+        header: { metadata: { network: 1, round: 1, height: 1 } },
+      };
+      const happyTxBody = {
+        type: "execute",
+        transaction: {
+          type: "execute",
+          id: "at1test",
+          execution: { transitions: [] },
+        },
+      };
+      let confirmedCallCount = 0;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          confirmedCallCount += 1;
+          if (confirmedCallCount === 1) {
+            throw new TypeError("fetch failed");
+          }
+          return { ok: true, json: async () => happyTxBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(TEST_BLOCK_HASH) };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      const promise = createDevnodeConnection().waitForConfirmation("at1test");
+      // Advance past the poll interval so the loop's sleep resolves and the
+      // second confirmed-fetch attempt runs.
+      await vi.advanceTimersByTimeAsync(2_000);
+      const result = await promise;
+
+      expect(result.status).toBe("accepted");
+      expect(confirmedCallCount).toBeGreaterThanOrEqual(2);
     });
   });
 

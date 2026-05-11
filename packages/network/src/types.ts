@@ -13,11 +13,32 @@ export interface TransitionCallResult {
   readonly txId?: string;
 }
 
+/** One confirmed transition within a confirmed transaction. */
+export interface ConfirmedTransitionRecord {
+  /** Program id, e.g. "token.aleo". */
+  readonly programId: string;
+  /** Transition name, e.g. "mint_private". */
+  readonly transitionName: string;
+  /**
+   * Raw Leo-encoded output literals for this transition, in declaration order.
+   * Record outputs are ciphertexts (`record1...`); plaintext outputs are
+   * Leo literals (`123u32`, `aleo1...`, `{ ... }`, etc.).
+   */
+  readonly rawOutputs: readonly string[];
+}
+
 /** Confirmed transaction details. */
 export interface ConfirmedTransaction {
   readonly txId: string;
   readonly blockHeight: number;
   readonly status: "accepted" | "rejected";
+  /**
+   * All execute transitions in the confirmed transaction.
+   * For fee-only rejected transactions (Aleo converts rejected executes to
+   * fee-only on inclusion), this is `[]` — the original execute transitions
+   * are not carried by the chain.
+   */
+  readonly transitions: readonly ConfirmedTransitionRecord[];
 }
 
 export type ConfirmationTimeoutStage = "confirmed" | "blockHash" | "blockHeight";

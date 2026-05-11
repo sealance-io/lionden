@@ -82,7 +82,7 @@ describe("assertions", () => {
     it("passes when transaction is accepted", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "accepted",
+          txId: "at1test", blockHeight: 10, status: "accepted", transitions: [],
         }),
       });
 
@@ -94,7 +94,7 @@ describe("assertions", () => {
     it("throws when transaction is rejected", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "rejected",
+          txId: "at1test", blockHeight: 10, status: "rejected", transitions: [],
         }),
       });
 
@@ -108,7 +108,7 @@ describe("assertions", () => {
     it("passes when transaction is rejected", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "rejected",
+          txId: "at1test", blockHeight: 10, status: "rejected", transitions: [],
         }),
       });
 
@@ -120,7 +120,7 @@ describe("assertions", () => {
     it("throws when transaction is accepted", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "accepted",
+          txId: "at1test", blockHeight: 10, status: "accepted", transitions: [],
         }),
       });
 

@@ -180,6 +180,16 @@ Each `RecordField`:
 }
 ```
 
+### Generated Record Helpers
+
+For every record in the ABI, codegen emits three helpers (plus the interface):
+
+- `serialize<Name>(value, ctx?): string` — JS object → Leo literal. Round-trips losslessly via the `BaseContract.RECORD_RAW` symbol cache so visibility-suffixed records survive re-input.
+- `deserialize<Name>(value): <Name>` — Leo literal → typed JS object. Stashes the raw literal on `RECORD_RAW` for future re-serialization.
+- `async decrypt<Name>(ciphertext, key): Promise<<Name>>` — `record1...` ciphertext + decryption key → typed JS object. Internally delegates to `BaseContract.decryptRecord` which awaits `@lionden/network`'s SDK-load and runs `deserialize<Name>` over the plaintext; RECORD_RAW is preserved through this path too.
+
+Imported records (records declared in another program) reuse the originating program's generated helpers — no duplicate emission. See `docs/testing.md` for the decrypt key API and `SettledTransition.rawOutputs` transition-identity contract.
+
 ## Mappings
 
 On-chain key-value storage. Declared as `mapping name: KeyType => ValueType` in Leo.

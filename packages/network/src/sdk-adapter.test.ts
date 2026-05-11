@@ -10,6 +10,9 @@ import { describe, it, expect, afterAll } from "vitest";
 import {
   createSdkObjects,
   createSignerSdkObjects,
+  decryptRecordCiphertext,
+  deriveViewKey,
+  NetworkRecordDecryptionError,
   type SdkObjects,
 } from "./sdk-adapter.js";
 
@@ -145,5 +148,50 @@ describe("createSignerSdkObjects()", () => {
     expect(pm.keyProvider).toBe(defaultSdk.keyProvider);
 
     try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+});
+
+describe("deriveViewKey() / decryptRecordCiphertext()", () => {
+  it("derives a deterministic view key from a known private key", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    expect(typeof vk).toBe("string");
+    expect(vk.startsWith("AViewKey1")).toBe(true);
+    // Determinism — same input must yield same output.
+    expect(await deriveViewKey(DEVNODE_KEY)).toBe(vk);
+  });
+
+  it("throws NetworkRecordDecryptionError on non-private-key strings", async () => {
+    await expect(deriveViewKey("not a key")).rejects.toBeInstanceOf(NetworkRecordDecryptionError);
+    await expect(deriveViewKey("AViewKey1xyz")).rejects.toMatchObject({
+      kind: "NetworkRecordDecryptionError",
+      name: "NetworkRecordDecryptionError",
+    });
+  });
+
+  it("throws NetworkRecordDecryptionError on empty ciphertext", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    await expect(decryptRecordCiphertext("", vk)).rejects.toMatchObject({
+      kind: "NetworkRecordDecryptionError",
+    });
+  });
+
+  it("throws NetworkRecordDecryptionError when view key doesn't have AViewKey1 prefix", async () => {
+    await expect(
+      decryptRecordCiphertext("record1abc", "APrivateKey1zkp..."),
+    ).rejects.toMatchObject({
+      kind: "NetworkRecordDecryptionError",
+      message: expect.stringContaining("AViewKey1"),
+    });
+  });
+
+  it("surfaces SDK errors as NetworkRecordDecryptionError with ciphertextPrefix", async () => {
+    const vk = await deriveViewKey(DEVNODE_KEY);
+    // Garbage ciphertext that passes the prefix check but the SDK rejects.
+    await expect(
+      decryptRecordCiphertext("record1garbagepayload", vk),
+    ).rejects.toMatchObject({
+      kind: "NetworkRecordDecryptionError",
+      ciphertextPrefix: "record1garbagepa",
+    });
   });
 });

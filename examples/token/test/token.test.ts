@@ -5,12 +5,11 @@ import {
   clearFixtures,
   type TestContext,
 } from "@lionden/testing";
-import { createTokenContract, Leo } from "../typechain/index.js";
+import { createTokenContract, decryptToken, Leo } from "../typechain/index.js";
 import { setupToken } from "../recipes/setup.js";
 
 const RECEIVERS = {
   publicTransfer: "aleo1gnkqe9m4f5wdl3q904xsf6ed9kavj0e6fnggtwyt8v8apw05gy9syz34cz",
-  privateMint: "aleo1q25acjdgqgvkeyxdhfm2jx00yt5m0eztsjesx7f063l7q975559qvdtjw7",
 } as const;
 
 async function deployToken() {
@@ -97,11 +96,16 @@ describe("token program", () => {
   });
 
   describe("mint_private", () => {
-    it("returns a typed Token record", async () => {
-      const receiver = Leo.address(RECEIVERS.privateMint);
-      const record = await token.mint_private.locally({ receiver, amount: 500n });
+    it("decrypts a private Token record from accepted raw outputs", async () => {
+      const receiver = ctx!.accounts[1]!;
+      const confirmed = await token.mint_private.accepted({ receiver, amount: 500n });
+      const ciphertext = confirmed.rawOutputs[0]!;
 
-      expect(record.owner).toBe(RECEIVERS.privateMint);
+      expect(ciphertext).toMatch(/^record1/);
+
+      const record = await decryptToken(ciphertext, receiver);
+
+      expect(record.owner).toBe(receiver.address);
       expect(record.amount).toBe(500n);
     });
   });
