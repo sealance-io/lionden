@@ -65,6 +65,8 @@ Network functionality depends on `@provablehq/sdk@^0.10.5` via `packages/network
 
 ## Getting Started
 
+New to LionDen? Read [`docs/usage.md`](docs/usage.md) for a user-facing walkthrough of the day-to-day workflow (configure, compile, test, deploy, upgrade, export).
+
 Install workspace dependencies:
 
 ```bash
@@ -226,6 +228,7 @@ For subsystem detail, use the focused docs in `docs/` instead of loading everyth
 
 Start here for overview, then open only the subsystem docs you need:
 
+- [`docs/usage.md`](docs/usage.md): day-to-day usage guide — configure, compile, test, deploy, upgrade, export
 - [`docs/project-layout.md`](docs/project-layout.md): package map, examples, scaffolding, contributor entry points
 - [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
 - [`docs/architecture.md`](docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
