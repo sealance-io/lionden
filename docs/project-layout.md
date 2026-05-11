@@ -27,7 +27,7 @@ Top-level supporting paths:
 - `examples/nft-registry`: structs, records, `loadFixture`, local mode
 - `examples/upgradeable-counter`: `@admin` constructor, upgrade flow, multi-network config
 - `examples/async-escrow`: typechain bindings in tests, escrow state machine
-- `examples/aleo-ports`: ported Aleo examples used for compatibility smoke coverage
+- `examples/aleo-ports`: ~21 ported Aleo SDK examples used for compatibility smoke coverage (admin, auction, basic_bank, battleship, bubblesort, dynamic_dispatch, example_with_test, fibonacci, groups, helloworld, interest, lottery, message, noupgrade, simple_token, tictactoe, timelock, token, twoadicity, upgrades-vote, vote) — each is its own workspace
 - `docs/`: focused implementation docs
 
 ## Contributor Entry Points

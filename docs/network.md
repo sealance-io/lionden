@@ -102,7 +102,7 @@ Before any devnode transaction is built, two SDK checks run:
 
 ### Transaction Confirmation
 
-After broadcasting, LionDen polls `GET /{networkId}/transaction/confirmed/{txId}` directly through `fetch` rather than through the SDK. The raw response carries a `block_height` field that the SDK's typed wrapper does not expose. Polling runs at one-second intervals up to `config.deploy.confirmationTimeout`, defaulting to 60 seconds.
+After broadcasting, LionDen polls `GET /{networkId}/transaction/confirmed/{txId}` directly through `fetch` rather than through the SDK. The block height is resolved in a second phase via `GET /{networkId}/find/blockHash/{txId}` followed by `GET /{networkId}/block/{blockHash}`, reading `header.metadata.height`. Polling runs at one-second intervals up to `config.deploy.confirmationTimeout`, defaulting to 60 seconds.
 
 The `--skip-confirm` flag on `deploy` and `upgrade` bypasses this step.
 

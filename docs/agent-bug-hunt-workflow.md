@@ -233,11 +233,12 @@ async function deployFixture() {
 
 Use generated bindings through their public methods:
 
-- `contract.<transition>(...)` for local execution
-- `contract.<transition>Broadcast(...)` for broadcast execution
+- `contract.<transition>.locally(...)` for local execution
+- `contract.<transition>.accepted(...)` / `.settled(...)` / `.rejected(...)` for broadcast + settlement
+- `contract.<transition>.submit(...)` to broadcast without awaiting confirmation
 - `contract.withSigner(account)` for signer overrides
 
-Do not call protected `BaseContract` helpers such as `executeLocal()` or `broadcast()` from probe tests.
+Do not call protected `BaseContract` helpers such as `executeLocal()` or `submitTransition()` from probe tests.
 
 ## Deploy Script Rules
 
