@@ -94,6 +94,8 @@ For program units, the compiler reads `build/abi.json`, parses it, and stores th
 
 The ABI is the contract between Leo compilation and TypeScript code generation. That avoids regex-based parsing of generated Aleo source and keeps wrapper generation aligned with the compiler's structured output.
 
+Generated bindings are the preferred user-facing API when the ABI is known. They encode ABI shape, Leo value serialization, visibility, encrypted output handles, and record helpers in TypeScript. Raw string execution remains available as an escape hatch for dynamic ABI situations, post-upgrade calls, or cases where the generated wrapper cannot yet model the call.
+
 `@lionden/plugin-leo` then generates TypeScript output when codegen is enabled:
 
 - `BaseContract.ts`
