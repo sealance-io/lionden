@@ -17,6 +17,7 @@ LionDen is a workspace monorepo with code grouped by responsibility:
 - `packages/plugin-deploy`: `deploy`, `upgrade`, `export`, constructor checks, and deployment state
 - `packages/plugin-test`: `test` and Vitest integration
 - `packages/create-lionden`: interactive scaffolding
+- `packages/test-internals`: private repo-owned test fakes, temp-project builders, contract LRE helpers, and shared mocks
 
 Top-level supporting paths:
 
@@ -26,6 +27,7 @@ Top-level supporting paths:
 - `examples/nft-registry`: structs, records, `loadFixture`, local mode
 - `examples/upgradeable-counter`: `@admin` constructor, upgrade flow, multi-network config
 - `examples/async-escrow`: typechain bindings in tests, escrow state machine
+- `examples/aleo-ports`: ported Aleo examples used for compatibility smoke coverage
 - `docs/`: focused implementation docs
 
 ## Contributor Entry Points
@@ -40,6 +42,7 @@ Useful starting points for common repo tasks:
 - network service injection: `packages/plugin-network/src/index.ts`
 - deployment state and task registration: `packages/plugin-deploy/src/index.ts`
 - test context: `packages/testing/src/test-context.ts`
+- private test fakes and builders: `packages/test-internals/src/index.ts`
 
 ## Examples
 
@@ -112,6 +115,8 @@ Use this doc for navigation only. For behavior-level detail:
 - test helpers: [`testing.md`](testing.md)
 - repo-wide test strategy and CI: [`testing-strategy.md`](testing-strategy.md)
 - JSON ABI schema and codegen types: [`json-abi.md`](json-abi.md)
+- Leo version compatibility: [`leo-version-compatibility.md`](leo-version-compatibility.md)
+- disposable bug-hunt probes: [`agent-bug-hunt-workflow.md`](agent-bug-hunt-workflow.md)
 - product goals and roadmap: [`vision-and-roadmap.md`](vision-and-roadmap.md)
 
 ## Design Direction
