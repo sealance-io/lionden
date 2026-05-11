@@ -13,6 +13,8 @@ npm run test:unit              # unit tests only
 npm run test:contract          # contract tests only
 npm run test:agent             # vitest run with the agent reporter
 npm run test:smoke             # example project smoke tests (requires build)
+npm run test:smoke:aleo-ports  # aleo-ports compatibility smoke suite
+npm run test:smoke:all         # all smoke suites
 npx vitest run packages/core   # run tests for a single package
 npx vitest run --reporter=agent packages/core   # targeted run with minimal agent output
 npx vitest run packages/core/src/hook-system.test.ts  # run a single test file
@@ -26,7 +28,7 @@ node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.
 
 ## Architecture at a Glance
 
-npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 11 packages, 6 examples. Requires Node `^20.19.0 || >=22.12.0` and Leo CLI v4 on `PATH`.
+npm workspaces monorepo, ESM-only (`"type": "module"`), TypeScript with composite project references. 12 packages, 7 top-level examples plus `examples/aleo-ports/*` (each port is its own workspace). Requires Node `^20.19.0 || >=22.12.0` and Leo CLI v4 on `PATH`.
 
 **Dependency flow** (each layer depends only on layers above it):
 
@@ -35,6 +37,7 @@ config                          zero deps — types + defineConfig()
 core                            config — plugins, hooks, tasks, config lifecycle, LRE
 leo-compiler / network          core — compiler pipeline / network+devnode
 testing                         core + network + leo-compiler
+test-internals                  core + network — repo-private test fakes, builders, shared mocks (not published)
 plugin-{leo,network,deploy,test}  register tasks using the layers above
 cli                             core + config — config discovery, argv parsing, task dispatch
 create-lionden                  standalone scaffolder (no runtime deps)
@@ -69,6 +72,7 @@ Key files for common subsystem navigation:
 | Plugin ordering | `packages/core/src/plugin-loader.ts` |
 | Task execution | `packages/core/src/task-runner.ts` |
 | Compile orchestration | `packages/leo-compiler/src/compiler.ts` |
+| Typechain codegen (wrapper template + generator) | `packages/leo-compiler/src/codegen/contract-wrapper.ts`, `packages/leo-compiler/src/codegen/typescript-generator.ts` |
 | Network service injection | `packages/plugin-network/src/index.ts` |
 | Deployment state + task registration | `packages/plugin-deploy/src/index.ts` |
 | Test context | `packages/testing/src/test-context.ts` |
