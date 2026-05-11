@@ -15,6 +15,7 @@ import { generateBaseContract } from "./typescript-generator.js";
 // The dynamically loaded BaseContract class
 let BaseContract: any;
 let Leo: any;
+let networkStub: any;
 let tmpDir: string;
 
 beforeAll(async () => {
@@ -30,12 +31,43 @@ beforeAll(async () => {
   });
 
   tmpDir = mkdtempSync(join(tmpdir(), "base-contract-test-"));
+
+  // The generated BaseContract imports decrypt helpers from @lionden/network.
+  // Side-load a runtime stub here so the dynamic import resolves; tests that
+  // exercise decrypt happy-path mock the stub explicitly.
+  const stubPath = join(tmpDir, "network-stub.mjs");
+  writeFileSync(stubPath, [
+    "export class NetworkRecordDecryptionError extends Error {",
+    "  constructor(message, ciphertextPrefix, cause) {",
+    "    super(message, cause === undefined ? undefined : { cause });",
+    "    this.name = 'NetworkRecordDecryptionError';",
+    "    this.kind = 'NetworkRecordDecryptionError';",
+    "    this.ciphertextPrefix = ciphertextPrefix;",
+    "  }",
+    "}",
+    "export let decryptRecordCiphertext = async () => { throw new NetworkRecordDecryptionError('stub', ''); };",
+    "export let deriveViewKey = async () => { throw new NetworkRecordDecryptionError('stub deriveViewKey', ''); };",
+    "export function __setDecryptStubs(stubs) {",
+    "  if (stubs.decryptRecordCiphertext) decryptRecordCiphertext = stubs.decryptRecordCiphertext;",
+    "  if (stubs.deriveViewKey) deriveViewKey = stubs.deriveViewKey;",
+    "}",
+  ].join("\n"));
+
   const outPath = join(tmpDir, "BaseContract.mjs");
-  writeFileSync(outPath, transpiled.outputText);
+  // Rewrite the bare-specifier import so Node can resolve it relative to tmpDir.
+  const rewritten = transpiled.outputText.replace(
+    /from\s+["']@lionden\/network["']/g,
+    `from "./network-stub.mjs"`,
+  );
+  writeFileSync(outPath, rewritten);
 
   const mod = await import(outPath);
   BaseContract = mod.BaseContract;
   Leo = mod.Leo;
+
+  // Import the stub module separately so tests can swap the decryption
+  // helper implementations via __setDecryptStubs (ESM live bindings).
+  networkStub = await import(stubPath);
 });
 
 afterAll(() => {
@@ -273,6 +305,7 @@ describe("BaseContract runtime", () => {
             txId: "at1ok",
             blockHeight: 12,
             status: "accepted",
+            transitions: [{ programId: "hello.aleo", transitionName: "main", rawOutputs: [] }],
           }),
         }),
       );
@@ -281,6 +314,7 @@ describe("BaseContract runtime", () => {
         txId: "at1ok",
         blockHeight: 12,
         status: "accepted",
+        rawOutputs: [],
       });
     });
 
@@ -293,6 +327,7 @@ describe("BaseContract runtime", () => {
             txId: "at1bad",
             blockHeight: 13,
             status: "rejected",
+            transitions: [],
           }),
         }),
       );
@@ -340,6 +375,7 @@ describe("BaseContract runtime", () => {
             txId: "different",
             blockHeight: "12",
             status: "pending",
+            transitions: [],
           }),
         }),
       );
@@ -832,6 +868,323 @@ describe("BaseContract runtime", () => {
           owner: "aleo1abc",
           metadata: "{ id: 1u64, name: test }",
         });
+      });
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Leo.dynamicRecord — typed dyn record encoder
+  // -------------------------------------------------------------------------
+
+  describe("Leo.dynamicRecord", () => {
+    const ADDR = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
+
+    it("composes a dyn record with mixed-visibility primitives", () => {
+      const dyn = Leo.dynamicRecord(
+        { owner: Leo.address(ADDR), amount: 100n, _nonce: Leo.group("0group"), _version: 0 },
+        {
+          owner: "address.private",
+          amount: "u128.private",
+          _nonce: "group.public",
+          _version: "u8.public",
+        },
+      );
+      expect(dyn).toBe(
+        `{ owner: ${ADDR}.private, amount: 100u128.private, _nonce: 0group.public, _version: 0u8.public }`,
+      );
+    });
+
+    it("throws when value has missing keys vs schema", () => {
+      expect(() =>
+        Leo.dynamicRecord(
+          { owner: Leo.address(ADDR) },
+          { owner: "address.private", amount: "u128.private" },
+        ),
+      ).toThrow(/Missing in value: \[amount\]/);
+    });
+
+    it("throws when value has extra keys vs schema", () => {
+      expect(() =>
+        Leo.dynamicRecord(
+          { owner: Leo.address(ADDR), surprise: 1 },
+          { owner: "address.private" },
+        ),
+      ).toThrow(/Extra in value: \[surprise\]/);
+    });
+
+    it("throws on malformed schema entry (missing visibility)", () => {
+      expect(() =>
+        Leo.dynamicRecord(
+          { x: 1 },
+          { x: "u8" } as any,
+        ),
+      ).toThrow(/must be "<type>\.<visibility>"/);
+    });
+
+    it("throws on invalid visibility", () => {
+      expect(() =>
+        Leo.dynamicRecord(
+          { x: 1 },
+          { x: "u8.weird" } as any,
+        ),
+      ).toThrow(/invalid visibility "weird"/);
+    });
+
+    it("range-checks integer values per bit width", () => {
+      expect(() =>
+        Leo.dynamicRecord(
+          { x: 300 },
+          { x: "u8.public" },
+        ),
+      ).toThrow(/u8 in range 0\.\.255/);
+    });
+
+    it("rejects non-object value", () => {
+      expect(() => Leo.dynamicRecord("not an object" as any, {})).toThrow(
+        /expected an object value/,
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // RecordDecryptionKey normalization + decryptRecord error wrapping
+  // -------------------------------------------------------------------------
+
+  describe("BaseContract.decryptRecord", () => {
+    it("throws RecordDecryptionKeyError on unrecognized string prefix", async () => {
+      await expect(
+        BaseContract.decryptRecord("record1abc", "deadbeef", (s: string) => s),
+      ).rejects.toMatchObject({
+        kind: "RecordDecryptionKeyError",
+        message: expect.stringContaining('"deadbeef"'),
+      });
+    });
+
+    it("throws RecordDecryptionKeyError on null key", async () => {
+      await expect(
+        BaseContract.decryptRecord("record1abc", null as any, (s: string) => s),
+      ).rejects.toMatchObject({
+        kind: "RecordDecryptionKeyError",
+      });
+    });
+
+    it("throws RecordDecryptionKeyError on object without viewKey/privateKey", async () => {
+      await expect(
+        BaseContract.decryptRecord("record1abc", { other: "x" } as any, (s: string) => s),
+      ).rejects.toMatchObject({
+        kind: "RecordDecryptionKeyError",
+      });
+    });
+
+    it("wraps SDK decrypt errors as LocalRecordDecryptionError", async () => {
+      // The stub at the top of this file throws NetworkRecordDecryptionError;
+      // BaseContract.decryptRecord must re-wrap as LocalRecordDecryptionError.
+      await expect(
+        BaseContract.decryptRecord(
+          "record1abc",
+          { viewKey: "AViewKey1zz" },
+          (s: string) => s,
+        ),
+      ).rejects.toMatchObject({
+        kind: "LocalRecordDecryptionError",
+      });
+    });
+
+    it("wraps deriveViewKey failures (bad APrivateKey1 input) as LocalRecordDecryptionError", async () => {
+      // Bad-prefix strings throw RecordDecryptionKeyError (input layer).
+      // A WELL-FORMED-prefix string that the SDK rejects mid-derivation should
+      // emerge as LocalRecordDecryptionError — not raw NetworkRecordDecryptionError.
+      const restore = networkStub.deriveViewKey;
+      try {
+        networkStub.__setDecryptStubs({
+          deriveViewKey: async () => {
+            throw new networkStub.NetworkRecordDecryptionError("sdk rejected pk", "");
+          },
+        });
+        await expect(
+          BaseContract.decryptRecord("record1abc", "APrivateKey1bogus", (s: string) => s),
+        ).rejects.toMatchObject({
+          kind: "LocalRecordDecryptionError",
+        });
+      } finally {
+        networkStub.__setDecryptStubs({ deriveViewKey: restore });
+      }
+    });
+
+    it("rejects {viewKey: 'bad'} at the input layer (RecordDecryptionKeyError, not LocalRecordDecryptionError)", async () => {
+      await expect(
+        BaseContract.decryptRecord(
+          "record1abc",
+          { viewKey: "deadbeef" },
+          (s: string) => s,
+        ),
+      ).rejects.toMatchObject({
+        kind: "RecordDecryptionKeyError",
+        message: expect.stringContaining("AViewKey1"),
+      });
+    });
+
+    it("rejects {privateKey: 'bad'} at the input layer (RecordDecryptionKeyError)", async () => {
+      await expect(
+        BaseContract.decryptRecord(
+          "record1abc",
+          { privateKey: "not-a-pk" },
+          (s: string) => s,
+        ),
+      ).rejects.toMatchObject({
+        kind: "RecordDecryptionKeyError",
+        message: expect.stringContaining("APrivateKey1"),
+      });
+    });
+
+    it("returns the deserialized record on successful decrypt", async () => {
+      const plaintext = "{ owner: aleo1abc.private, amount: 100u64.private, _nonce: 0group.public }";
+      const restore = networkStub.decryptRecordCiphertext;
+      try {
+        networkStub.__setDecryptStubs({
+          decryptRecordCiphertext: async () => plaintext,
+        });
+        const stubDeserialize = (s: string) => ({ kind: "Token", raw: s });
+        const result = await BaseContract.decryptRecord(
+          "record1abc",
+          { viewKey: "AViewKey1xyz" },
+          stubDeserialize,
+        );
+        expect(result).toEqual({ kind: "Token", raw: plaintext });
+      } finally {
+        networkStub.__setDecryptStubs({ decryptRecordCiphertext: restore });
+      }
+    });
+
+    it("preserves RECORD_RAW cache so the decrypted record round-trips through serialize", async () => {
+      // Drive the realistic codegen-emitted deserializer pattern: parseStruct
+      // then Object.defineProperty(_record, BaseContract.RECORD_RAW, ...).
+      const plaintext = "{ owner: aleo1abc.private, amount: 100u64.private, _nonce: 0group.public }";
+      const restore = networkStub.decryptRecordCiphertext;
+      try {
+        networkStub.__setDecryptStubs({
+          decryptRecordCiphertext: async () => plaintext,
+        });
+        // Mimic what generated deserialize<Name> does.
+        const deserialize = (value: string) => {
+          const fields = BaseContract.parseStruct(value);
+          const record: Record<string, unknown> = {
+            owner: BaseContract.parseAddress(fields.owner),
+            amount: BigInt(BaseContract.stripSuffix(fields.amount)),
+            _nonce: BaseContract.parseGroup(fields._nonce),
+          };
+          Object.defineProperty(record, BaseContract.RECORD_RAW, {
+            value,
+            enumerable: false,
+          });
+          return record;
+        };
+
+        const decrypted = await BaseContract.decryptRecord(
+          "record1abc",
+          { viewKey: "AViewKey1xyz" },
+          deserialize,
+        );
+
+        // RECORD_RAW symbol survives the decrypt → deserialize boundary so that
+        // a subsequent transition can re-serialize the record verbatim and
+        // avoid the visibility-suffix mangling problem.
+        expect((decrypted as Record<symbol, unknown>)[BaseContract.RECORD_RAW]).toBe(plaintext);
+      } finally {
+        networkStub.__setDecryptStubs({ decryptRecordCiphertext: restore });
+      }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // selectTransitionOutputs — fail-fast transition-identity filter
+  // -------------------------------------------------------------------------
+
+  describe("settleTransition transition-identity filter", () => {
+    it("populates rawOutputs from the matching transition on accepted", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+          waitForConfirmation: async () => ({
+            txId: "at1ok",
+            blockHeight: 5,
+            status: "accepted",
+            transitions: [
+              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [] },
+              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["record1xyz"] },
+            ],
+          }),
+        }),
+      );
+
+      await expect(contract.testAccepted("mint", [])).resolves.toMatchObject({
+        rawOutputs: ["record1xyz"],
+      });
+    });
+
+    it("throws TransactionShapeError on 0 matches when accepted", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1nope" }),
+          waitForConfirmation: async () => ({
+            txId: "at1nope",
+            blockHeight: 5,
+            status: "accepted",
+            transitions: [
+              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [] },
+            ],
+          }),
+        }),
+      );
+
+      await expect(contract.testAccepted("mint", [])).rejects.toMatchObject({
+        kind: "TransactionShapeError",
+        message: expect.stringContaining("did not contain a matching transition for token.aleo/mint"),
+      });
+    });
+
+    it("throws TransactionShapeError on >1 matches when accepted", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1dup" }),
+          waitForConfirmation: async () => ({
+            txId: "at1dup",
+            blockHeight: 5,
+            status: "accepted",
+            transitions: [
+              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["a"] },
+              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["b"] },
+            ],
+          }),
+        }),
+      );
+
+      await expect(contract.testAccepted("mint", [])).rejects.toMatchObject({
+        kind: "TransactionShapeError",
+        message: expect.stringContaining("contained 2 transitions matching"),
+      });
+    });
+
+    it("returns rawOutputs: [] on rejected with no matching transition (fee-only inclusion)", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1rej" }),
+          waitForConfirmation: async () => ({
+            txId: "at1rej",
+            blockHeight: 5,
+            status: "rejected",
+            transitions: [],
+          }),
+        }),
+      );
+
+      await expect(contract.testRejected("mint", [])).resolves.toMatchObject({
+        status: "rejected",
+        rawOutputs: [],
       });
     });
   });

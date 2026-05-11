@@ -109,6 +109,48 @@ Vitest remains a peer dependency of `@lionden/plugin-test`.
 
 This lets test suites stay concise without reimplementing common network checks.
 
+## Decrypting On-Chain Record Outputs
+
+Local execution (`.locally(...)`) returns typed records directly. On-chain results (`.submitted()`, `.settled()`, `.accepted()`, `.rejected()`) carry `rawOutputs: readonly string[]` — Leo-encoded literals from the specific transition the caller invoked. Record outputs are ciphertexts (`record1...`) and must be decrypted before reuse.
+
+Generated typechain emits an async `decrypt<RecordName>` free function per record declaration:
+
+```ts
+const mintTx = await token.mint_private.accepted({ receiver, amount: 100n });
+const ciphertext = mintTx.rawOutputs[0]!;
+const mintedRecord = await decryptToken(ciphertext, ctx.accounts[0]);
+// mintedRecord is a typed Token with RECORD_RAW cached → can pass back into the next transition's .locally(...) call.
+await token.transfer_private.locally({ token: mintedRecord, ... });
+```
+
+The decrypt key is polymorphic: raw `APrivateKey1...` / `AViewKey1...` string (auto-detected by prefix), `{ viewKey }`, or `{ privateKey }`. Lionden `SignerInput` and devnode account objects (`{ privateKey, address }`) structurally match the `{ privateKey }` arm. Unrecognized strings throw `RecordDecryptionKeyError` (input-layer error) rather than producing misleading SDK failures.
+
+### `SettledTransition.rawOutputs` Transition Identity
+
+`rawOutputs` is filtered from the confirmed transaction's `transitions[]` by `(programId, transitionName)` match:
+
+- **Accepted**: exactly one matching transition is required. 0 or >1 throws `TransactionShapeError` so test assertions don't pick the wrong outputs from a cross-program tx. Reentrant or recursive flows must use `ctx.raw.execute(...)`.
+- **Rejected**: Aleo converts rejected executes to fee-only on inclusion, so `rawOutputs` is typically `[]`. The selector stays permissive — if a matching transition entry IS present, its outputs are surfaced; if multiple match, the first is picked. This preserves `.rejected()` semantics for finalizer failures.
+
+## Building Dynamic Records (Leo v4 `dyn record` Inputs)
+
+For transitions whose Leo signature accepts `dyn record`, build the input with `Leo.dynamicRecord(value, schema)`. The schema is compile-time-validated via a `${LeoPrimitiveType}.${LeoVisibility}` template-literal union:
+
+```ts
+const tokenInput = Leo.dynamicRecord(
+  { owner: Leo.address(addr), amount: 100n, _nonce: Leo.group("0group"), _version: 0 },
+  {
+    owner: "address.private",
+    amount: "u128.private",
+    _nonce: "group.public",
+    _version: "u8.public",
+  },
+);
+await amm.add_liquidity.locally({ token: tokenInput, ... });
+```
+
+Values are range-checked at runtime (integer bit-widths, address prefix, etc.). Missing or extra keys vs. the schema throw `TransitionInputError` with the offending key listed. The raw string escape hatch `Leo.unsafe.dynamicRecord("{ owner: ... }")` remains available for pre-built literals.
+
 ## Strategy And Design Direction
 
 For the proposed repo-wide testing strategy, lane split, and rollout plan, use [`testing-strategy.md`](testing-strategy.md).

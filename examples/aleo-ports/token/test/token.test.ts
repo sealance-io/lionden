@@ -7,8 +7,9 @@
 //   - Pure transitions (mint_private, transfer_private) → typed local-mode call.
 //   - Final-only (mint_public, transfer_public) → accepted(); assert
 //     mapping after via typed getAccount(addr).
-//   - Mixed (transfer_private_to_public, transfer_public_to_private) →
-//     explicit local for record output and accepted for finalize.
+//   - Mixed transitions can either use local mode for plaintext previews, or
+//     accepted().rawOutputs + decryptToken(...) when the broadcasted record is
+//     the output that needs to be chained/asserted.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
@@ -16,7 +17,7 @@ import {
   clearFixtures,
   type TestContext,
 } from "@lionden/testing";
-import { createTokenContract } from "../typechain/Token.js";
+import { createTokenContract, decryptToken } from "../typechain/Token.js";
 
 async function deployToken() {
   const ctx = await setup();
@@ -106,15 +107,17 @@ describe("token.aleo", () => {
 
   it("transfer_public_to_private emits a private Token + decrements account[caller]", async () => {
     // alice has 110. Transfer 40 to bob (privately).
-    const [recvToken] = await token
+    const confirmed = await token
       .withSigner(alice())
-      .transfer_public_to_private.locally({ receiver: bob(), amount: 40n });
+      .transfer_public_to_private.accepted({ receiver: bob(), amount: 40n });
+    const ciphertext = confirmed.rawOutputs[0]!;
+
+    expect(ciphertext).toMatch(/^record1/);
+
+    const recvToken = await decryptToken(ciphertext, bob());
     expect(recvToken.owner).toBe(bob().address);
     expect(recvToken.amount).toBe(40n);
 
-    await token
-      .withSigner(alice())
-      .transfer_public_to_private.accepted({ receiver: bob(), amount: 40n });
     expect(await token.getAccount(alice())).toBe(70n);
   });
 });

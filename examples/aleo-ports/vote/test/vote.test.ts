@@ -3,11 +3,10 @@
 // The proposal id is derived inside propose via BHP256::hash_to_field(title),
 // so the test pulls it off a typed Proposal record returned from local mode.
 //
-// IMPORTANT: in lionden, onchain execution currently returns
-// `outputs: []` (see packages/network/src/connection.ts:294 TODO). For
-// transitions that BOTH return a record AND have a finalize, we run twice:
-//   - local mode → captures plaintext outputs (records, structs, primitives)
-//   - accepted() → fires finalize, has side effects
+// The tests intentionally use local mode when they need a plaintext Proposal
+// or Ticket before a later transition. Broadcasted record outputs can also be
+// recovered through accepted().rawOutputs + decrypt<Record>(...), as shown in
+// the token examples.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,

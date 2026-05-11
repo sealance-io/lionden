@@ -39,7 +39,7 @@ export function generateBindings(abi: ProgramABI, allAbis: readonly ProgramABI[]
   lines.push(`// Program: ${abi.program}`);
   lines.push("");
   lines.push(
-    'import { BaseContract, type AddressInput, type DynamicRecordInput, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+    'import { BaseContract, type AddressInput, type DynamicRecordInput, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
   );
   lines.push(...generateExternalImports(ctx));
   lines.push("");
@@ -76,6 +76,8 @@ export function generateBindings(abi: ProgramABI, allAbis: readonly ProgramABI[]
       lines.push(...generateRecordSerializer(record, ctx));
       lines.push("");
       lines.push(...generateRecordDeserializer(record, ctx));
+      lines.push("");
+      lines.push(...generateRecordDecryptor(record));
       lines.push("");
     }
   }
@@ -310,6 +312,15 @@ function generateStructDeserializer(struct: StructABI, ctx: GenerationContext): 
   lines.push("  };");
   lines.push("}");
   return lines;
+}
+
+function generateRecordDecryptor(record: RecordABI): string[] {
+  const name = pathToTsName(record.path);
+  return [
+    `export async function decrypt${name}(ciphertext: string, key: RecordDecryptionKey): Promise<${name}> {`,
+    `  return BaseContract.decryptRecord(ciphertext, key, deserialize${name});`,
+    "}",
+  ];
 }
 
 function generateRecordDeserializer(record: RecordABI, ctx: GenerationContext): string[] {

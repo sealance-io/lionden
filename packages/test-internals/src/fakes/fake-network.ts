@@ -3,6 +3,7 @@ import type {
   NetworkManager,
   TransitionCallResult,
   ConfirmedTransaction,
+  ConfirmedTransitionRecord,
   ExecuteOptions,
   DevnodeAccount,
 } from "@lionden/network";
@@ -55,6 +56,11 @@ export class FakeNetworkConnection implements NetworkConnection {
   private blockHeight: number;
   private txCounter = 0;
   private programSources = new Map<string, string>();
+  // Per-txId memo of the execute that produced it. Keeps waitForConfirmation
+  // returning a transitions[] entry that mirrors the originating execute,
+  // so broadcast → decrypt round-trips against the fake work the same way
+  // they do against devnode.
+  private confirmedTransitionByTxId = new Map<string, ConfirmedTransitionRecord>();
 
   constructor(options: FakeNetworkOptions = {}) {
     this.name = options.name ?? "devnode";
@@ -171,6 +177,16 @@ export class FakeNetworkConnection implements NetworkConnection {
     const response = this.executeResponses.get(key) ?? this.defaultExecuteResponse;
     const txId = response.txId ?? `at1fake${this.txCounter++}`;
     this.blockHeight++;
+    // Memo the originating transition so waitForConfirmation(txId) can mirror
+    // its outputs without the test having to wire transitions[] separately.
+    // Only memo for on-chain executes — local-mode executes don't broadcast.
+    if (options?.mode !== "local") {
+      this.confirmedTransitionByTxId.set(txId, {
+        programId,
+        transitionName,
+        rawOutputs: response.outputs,
+      });
+    }
     return { outputs: response.outputs, txId };
   }
 
@@ -183,10 +199,19 @@ export class FakeNetworkConnection implements NetworkConnection {
       args: [txId, timeout],
       timestamp: Date.now(),
     });
+    const status = this.confirmBehavior === "accept" ? "accepted" : "rejected";
+    // Rejected = fee-only on Aleo, so transitions[] is empty by convention.
+    const transitions: ConfirmedTransitionRecord[] =
+      status === "accepted"
+        ? this.confirmedTransitionByTxId.has(txId)
+          ? [this.confirmedTransitionByTxId.get(txId)!]
+          : []
+        : [];
     return {
       txId,
       blockHeight: this.blockHeight,
-      status: this.confirmBehavior === "accept" ? "accepted" : "rejected",
+      status,
+      transitions,
     };
   }
 

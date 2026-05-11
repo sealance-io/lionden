@@ -33,6 +33,7 @@ export function createMockConnection(
       txId: "at1mock",
       blockHeight: 10,
       status: "accepted",
+      transitions: [],
     }),
     getBlockHeight: vi.fn().mockResolvedValue(100),
     getProgramSource: vi.fn().mockResolvedValue(null),

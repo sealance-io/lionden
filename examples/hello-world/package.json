@@ -16,6 +16,7 @@
     "@lionden/cli": "*",
     "@lionden/config": "*",
     "@lionden/core": "*",
+    "@lionden/network": "*",
     "@lionden/plugin-deploy": "*",
     "@lionden/plugin-leo": "*",
     "@lionden/plugin-network": "*",

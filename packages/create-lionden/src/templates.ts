@@ -43,6 +43,7 @@ export function sharedFiles(projectName: string): TemplateFile[] {
             "@lionden/cli": "^0.1.0",
             "@lionden/config": "^0.1.0",
             "@lionden/core": "^0.1.0",
+            "@lionden/network": "^0.1.0",
             "@lionden/plugin-deploy": "^0.1.0",
             "@lionden/plugin-leo": "^0.1.0",
             "@lionden/plugin-network": "^0.1.0",

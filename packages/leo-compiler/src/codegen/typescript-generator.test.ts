@@ -19,6 +19,15 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
     "/virtual/BaseContract.ts": generateBaseContract(),
     [`/virtual/${programName}.ts`]: output,
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
+    "/virtual/network.d.ts": [
+      "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare class NetworkRecordDecryptionError extends Error {",
+      "  readonly kind: \"NetworkRecordDecryptionError\";",
+      "  readonly ciphertextPrefix: string;",
+      "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
+      "}",
+    ].join("\n"),
   };
 
   const options: ts.CompilerOptions = {
@@ -43,6 +52,13 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
       if (moduleName === "@lionden/core") {
         return {
           resolvedFileName: "/virtual/core.d.ts",
+          extension: ts.Extension.Dts,
+          isExternalLibraryImport: true,
+        };
+      }
+      if (moduleName === "@lionden/network") {
+        return {
+          resolvedFileName: "/virtual/network.d.ts",
           extension: ts.Extension.Dts,
           isExternalLibraryImport: true,
         };
@@ -147,6 +163,34 @@ describe("generateBindings", () => {
     expect(output).toContain("export function serializeToken(value: Token, context?: TransitionInputContext): string");
     // Should NOT use JSON.stringify
     expect(output).not.toContain("JSON.stringify");
+  });
+
+  it("emits an async decrypt<Name> free function per record", () => {
+    const output = generateBindings(SAMPLE_ABI);
+    expect(output).toContain(
+      "export async function decryptToken(ciphertext: string, key: RecordDecryptionKey): Promise<Token>",
+    );
+    expect(output).toContain("BaseContract.decryptRecord(ciphertext, key, deserializeToken);");
+  });
+
+  it("does NOT emit any decrypt helpers for record-less programs", () => {
+    const abiNoRecords: ProgramABI = {
+      ...SAMPLE_ABI,
+      records: [],
+      // mint/transfer reference Token outputs in SAMPLE_ABI; drop them so the
+      // generator stays valid without record metadata.
+      transitions: [
+        {
+          name: "ping",
+          is_async: false,
+          inputs: [],
+          outputs: [],
+        },
+      ],
+    };
+    const output = generateBindings(abiNoRecords);
+    expect(output).not.toContain("decryptToken");
+    expect(output).not.toMatch(/export async function decrypt\w+/);
   });
 
   it("serializes record nonce for valid record inputs", () => {

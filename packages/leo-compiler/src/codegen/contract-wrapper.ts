@@ -4,6 +4,11 @@
  */
 export const CONTRACT_WRAPPER_TEMPLATE = String.raw`
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import {
+  decryptRecordCiphertext,
+  deriveViewKey,
+  NetworkRecordDecryptionError,
+} from "@lionden/network";
 
 export type ExecutionMode = "local" | "onchain";
 
@@ -76,7 +81,52 @@ export interface SubmittedTransition {
 export interface SettledTransition extends SubmittedTransition {
   readonly blockHeight: number;
   readonly status: "accepted" | "rejected";
+  /**
+   * Raw Leo-encoded outputs of the SPECIFIC transition the caller invoked,
+   * filtered from the confirmed transaction's transitions[] by transition
+   * identity. Record outputs are ciphertexts (\`record1...\`) — pass them to
+   * the per-record \`decryptXxx(ciphertext, key)\` helpers to recover typed
+   * records.
+   *
+   * Accepted: exactly one matching transition is required (0 or >1 throws
+   * TransactionShapeError). rawOutputs is that transition's outputs.
+   *
+   * Rejected: typically \`[]\` because Aleo converts rejected executes to
+   * fee-only on inclusion (no execute transitions carried). The selector
+   * stays permissive — if a matching transition entry IS present, its
+   * outputs are surfaced instead of failing; if multiple match, the first
+   * is picked. This preserves \`.rejected()\` semantics for finalizer
+   * failures so the rejection itself isn't masked by a shape error.
+   */
+  readonly rawOutputs: readonly string[];
 }
+
+/**
+ * Accepts a raw key string (auto-detected by \`APrivateKey1...\` /
+ * \`AViewKey1...\` prefix), an object with \`viewKey\`, or an object with
+ * \`privateKey\` (lionden \`SignerInput\` and similar structures match the
+ * \`privateKey\` arm). Unrecognized strings throw \`RecordDecryptionKeyError\`
+ * rather than guessing.
+ */
+export type RecordDecryptionKey =
+  | string
+  | { readonly viewKey: string }
+  | { readonly privateKey: string };
+
+// Primitive types lionden has serializers/parsers for. "signature" is
+// intentionally excluded — no serializeSignature exists yet.
+export type LeoPrimitiveType =
+  | "address" | "boolean" | "field" | "group" | "scalar"
+  | "u8" | "u16" | "u32" | "u64" | "u128"
+  | "i8" | "i16" | "i32" | "i64" | "i128";
+
+export type LeoVisibility = "public" | "private";
+
+export type LeoFieldSchemaEntry = __LEO_FIELD_SCHEMA_ENTRY__;
+
+export type DynamicRecordSchema<T> = {
+  readonly [K in keyof T]: LeoFieldSchemaEntry;
+};
 
 export type TypechainErrorKind =
   | "TransitionInputError"
@@ -86,7 +136,9 @@ export type TypechainErrorKind =
   | "TransactionConfirmationTimeoutError"
   | "OnChainRejectedError"
   | "UnexpectedTransactionStatusError"
-  | "TransactionShapeError";
+  | "TransactionShapeError"
+  | "RecordDecryptionKeyError"
+  | "LocalRecordDecryptionError";
 
 export type TypechainErrorPhase =
   | "input"
@@ -167,6 +219,18 @@ export class UnexpectedTransactionStatusError extends LionDenTypechainError {
 export class TransactionShapeError extends LionDenTypechainError {
   constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
     super("TransactionShapeError", message, { ...context, phase: "shape" });
+  }
+}
+
+export class RecordDecryptionKeyError extends LionDenTypechainError {
+  constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
+    super("RecordDecryptionKeyError", message, { ...context, phase: "input" });
+  }
+}
+
+export class LocalRecordDecryptionError extends LionDenTypechainError {
+  constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
+    super("LocalRecordDecryptionError", message, { ...context, phase: "local" });
   }
 }
 
@@ -254,6 +318,32 @@ export const Leo = {
 
   identifier(value: string): LeoIdentifier {
     return brand<"Identifier">(BaseContract.parseIdentifier(BaseContract.serializeIdentifier(value, undefined)));
+  },
+
+  /**
+   * Build a typed Leo \`dyn record\` literal from a JS object and a
+   * per-field type+visibility schema. Schema entries are validated at
+   * compile time via the \`\${LeoPrimitiveType}.\${LeoVisibility}\` template
+   * union; values are validated and range-checked at runtime.
+   *
+   * Example:
+   *   const token = Leo.dynamicRecord({
+   *     owner: Leo.address(addr),
+   *     amount: 100n,
+   *     _nonce: Leo.group("0group"),
+   *     _version: 0,
+   *   }, {
+   *     owner: "address.private",
+   *     amount: "u128.private",
+   *     _nonce: "group.public",
+   *     _version: "u8.public",
+   *   });
+   */
+  dynamicRecord<T extends object>(value: T, schema: DynamicRecordSchema<T>): LeoDynamicRecord {
+    return brand<"DynamicRecord">(BaseContract.encodeDynamicRecord(
+      value as unknown as Record<string, unknown>,
+      schema as unknown as Record<string, LeoFieldSchemaEntry>,
+    ));
   },
 
   unsafe: {
@@ -441,10 +531,16 @@ export abstract class BaseContract {
           { programId: this.programId, transition: transitionName },
         );
       }
+      const rawOutputs = this.selectTransitionOutputs(
+        transitionName,
+        confirmed.status,
+        confirmed.transitions,
+      );
       return {
         txId: confirmed.txId,
         blockHeight: confirmed.blockHeight,
         status: confirmed.status,
+        rawOutputs,
       };
     } catch (error) {
       if (error instanceof LionDenTypechainError) throw error;
@@ -800,6 +896,211 @@ export abstract class BaseContract {
     return elements;
   }
 
+  /**
+   * Filter the confirmed transaction's transitions[] to the specific
+   * (programId, transitionName) the caller invoked, returning its rawOutputs.
+   *
+   * Accepted txs: fail-fast on 0 or >1 matches — the caller cannot safely
+   * pick the right outputs without unambiguous identity. Reentrant or
+   * recursive transitions hit this; reach for the raw escape hatch instead.
+   *
+   * Rejected txs: permissive (Aleo converts rejected execs to fee-only on
+   * inclusion, so transitions[] is usually empty). Returns [] when no match.
+   */
+  protected selectTransitionOutputs(
+    transitionName: string,
+    status: "accepted" | "rejected",
+    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly string[] }[] | undefined,
+  ): readonly string[] {
+    const list = transitions ?? [];
+    const matches = list.filter(
+      (t) => t.programId === this.programId && t.transitionName === transitionName,
+    );
+    if (status === "rejected") {
+      // Fee-only inclusion is the common rejected shape. Empty rawOutputs
+      // is expected; preserves .rejected() semantics for finalizer failures.
+      return matches.length > 0 ? matches[0]!.rawOutputs : [];
+    }
+    if (matches.length === 0) {
+      throw new TransactionShapeError(
+        "Confirmed transaction did not contain a matching transition for " + this.programId + "/" + transitionName + ". Available: " + list.map((t) => t.programId + "/" + t.transitionName).join(", ") + ".",
+        { programId: this.programId, transition: transitionName },
+      );
+    }
+    if (matches.length > 1) {
+      throw new TransactionShapeError(
+        "Confirmed transaction contained " + matches.length + " transitions matching " + this.programId + "/" + transitionName + ". Cannot pick outputs unambiguously; use raw.execute(...) for reentrant or recursive flows.",
+        { programId: this.programId, transition: transitionName },
+      );
+    }
+    return matches[0]!.rawOutputs;
+  }
+
+  /**
+   * Decrypt an Aleo record ciphertext into a typed record. Used by generated
+   * per-record \`decryptXxx\` free functions; can also be invoked directly
+   * for advanced cases (custom deserializers).
+   *
+   * Accepts a polymorphic key — string (auto-detected prefix), {viewKey},
+   * or {privateKey}. Throws RecordDecryptionKeyError on unrecognized shapes
+   * and LocalRecordDecryptionError when the SDK rejects the ciphertext or
+   * view-key combo (wrong account, malformed ciphertext, etc.).
+   */
+  static async decryptRecord<T>(
+    ciphertext: string,
+    key: RecordDecryptionKey,
+    deserialize: (plaintext: string) => T,
+  ): Promise<T> {
+    // Shape errors (bad object/string) are RecordDecryptionKeyError — caller
+    // input bug, surface as-is. SDK-level errors (bad APrivateKey1 string
+    // failing deriveViewKey, bad ciphertext, mismatched view key) are
+    // re-wrapped as LocalRecordDecryptionError so test assertions can match
+    // a single typechain-layer error class.
+    try {
+      const viewKey = await BaseContract.normalizeRecordDecryptionKey(key);
+      const plaintext = await decryptRecordCiphertext(ciphertext, viewKey);
+      return deserialize(plaintext);
+    } catch (cause: unknown) {
+      // RecordDecryptionKeyError and other typechain errors pass through.
+      if (cause instanceof LionDenTypechainError) throw cause;
+      const isNetworkErr =
+        cause instanceof NetworkRecordDecryptionError ||
+        (cause && typeof cause === "object" && (cause as { kind?: unknown }).kind === "NetworkRecordDecryptionError");
+      if (isNetworkErr) {
+        throw new LocalRecordDecryptionError(
+          "Failed to decrypt record ciphertext. The view key may not match the record's owner, or the ciphertext is malformed. Cause: " + errorMessage(cause),
+          { cause },
+        );
+      }
+      throw cause;
+    }
+  }
+
+  private static async normalizeRecordDecryptionKey(key: RecordDecryptionKey): Promise<string> {
+    if (typeof key === "string") {
+      const trimmed = key.trim();
+      if (trimmed.startsWith("AViewKey1")) return trimmed;
+      if (trimmed.startsWith("APrivateKey1")) return deriveViewKey(trimmed);
+      throw new RecordDecryptionKeyError(
+        "Decryption key string must start with \"APrivateKey1\" or \"AViewKey1\". Received prefix " + JSON.stringify(trimmed.slice(0, 16)) + ". To pass an opaque string, wrap in { viewKey } or { privateKey }.",
+      );
+    }
+    if (key && typeof key === "object") {
+      const viewKey = (key as { readonly viewKey?: unknown }).viewKey;
+      if (typeof viewKey === "string" && viewKey.length > 0) {
+        if (!viewKey.startsWith("AViewKey1")) {
+          throw new RecordDecryptionKeyError(
+            "{ viewKey } must start with \"AViewKey1\". Received prefix " + JSON.stringify(viewKey.slice(0, 16)) + ".",
+          );
+        }
+        return viewKey;
+      }
+      const privateKey = (key as { readonly privateKey?: unknown }).privateKey;
+      if (typeof privateKey === "string" && privateKey.length > 0) {
+        if (!privateKey.startsWith("APrivateKey1")) {
+          throw new RecordDecryptionKeyError(
+            "{ privateKey } must start with \"APrivateKey1\". Received prefix " + JSON.stringify(privateKey.slice(0, 16)) + ".",
+          );
+        }
+        return deriveViewKey(privateKey);
+      }
+    }
+    throw new RecordDecryptionKeyError(
+      "Decryption key must be a non-empty AViewKey1/APrivateKey1 string, or an object with a \`viewKey\` or \`privateKey\` field. Received " + (key === null ? "null" : typeof key) + ".",
+    );
+  }
+
+  /**
+   * Compose a Leo \`dyn record\` literal from a JS object and a per-field
+   * schema. Validates that schema and value have matching keys; dispatches
+   * each field through the existing typed serializer; appends the visibility
+   * suffix; brands the result. Synchronous — no SDK call.
+   */
+  static encodeDynamicRecord(
+    value: Record<string, unknown>,
+    schema: Record<string, LeoFieldSchemaEntry>,
+  ): string {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new TransitionInputError(
+        "Leo.dynamicRecord expected an object value. Received " + (value === null ? "null" : Array.isArray(value) ? "array" : typeof value) + ".",
+      );
+    }
+    if (typeof schema !== "object" || schema === null || Array.isArray(schema)) {
+      throw new TransitionInputError(
+        "Leo.dynamicRecord expected an object schema mapping field name to \"<type>.<visibility>\".",
+      );
+    }
+    const valueKeys = Object.keys(value);
+    const schemaKeys = Object.keys(schema);
+    const missing = schemaKeys.filter((k) => !valueKeys.includes(k));
+    const extra = valueKeys.filter((k) => !schemaKeys.includes(k));
+    if (missing.length > 0 || extra.length > 0) {
+      throw new TransitionInputError(
+        "Leo.dynamicRecord value and schema keys must match exactly. Missing in value: [" + missing.join(", ") + "]. Extra in value: [" + extra.join(", ") + "].",
+      );
+    }
+    const parts: string[] = [];
+    for (const fieldName of schemaKeys) {
+      const entry = schema[fieldName]!;
+      const split = entry.lastIndexOf(".");
+      if (split <= 0) {
+        throw new TransitionInputError(
+          "Leo.dynamicRecord schema entry for \"" + fieldName + "\" must be \"<type>.<visibility>\". Received " + JSON.stringify(entry) + ".",
+        );
+      }
+      const ty = entry.slice(0, split);
+      const viz = entry.slice(split + 1);
+      if (viz !== "public" && viz !== "private") {
+        throw new TransitionInputError(
+          "Leo.dynamicRecord schema entry for \"" + fieldName + "\" has invalid visibility \"" + viz + "\". Expected \"public\" or \"private\".",
+        );
+      }
+      const ctx: TransitionInputContext = { path: fieldName };
+      const serialized = BaseContract.serializeDynamicRecordField(value[fieldName], ty, ctx);
+      parts.push(fieldName + ": " + serialized + "." + viz);
+    }
+    return "{ " + parts.join(", ") + " }";
+  }
+
+  private static serializeDynamicRecordField(
+    value: unknown,
+    leoType: string,
+    ctx: TransitionInputContext,
+  ): string {
+    switch (leoType) {
+      case "address":
+        return BaseContract.serializeAddress(value, ctx);
+      case "boolean":
+        return BaseContract.serializeBoolean(value, ctx);
+      case "field":
+        return BaseContract.serializeField(value, ctx);
+      case "group":
+        return BaseContract.serializeGroup(value, ctx);
+      case "scalar":
+        return BaseContract.serializeScalar(value, ctx);
+      case "u8":
+      case "u16":
+      case "u32":
+      case "u64":
+      case "u128": {
+        const bits = parseInt(leoType.slice(1), 10) as 8 | 16 | 32 | 64 | 128;
+        return BaseContract.serializeUInt(value, bits, ctx);
+      }
+      case "i8":
+      case "i16":
+      case "i32":
+      case "i64":
+      case "i128": {
+        const bits = parseInt(leoType.slice(1), 10) as 8 | 16 | 32 | 64 | 128;
+        return BaseContract.serializeInt(value, bits, ctx);
+      }
+      default:
+        throw new TransitionInputError(
+          "Leo.dynamicRecord schema entry uses unsupported type \"" + leoType + "\". Supported: address, boolean, field, group, scalar, u8/u16/u32/u64/u128, i8/i16/i32/i64/i128.",
+        );
+    }
+  }
+
   static parseStruct(value: string): Record<string, string> {
     const trimmed = value.trim();
     const inner = trimmed.startsWith("{") && trimmed.endsWith("}")
@@ -847,4 +1148,13 @@ function isNetworkConfirmationTimeoutError(error: unknown): boolean {
   return candidate.kind === "NetworkConfirmationTimeoutError" ||
     candidate.name === "NetworkConfirmationTimeoutError";
 }
-`;
+`
+  // String.raw preserves backslash sequences as literals, so the template
+  // literal type for LeoFieldSchemaEntry cannot live inline (it would
+  // require unescaped backticks and ${} that close the outer template).
+  // Substitute the marker post-construction with a single-quoted literal
+  // that JS does NOT process as a template substitution.
+  .replace(
+    "__LEO_FIELD_SCHEMA_ENTRY__",
+    '`${LeoPrimitiveType}.${LeoVisibility}`',
+  );

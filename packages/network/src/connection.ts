@@ -12,6 +12,7 @@ import {
   type NetworkConnection,
   type TransitionCallResult,
   type ConfirmedTransaction,
+  type ConfirmedTransitionRecord,
   type ExecuteOptions,
 } from "./types.js";
 
@@ -23,6 +24,24 @@ export interface ConnectionOptions {
   privateKey?: string;
   /** API key for explorer/node authentication. */
   apiKey?: string;
+}
+
+/**
+ * Thrown when a 2xx response body fails to match the expected confirmed-tx
+ * shape (missing required fields, wrong types). Distinct from transient
+ * network errors — the polling loop must NOT retry on this class.
+ */
+export class TransactionShapeParseError extends Error {
+  readonly kind = "TransactionShapeParseError" as const;
+  readonly txId: string;
+  readonly field: string;
+
+  constructor(message: string, txId: string, field: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "TransactionShapeParseError";
+    this.txId = txId;
+    this.field = field;
+  }
 }
 
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 60_000;
@@ -315,14 +334,29 @@ export class AleoConnection implements NetworkConnection {
     const confirmUrl = `${base}/transaction/confirmed/${txId}`;
     let confirmedBody: Record<string, unknown> | null = null;
     while (Date.now() < deadline && confirmedBody === null) {
+      let response: Response | null = null;
       try {
-        const response = await fetch(confirmUrl, { headers: fetchHeaders });
-        if (response.ok) {
+        response = await fetch(confirmUrl, { headers: fetchHeaders });
+      } catch (err) {
+        // Transient transport errors — retry until deadline.
+        void err;
+      }
+      if (response?.ok) {
+        // Body parse is fail-fast: a malformed JSON body after a 200 OK is a
+        // protocol-level shape mismatch, not a transient retry. (A 200 OK
+        // with parseable JSON but wrong shape is caught below by
+        // parseConfirmedTransitions and also surfaces immediately.)
+        try {
           confirmedBody = (await response.json()) as Record<string, unknown>;
-          break;
+        } catch (cause) {
+          throw new TransactionShapeParseError(
+            `Transaction ${txId} confirmed body is not valid JSON`,
+            txId,
+            "body",
+            cause,
+          );
         }
-      } catch {
-        // Not confirmed yet
+        break;
       }
       await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
@@ -341,6 +375,12 @@ export class AleoConnection implements NetworkConnection {
     const txType = txData?.["type"] ?? confirmedBody["type"];
     const status: "accepted" | "rejected" =
       txType === "fee" ? "rejected" : "accepted";
+
+    // Parse execute transitions. For fee-only rejected txs, the original
+    // execute transitions are not carried by the chain, so transitions: [].
+    // For accepted execute txs, missing/malformed transition data fails
+    // fast (TransactionShapeParseError) rather than silently returning [].
+    const transitions = parseConfirmedTransitions(txData, txId, txType);
 
     // Phase 2: resolve the containing block's height.
     //   step a: GET /<network>/find/blockHash/<txId>  -> JSON-encoded block hash
@@ -417,7 +457,7 @@ export class AleoConnection implements NetworkConnection {
       );
     }
 
-    return { txId, blockHeight, status };
+    return { txId, blockHeight, status, transitions };
   }
 
   // Assigned dynamically for devnode connections only
@@ -550,6 +590,133 @@ async function fetchProgramImports(
     imports[importIds[i]!] = sources[i]!;
   }
   return imports;
+}
+
+/**
+ * Parse confirmed-transaction body into typed ConfirmedTransitionRecord[].
+ *
+ * Shape (accepted execute):
+ *   transaction.execution.transitions[] with each entry having:
+ *     program: "name.aleo", function: "func", outputs: [{type, id, value, ...}]
+ *
+ * Shape (rejected → fee-only / deploy):
+ *   no `execution` field. Returns [].
+ *
+ * Throws TransactionShapeParseError on:
+ *   - txType === "execute" with missing/malformed execution or transitions
+ *     (would silently lose typed outputs otherwise)
+ *   - any malformed transition entry (missing program/function, non-array
+ *     outputs, non-string output.value)
+ */
+function parseConfirmedTransitions(
+  txData: Record<string, unknown> | undefined,
+  txId: string,
+  outerTxType: unknown,
+): ConfirmedTransitionRecord[] {
+  // Strictness signal: the txData object itself self-identifies as
+  // "execute". If only the outer body claims "execute" (legacy fallback) or
+  // there's no transaction object at all, stay tolerant — there's nothing
+  // to validate against.
+  void outerTxType;
+  if (!txData) return [];
+  const isExecute = txData["type"] === "execute";
+
+  const execution = txData["execution"] as Record<string, unknown> | undefined;
+  if (!execution) {
+    if (isExecute) {
+      throw new TransactionShapeParseError(
+        `Transaction ${txId}: type is "execute" but transaction.execution is missing.`,
+        txId,
+        "transaction.execution",
+      );
+    }
+    return [];
+  }
+
+  const rawTransitions = execution["transitions"];
+  if (rawTransitions === undefined || rawTransitions === null) {
+    if (isExecute) {
+      throw new TransactionShapeParseError(
+        `Transaction ${txId}: type is "execute" but transaction.execution.transitions is missing.`,
+        txId,
+        "transaction.execution.transitions",
+      );
+    }
+    return [];
+  }
+  if (!Array.isArray(rawTransitions)) {
+    throw new TransactionShapeParseError(
+      `Transaction ${txId}: transaction.execution.transitions is not an array (got ${typeof rawTransitions}).`,
+      txId,
+      "transaction.execution.transitions",
+    );
+  }
+
+  return rawTransitions.map((entry, index) => parseTransition(entry, txId, index));
+}
+
+function parseTransition(
+  entry: unknown,
+  txId: string,
+  index: number,
+): ConfirmedTransitionRecord {
+  const path = `transaction.execution.transitions[${index}]`;
+  if (typeof entry !== "object" || entry === null) {
+    throw new TransactionShapeParseError(
+      `Transaction ${txId}: ${path} is not an object.`,
+      txId,
+      path,
+    );
+  }
+  const obj = entry as Record<string, unknown>;
+  const programId = obj["program"];
+  if (typeof programId !== "string" || programId.length === 0) {
+    throw new TransactionShapeParseError(
+      `Transaction ${txId}: ${path}.program is missing or not a string.`,
+      txId,
+      `${path}.program`,
+    );
+  }
+  const transitionName = obj["function"];
+  if (typeof transitionName !== "string" || transitionName.length === 0) {
+    throw new TransactionShapeParseError(
+      `Transaction ${txId}: ${path}.function is missing or not a string.`,
+      txId,
+      `${path}.function`,
+    );
+  }
+  const rawOutputs = obj["outputs"];
+  if (rawOutputs === undefined || rawOutputs === null) {
+    // Transition with no outputs is valid (some transitions return nothing).
+    return { programId, transitionName, rawOutputs: [] };
+  }
+  if (!Array.isArray(rawOutputs)) {
+    throw new TransactionShapeParseError(
+      `Transaction ${txId}: ${path}.outputs is not an array.`,
+      txId,
+      `${path}.outputs`,
+    );
+  }
+  const outputValues = rawOutputs.map((output, outputIndex) => {
+    if (typeof output !== "object" || output === null) {
+      throw new TransactionShapeParseError(
+        `Transaction ${txId}: ${path}.outputs[${outputIndex}] is not an object.`,
+        txId,
+        `${path}.outputs[${outputIndex}]`,
+      );
+    }
+    const value = (output as Record<string, unknown>)["value"];
+    if (typeof value !== "string") {
+      throw new TransactionShapeParseError(
+        `Transaction ${txId}: ${path}.outputs[${outputIndex}].value is missing or not a string.`,
+        txId,
+        `${path}.outputs[${outputIndex}].value`,
+      );
+    }
+    return value;
+  });
+
+  return { programId, transitionName, rawOutputs: outputValues };
 }
 
 function extractLocalExecutionOutputs(result: unknown): string[] {

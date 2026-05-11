@@ -6,9 +6,10 @@
 //   4. bank.withdraw(user, 10, 0, 0) → (Token{user,10}, balances[hash(user)]-=10)
 //
 // The bank is hard-coded to `aleo1rhgdu77…` in the program, which matches
-// devnode account-0. Pattern: when a transition both returns a record AND
-// has a finalize, run twice — local for typed plaintext outputs, broadcast
-// for finalize side effects.
+// devnode account-0. This port keeps the local+accepted pattern where the
+// test wants a plaintext record and a separate finalize side effect. Newer
+// rawOutputs + decrypt<Record>(...) flows are demonstrated in the token
+// examples where the broadcasted private record is the value under test.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
