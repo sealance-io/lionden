@@ -7,11 +7,12 @@
 
 import type { AleoNetwork } from "@lionden/config";
 import type { SdkObjects, SignerSdkObjects } from "./sdk-adapter.js";
-import type {
-  NetworkConnection,
-  TransitionCallResult,
-  ConfirmedTransaction,
-  ExecuteOptions,
+import {
+  NetworkConfirmationTimeoutError,
+  type NetworkConnection,
+  type TransitionCallResult,
+  type ConfirmedTransaction,
+  type ExecuteOptions,
 } from "./types.js";
 
 export interface ConnectionOptions {
@@ -326,8 +327,9 @@ export class AleoConnection implements NetworkConnection {
       await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
     if (confirmedBody === null) {
-      throw new Error(
+      throw new NetworkConfirmationTimeoutError(
         `Transaction ${txId} not confirmed within ${effectiveTimeout}ms`,
+        { txId, timeout: effectiveTimeout, stage: "confirmed" },
       );
     }
 
@@ -365,8 +367,9 @@ export class AleoConnection implements NetworkConnection {
       await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
     if (blockHash === null) {
-      throw new Error(
+      throw new NetworkConfirmationTimeoutError(
         `Transaction ${txId} confirmed but block-hash lookup did not resolve within ${effectiveTimeout}ms`,
+        { txId, timeout: effectiveTimeout, stage: "blockHash" },
       );
     }
 
@@ -408,8 +411,9 @@ export class AleoConnection implements NetworkConnection {
       await sleep(CONFIRMATION_POLL_INTERVAL_MS);
     }
     if (blockHeight === null) {
-      throw new Error(
+      throw new NetworkConfirmationTimeoutError(
         `Transaction ${txId} confirmed but block height could not be resolved within ${effectiveTimeout}ms`,
+        { txId, timeout: effectiveTimeout, stage: "blockHeight" },
       );
     }
 

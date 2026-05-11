@@ -300,6 +300,10 @@ export class FakeNetworkManager implements NetworkManager {
     return this.requireConnection().getMappingValue(programId, mappingName, key);
   }
 
+  async waitForConfirmation(txId: string, timeout?: number) {
+    return this.requireConnection().waitForConfirmation(txId, timeout);
+  }
+
   private requireConnection(): FakeNetworkConnection {
     if (!this.activeConnection) {
       throw new Error(

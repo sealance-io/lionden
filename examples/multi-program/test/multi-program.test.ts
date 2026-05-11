@@ -40,27 +40,27 @@ afterAll(async () => {
 
 describe("treasury program", () => {
   const treasury = createTreasury();
-  const signer = () => ctx!.accounts[0]!.address;
+  const signer = () => ctx!.accounts[0]!;
 
   beforeAll(() => {
     treasury.connect(ctx!.lre);
   });
 
   it("deposits funds for the signer", async () => {
-    await treasury.depositBroadcast(500n);
+    await treasury.deposit.accepted({ amount: 500n });
 
     expect(await treasury.getDeposits(signer())).toBe(500n);
   });
 
   it("accumulates multiple deposits", async () => {
-    await treasury.depositBroadcast(300n);
+    await treasury.deposit.accepted({ amount: 300n });
 
     // 500 from previous test + 300
     expect(await treasury.getDeposits(signer())).toBe(800n);
   });
 
   it("withdraws funds for the signer", async () => {
-    await treasury.withdrawBroadcast(200n);
+    await treasury.withdraw.accepted({ amount: 200n });
 
     // 800 - 200
     expect(await treasury.getDeposits(signer())).toBe(600n);
@@ -70,7 +70,7 @@ describe("treasury program", () => {
 describe("rewards program", () => {
   const treasury = createTreasury();
   const rewards = createRewards();
-  const signer = () => ctx!.accounts[0]!.address;
+  const signer = () => ctx!.accounts[0]!;
 
   beforeAll(() => {
     treasury.connect(ctx!.lre);
@@ -78,13 +78,13 @@ describe("rewards program", () => {
   });
 
   it("earns reward points", async () => {
-    await rewards.earn_pointsBroadcast(75n);
+    await rewards.earn_points.accepted({ amount: 75n });
 
     expect(await rewards.getPoints(signer())).toBe(75n);
   });
 
   it("accumulates points across calls", async () => {
-    await rewards.earn_pointsBroadcast(50n);
+    await rewards.earn_points.accepted({ amount: 50n });
 
     // 75 + 50 = 125
     expect(await rewards.getPoints(signer())).toBe(125n);
@@ -99,7 +99,7 @@ describe("rewards program", () => {
       // Signer has 125 points (>= 100 threshold), so claiming should succeed.
       // claim_reward calls treasury.aleo::deposit() cross-program.
       // Both programs use self.signer, so the deposit is keyed by account-0.
-      await rewards.claim_rewardBroadcast(1000n);
+      await rewards.claim_reward.accepted({ reward_amount: 1000n });
 
       // Verify claimed flag is set
       expect(await rewards.getClaimed(signer())).toBe(true);

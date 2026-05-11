@@ -20,6 +20,30 @@ export interface ConfirmedTransaction {
   readonly status: "accepted" | "rejected";
 }
 
+export type ConfirmationTimeoutStage = "confirmed" | "blockHash" | "blockHeight";
+
+export interface NetworkConfirmationTimeoutContext {
+  readonly txId: string;
+  readonly timeout: number;
+  readonly stage: ConfirmationTimeoutStage;
+  readonly cause?: unknown;
+}
+
+export class NetworkConfirmationTimeoutError extends Error {
+  readonly kind = "NetworkConfirmationTimeoutError" as const;
+  readonly txId: string;
+  readonly timeout: number;
+  readonly stage: ConfirmationTimeoutStage;
+
+  constructor(message: string, context: NetworkConfirmationTimeoutContext) {
+    super(message, context.cause === undefined ? undefined : { cause: context.cause });
+    this.name = "NetworkConfirmationTimeoutError";
+    this.txId = context.txId;
+    this.timeout = context.timeout;
+    this.stage = context.stage;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Signer
 // ---------------------------------------------------------------------------
@@ -168,6 +192,15 @@ export interface NetworkManager {
     mappingName: string,
     key: string,
   ): Promise<string | null>;
+
+  /**
+   * Wait for a transaction on the active connection.
+   * Convenience method — delegates to getConnection().waitForConfirmation().
+   */
+  waitForConfirmation(
+    txId: string,
+    timeout?: number,
+  ): Promise<ConfirmedTransaction>;
 }
 
 // ---------------------------------------------------------------------------

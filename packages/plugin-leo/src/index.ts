@@ -127,9 +127,10 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       );
 
       // Generate per-program bindings
+      const allAbis = programResults.map((result) => result.abi);
       for (const result of programResults) {
         const className = programIdToClassName(result.unit.programId);
-        const bindings = generateBindings(result.abi);
+        const bindings = generateBindings(result.abi, allAbis);
         fs.writeFileSync(
           path.join(typechainDir, `${className}.ts`),
           bindings,
@@ -141,7 +142,7 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
         const className = programIdToClassName(r.unit.programId);
         return `export * from "./${className}.js";`;
       });
-      exports.unshift('export { BaseContract } from "./BaseContract.js";');
+      exports.unshift('export * from "./BaseContract.js";');
       fs.writeFileSync(
         path.join(typechainDir, "index.ts"),
         exports.join("\n") + "\n",

@@ -71,7 +71,7 @@ describe("timelock_example.aleo", () => {
   });
 
   it("v1 deploy succeeded — main(2, 3) returns 5", async () => {
-    expect(await timelock.main(2, 3)).toBe(5);
+    expect(await timelock.main.locally({ a: 2, b: 3 })).toBe(5);
   });
 
   it("upgrade succeeds once block.height crosses the threshold", async () => {
@@ -102,9 +102,9 @@ describe("timelock_example.aleo", () => {
       await ctx!.lre.tasks.run("upgrade", { program: "timelock_example" });
 
       // The v2-only `subtract` transition isn't on the typed wrapper class
-      // loaded at suite startup (typechain reflects v1). Fall back to
-      // ctx.execute for the post-upgrade ABI addition.
-      const sub = await ctx!.execute(
+      // loaded at suite startup (typechain reflects v1). Use the explicit
+      // raw escape hatch for the post-upgrade ABI addition.
+      const sub = await ctx!.raw.execute(
         "timelock_example.aleo",
         "subtract",
         ["10u32", "3u32"],

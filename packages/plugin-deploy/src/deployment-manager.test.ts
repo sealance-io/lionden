@@ -105,6 +105,7 @@ function makeNetworkManager(connection = createMockConnection()): NetworkManager
     getNamedAccounts: vi.fn().mockReturnValue({}),
     execute: vi.fn(),
     getMappingValue: vi.fn(),
+    waitForConfirmation: vi.fn(),
   };
 }
 
@@ -200,6 +201,7 @@ describe("devnode: getDeployment validates on-chain", () => {
       getNamedAccounts: vi.fn().mockReturnValue({}),
       execute: vi.fn(),
       getMappingValue: vi.fn(),
+      waitForConfirmation: vi.fn(),
     };
     const dm2 = new DeploymentManagerImpl(makeConfig(), () => managerWithNull, makeArtifactStore());
 

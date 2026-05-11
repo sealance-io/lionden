@@ -43,21 +43,21 @@ afterAll(async () => {
 
 describe("counter v1", () => {
   const counter = createCounter();
-  const signer = () => ctx!.accounts[0]!.address;
+  const signer = () => ctx!.accounts[0]!;
 
   beforeAll(() => {
     counter.connect(ctx!.lre);
   });
 
   it("increments the counter", async () => {
-    await counter.incrementBroadcast();
-    await counter.incrementBroadcast();
+    await counter.increment.accepted();
+    await counter.increment.accepted();
 
     expect(await counter.getCounters(signer())).toBe(2n);
   });
 
   it("verifies account balance", async () => {
-    await assertBalanceAtLeast(ctx!.connection, signer(), 0n);
+    await assertBalanceAtLeast(ctx!.connection, signer().address, 0n);
   });
 
   it("verifies block height has advanced", async () => {
@@ -67,7 +67,7 @@ describe("counter v1", () => {
 
 describe("upgrade to v2", () => {
   const counter = createCounter();
-  const signer = () => ctx!.accounts[0]!.address;
+  const signer = () => ctx!.accounts[0]!;
   const programPath = path.resolve(
     __dirname,
     "..",
@@ -93,15 +93,15 @@ describe("upgrade to v2", () => {
 
       // The v2 transition `decrement` and v2 mapping `decrements` are absent
       // from the typechain class loaded by this test process (compiled from
-      // v1 source at suite startup). Use the string-based ctx APIs for those
+      // v1 source at suite startup). Use the explicit raw escape hatch for those
       // post-upgrade ABI additions; v1 calls keep using the typed wrapper.
-      await ctx!.execute("counter.aleo", "decrement", []);
+      await ctx!.raw.execute("counter.aleo", "decrement", []);
 
       await assertMappingValue(
         ctx!.connection,
         "counter.aleo",
         "decrements",
-        signer(),
+        signer().address,
         "1u64",
       );
 
@@ -109,7 +109,7 @@ describe("upgrade to v2", () => {
       expect(await counter.getCounters(signer())).toBe(2n);
 
       // Old v1 transition still works post-upgrade
-      await counter.incrementBroadcast();
+      await counter.increment.accepted();
 
       expect(await counter.getCounters(signer())).toBe(3n);
     } finally {

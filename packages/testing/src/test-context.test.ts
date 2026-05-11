@@ -49,6 +49,7 @@ function mockLre(): LionDenRuntimeEnvironment {
     getNamedAccounts: vi.fn().mockReturnValue({}),
     execute: vi.fn(),
     getMappingValue: vi.fn(),
+    waitForConfirmation: vi.fn(),
   };
 
   return {
@@ -325,6 +326,26 @@ describe("test-context", () => {
       expect(ctx.connection.execute).toHaveBeenCalledWith(
         "hello.aleo", "main", [], { mode: "onchain", fee: 500, prove: false },
       );
+    });
+  });
+
+  describe("ctx.raw.execute", () => {
+    it("exposes the explicit raw execution escape hatch", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.raw.execute("hello.aleo", "post_upgrade", ["1u32"], { mode: "local" });
+
+      expect(ctx.connection.execute).toHaveBeenCalledWith(
+        "hello.aleo", "post_upgrade", ["1u32"], { mode: "local", fee: undefined, prove: false },
+      );
+    });
+
+    it("uses the same implementation as the compatibility ctx.execute helper", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      expect(ctx.raw.execute).toBe(ctx.execute);
     });
   });
 

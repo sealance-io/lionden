@@ -20,6 +20,7 @@ vi.mock("./sdk-adapter.js", () => ({
 }));
 
 import { AleoConnection } from "./connection.js";
+import { NetworkConfirmationTimeoutError } from "./types.js";
 
 function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>) {
   return new AleoConnection({
@@ -698,6 +699,13 @@ describe("AleoConnection", () => {
       await vi.advanceTimersByTimeAsync(4_000);
 
       await expect(promise).rejects.toThrow("not confirmed within 3000ms");
+      await expect(promise).rejects.toMatchObject({
+        kind: "NetworkConfirmationTimeoutError",
+        txId: "at1test",
+        timeout: 3_000,
+        stage: "confirmed",
+      });
+      await expect(promise).rejects.toBeInstanceOf(NetworkConfirmationTimeoutError);
     });
 
     it("uses default 60s timeout when none specified", async () => {
@@ -785,6 +793,10 @@ describe("AleoConnection", () => {
       await expect(promise).rejects.toThrow(
         "block-hash lookup did not resolve",
       );
+      await expect(promise).rejects.toMatchObject({
+        kind: "NetworkConfirmationTimeoutError",
+        stage: "blockHash",
+      });
     });
 
     it("throws if /block/<hash> never returns ok before the deadline (fail-closed)", async () => {
@@ -815,6 +827,10 @@ describe("AleoConnection", () => {
       await expect(promise).rejects.toThrow(
         "block height could not be resolved",
       );
+      await expect(promise).rejects.toMatchObject({
+        kind: "NetworkConfirmationTimeoutError",
+        stage: "blockHeight",
+      });
     });
 
     it("throws if /block/<hash> returns 200 but header.metadata.height is missing", async () => {

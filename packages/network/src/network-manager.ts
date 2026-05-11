@@ -131,6 +131,11 @@ export class NetworkManagerImpl implements NetworkManager {
     return conn.getMappingValue(programId, mappingName, key);
   }
 
+  async waitForConfirmation(txId: string, timeout?: number) {
+    const conn = this.requireConnection();
+    return conn.waitForConfirmation(txId, timeout);
+  }
+
   private requireConnection(): NetworkConnection {
     if (!this.activeConnection) {
       throw new Error(

@@ -29,7 +29,10 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
   const { programId } = await ctx.deploy("token");
 
   const token = createTokenContract().connect(ctx.lre);
-  await token.withSigner(deployer).mint_publicBroadcast(treasury.address, INITIAL_SUPPLY);
+  await token.withSigner(deployer).mint_public.accepted({
+    receiver: treasury,
+    amount: INITIAL_SUPPLY,
+  });
 
   return { programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };

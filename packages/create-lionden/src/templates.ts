@@ -161,7 +161,7 @@ describe("hello program", () => {
   });
 
   it("adds two numbers", async () => {
-    expect(await hello.main(3, 5)).toBe(8);
+    expect(await hello.main.locally({ a: 3, b: 5 })).toBe(8);
   });
 });
 `;
@@ -216,7 +216,10 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
   const { programId } = await ctx.deploy("token");
 
   const token = createTokenContract().connect(ctx.lre);
-  await token.withSigner(deployer).mint_publicBroadcast(treasury.address, INITIAL_SUPPLY);
+  await token.withSigner(deployer).mint_public.accepted({
+    receiver: treasury,
+    amount: INITIAL_SUPPLY,
+  });
 
   return { programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };
@@ -337,31 +340,31 @@ describe("token program", () => {
 
   it("recipe minted initial supply to treasury", async () => {
     const treasury = ctx!.named.address("treasury");
-    expect(await token.getBalances(treasury.address)).toBe(1_000_000n);
+    expect(await token.getBalances(treasury)).toBe(1_000_000n);
   });
 
   it("transfers public tokens from a different signer", async () => {
     const account1 = ctx!.accounts[1]!;
-    const receiver = ctx!.accounts[2]!.address;
+    const receiver = ctx!.accounts[2]!;
 
-    const balance1Before = (await token.getBalances(account1.address)) ?? 0n;
+    const balance1Before = (await token.getBalances(account1)) ?? 0n;
 
     // Mint tokens to account-1 (default signer is account-0)
-    await token.mint_publicBroadcast(account1.address, 5000n);
+    await token.mint_public.accepted({ receiver: account1, amount: 5000n });
 
     // transfer_public reads self.signer to determine the sender.
     // withSigner switches the transaction signer to account-1.
-    await token.withSigner(account1).transfer_publicBroadcast(receiver, 2000n);
+    await token.withSigner(account1).transfer_public.accepted({ receiver, amount: 2000n });
 
     // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
-    expect(await token.getBalances(account1.address)).toBe(balance1Before + 3000n);
+    expect(await token.getBalances(account1)).toBe(balance1Before + 3000n);
   });
 
   it("mints private tokens as a typed Token record", async () => {
-    const receiver = ctx!.accounts[1]!.address;
-    const record = await token.mint_private(receiver, 100n);
+    const receiver = ctx!.accounts[1]!;
+    const record = await token.mint_private.locally({ receiver, amount: 100n });
     // Owner comes back with a \`.private\` visibility suffix on record outputs.
-    expect(record.owner.startsWith(receiver)).toBe(true);
+    expect(record.owner.startsWith(receiver.address)).toBe(true);
     expect(record.amount).toBe(100n);
   });
 

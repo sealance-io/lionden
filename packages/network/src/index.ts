@@ -7,7 +7,10 @@ export type {
   ConfirmedTransaction,
   ExecuteOptions,
   DevnodeStartOptions,
+  ConfirmationTimeoutStage,
+  NetworkConfirmationTimeoutContext,
 } from "./types.js";
+export { NetworkConfirmationTimeoutError } from "./types.js";
 
 export { AleoConnection, type ConnectionOptions } from "./connection.js";
 export { NetworkManagerImpl } from "./network-manager.js";
