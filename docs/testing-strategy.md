@@ -587,8 +587,9 @@ The current root scripts are:
     "test:contract": "vitest run --project contract",
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
-    "test:smoke": "<six curated examples via packages/cli/src/bin.ts --config ... test>",
-    "test:smoke:aleo-ports": "<ported Aleo examples via packages/cli/src/bin.ts --config ... test>"
+    "test:smoke": "node scripts/run-smoke-examples.mjs core",
+    "test:smoke:aleo-ports": "node scripts/run-smoke-examples.mjs aleo-ports",
+    "test:smoke:all": "node scripts/run-smoke-examples.mjs all"
   }
 }
 ```
@@ -603,7 +604,7 @@ Add this script when proof-specific tests are isolated:
 }
 ```
 
-The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests use `--config` to point the CLI at each example's config file, since the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`. Note that the smoke scripts hardcode example config paths — they need maintenance when examples are added or removed.
+The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests delegate to `scripts/run-smoke-examples.mjs`, which invokes the CLI with `--config` for each example because the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. For each example, the runner compiles, runs `tsc -p <example>/tsconfig.json --noEmit`, then runs `lionden test`; pass `--no-typecheck` to skip the TypeScript check during local debugging. The runner keeps the curated core example list explicit and discovers `examples/aleo-ports/*/lionden.config.ts` dynamically. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`.
 
 ## Vitest Project Configuration
 
@@ -664,7 +665,7 @@ Recommended policy:
 Status: mostly complete.
 
 - this strategy doc exists
-- root scripts expose `test`, `test:unit`, `test:contract`, `test:smoke`, and `test:smoke:aleo-ports`
+- root scripts expose `test`, `test:unit`, `test:contract`, `test:smoke`, `test:smoke:aleo-ports`, and `test:smoke:all`
 - current tests remain colocated with owning packages and are classified through Vitest project names plus filename conventions
 
 ### Phase 1: Example Smoke Cleanup

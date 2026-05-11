@@ -115,6 +115,7 @@ describe("templates", () => {
       const tsconfig = files.find((f) => f.path === "tsconfig.json");
       expect(tsconfig).toBeDefined();
       expect(tsconfig!.content).toContain("ES2024");
+      expect(tsconfig!.content).toContain("typechain/**/*.ts");
     });
 
     it("includes .gitignore", () => {

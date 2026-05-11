@@ -9,5 +9,11 @@
     "outDir": "dist",
     "declaration": true
   },
-  "include": ["test/**/*.ts", "lionden.config.ts"]
+  "include": [
+    "typechain/**/*.ts",
+    "recipes/**/*.ts",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "lionden.config.ts"
+  ]
 }
