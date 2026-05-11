@@ -475,6 +475,32 @@ describe("BaseContract runtime", () => {
       it("parses 'false' to false", () => {
         expect(BaseContract.parseBoolean("false")).toBe(false);
       });
+
+      it("strips a .private visibility suffix", () => {
+        expect(BaseContract.parseBoolean("true.private")).toBe(true);
+        expect(BaseContract.parseBoolean("false.private")).toBe(false);
+      });
+
+      it("strips a .public visibility suffix", () => {
+        expect(BaseContract.parseBoolean("true.public")).toBe(true);
+        expect(BaseContract.parseBoolean("false.public")).toBe(false);
+      });
+    });
+
+    describe("parseString", () => {
+      it("returns plain values unchanged", () => {
+        expect(BaseContract.parseString("aleo1abc")).toBe("aleo1abc");
+        expect(BaseContract.parseString("0field")).toBe("0field");
+      });
+
+      it("strips a .private visibility suffix from record-field values", () => {
+        expect(BaseContract.parseString("aleo1abc.private")).toBe("aleo1abc");
+        expect(BaseContract.parseString("0field.private")).toBe("0field");
+      });
+
+      it("strips a .public visibility suffix from record-field values", () => {
+        expect(BaseContract.parseString("aleo1abc.public")).toBe("aleo1abc");
+      });
     });
 
     describe("parseNumber", () => {
@@ -528,6 +554,14 @@ describe("BaseContract runtime", () => {
 
       it("trims bare identifier values", () => {
         expect(BaseContract.parseIdentifier(" voting_power ")).toBe("voting_power");
+      });
+
+      it("strips a .private visibility suffix from record-field identifiers", () => {
+        expect(BaseContract.parseIdentifier("'voting_power'.private")).toBe("voting_power");
+      });
+
+      it("strips a .public visibility suffix from record-field identifiers", () => {
+        expect(BaseContract.parseIdentifier("'voting_power'.public")).toBe("voting_power");
       });
     });
 

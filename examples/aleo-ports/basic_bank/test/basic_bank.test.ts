@@ -7,16 +7,16 @@
 //
 // The bank is hard-coded to `aleo1rhgdu77…` in the program, which matches
 // devnode account-0. Pattern: when a transition both returns a record AND
-// has a finalize, run twice — local for plaintext outputs, onchain for
-// finalize side effects.
+// has a finalize, run twice — local for typed plaintext outputs, broadcast
+// for finalize side effects.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
   loadFixture,
   clearFixtures,
-  assertMappingValue,
   type TestContext,
 } from "@lionden/testing";
+import { createBasicBank, type Token } from "../typechain/BasicBank.js";
 
 async function deployBank() {
   const ctx = await setup();
@@ -44,77 +44,48 @@ afterAll(async () => {
   }
 });
 
-/// Extract `amount: <…>u64` from a Token record literal.
-function extractAmount(record: string): string {
-  const match = record.match(/amount:\s*(\d+u64)/);
-  if (!match) throw new Error(`could not extract amount from: ${record}`);
-  return match[1]!;
-}
-
 describe("basic_bank.aleo", () => {
+  const basicBank = createBasicBank();
   const bank = () => ctx!.accounts[0]!;
   const user = () => ctx!.accounts[1]!;
 
-  // BHP256::hash_to_field(user_address) — captured from the deposit/withdraw
-  // finalize so we can assertMappingValue. Set in the first deposit test.
-  let userHash: string | undefined;
+  beforeAll(() => {
+    basicBank.connect(ctx!.lre);
+  });
 
   // Token issued to user, threaded through deposits.
-  let token: string | undefined;
+  let token: Token | undefined;
 
   it("issue() mints a fresh Token to the recipient when called by the bank", async () => {
-    const result = await ctx!.execute(
-      "basic_bank.aleo",
-      "issue",
-      [user().address, "100u64"],
-      { mode: "local", signer: bank() },
-    );
-    token = result.outputs[0]!;
-    expect(token).toContain(user().address);
-    expect(extractAmount(token)).toBe("100u64");
+    token = await basicBank.withSigner(bank()).issue(user().address, 100n);
+    // Address fields on record outputs come back with a `.private` visibility
+    // suffix (typechain's address deserializer doesn't strip it).
+    expect(token.owner.startsWith(user().address)).toBe(true);
+    expect(token.amount).toBe(100n);
   });
 
   it("issue() rejects callers that aren't the bank", async () => {
     await expect(
-      ctx!.execute(
-        "basic_bank.aleo",
-        "issue",
-        [user().address, "100u64"],
-        { mode: "local", signer: user() },
-      ),
+      basicBank.withSigner(user()).issue(user().address, 100n),
     ).rejects.toThrow();
   });
 
   it("deposit() credits the bank's balance and returns the remainder", async () => {
     expect(token, "issue() must run first").toBeDefined();
 
-    // Local: capture the remaining Token plaintext.
-    const local = await ctx!.execute(
-      "basic_bank.aleo",
-      "deposit",
-      [token!, "30u64"],
-      { mode: "local", signer: user() },
-    );
-    const remaining = local.outputs[0]!;
-    expect(extractAmount(remaining)).toBe("70u64");
+    // Local: capture the remaining typed Token.
+    const [remaining] = await basicBank.withSigner(user()).deposit(token!, 30n);
+    expect(remaining.amount).toBe(70n);
 
-    // Onchain: fire finalize so balances[hash(user)] = 30.
-    await ctx!.execute(
-      "basic_bank.aleo",
-      "deposit",
-      [token!, "30u64"],
-      { signer: user() },
-    );
+    // Broadcast: fire finalize so balances[hash(user)] = 30.
+    await basicBank.withSigner(user()).depositBroadcast(token!, 30n);
 
     // The hash is computed inside the program; we don't have BHP256 in TS,
-    // so we discover it by reading the balances mapping for every plausible
-    // key. Simpler: just iterate through mapping entries via getMappingValue
-    // for the only address we deposited under. Since we can't enumerate the
-    // mapping cheaply, capture the hash by checking which key returns 30u64
-    // — but with one deposit there's only one populated key. The minimal
-    // assertion that doesn't require knowing the hash is that *some* key
-    // got the value. We rely on the next test's withdraw to confirm
-    // arithmetic.
+    // so we don't enumerate / assert balances directly. The local-mode
+    // remainder above is the meaningful parity check; balance correctness is
+    // implicit in the program's `current + amount` arithmetic. NOTE: a
+    // future assertion would benefit from a TS-side BHP256 helper or a
+    // mapping-iteration API on @lionden/network.
 
     // Replace tracked token with the remainder so subsequent tests use it.
     token = remaining;
@@ -122,51 +93,25 @@ describe("basic_bank.aleo", () => {
 
   it("withdraw() debits the bank's balance and pays out an interest-bearing Token", async () => {
     // Withdraw 10 with rate=0 / periods=0 → total = principal = 10.
-    const local = await ctx!.execute(
-      "basic_bank.aleo",
-      "withdraw",
-      [user().address, "10u64", "0u64", "0u64"],
-      { mode: "local", signer: bank() },
-    );
-    const payout = local.outputs[0]!;
-    expect(payout).toContain(user().address);
-    expect(extractAmount(payout)).toBe("10u64");
+    const [payout] = await basicBank.withSigner(bank()).withdraw(user().address, 10n, 0n, 0n);
+    expect(payout.owner.startsWith(user().address)).toBe(true);
+    expect(payout.amount).toBe(10n);
 
-    // Onchain: fire finalize so balances[hash(user)] decrements 30 → 20.
-    await ctx!.execute(
-      "basic_bank.aleo",
-      "withdraw",
-      [user().address, "10u64", "0u64", "0u64"],
-      { signer: bank() },
-    );
+    // Broadcast: fire finalize so balances[hash(user)] decrements 30 → 20.
+    await basicBank.withSigner(bank()).withdrawBroadcast(user().address, 10n, 0n, 0n);
     // Direct mapping assertion would need BHP256 in TS to compute the hash
-    // key. Skipped for now — the local-mode return value (payout amount)
-    // is the meaningful parity check; balance correctness is implicit in
-    // the program's `current - amount` arithmetic. NOTE: a future
-    // assertion would benefit from a TS-side BHP256 helper or a mapping-
-    // iteration API on @lionden/network.
+    // key. Skipped for now — see the NOTE above.
   });
 
   it("withdraw() with interest pays out principal + compounded amount", async () => {
     // 100 at rate 100bps (1%) over 5 periods → 100 → 101 → 102 → 103 → 104 → 105.
-    const local = await ctx!.execute(
-      "basic_bank.aleo",
-      "withdraw",
-      [user().address, "100u64", "100u64", "5u64"],
-      { mode: "local", signer: bank() },
-    );
-    const payout = local.outputs[0]!;
-    expect(extractAmount(payout)).toBe("105u64");
+    const [payout] = await basicBank.withSigner(bank()).withdraw(user().address, 100n, 100n, 5n);
+    expect(payout.amount).toBe(105n);
   });
 
   it("withdraw() rejects callers that aren't the bank", async () => {
     await expect(
-      ctx!.execute(
-        "basic_bank.aleo",
-        "withdraw",
-        [user().address, "10u64", "0u64", "0u64"],
-        { mode: "local", signer: user() },
-      ),
+      basicBank.withSigner(user()).withdraw(user().address, 10n, 0n, 0n),
     ).rejects.toThrow();
   });
 });

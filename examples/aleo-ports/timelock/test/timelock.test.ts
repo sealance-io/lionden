@@ -20,6 +20,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createTimelockExample } from "../typechain/TimelockExample.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TIMELOCK_THRESHOLD = 30;
@@ -63,14 +64,14 @@ async function currentBlockHeight(c: TestContext): Promise<number> {
 }
 
 describe("timelock_example.aleo", () => {
+  const timelock = createTimelockExample();
+
+  beforeAll(() => {
+    timelock.connect(ctx!.lre);
+  });
+
   it("v1 deploy succeeded — main(2, 3) returns 5", async () => {
-    const result = await ctx!.execute(
-      "timelock_example.aleo",
-      "main",
-      ["2u32", "3u32"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).toBe("5u32");
+    expect(await timelock.main(2, 3)).toBe(5);
   });
 
   it("upgrade succeeds once block.height crosses the threshold", async () => {
@@ -100,6 +101,9 @@ describe("timelock_example.aleo", () => {
       fs.copyFileSync(v2FixturePath, programPath);
       await ctx!.lre.tasks.run("upgrade", { program: "timelock_example" });
 
+      // The v2-only `subtract` transition isn't on the typed wrapper class
+      // loaded at suite startup (typechain reflects v1). Fall back to
+      // ctx.execute for the post-upgrade ABI addition.
       const sub = await ctx!.execute(
         "timelock_example.aleo",
         "subtract",

@@ -9,6 +9,7 @@
 // upstream gap rather than reproducing a broken test.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createVoteExample } from "../typechain/VoteExample.js";
 
 async function deployVoteExample() {
   const ctx = await setup();
@@ -39,27 +40,21 @@ afterAll(async () => {
 });
 
 describe("vote_example.aleo", () => {
+  const voteExample = createVoteExample();
+
+  beforeAll(() => {
+    voteExample.connect(ctx!.lre);
+  });
+
   // Port of @test script test_it()
   it("main returns the sum", async () => {
-    const result = await ctx!.execute(
-      "vote_example.aleo",
-      "main",
-      ["1u32", "2u32"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).toBe("3u32");
+    expect(await voteExample.main(1, 2)).toBe(3);
   });
 
   // Port of @test @should_fail fn do_nothing(): the original asserts 5 == 3
   // inside Leo and expects it to fail. Translated to a TS-side negative.
   it("main does not return the wrong sum", async () => {
-    const result = await ctx!.execute(
-      "vote_example.aleo",
-      "main",
-      ["2u32", "3u32"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).not.toBe("3u32");
+    expect(await voteExample.main(2, 3)).not.toBe(3);
   });
 });
 

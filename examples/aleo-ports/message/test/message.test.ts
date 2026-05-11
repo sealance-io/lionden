@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createMessageContract } from "../typechain/Message.js";
 
 async function deployMessage() {
   const ctx = await setup();
@@ -28,24 +29,17 @@ afterAll(async () => {
 });
 
 describe("message.aleo", () => {
-  // Struct args are passed as Leo struct literals — first + second.
+  const message = createMessageContract();
+
+  beforeAll(() => {
+    message.connect(ctx!.lre);
+  });
+
   it("main returns first + second", async () => {
-    const result = await ctx!.execute(
-      "message.aleo",
-      "main",
-      ["{ first: 2field, second: 3field }"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).toBe("5field");
+    expect(await message.main({ first: "2field", second: "3field" })).toBe("5field");
   });
 
   it("handles zero values", async () => {
-    const result = await ctx!.execute(
-      "message.aleo",
-      "main",
-      ["{ first: 0field, second: 0field }"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).toBe("0field");
+    expect(await message.main({ first: "0field", second: "0field" })).toBe("0field");
   });
 });

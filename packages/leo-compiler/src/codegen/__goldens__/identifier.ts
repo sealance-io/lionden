@@ -37,6 +37,8 @@ export function deserializeStrategyConfig(value: string): StrategyConfig {
 }
 
 export function serializeVote(value: Vote): string {
+  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
+  if (typeof _raw === "string") return _raw;
   const fields: string[] = [];
   fields.push("owner: " + value.owner);
   fields.push("strategy: " + BaseContract.serializeIdentifier(value.strategy));
@@ -46,11 +48,13 @@ export function serializeVote(value: Vote): string {
 
 export function deserializeVote(value: string): Vote {
   const _fields = BaseContract.parseStruct(value);
-  return {
+  const _record: Vote = {
     owner: BaseContract.parseString(_fields["owner"]!),
     strategy: BaseContract.parseIdentifier(_fields["strategy"]!),
     _nonce: BaseContract.parseString(_fields["_nonce"] ?? ""),
   };
+  Object.defineProperty(_record, BaseContract.RECORD_RAW, { value, enumerable: false });
+  return _record;
 }
 
 // ---------------------------------------------------------------------------

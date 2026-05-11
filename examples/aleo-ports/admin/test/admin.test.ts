@@ -3,12 +3,13 @@
 // as the admin via lionden.config.ts namedAccounts.
 //
 // Test scope: deploy v1 (admin signer), execute main; swap to v2 fixture
-// (adds `sub`), upgrade with admin signer, execute the new transition.
+// (adds `subtract`), upgrade with admin signer, execute the new transition.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createAdminExample } from "../typechain/AdminExample.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,14 +41,14 @@ afterAll(async () => {
 });
 
 describe("admin_example.aleo", () => {
+  const admin = createAdminExample();
+
+  beforeAll(() => {
+    admin.connect(ctx!.lre);
+  });
+
   it("v1 main(7, 5) returns 12", async () => {
-    const result = await ctx!.execute(
-      "admin_example.aleo",
-      "main",
-      ["7u32", "5u32"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).toBe("12u32");
+    expect(await admin.main(7, 5)).toBe(12);
   });
 
   it("admin can upgrade and the new sub transition is callable", async () => {
@@ -72,6 +73,9 @@ describe("admin_example.aleo", () => {
       // the signer automatically when the program is @admin(...).
       await ctx!.lre.tasks.run("upgrade", { program: "admin_example" });
 
+      // The v2-only `subtract` transition isn't on the typed wrapper class
+      // loaded at suite startup (typechain reflects v1). Fall back to
+      // ctx.execute for the post-upgrade ABI addition.
       const sub = await ctx!.execute(
         "admin_example.aleo",
         "subtract",
@@ -80,14 +84,8 @@ describe("admin_example.aleo", () => {
       );
       expect(sub.outputs[0]).toBe("7u32");
 
-      // Pre-existing transition still works after upgrade.
-      const main = await ctx!.execute(
-        "admin_example.aleo",
-        "main",
-        ["1u32", "2u32"],
-        { mode: "local" },
-      );
-      expect(main.outputs[0]).toBe("3u32");
+      // Pre-existing transition still works after upgrade — typed wrapper OK.
+      expect(await admin.main(1, 2)).toBe(3);
     } finally {
       fs.writeFileSync(programPath, v1Source, "utf-8");
     }
