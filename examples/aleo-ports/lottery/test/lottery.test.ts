@@ -43,17 +43,14 @@ describe("lottery.aleo", () => {
   });
 
   it("play() in local mode mints a Ticket assigned to the caller", async () => {
-    const [ticket] = await lottery.play();
-    // Address fields on record outputs come back with a `.private` visibility
-    // suffix (typechain's address deserializer doesn't strip it).
-    expect(ticket.owner.startsWith(ctx!.accounts[0]!.address)).toBe(true);
+    const [ticket] = await lottery.play.locally();
+    expect(ticket.owner).toBe(ctx!.accounts[0]!.address);
   });
 
   it("play() onchain either increments num_winners to 1 or leaves it empty (ChaCha 50/50)", async () => {
-    // playBroadcast resolves with txId once the tx is in a block — finalize
-    // abort surfaces as a "rejected" confirmation, not a thrown error.
-    const { txId } = await lottery.playBroadcast();
-    const confirmed = await ctx!.connection.waitForConfirmation(txId!, 60_000);
+    // settled() returns the confirmation status, so finalize aborts are
+    // explicit rejected outcomes rather than ambiguous thrown errors.
+    const confirmed = await lottery.play.settled({ confirmTimeout: 60_000 });
     const value = await lottery.getNum_winners(0);
 
     if (confirmed.status === "accepted") {

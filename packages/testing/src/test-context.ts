@@ -51,6 +51,8 @@ export interface TestContext {
   readonly namedAccounts: NamedAccounts;
   /** Domain-native accessor for required named account roles. */
   readonly named: NamedAccountAccessor;
+  /** Explicit string-based escape hatch for dynamic or post-upgrade ABI calls. */
+  readonly raw: RawTestContext;
   /** Deploy a program by name. Returns the deploy result. */
   deploy(programName: string, options?: DeployOptions): Promise<DeployResult>;
   /** Execute a transition on a deployed program. */
@@ -64,6 +66,16 @@ export interface TestContext {
   advanceBlocks(count: number): Promise<void>;
   /** Tear down the test context — stop devnode, disconnect, clear fixtures. */
   teardown(): Promise<void>;
+}
+
+export interface RawTestContext {
+  /** Execute a transition with raw Leo string arguments. Prefer generated typechain wrappers when the ABI is known. */
+  execute(
+    programId: string,
+    transitionName: string,
+    args: string[],
+    options?: ExecuteOptions,
+  ): Promise<ExecuteResult>;
 }
 
 export interface DeployOptions {
@@ -138,6 +150,21 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   const connection = await manager.connect(connectedNetwork);
 
   // 3. Build context
+  const executeRaw = async (
+    programId: string,
+    transitionName: string,
+    args: string[],
+    execOpts?: ExecuteOptions,
+  ): Promise<ExecuteResult> => {
+    const result = await connection.execute(programId, transitionName, args, {
+      mode: execOpts?.mode ?? "onchain",
+      fee: execOpts?.fee,
+      prove,
+      signer: execOpts?.signer,
+    });
+    return { outputs: result.outputs, txId: result.txId };
+  };
+
   const ctx: TestContext = {
     lre,
     accounts: connection.type === "devnode" ? DEVNODE_ACCOUNTS : [],
@@ -145,6 +172,9 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     network: connectedNetwork,
     namedAccounts: lre.namedAccounts,
     named: createNamedAccountAccessor(lre.namedAccounts, connectedNetwork),
+    raw: {
+      execute: executeRaw,
+    },
 
     async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
       const normalizedId = programName.endsWith(".aleo")
@@ -190,20 +220,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       return { programId: last.programId, txId: last.txId };
     },
 
-    async execute(
-      programId: string,
-      transitionName: string,
-      args: string[],
-      execOpts?: ExecuteOptions,
-    ): Promise<ExecuteResult> {
-      const result = await connection.execute(programId, transitionName, args, {
-        mode: execOpts?.mode ?? "onchain",
-        fee: execOpts?.fee,
-        prove,
-        signer: execOpts?.signer,
-      });
-      return { outputs: result.outputs, txId: result.txId };
-    },
+    execute: executeRaw,
 
     async advanceBlocks(count: number): Promise<void> {
       if (connection.advanceBlocks) {

@@ -41,10 +41,13 @@ The resulting `TestContext` includes:
 - `network`
 - `deploy()`
 - `execute()`
+- `raw.execute()` — explicit string-based escape hatch for dynamic ABI or post-upgrade transition calls
 - `advanceBlocks()`
 - `teardown()`
 
 This is the interface used by the example tests in `examples/`.
+
+Generated typechain wrappers are preferred when the ABI is known. Use `ctx.raw.execute(...)` only when the typed wrapper cannot describe the call, such as a transition introduced by an upgrade after the test process loaded the v1 typechain class. `ctx.execute(...)` remains available for compatibility with older tests.
 
 `deploy()` checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same session. `teardown()` invalidates the deployment cache for the connected network so the next test context revalidates state against the active network. The `network` property on `TestContext` exposes the connected network name. `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so deployment recipes can be called directly from test fixtures without any explicit type casting.
 

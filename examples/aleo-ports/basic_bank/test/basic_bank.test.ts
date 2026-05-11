@@ -57,28 +57,24 @@ describe("basic_bank.aleo", () => {
   let token: Token | undefined;
 
   it("issue() mints a fresh Token to the recipient when called by the bank", async () => {
-    token = await basicBank.withSigner(bank()).issue(user().address, 100n);
-    // Address fields on record outputs come back with a `.private` visibility
-    // suffix (typechain's address deserializer doesn't strip it).
-    expect(token.owner.startsWith(user().address)).toBe(true);
+    token = await basicBank.withSigner(bank()).issue.locally({ owner: user(), amount: 100n });
+    expect(token.owner).toBe(user().address);
     expect(token.amount).toBe(100n);
   });
 
   it("issue() rejects callers that aren't the bank", async () => {
-    await expect(
-      basicBank.withSigner(user()).issue(user().address, 100n),
-    ).rejects.toThrow();
+    await basicBank.withSigner(user()).issue.failsLocally({ owner: user(), amount: 100n });
   });
 
   it("deposit() credits the bank's balance and returns the remainder", async () => {
     expect(token, "issue() must run first").toBeDefined();
 
     // Local: capture the remaining typed Token.
-    const [remaining] = await basicBank.withSigner(user()).deposit(token!, 30n);
+    const [remaining] = await basicBank.withSigner(user()).deposit.locally({ token: token!, amount: 30n });
     expect(remaining.amount).toBe(70n);
 
     // Broadcast: fire finalize so balances[hash(user)] = 30.
-    await basicBank.withSigner(user()).depositBroadcast(token!, 30n);
+    await basicBank.withSigner(user()).deposit.accepted({ token: token!, amount: 30n });
 
     // The hash is computed inside the program; we don't have BHP256 in TS,
     // so we don't enumerate / assert balances directly. The local-mode
@@ -93,25 +89,43 @@ describe("basic_bank.aleo", () => {
 
   it("withdraw() debits the bank's balance and pays out an interest-bearing Token", async () => {
     // Withdraw 10 with rate=0 / periods=0 → total = principal = 10.
-    const [payout] = await basicBank.withSigner(bank()).withdraw(user().address, 10n, 0n, 0n);
-    expect(payout.owner.startsWith(user().address)).toBe(true);
+    const [payout] = await basicBank.withSigner(bank()).withdraw.locally({
+      recipient: user(),
+      amount: 10n,
+      rate: 0n,
+      periods: 0n,
+    });
+    expect(payout.owner).toBe(user().address);
     expect(payout.amount).toBe(10n);
 
     // Broadcast: fire finalize so balances[hash(user)] decrements 30 → 20.
-    await basicBank.withSigner(bank()).withdrawBroadcast(user().address, 10n, 0n, 0n);
+    await basicBank.withSigner(bank()).withdraw.accepted({
+      recipient: user(),
+      amount: 10n,
+      rate: 0n,
+      periods: 0n,
+    });
     // Direct mapping assertion would need BHP256 in TS to compute the hash
     // key. Skipped for now — see the NOTE above.
   });
 
   it("withdraw() with interest pays out principal + compounded amount", async () => {
     // 100 at rate 100bps (1%) over 5 periods → 100 → 101 → 102 → 103 → 104 → 105.
-    const [payout] = await basicBank.withSigner(bank()).withdraw(user().address, 100n, 100n, 5n);
+    const [payout] = await basicBank.withSigner(bank()).withdraw.locally({
+      recipient: user(),
+      amount: 100n,
+      rate: 100n,
+      periods: 5n,
+    });
     expect(payout.amount).toBe(105n);
   });
 
   it("withdraw() rejects callers that aren't the bank", async () => {
-    await expect(
-      basicBank.withSigner(user()).withdraw(user().address, 10n, 0n, 0n),
-    ).rejects.toThrow();
+    await basicBank.withSigner(user()).withdraw.failsLocally({
+      recipient: user(),
+      amount: 10n,
+      rate: 0n,
+      periods: 0n,
+    });
   });
 });

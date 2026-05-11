@@ -8,17 +8,15 @@
 //                                           VotingStrategy@(strategy)::compute_power(...)
 //
 // Direct-strategy calls run in mode: "local" — pure compute.
-// Dispatch-through-governance calls run onchain via *Broadcast(): per
-// Insight 14 the onchain path returns outputs: [], so we assert tx
-// acceptance via ctx.connection.waitForConfirmation(txId) → status ===
-// "accepted" rather than the return value. The investigative .skip'd block
+// Dispatch-through-governance calls run onchain via accepted(), making
+// confirmation status explicit. The investigative .skip'd block
 // at the bottom is a runnable probe for whether local mode resolves
 // dispatch through static imports — un-skip locally to populate the
 // journey-doc insight.
 //
 // Identifier-arg encoding: Leo's wire format for an `identifier` is
-// `'name'` (literal single quotes). The typed wrapper accepts a bare
-// "voting_power"; BaseContract.serializeIdentifier wraps it for the wire.
+// `'name'` (literal single quotes). Leo.identifier("voting_power") gives
+// the typed wrapper a safe value to serialize for the wire.
 // Source: upstream dynamic_dispatch/run.sh:79 and
 // packages/leo-compiler/src/codegen/__goldens__/base-contract.ts.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
@@ -26,6 +24,7 @@ import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/te
 import { createGovernance } from "../typechain/Governance.js";
 import { createVotingPower } from "../typechain/VotingPower.js";
 import { createQuadraticPower } from "../typechain/QuadraticPower.js";
+import { Leo, type SettledTransition } from "../typechain/BaseContract.js";
 
 async function deployDispatch() {
   const ctx = await setup();
@@ -71,19 +70,19 @@ describe("dynamic_dispatch — direct strategy parity (local)", () => {
 
   // Mirrors run.sh stage 1 — pure compute, no dispatch.
   it("voting_power.compute_power(10000) = 10000", async () => {
-    expect(await linear.compute_power(10000n)).toBe(10000n);
+    expect(await linear.compute_power.locally({ balance: 10000n })).toBe(10000n);
   });
 
   it("voting_power.compute_power(100) = 100", async () => {
-    expect(await linear.compute_power(100n)).toBe(100n);
+    expect(await linear.compute_power.locally({ balance: 100n })).toBe(100n);
   });
 
   it("quadratic_power.compute_power(10000) = 100 (√10000)", async () => {
-    expect(await quadratic.compute_power(10000n)).toBe(100n);
+    expect(await quadratic.compute_power.locally({ balance: 10000n })).toBe(100n);
   });
 
   it("quadratic_power.compute_power(100) = 10 (√100)", async () => {
-    expect(await quadratic.compute_power(100n)).toBe(10n);
+    expect(await quadratic.compute_power.locally({ balance: 100n })).toBe(10n);
   });
 });
 
@@ -95,20 +94,23 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
   });
 
   // Mirrors run.sh stage 2. Dispatch target resolved at call time.
-  // Onchain returns outputs: [] (Insight 14), so we assert tx acceptance
-  // via the *Broadcast() variant which returns a TransitionCallResult.
-  async function expectAccepted(promise: Promise<{ readonly txId?: string }>) {
-    const { txId } = await promise;
+  async function expectAccepted(promise: Promise<SettledTransition>) {
+    const { txId, status } = await promise;
     expect(txId).toBeTruthy();
-    const confirmed = await ctx!.connection.waitForConfirmation(txId!, 60_000);
-    expect(confirmed.status).toBe("accepted");
+    expect(status).toBe("accepted");
   }
 
   it("get_voting_power('voting_power', 10000) → linear (accepted)", () =>
-    expectAccepted(governance.get_voting_powerBroadcast("voting_power", 10000n)));
+    expectAccepted(governance.get_voting_power.accepted({
+      strategy: Leo.identifier("voting_power"),
+      balance: 10000n,
+    })));
 
   it("get_voting_power('quadratic_power', 10000) → quadratic (accepted)", () =>
-    expectAccepted(governance.get_voting_powerBroadcast("quadratic_power", 10000n)));
+    expectAccepted(governance.get_voting_power.accepted({
+      strategy: Leo.identifier("quadratic_power"),
+      balance: 10000n,
+    })));
 
   // proposal_passes uses monotonic strategies: for_balance > against_balance
   // implies for_power >= against_power, so both strategies vote the same
@@ -121,16 +123,24 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
   // the return value.
   it("proposal_passes('voting_power', 1000000, 10000) → whale wins linear by 100x (accepted)", () =>
     expectAccepted(
-      governance.proposal_passesBroadcast("voting_power", 1000000n, 10000n),
+      governance.proposal_passes.accepted({
+        strategy: Leo.identifier("voting_power"),
+        for_balance: 1000000n,
+        against_balance: 10000n,
+      }),
     ));
 
   it("proposal_passes('quadratic_power', 1000000, 10000) → whale still wins quadratic, smaller margin (accepted)", () =>
     expectAccepted(
-      governance.proposal_passesBroadcast("quadratic_power", 1000000n, 10000n),
+      governance.proposal_passes.accepted({
+        strategy: Leo.identifier("quadratic_power"),
+        for_balance: 1000000n,
+        against_balance: 10000n,
+      }),
     ));
 
   it("compare_strategies(10000) → both run (accepted)", () =>
-    expectAccepted(governance.compare_strategiesBroadcast(10000n)));
+    expectAccepted(governance.compare_strategies.accepted({ balance: 10000n })));
 });
 
 // Investigative spike — NOT a parity assertion. Un-skip locally to learn
@@ -140,7 +150,10 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
 describe.skip("[spike] governance dispatch in local mode (informational only)", () => {
   it("local-mode get_voting_power resolves through static imports?", async () => {
     const governance = createGovernance().connect(ctx!.lre);
-    const result = await governance.get_voting_power("voting_power", 10000n);
+    const result = await governance.get_voting_power.locally({
+      strategy: Leo.identifier("voting_power"),
+      balance: 10000n,
+    });
     expect(result).toBeDefined();
   });
 });

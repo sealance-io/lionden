@@ -6,6 +6,7 @@ import {
   type TestContext,
 } from "@lionden/testing";
 import { createNftRegistry } from "../typechain/NftRegistry.js";
+import { Leo } from "../typechain/BaseContract.js";
 
 const nft = createNftRegistry();
 
@@ -17,7 +18,7 @@ async function deployAndCreateCollection() {
     nft.connect(ctx.lre);
 
     // Create collection with id=1
-    await nft.create_collectionBroadcast(1n);
+    await nft.create_collection.accepted({ collection_id: 1n });
 
     return { ctx };
   } catch (error) {
@@ -58,13 +59,23 @@ describe("nft_registry program", () => {
       "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
 
     it("mints first NFT and increments supply", async () => {
-      await nft.mint_nftBroadcast(receiver, 1n, 1n, "1field");
+      await nft.mint_nft.accepted({
+        receiver: Leo.address(receiver),
+        collection_id: 1n,
+        serial: 1n,
+        uri_hash: Leo.field("1field"),
+      });
 
       expect(await nft.getCollection_supply(1n)).toBe(1n);
     });
 
     it("mints second NFT", async () => {
-      await nft.mint_nftBroadcast(receiver, 1n, 2n, "2field");
+      await nft.mint_nft.accepted({
+        receiver: Leo.address(receiver),
+        collection_id: 1n,
+        serial: 2n,
+        uri_hash: Leo.field("2field"),
+      });
 
       expect(await nft.getCollection_supply(1n)).toBe(2n);
     });
@@ -74,12 +85,15 @@ describe("nft_registry program", () => {
     it("produces typed Nft record locally without finalize", async () => {
       // Local execution of mint_nft — returns immediately, no finalize.
       // The typed wrapper deserializes the Nft record output.
-      const receiver = ctx!.accounts[0]!.address;
-      const [record] = await nft.mint_nft(receiver, 1n, 99n, "99field");
+      const receiver = ctx!.accounts[0]!;
+      const [record] = await nft.mint_nft.locally({
+        receiver,
+        collection_id: 1n,
+        serial: 99n,
+        uri_hash: Leo.field("99field"),
+      });
 
-      // Address comes back with a `.private` visibility suffix on record
-      // outputs (typechain's address deserializer doesn't strip it).
-      expect(record.owner.startsWith(receiver)).toBe(true);
+      expect(record.owner).toBe(receiver.address);
       expect(record.metadata.collection_id).toBe(1n);
       expect(record.metadata.serial).toBe(99n);
 

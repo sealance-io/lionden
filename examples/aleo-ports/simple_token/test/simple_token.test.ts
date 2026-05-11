@@ -37,35 +37,37 @@ afterAll(async () => {
 
 describe("simple_token.aleo", () => {
   const token = createSimpleToken();
-  const owner = () => ctx!.accounts[0]!.address;
-  const recipient = () => ctx!.accounts[1]!.address;
+  const owner = () => ctx!.accounts[0]!;
+  const recipient = () => ctx!.accounts[1]!;
 
   beforeAll(() => {
     token.connect(ctx!.lre);
   });
 
   it("mint produces a Token record assigned to the owner", async () => {
-    const minted = await token.mint(owner(), 100n);
+    const minted = await token.mint.locally({ owner: owner(), amount: 100n });
 
-    // Address fields on record outputs come back with a `.private` visibility
-    // suffix (typechain's address deserializer doesn't strip it).
-    expect(minted.owner.startsWith(owner())).toBe(true);
+    expect(minted.owner).toBe(owner().address);
     expect(minted.amount).toBe(100n);
     expect(minted._nonce).toBeTruthy();
   });
 
   it("transfer splits a minted token into remainder + transferred", async () => {
     // Step 1: mint 100 to owner — produces Token #1.
-    const minted = await token.mint(owner(), 100n);
+    const minted = await token.mint.locally({ owner: owner(), amount: 100n });
 
     // Step 2: transfer 30 of it to recipient — should produce two records
     // (remaining: 70 to owner, transferred: 30 to recipient).
-    const [remaining, transferred] = await token.transfer(minted, recipient(), 30n);
+    const [remaining, transferred] = await token.transfer.locally({
+      token: minted,
+      to: recipient(),
+      amount: 30n,
+    });
 
-    expect(remaining.owner.startsWith(owner())).toBe(true);
+    expect(remaining.owner).toBe(owner().address);
     expect(remaining.amount).toBe(70n);
 
-    expect(transferred.owner.startsWith(recipient())).toBe(true);
+    expect(transferred.owner).toBe(recipient().address);
     expect(transferred.amount).toBe(30n);
   });
 });

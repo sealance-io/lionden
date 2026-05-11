@@ -14,6 +14,7 @@ import { generateBaseContract } from "./typescript-generator.js";
 
 // The dynamically loaded BaseContract class
 let BaseContract: any;
+let Leo: any;
 let tmpDir: string;
 
 beforeAll(async () => {
@@ -34,6 +35,7 @@ beforeAll(async () => {
 
   const mod = await import(outPath);
   BaseContract = mod.BaseContract;
+  Leo = mod.Leo;
 });
 
 afterAll(() => {
@@ -45,18 +47,27 @@ afterAll(() => {
 /** Create a concrete subclass to access protected methods. */
 function createTestContract(programId = "test.aleo") {
   class TestContract extends BaseContract {
-    constructor(id: string) {
+    constructor(id = programId) {
       super(id);
     }
     // Expose protected methods for testing
-    async testExecute(...args: any[]) {
-      return this.execute(...args);
-    }
     async testExecuteLocal(...args: any[]) {
       return this.executeLocal(...args);
     }
-    async testBroadcast(...args: any[]) {
-      return this.broadcast(...args);
+    async testExpectLocalFailure(...args: any[]) {
+      return this.expectLocalFailure(...args);
+    }
+    async testSubmit(...args: any[]) {
+      return this.submitTransition(...args);
+    }
+    async testSettle(...args: any[]) {
+      return this.settleTransition(...args);
+    }
+    async testAccepted(...args: any[]) {
+      return this.expectAccepted(...args);
+    }
+    async testRejected(...args: any[]) {
+      return this.expectRejected(...args);
     }
     async testQueryMapping(...args: any[]) {
       return this.queryMapping(...args);
@@ -81,12 +92,12 @@ function mockLre(networkOverrides: Record<string, any> = {}) {
 
 describe("BaseContract runtime", () => {
   describe("connect / getLre", () => {
-    it("throws when execute is called without connect()", async () => {
+    it("throws when execution is called without connect()", async () => {
       const contract = createTestContract();
 
       await expect(
-        contract.testExecute("main", ["1u32"]),
-      ).rejects.toThrow("Contract not connected to LRE");
+        contract.testExecuteLocal("main", ["1u32"]),
+      ).rejects.toThrow("Contract test.aleo is not connected to an LRE");
     });
 
     it("connect() returns this for chaining", () => {
@@ -98,10 +109,10 @@ describe("BaseContract runtime", () => {
   });
 
   // -------------------------------------------------------------------------
-  // execute / executeLocal / broadcast
+  // executeLocal / submitTransition
   // -------------------------------------------------------------------------
 
-  describe("execute()", () => {
+  describe("executeLocal()", () => {
     it("delegates to lre.network.execute with programId", async () => {
       const executeMock = async (
         programId: string,
@@ -120,14 +131,14 @@ describe("BaseContract runtime", () => {
       const contract = createTestContract("hello.aleo");
       contract.connect(mockLre({ execute: wrappedExecute }));
 
-      const result = await contract.testExecute("main", ["3u32", "5u32"], { fee: 100 });
+      const result = await contract.testExecuteLocal("main", ["3u32", "5u32"], { fee: 100 });
 
       expect(spy.calls).toHaveLength(1);
       expect(spy.calls[0]).toEqual([
         "hello.aleo",
         "main",
         ["3u32", "5u32"],
-        { fee: 100 },
+        { fee: 100, mode: "local" },
       ]);
       expect(result.outputs).toEqual(["8u32"]);
     });
@@ -137,8 +148,8 @@ describe("BaseContract runtime", () => {
       contract.connect({ network: null } as any);
 
       await expect(
-        contract.testExecute("main", []),
-      ).rejects.toThrow("Network not available on LRE");
+        contract.testExecuteLocal("main", []),
+      ).rejects.toThrow("Network is not available for test.aleo");
     });
 
     it("throws when lre.network.execute is not a function", async () => {
@@ -146,12 +157,10 @@ describe("BaseContract runtime", () => {
       contract.connect({ network: { execute: "not-a-fn" } } as any);
 
       await expect(
-        contract.testExecute("main", []),
-      ).rejects.toThrow("Network not available on LRE");
+        contract.testExecuteLocal("main", []),
+      ).rejects.toThrow("Network is not available for test.aleo");
     });
-  });
 
-  describe("executeLocal()", () => {
     it("passes mode: 'local' merged with other options", async () => {
       const spy = { calls: [] as any[] };
       const contract = createTestContract("hello.aleo");
@@ -170,7 +179,46 @@ describe("BaseContract runtime", () => {
     });
   });
 
-  describe("broadcast()", () => {
+  describe("expectLocalFailure()", () => {
+    it("captures local execution failures as structured errors", async () => {
+      const sdkError = new Error("assertion failed");
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => {
+            throw sdkError;
+          },
+        }),
+      );
+
+      const error = await contract.testExpectLocalFailure("main", ["1u32"]);
+
+      expect(error).toMatchObject({
+        kind: "LocalTransitionError",
+        phase: "local",
+        programId: "hello.aleo",
+        transition: "main",
+      });
+      expect(error.cause).toBe(sdkError);
+      expect(error.message).toContain("hello.aleo/main failed during local execution");
+    });
+
+    it("throws UnexpectedLocalSuccessError when the transition succeeds", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(mockLre({ execute: async () => ({ outputs: ["1u32"] }) }));
+
+      await expect(
+        contract.testExpectLocalFailure("main", ["1u32"]),
+      ).rejects.toMatchObject({
+        kind: "UnexpectedLocalSuccessError",
+        phase: "local",
+        programId: "hello.aleo",
+        transition: "main",
+      });
+    });
+  });
+
+  describe("submitTransition()", () => {
     it("passes mode: 'onchain' merged with other options", async () => {
       const spy = { calls: [] as any[] };
       const contract = createTestContract("hello.aleo");
@@ -183,7 +231,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await contract.testBroadcast("transfer", ["aleo1abc", "100u64"], { fee: 50 });
+      await contract.testSubmit("transfer", ["aleo1abc", "100u64"], { fee: 50 });
 
       expect(spy.calls[0]![3]).toEqual({ fee: 50, mode: "onchain" });
     });
@@ -197,8 +245,8 @@ describe("BaseContract runtime", () => {
       );
 
       await expect(
-        contract.testBroadcast("main", []),
-      ).rejects.toThrow("Expected on-chain execution of hello.aleo/main to return a transaction ID");
+        contract.testSubmit("main", []),
+      ).rejects.toThrow("hello.aleo/main was submitted on-chain but no transaction ID was returned");
     });
 
     it("returns result when txId is present", async () => {
@@ -209,10 +257,101 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      const result = await contract.testBroadcast("main", []);
+      const result = await contract.testSubmit("main", []);
 
       expect(result.txId).toBe("at1ok");
-      expect(result.outputs).toEqual(["42u32"]);
+    });
+  });
+
+  describe("settled transition helpers", () => {
+    it("settles accepted transactions", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+          waitForConfirmation: async () => ({
+            txId: "at1ok",
+            blockHeight: 12,
+            status: "accepted",
+          }),
+        }),
+      );
+
+      await expect(contract.testAccepted("main", [])).resolves.toEqual({
+        txId: "at1ok",
+        blockHeight: 12,
+        status: "accepted",
+      });
+    });
+
+    it("distinguishes on-chain rejection from local failure", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1bad" }),
+          waitForConfirmation: async () => ({
+            txId: "at1bad",
+            blockHeight: 13,
+            status: "rejected",
+          }),
+        }),
+      );
+
+      await expect(
+        contract.testAccepted("main", []),
+      ).rejects.toThrow("confirmed rejected");
+      await expect(
+        contract.testRejected("main", []),
+      ).resolves.toMatchObject({ txId: "at1bad", status: "rejected" });
+    });
+
+    it("wraps typed network confirmation timeouts without string matching", async () => {
+      const timeout = Object.assign(
+        new Error("custom timeout wording"),
+        { name: "NetworkConfirmationTimeoutError", kind: "NetworkConfirmationTimeoutError" },
+      );
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1slow" }),
+          waitForConfirmation: async () => {
+            throw timeout;
+          },
+        }),
+      );
+
+      await expect(
+        contract.testSettle("main", []),
+      ).rejects.toMatchObject({
+        kind: "TransactionConfirmationTimeoutError",
+        phase: "confirm",
+        programId: "hello.aleo",
+        transition: "main",
+        cause: timeout,
+      });
+    });
+
+    it("throws TransactionShapeError for malformed confirmation responses", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1badshape" }),
+          waitForConfirmation: async () => ({
+            txId: "different",
+            blockHeight: "12",
+            status: "pending",
+          }),
+        }),
+      );
+
+      await expect(
+        contract.testSettle("main", []),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeError",
+        phase: "shape",
+        programId: "hello.aleo",
+        transition: "main",
+      });
     });
   });
 
@@ -239,7 +378,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await contract.testBroadcast("main", ["1u32"], { fee: 100 });
+      await contract.testSubmit("main", ["1u32"], { fee: 100 });
 
       expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "onchain", prove: true });
     });
@@ -258,7 +397,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await contract.testBroadcast("main", ["1u32"], { fee: 100 });
+      await contract.testSubmit("main", ["1u32"], { fee: 100 });
 
       expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "onchain" });
       expect(spy.calls[0]![3].prove).toBeUndefined();
@@ -278,7 +417,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await contract.testBroadcast("main", ["1u32"], { fee: 100, prove: false });
+      await contract.testSubmit("main", ["1u32"], { fee: 100, prove: false });
 
       expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "onchain", prove: false });
     });
@@ -297,7 +436,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await contract.testBroadcast("main", []);
+      await contract.testSubmit("main", []);
 
       expect(spy.calls[0]![3].prove).toBeUndefined();
     });
@@ -332,7 +471,7 @@ describe("BaseContract runtime", () => {
 
       await expect(
         contract.testQueryMapping("balances", "aleo1abc"),
-      ).rejects.toThrow("Network not available on LRE");
+      ).rejects.toThrow("Network is not available for test.aleo");
     });
 
     it("throws when getMappingValue is not a function", async () => {
@@ -341,7 +480,7 @@ describe("BaseContract runtime", () => {
 
       await expect(
         contract.testQueryMapping("balances", "aleo1abc"),
-      ).rejects.toThrow("Network not available on LRE");
+      ).rejects.toThrow("Network is not available for test.aleo");
     });
   });
 
@@ -370,12 +509,12 @@ describe("BaseContract runtime", () => {
       contract.connect(mockLre({ execute: executeSpy }));
 
       const withSig = contract.withSigner(signer1);
-      await withSig.testBroadcast("main", ["1u32"]);
+      await withSig.testSubmit("main", ["1u32"]);
 
       expect(executeSpy).toHaveBeenCalledOnce();
     });
 
-    it("merges instance signer as default in execute()", async () => {
+    it("merges instance signer as default in local execution", async () => {
       const spy = { calls: [] as any[] };
       const contract = createTestContract("hello.aleo");
       contract.connect(
@@ -388,9 +527,9 @@ describe("BaseContract runtime", () => {
       );
 
       const withSig = contract.withSigner(signer1);
-      await withSig.testExecute("main", ["1u32"], { fee: 100 });
+      await withSig.testExecuteLocal("main", ["1u32"], { fee: 100 });
 
-      expect(spy.calls[0]![3]).toEqual({ fee: 100, signer: signer1 });
+      expect(spy.calls[0]![3]).toEqual({ fee: 100, mode: "local", signer: signer1 });
     });
 
     it("per-call signer overrides instance signer", async () => {
@@ -406,7 +545,7 @@ describe("BaseContract runtime", () => {
       );
 
       const withSig = contract.withSigner(signer1);
-      await withSig.testExecute("main", ["1u32"], { signer: signer2 });
+      await withSig.testExecuteLocal("main", ["1u32"], { signer: signer2 });
 
       // Per-call signer2 should win
       expect(spy.calls[0]![3].signer).toEqual(signer2);
@@ -424,9 +563,9 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await contract.testExecute("main", ["1u32"], { fee: 50 });
+      await contract.testExecuteLocal("main", ["1u32"], { fee: 50 });
 
-      expect(spy.calls[0]![3]).toEqual({ fee: 50 });
+      expect(spy.calls[0]![3]).toEqual({ fee: 50, mode: "local" });
       expect(spy.calls[0]![3].signer).toBeUndefined();
     });
   });
@@ -523,6 +662,99 @@ describe("BaseContract runtime", () => {
       });
     });
 
+    describe("branded Leo constructors", () => {
+      it("validates and normalizes primitive Leo literals", () => {
+        expect(Leo.address({ address: "aleo1qqqq" })).toBe("aleo1qqqq");
+        expect(Leo.field("12field")).toBe("12field");
+        expect(Leo.group("7group")).toBe("7group");
+        expect(Leo.scalar("9scalar")).toBe("9scalar");
+        expect(Leo.identifier("'strategy_one'")).toBe("strategy_one");
+      });
+
+      it("rejects invalid primitive Leo literals early", () => {
+        expect(() => Leo.address("not-an-address")).toThrow("expected Address");
+        expect(() => Leo.field("12")).toThrow("expected Field literal");
+        expect(() => Leo.group("7")).toThrow("expected Group literal");
+        expect(() => Leo.scalar("9")).toThrow("expected Scalar literal");
+        expect(() => Leo.identifier("1strategy")).toThrow("expected Identifier matching");
+      });
+    });
+
+    describe("integer serializers", () => {
+      it("serializes integer values at their valid bounds", () => {
+        expect(BaseContract.serializeUInt(255, 8)).toBe("255u8");
+        expect(BaseContract.serializeUInt((1n << 64n) - 1n, 64)).toBe("18446744073709551615u64");
+        expect(BaseContract.serializeInt(-128, 8)).toBe("-128i8");
+        expect(BaseContract.serializeInt(127, 8)).toBe("127i8");
+        expect(BaseContract.serializeInt(-(1n << 63n), 64)).toBe("-9223372036854775808i64");
+      });
+
+      it("rejects out-of-range and wrong-shaped integers", () => {
+        expect(() => BaseContract.serializeUInt(-1, 8)).toThrow("expected u8 in range 0..255");
+        expect(() => BaseContract.serializeUInt(256, 8)).toThrow("expected u8 in range 0..255");
+        expect(() => BaseContract.serializeUInt(1n, 32)).toThrow("expected u32 number");
+        expect(() => BaseContract.serializeUInt(1, 64)).toThrow("expected u64 bigint");
+        expect(() => BaseContract.serializeInt(-129, 8)).toThrow("expected i8 in range -128..127");
+        expect(() => BaseContract.serializeInt(128, 8)).toThrow("expected i8 in range -128..127");
+        expect(() => BaseContract.serializeInt(1, 64)).toThrow("expected i64 bigint");
+      });
+    });
+
+    describe("input validation errors", () => {
+      it("carries structured context for invalid primitive input", () => {
+        expect(() =>
+          BaseContract.serializeAddress("bad", {
+            programId: "token.aleo",
+            transition: "transfer",
+            input: "receiver",
+          }),
+        ).toThrowErrorMatchingInlineSnapshot(
+          `[TransitionInputError: token.aleo/transfer input "receiver" expected Address. Received string "bad". Use Leo.address(...) or pass a named/devnode account.]`,
+        );
+
+        try {
+          BaseContract.serializeAddress("bad", {
+            programId: "token.aleo",
+            transition: "transfer",
+            input: "receiver",
+          });
+        } catch (error) {
+          expect(error).toMatchObject({
+            kind: "TransitionInputError",
+            phase: "input",
+            programId: "token.aleo",
+            transition: "transfer",
+            input: "receiver",
+          });
+        }
+      });
+
+      it("reports nested array paths for recursive input validation", () => {
+        expect(() =>
+          BaseContract.serializeArray(
+            [[1, "bad"]],
+            { programId: "matrix.aleo", transition: "set", input: "values" },
+            (row: unknown, rowContext: any) =>
+              BaseContract.serializeArray(
+                row,
+                rowContext,
+                (cell: unknown, cellContext: any) => BaseContract.serializeUInt(cell, 8, cellContext),
+              ),
+          ),
+        ).toThrow('matrix.aleo/set input "values".0.1 expected u8 number');
+      });
+
+      it("fails fast for Optional None values that have no generated zero value", () => {
+        expect(() =>
+          BaseContract.serializeUnsupportedOptionalNone({
+            programId: "settings.aleo",
+            transition: "update",
+            input: "metadata",
+          }),
+        ).toThrow("non-null Optional value");
+      });
+    });
+
     describe("identifier helpers", () => {
       it("serializes bare identifiers as single-quoted Leo literals", () => {
         expect(BaseContract.serializeIdentifier("voting_power")).toBe("'voting_power'");
@@ -533,19 +765,19 @@ describe("BaseContract runtime", () => {
       });
 
       it("rejects empty identifier values", () => {
-        expect(() => BaseContract.serializeIdentifier("   ")).toThrow("Identifier cannot be empty");
+        expect(() => BaseContract.serializeIdentifier("   ")).toThrow("expected Identifier");
       });
 
       it("rejects one-sided quoted identifier values", () => {
-        expect(() => BaseContract.serializeIdentifier("'voting_power")).toThrow("Invalid Leo identifier");
+        expect(() => BaseContract.serializeIdentifier("'voting_power")).toThrow("expected Identifier matching");
       });
 
       it("rejects identifier values with embedded quotes", () => {
-        expect(() => BaseContract.serializeIdentifier("voting'power")).toThrow("Invalid Leo identifier");
+        expect(() => BaseContract.serializeIdentifier("voting'power")).toThrow("expected Identifier matching");
       });
 
       it("rejects identifier values that do not start with a letter or underscore", () => {
-        expect(() => BaseContract.serializeIdentifier("1strategy")).toThrow("Invalid Leo identifier");
+        expect(() => BaseContract.serializeIdentifier("1strategy")).toThrow("expected Identifier matching");
       });
 
       it("parses quoted identifier literals to bare names", () => {

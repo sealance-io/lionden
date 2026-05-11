@@ -48,7 +48,7 @@ describe("admin_example.aleo", () => {
   });
 
   it("v1 main(7, 5) returns 12", async () => {
-    expect(await admin.main(7, 5)).toBe(12);
+    expect(await admin.main.locally({ a: 7, b: 5 })).toBe(12);
   });
 
   it("admin can upgrade and the new sub transition is callable", async () => {
@@ -74,9 +74,9 @@ describe("admin_example.aleo", () => {
       await ctx!.lre.tasks.run("upgrade", { program: "admin_example" });
 
       // The v2-only `subtract` transition isn't on the typed wrapper class
-      // loaded at suite startup (typechain reflects v1). Fall back to
-      // ctx.execute for the post-upgrade ABI addition.
-      const sub = await ctx!.execute(
+      // loaded at suite startup (typechain reflects v1). Use the explicit
+      // raw escape hatch for the post-upgrade ABI addition.
+      const sub = await ctx!.raw.execute(
         "admin_example.aleo",
         "subtract",
         ["10u32", "3u32"],
@@ -85,7 +85,7 @@ describe("admin_example.aleo", () => {
       expect(sub.outputs[0]).toBe("7u32");
 
       // Pre-existing transition still works after upgrade — typed wrapper OK.
-      expect(await admin.main(1, 2)).toBe(3);
+      expect(await admin.main.locally({ a: 1, b: 2 })).toBe(3);
     } finally {
       fs.writeFileSync(programPath, v1Source, "utf-8");
     }

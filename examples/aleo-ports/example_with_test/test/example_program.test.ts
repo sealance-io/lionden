@@ -8,6 +8,7 @@ import {
   type TestContext,
 } from "@lionden/testing";
 import { createExampleProgram } from "../typechain/ExampleProgram.js";
+import { Leo } from "../typechain/BaseContract.js";
 
 async function deployExample() {
   const ctx = await setup();
@@ -44,7 +45,7 @@ describe("example_program.aleo", () => {
 
   // Port of @test fn test_simple_addition()
   it("simple_addition returns the sum", async () => {
-    expect(await example.simple_addition(2, 3)).toBe(5);
+    expect(await example.simple_addition.locally({ a: 2, b: 3 })).toBe(5);
   });
 
   // Port of @test @should_fail fn test_simple_addition_fail()
@@ -52,12 +53,12 @@ describe("example_program.aleo", () => {
   // In lionden, simple_addition runs successfully and returns 5; the
   // failure assertion lives in the test layer.
   it("simple_addition does not return the wrong sum (parity for @should_fail)", async () => {
-    expect(await example.simple_addition(2, 3)).not.toBe(3);
+    expect(await example.simple_addition.locally({ a: 2, b: 3 })).not.toBe(3);
   });
 
   // Port of @test fn test_record_maker()
   it("mint_record produces a record with the requested x field", async () => {
-    const record = await example.mint_record("0field");
+    const record = await example.mint_record.locally({ x: Leo.field("0field") });
     expect(record.x).toBe("0field");
   });
 
@@ -72,7 +73,7 @@ describe("example_program.aleo", () => {
   // transitions; there is no way to seed a mapping or call ChaCha directly).
   // NOTE: leo-test parity gap. See tmp/leo-examples/example_with_test/tests/test_example_program.leo:34-38.
   it("set_mapping writes through finalize and is readable from the mapping", async () => {
-    await example.set_mappingBroadcast("12field");
-    expect(await example.getMap("0field")).toBe("12field");
+    await example.set_mapping.accepted({ x: Leo.field("12field") });
+    expect(await example.getMap(Leo.field("0field"))).toBe("12field");
   });
 });

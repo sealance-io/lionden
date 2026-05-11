@@ -5,7 +5,7 @@ import {
   clearFixtures,
   type TestContext,
 } from "@lionden/testing";
-import { createTokenContract } from "../typechain/index.js";
+import { createTokenContract, Leo } from "../typechain/index.js";
 import { setupToken } from "../recipes/setup.js";
 
 const RECEIVERS = {
@@ -49,7 +49,7 @@ describe("token program", () => {
   describe("mint_public", () => {
     it("recipe minted initial supply to treasury", async () => {
       const treasury = ctx!.named.address("treasury");
-      expect(await token.getBalances(treasury.address)).toBe(1_000_000n);
+      expect(await token.getBalances(treasury)).toBe(1_000_000n);
     });
   });
 
@@ -59,52 +59,49 @@ describe("token program", () => {
       const account2 = ctx!.accounts[2]!;
 
       // Capture balances before to keep assertions delta-based and order-independent.
-      const balance1Before = (await token.getBalances(account1.address)) ?? 0n;
-      const balance2Before = (await token.getBalances(account2.address)) ?? 0n;
+      const balance1Before = (await token.getBalances(account1)) ?? 0n;
+      const balance2Before = (await token.getBalances(account2)) ?? 0n;
 
       // Mint tokens to account-1 (default signer is account-0)
-      await token.mint_publicBroadcast(account1.address, 5000n);
+      await token.mint_public.accepted({ receiver: account1, amount: 5000n });
 
       // transfer_public reads self.signer (token.aleo:24) to determine sender.
       // withSigner switches the signer to account-1; if signer switching is
       // broken, account-0 would be the sender and the finalize
       // assert(sender_balance >= amount) would fail or debit the wrong account.
-      await token.withSigner(account1).transfer_publicBroadcast(account2.address, 2000n);
+      await token.withSigner(account1).transfer_public.accepted({ receiver: account2, amount: 2000n });
 
       // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
-      expect(await token.getBalances(account1.address)).toBe(balance1Before + 3000n);
+      expect(await token.getBalances(account1)).toBe(balance1Before + 3000n);
 
       // account-2: +2000 delta
-      expect(await token.getBalances(account2.address)).toBe(balance2Before + 2000n);
+      expect(await token.getBalances(account2)).toBe(balance2Before + 2000n);
     });
 
     it("supports per-call signer override via options.signer", async () => {
       const account1 = ctx!.accounts[1]!;
-      const receiver = RECEIVERS.publicTransfer;
+      const receiver = Leo.address(RECEIVERS.publicTransfer);
 
-      const balance1Before = (await token.getBalances(account1.address)) ?? 0n;
+      const balance1Before = (await token.getBalances(account1)) ?? 0n;
       const receiverBefore = (await token.getBalances(receiver)) ?? 0n;
 
       // Mint to account-1 (default signer)
-      await token.mint_publicBroadcast(account1.address, 5000n);
+      await token.mint_public.accepted({ receiver: account1, amount: 5000n });
 
       // Per-call signer override (alternate to withSigner)
-      await token.transfer_publicBroadcast(receiver, 2000n, { signer: account1 });
+      await token.transfer_public.accepted({ receiver, amount: 2000n }, { signer: account1 });
 
-      expect(await token.getBalances(account1.address)).toBe(balance1Before + 3000n);
+      expect(await token.getBalances(account1)).toBe(balance1Before + 3000n);
       expect(await token.getBalances(receiver)).toBe(receiverBefore + 2000n);
     });
   });
 
   describe("mint_private", () => {
     it("returns a typed Token record", async () => {
-      const receiver = RECEIVERS.privateMint;
-      const record = await token.mint_private(receiver, 500n);
+      const receiver = Leo.address(RECEIVERS.privateMint);
+      const record = await token.mint_private.locally({ receiver, amount: 500n });
 
-      // Owner comes back with a `.private` visibility suffix on record outputs
-      // (typechain's address deserializer doesn't strip it). Match on the
-      // address prefix rather than equality.
-      expect(record.owner.startsWith(receiver)).toBe(true);
+      expect(record.owner).toBe(RECEIVERS.privateMint);
       expect(record.amount).toBe(500n);
     });
   });
@@ -130,12 +127,12 @@ describe("token program", () => {
       const treasury = ctx!.named.address("treasury");
       expect(treasury.type).toBe("address-only");
 
-      const balanceBefore = (await token.getBalances(treasury.address)) ?? 0n;
+      const balanceBefore = (await token.getBalances(treasury)) ?? 0n;
 
       // Mint to treasury using its named address rather than a hardcoded string
-      await token.mint_publicBroadcast(treasury.address, 100n);
+      await token.mint_public.accepted({ receiver: treasury, amount: 100n });
 
-      expect(await token.getBalances(treasury.address)).toBe(balanceBefore + 100n);
+      expect(await token.getBalances(treasury)).toBe(balanceBefore + 100n);
     });
   });
 });
