@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createHelloworld } from "../typechain/Helloworld.js";
+import { createHello } from "../typechain/Hello.js";
 
 async function deployBoth() {
   const ctx = await setup();
@@ -29,15 +31,25 @@ afterAll(async () => {
 });
 
 describe("helloworld.aleo", () => {
+  const helloworld = createHelloworld();
+
+  beforeAll(() => {
+    helloworld.connect(ctx!.lre);
+  });
+
   it("adds two u32s", async () => {
-    const result = await ctx!.execute("helloworld.aleo", "main", ["3u32", "5u32"], { mode: "local" });
-    expect(result.outputs[0]).toBe("8u32");
+    expect(await helloworld.main(3, 5)).toBe(8);
   });
 });
 
 describe("hello.aleo", () => {
+  const hello = createHello();
+
+  beforeAll(() => {
+    hello.connect(ctx!.lre);
+  });
+
   it("adds two u32s", async () => {
-    const result = await ctx!.execute("hello.aleo", "main", ["1u32", "2u32"], { mode: "local" });
-    expect(result.outputs[0]).toBe("3u32");
+    expect(await hello.main(1, 2)).toBe(3);
   });
 });

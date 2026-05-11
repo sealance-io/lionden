@@ -45,6 +45,8 @@ export function deserializePair(value: string): Pair {
 }
 
 export function serializeLPToken(value: LPToken): string {
+  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
+  if (typeof _raw === "string") return _raw;
   const fields: string[] = [];
   fields.push("owner: " + value.owner);
   fields.push("amount: " + value.amount.toString() + "u64");
@@ -55,12 +57,14 @@ export function serializeLPToken(value: LPToken): string {
 
 export function deserializeLPToken(value: string): LPToken {
   const _fields = BaseContract.parseStruct(value);
-  return {
+  const _record: LPToken = {
     owner: BaseContract.parseString(_fields["owner"]!),
     amount: BaseContract.parseBigInt(_fields["amount"]!),
     pair_id: BaseContract.parseString(_fields["pair_id"]!),
     _nonce: BaseContract.parseString(_fields["_nonce"] ?? ""),
   };
+  Object.defineProperty(_record, BaseContract.RECORD_RAW, { value, enumerable: false });
+  return _record;
 }
 
 // ---------------------------------------------------------------------------

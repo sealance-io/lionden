@@ -38,7 +38,18 @@ export interface TransitionCallResult {
   readonly txId?: string;
 }
 
+/**
+ * Symbol-keyed cache for the original record literal a deserializer parsed.
+ * Generated record (de)serializers use this to round-trip records losslessly
+ * — without it, deserialize→serialize mangles per-field visibility suffixes
+ * (\`.private\` / \`.public\`) and the Aleo runtime rejects the malformed input
+ * when a record returned by one transition is passed back into another.
+ */
+export const RECORD_RAW: unique symbol = Symbol("LIONDEN_RECORD_RAW");
+
 export abstract class BaseContract {
+  static readonly RECORD_RAW: typeof RECORD_RAW = RECORD_RAW;
+
   protected readonly programId: string;
   protected lre: LionDenRuntimeEnvironment | null = null;
   protected signer?: CallOptions["signer"];
@@ -182,9 +193,9 @@ export abstract class BaseContract {
     return value.replace(/(?:u(?:8|16|32|64|128)|i(?:8|16|32|64|128)|field|group|scalar|bool|address)(?:\\.(?:public|private))?$/i, "");
   }
 
-  /** Parse a Leo boolean string. "true" → true */
+  /** Parse a Leo boolean string. "true" → true. Strips an optional visibility suffix ("true.private" → true). */
   static parseBoolean(value: string): boolean {
-    return value === "true";
+    return value.replace(/\\.(?:public|private)$/i, "") === "true";
   }
 
   /** Parse a Leo integer string to number. "42u32" → 42 */
@@ -197,9 +208,11 @@ export abstract class BaseContract {
     return BigInt(BaseContract.stripSuffix(value));
   }
 
-  /** Parse a Leo string value (address/field/group/scalar) — returned as-is. */
+  /** Parse a Leo string value (address/field/group/scalar). Strips an optional
+   *  visibility suffix so record-field values match the bare wire form
+   *  ("aleo1abc.private" → "aleo1abc", "0field.private" → "0field"). */
   static parseString(value: string): string {
-    return value;
+    return value.replace(/\\.(?:public|private)$/i, "");
   }
 
   /** Serialize a Leo identifier literal. Bare names are wrapped in single quotes. */
@@ -216,9 +229,11 @@ export abstract class BaseContract {
     return \`'\${trimmed}'\`;
   }
 
-  /** Parse a Leo identifier literal to its bare name. */
+  /** Parse a Leo identifier literal to its bare name. Strips an optional
+   *  visibility suffix so record/struct identifier fields decode the same as
+   *  top-level identifier outputs ("'voting_power'.private" → "voting_power"). */
   static parseIdentifier(value: string): string {
-    const trimmed = value.trim();
+    const trimmed = value.trim().replace(/\\.(?:public|private)$/i, "");
     if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
       return trimmed.slice(1, -1);
     }

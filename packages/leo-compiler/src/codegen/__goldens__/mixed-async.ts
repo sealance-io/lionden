@@ -14,6 +14,8 @@ export interface Token {
 // ---------------------------------------------------------------------------
 
 export function serializeToken(value: Token): string {
+  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
+  if (typeof _raw === "string") return _raw;
   const fields: string[] = [];
   fields.push("owner: " + value.owner);
   fields.push("amount: " + value.amount.toString() + "u64");
@@ -23,11 +25,13 @@ export function serializeToken(value: Token): string {
 
 export function deserializeToken(value: string): Token {
   const _fields = BaseContract.parseStruct(value);
-  return {
+  const _record: Token = {
     owner: BaseContract.parseString(_fields["owner"]!),
     amount: BaseContract.parseBigInt(_fields["amount"]!),
     _nonce: BaseContract.parseString(_fields["_nonce"] ?? ""),
   };
+  Object.defineProperty(_record, BaseContract.RECORD_RAW, { value, enumerable: false });
+  return _record;
 }
 
 // ---------------------------------------------------------------------------

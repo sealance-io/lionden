@@ -2,12 +2,16 @@
 // 8-move 2-player game. The port exercises:
 //   1. new() returns an empty Board
 //   2. make_move() chains nested struct outputs back as inputs
-//   3. A 3-move row-1 sweep by player 1 ends with winner = 1u8
+//   3. A 3-move row-1 sweep by player 1 ends with winner = 1
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createTictactoe, type Board } from "../typechain/Tictactoe.js";
 
-const EMPTY_BOARD =
-  "{ r1: { c1: 0u8, c2: 0u8, c3: 0u8 }, r2: { c1: 0u8, c2: 0u8, c3: 0u8 }, r3: { c1: 0u8, c2: 0u8, c3: 0u8 } }";
+const EMPTY_BOARD: Board = {
+  r1: { c1: 0, c2: 0, c3: 0 },
+  r2: { c1: 0, c2: 0, c3: 0 },
+  r3: { c1: 0, c2: 0, c3: 0 },
+};
 
 async function deployTicTacToe() {
   const ctx = await setup();
@@ -36,54 +40,38 @@ afterAll(async () => {
 });
 
 describe("tictactoe.aleo", () => {
-  it("new() returns an empty board (all 0u8)", async () => {
-    const result = await ctx!.execute("tictactoe.aleo", "new", [], { mode: "local" });
-    const board = result.outputs[0]!;
-    // The literal contains nine `0u8` cells.
-    expect(board.match(/0u8/g)?.length ?? 0).toBeGreaterThanOrEqual(9);
+  const ttt = createTictactoe();
+
+  beforeAll(() => {
+    ttt.connect(ctx!.lre);
+  });
+
+  it("new() returns an empty board (all 0)", async () => {
+    const board = await ttt.new();
+    const cells = [
+      board.r1.c1, board.r1.c2, board.r1.c3,
+      board.r2.c1, board.r2.c2, board.r2.c3,
+      board.r3.c1, board.r3.c2, board.r3.c3,
+    ];
+    expect(cells.every((c) => c === 0)).toBe(true);
   });
 
   it("make_move places player 1 in (1,1) and reports no winner yet", async () => {
-    const result = await ctx!.execute(
-      "tictactoe.aleo",
-      "make_move",
-      ["1u8", "1u8", "1u8", EMPTY_BOARD],
-      { mode: "local" },
-    );
-
-    expect(result.outputs).toHaveLength(2);
-    const winner = result.outputs[1]!;
-    expect(winner).toBe("0u8");
+    const [, winner] = await ttt.make_move(1, 1, 1, EMPTY_BOARD);
+    expect(winner).toBe(0);
   });
 
   it("player 1 wins by completing row 1 across three moves", async () => {
     // Move 1: player 1 takes (1,1).
-    const m1 = await ctx!.execute(
-      "tictactoe.aleo",
-      "make_move",
-      ["1u8", "1u8", "1u8", EMPTY_BOARD],
-      { mode: "local" },
-    );
-    expect(m1.outputs[1]).toBe("0u8");
-    const board1 = m1.outputs[0]!;
+    const [board1, w1] = await ttt.make_move(1, 1, 1, EMPTY_BOARD);
+    expect(w1).toBe(0);
 
     // Move 2: player 1 takes (1,2). (Skipping player 2's interleaving for parity-test brevity.)
-    const m2 = await ctx!.execute(
-      "tictactoe.aleo",
-      "make_move",
-      ["1u8", "1u8", "2u8", board1],
-      { mode: "local" },
-    );
-    expect(m2.outputs[1]).toBe("0u8");
-    const board2 = m2.outputs[0]!;
+    const [board2, w2] = await ttt.make_move(1, 1, 2, board1);
+    expect(w2).toBe(0);
 
     // Move 3: player 1 completes row 1 by taking (1,3).
-    const m3 = await ctx!.execute(
-      "tictactoe.aleo",
-      "make_move",
-      ["1u8", "1u8", "3u8", board2],
-      { mode: "local" },
-    );
-    expect(m3.outputs[1]).toBe("1u8");
+    const [, w3] = await ttt.make_move(1, 1, 3, board2);
+    expect(w3).toBe(1);
   });
 });

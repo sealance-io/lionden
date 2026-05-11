@@ -178,6 +178,12 @@ function generateRecordSerializer(record: RecordABI, ctx: GenerationContext): st
   const name = pathToTsName(record.path);
   const lines: string[] = [];
   lines.push(`export function serialize${name}(value: ${name}): string {`);
+  // Round-trip a record returned by a previous transition by replaying the
+  // original literal verbatim. Without this, per-field visibility suffixes
+  // mismatch on re-serialization and the runtime rejects the input. See
+  // BaseContract.RECORD_RAW.
+  lines.push("  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];");
+  lines.push("  if (typeof _raw === \"string\") return _raw;");
   lines.push("  const fields: string[] = [];");
 
   for (const field of record.fields) {
@@ -212,7 +218,7 @@ function generateRecordDeserializer(record: RecordABI, ctx: GenerationContext): 
   const lines: string[] = [];
   lines.push(`export function deserialize${name}(value: string): ${name} {`);
   lines.push("  const _fields = BaseContract.parseStruct(value);");
-  lines.push("  return {");
+  lines.push(`  const _record: ${name} = {`);
   lines.push('    owner: BaseContract.parseString(_fields["owner"]!),');
   for (const field of record.fields) {
     if (field.name === "owner") continue;
@@ -222,6 +228,12 @@ function generateRecordDeserializer(record: RecordABI, ctx: GenerationContext): 
   }
   lines.push('    _nonce: BaseContract.parseString(_fields["_nonce"] ?? ""),');
   lines.push("  };");
+  // Stash the original literal so serialize${name} can replay it verbatim
+  // and avoid mangling per-field visibility suffixes on round-trip.
+  lines.push(
+    "  Object.defineProperty(_record, BaseContract.RECORD_RAW, { value, enumerable: false });",
+  );
+  lines.push("  return _record;");
   lines.push("}");
   return lines;
 }

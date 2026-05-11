@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { createNoupgradeExample } from "../typechain/NoupgradeExample.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,14 +41,14 @@ afterAll(async () => {
 });
 
 describe("noupgrade_example.aleo", () => {
+  const noupgrade = createNoupgradeExample();
+
+  beforeAll(() => {
+    noupgrade.connect(ctx!.lre);
+  });
+
   it("v1 deploy succeeded — main(2, 3) returns 5", async () => {
-    const result = await ctx!.execute(
-      "noupgrade_example.aleo",
-      "main",
-      ["2u32", "3u32"],
-      { mode: "local" },
-    );
-    expect(result.outputs[0]).toBe("5u32");
+    expect(await noupgrade.main(2, 3)).toBe(5);
   });
 
   it("upgrade attempt is rejected by @noupgrade constructor", async () => {
