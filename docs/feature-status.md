@@ -1,0 +1,320 @@
+# LionDen Feature Status
+
+**Last verified:** 2026-05-11
+
+A snapshot of what currently works in LionDen, what's still missing for a 1.0, and what's deferred past V1. This doc is anchored to **shipped behavior** in the codebase, the working examples under `examples/`, and the bug-hunt probes that have been run against the deploy/upgrade subsystem during development.
+
+For day-to-day usage, see [`usage.md`](usage.md). For design intent, see [`vision-and-roadmap.md`](vision-and-roadmap.md). For deeper detail on any subsystem, see the focused doc linked from this page.
+
+> **How to use this doc:** treat it as the operational picture at a point in time, not a roadmap. Before relying on a specific claim, re-verify with `git log -- packages/` and a glance at the cited code path — features can land or shift between snapshots.
+
+---
+
+## 1. Shipped Features
+
+Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives live in [`docs/architecture.md`](architecture.md), [`docs/compiler.md`](compiler.md), [`docs/network.md`](network.md), [`docs/deployment.md`](deployment.md), and [`docs/testing.md`](testing.md).
+
+### Config + CLI
+
+| Feature | Evidence |
+| --- | --- |
+| Declarative plugin registration via `defineConfig({ plugins })` | `packages/config/src/index.ts`, `packages/core/src/plugin-loader.ts` |
+| Four-stage config lifecycle (`extendUserConfig` → `validateUserConfig` → `resolveConfig` → `validateResolvedConfig`) | `packages/core/src/config-resolution.ts` |
+| `configVariable("ENV_NAME")` with eager resolution (resolved for every network at load time, not lazily for the active one) | `packages/config/src/index.ts` |
+| Hook categories: `config`, `compilation`, `network`, `testing`, `deployment` | `packages/core/src/types.ts` |
+| Task builder API with `addOption`/`addFlag`/`addPositionalArgument`/`setAction`/`overrideTask`/`runSuper` | `packages/core/src/task-builder.ts` |
+| CLI tasks registered today: `compile`, `clean`, `node`, `run`, `deploy`, `upgrade`, `export`, `recipe`, `test` | `packages/plugin-*/src/index.ts` |
+| Global CLI options: `--config`, `--network`, `--verbose`, `--help`/`-h`, `--version`/`-v` | `packages/cli/src/task-dispatch.ts` |
+| Config discovery walks up from cwd to find `lionden.config.{ts,js,mjs}` | `packages/cli/src/config-discovery.ts` |
+| TypeScript config files loaded via `tsx`-import path | `packages/cli/src/bin.ts` |
+
+### Compilation + Typechain
+
+| Feature | Evidence |
+| --- | --- |
+| Source-first project layout — no manual `program.json` | `packages/leo-compiler/src/source-discovery.ts` |
+| Discovers `main.leo` (program) and `lib.leo` (library) roots; preserves nested helpers in the source tree | same |
+| Package materialization under `artifacts/.build/<id>/` before invoking `leo build` | `packages/leo-compiler/src/package-materializer.ts` |
+| Dependency graph: local programs/libraries + network deps with topological order | `packages/leo-compiler/src/dependency-resolver.ts` |
+| Network dependency fetching via `GET /{network}/program/{id}` with local cache under `artifacts/.cache` | `packages/leo-compiler/src/compiler.ts` (`defaultFetchNetworkDep`) |
+| Content-hash compile cache, bypassed with `--force` | `packages/leo-compiler/src/compiler.ts` |
+| ABI parsing into a normalized internal representation; bridges v4 and v3.5 ABI shapes | `packages/leo-compiler/src/abi-parser.ts` |
+| TypeScript binding generation per program: `BaseContract.ts`, `<Name>.ts`, barrel `index.ts` | `packages/leo-compiler/src/codegen/typescript-generator.ts` |
+| Generated transition methods: `.locally`, `.failsLocally`, `.captureLocalFailure`, `.submitted`, `.settled`, `.accepted`, `.rejected` | same |
+| Mapping getters: `get<Mapping>(key)`, returning `null` for unset | same |
+| Record helpers: `serialize<Name>`, `deserialize<Name>`, `decrypt<Name>` | `packages/leo-compiler/src/codegen/` |
+| Encrypted output types: `EncryptedRecord<T>.decrypt(key)`, `EncryptedValue<T>.decrypt(key)` | `packages/testing/...` + base contract code |
+| Leo primitive helpers: `Leo.address/.field/.group/.scalar/.identifier/.dynamicRecord` | base contract template |
+| `codegen.dynamicRecords` config: per-program `Leo.dynamicRecord` conversion helpers | `packages/leo-compiler/src/codegen/contract-wrapper.ts` |
+| `withSigner(signer)` chained API + per-call `options.signer` | base contract template |
+| `compile` flags: `--force`, `--no-typechain`, `--program` | `packages/plugin-leo/src/index.ts` |
+| `clean` task removes `artifacts/` and `typechain/` (preserves `deployments/`) | `packages/plugin-leo/src/index.ts` |
+
+### Network + Devnode + Scripts
+
+| Feature | Evidence |
+| --- | --- |
+| Two network variants: `devnode` (managed) and `http` (external) | `packages/config/src/types.ts` |
+| Managed devnode lifecycle: spawn `leo devnode start`, health-poll REST, graceful shutdown | `packages/network/src/devnode-manager.ts` |
+| `NetworkManager` resolves named accounts per network, caches per-network state, transactional `connect()` | `packages/network/src/network-manager.ts` |
+| SDK adapter loads `@provablehq/sdk` dynamically; once-per-process WASM init; runtime checks for devnode builder methods | `packages/network/src/sdk-adapter.ts` |
+| Devnode fast-path: `buildDevnodeDeploymentTransaction`/`buildDevnodeExecutionTransaction`/`buildDevnodeUpgradeTransaction` skip proofs | `packages/network/src/connection.ts` |
+| HTTP path: `pm.deploy()`, `pm.execute()`, `pm.buildUpgradeTransaction()` + broadcast | same |
+| Transaction confirmation polling: `GET /{network}/transaction/confirmed/{txId}`, block-height resolution via `GET /{network}/find/blockHash/{txId}` + `GET /{network}/block/{blockHash}` | same |
+| Mapping reads: `connection.getMappingValue(programId, mapping, key)` | same |
+| Balance and block-height helpers on `AleoConnection` | same |
+| Deployed program source fetch via `getProgramSource()` | same |
+| `node` task: `--port` (default 3030), `--manual-blocks`, `--network` (testnet/mainnet/canary) | `packages/plugin-network/src/index.ts` |
+| `run` task: positional script path, optional `--network`; imports the script and calls `default` or `main` | same |
+| `--consensus-heights` opt-in field for devnode (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts`, config types |
+
+### Deploy + Upgrade + Export + Recipes
+
+| Feature | Evidence |
+| --- | --- |
+| `deploy` task: compile → preflight → broadcast → record state → fire hook → optional export | `packages/plugin-deploy/src/deploy-task.ts` |
+| Deploy flags: `--program`, `--priority-fee`, `--skip-confirm`, `--network`, `--no-compile`, `--preflight`, `--dry-run` (devnode), `--no-skip-deployed`, `--export` | `packages/plugin-deploy/src/index.ts` |
+| Constructor parser recognises `@noupgrade`, `@admin(address=...)`, `@checksum(...)`, `@custom(...)` (also accepts optional `async constructor` for v3.5) | `packages/plugin-deploy/src/constructor-parser.ts` |
+| Deploy preflight: constructor presence/validity, on-chain status, HTTP fee estimation, HTTP balance check, imported program availability | `packages/plugin-deploy/src/preflight.ts` |
+| Multi-program topological deploy order; targeted `--program` pulls transitive local deps | `packages/plugin-deploy/src/deploy-task.ts` |
+| Deployment state on disk: `complete` / `degraded` / `recovered` records, per-network ABI snapshots, append-only history, pending markers, atomic temp+rename writes | `packages/plugin-deploy/src/deployment-manager.ts` |
+| Ephemeral mode: devnode is in-memory by default; HTTP is disk-backed by default; per-network and global overrides | same |
+| Pending marker recovery on next run (non-ephemeral networks) | same |
+| `upgrade` task: ABI compat check, constructor fingerprint immutability, `@admin` signer match, edition continuity, `@custom` warning, `@noupgrade` rejection | `packages/plugin-deploy/src/upgrade-task.ts` + `abi-compat.ts` |
+| `export` task: per-network bundle to `deployments/_exports/<network>.json` or `--out <path>`; writes even in ephemeral mode | `packages/plugin-deploy/src/index.ts` |
+| `deploy.autoExport` hook after each deploy/upgrade | `packages/plugin-deploy/src/deployment-manager.ts` |
+| Hooks: `deployment.programDeployed`, `deployment.programUpgraded` | `packages/core/src/types.ts` |
+| `recipe` task: `--file`, `--export`, `--network`, `--no-compile`; passes typed `DeploymentContext` (named accounts, deploy, execute, lre, accounts) | `packages/plugin-deploy/src/recipe-task.ts` |
+| Signer integration: `namedAccounts.deployer` (signable) → deploy signer; `namedAccounts.admin` (signable) → upgrade signer; address-only `admin` triggers `NAMED_ADMIN_DRIFT` warning instead of blocking | `packages/plugin-deploy/src/...` |
+
+### Testing
+
+| Feature | Evidence |
+| --- | --- |
+| `setup()` returns `TestContext { lre, accounts, namedAccounts, named, connection, network, deploy, execute, raw.execute, advanceBlocks, teardown }` | `packages/testing/src/test-context.ts` |
+| Auto devnode lifecycle gated by `config.testing.autoStartDevnode` (default true) | `packages/testing/src/devnode-lifecycle.ts` |
+| `loadFixture(fn)` / `clearFixtures()` caches state across same-file tests | `packages/testing/src/fixtures.ts` |
+| `TestContext` structurally satisfies `DeploymentContext`, so recipes call directly from fixtures | `packages/testing/src/test-context.ts` |
+| Named account DSL: `ctx.named.signer(role)`, `ctx.named.address(role)`, `ctx.named.require({...})` | same + `packages/config/` |
+| Assertions exported: `assertMappingValue`, `assertMappingEmpty`, `assertTransactionConfirmed`, `assertTransactionRejected`, `assertBalanceAtLeast`, `assertBalance`, `assertBlockHeightAtLeast` | `packages/testing/src/index.ts` line 24-33, `packages/testing/src/assertions.ts` |
+| Devnode account utilities: `DEVNODE_ACCOUNTS`, `getDefaultAccount`, `getAccount`, `getAddresses`, `getAccountByAddress` | `packages/testing/src/index.ts` line 36-42 |
+| Typed broadcast results: `AcceptedTransition<T>` carries decoded `outputs` parsed from the confirmed transaction (records → `EncryptedRecord<T>`, private plaintext → `EncryptedValue<T>`, public plaintext → decoded eagerly) | base contract `expectAcceptedTyped` |
+| `ctx.raw.execute(programId, transitionName, args[])` escape hatch for post-upgrade transitions and dynamic ABI calls | `packages/testing/src/test-context.ts` |
+| `test` task: `--grep`, `--timeout`, `--no-compile`, `--prove` (sets `LIONDEN_PROVE=true`) | `packages/plugin-test/src/index.ts` |
+| Vitest integration sets `LIONDEN_PROJECT_ROOT`, scopes discovery to `test/**/*.test.ts`, returns summarized counts | `packages/plugin-test/src/test-runner.ts` |
+| Vitest `agent` reporter usage convention (`npm run test:agent`) for low-noise agent runs | repo root `package.json` |
+
+### Scaffolder
+
+| Feature | Evidence |
+| --- | --- |
+| `create-lionden` interactive scaffolder; flags `--template`/`-t`, positional project name | `packages/create-lionden/src/index.ts` |
+| Templates registered today: `hello-world`, `token` | `packages/create-lionden/src/templates.ts` |
+| Emits `package.json`, `tsconfig.json`, `.gitignore`, `lionden.config.ts`, `programs/`, `scripts/deploy.ts`, `test/<name>.test.ts` | same |
+
+### Leo Version Compatibility
+
+| Feature | Evidence |
+| --- | --- |
+| Leo v4.0.x default (full support, including `lib.leo` library units) | [`leo-version-compatibility.md`](leo-version-compatibility.md) |
+| Leo v3.5.x supported for deployable `main.leo` programs (no libraries) | same |
+| `leoBinary` config (with `~/` expansion) to target a specific Leo install | `packages/config/src/types.ts` |
+| `--disable-update-check` always passed to managed Leo CLI invocations | `packages/leo-compiler/src/`, `packages/network/src/devnode-manager.ts` |
+| `consensusHeights` opt-in field on devnode networks (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts` |
+| ABI parser normalises `transitions`/`functions`, `is_async`/`is_final`, `Future`/`Final` between versions | `packages/leo-compiler/src/abi-parser.ts` |
+
+---
+
+## 2. Verified-In-Practice Matrix
+
+The bullets below answer "what features have we actually exercised end-to-end, not just shipped?" Probes and examples are the two evidence sources.
+
+### Bug-hunt probes (devnode only)
+
+Five disposable agent-driven probes have been run against the deploy/upgrade subsystem to validate the scenarios below. The probes themselves live outside this repo; what they covered is summarized here.
+
+| Probe | Validates |
+| --- | --- |
+| 1 | Single-program `@admin` deploy + confirmation + complete record + ABI snapshot + history entry + auto-export + post-deploy execution |
+| 2 | Skip-deployed with existing complete state; missing local state → degraded record; `--no-skip-deployed` hard-error |
+| 3 | Multi-program topological deploy (`base_math` → `rate_calc` → `loan_mgmt`); targeted deploy pulls transitive deps; cross-program execution |
+| 4 | ABI-additive `@admin` upgrade; history append; mapping survives upgrade; ABI-breaking removal rejected via `UpgradeCompatibilityError` |
+| 5 | Devnode-restart staleness, redeploy after restart, pending deploy recovery (found + missing marker cleanup) |
+
+### Top-level examples
+
+| Example | Features exercised |
+| --- | --- |
+| `examples/hello-world` | Pure transitions (`u32` add/multiply), `@noupgrade`, `loadFixture` + `setup`, `.locally()` |
+| `examples/token` | Public + private transitions, mappings, records, named accounts (`signer` + `address`), `.accepted()`, `.withSigner()`, encrypted record decrypt, `advanceBlocks`, recipe pattern |
+| `examples/multi-program` | Cross-program calls (`treasury.aleo::deposit`), `lib.leo` library import (compile-only), topological deploy, mapping getters |
+| `examples/nft-registry` | Structs nested in records (`NftMetadata` in `Nft`), pure transitions returning tuples, mapping getters with type coercion |
+| `examples/upgradeable-counter` | `@admin` constructor, full upgrade flow via `lre.tasks.run("upgrade", ...)`, `ctx.raw.execute()` for post-upgrade ABI, `assertMappingValue`, `assertBalanceAtLeast`, `assertBlockHeightAtLeast` |
+| `examples/async-escrow` | Finalize-only transitions, mapping state mutation, `.failsLocally()` (off-chain assert), `.rejected()` (on-chain finalize failure) |
+
+### `examples/aleo-ports/` — 21 compatibility ports
+
+Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)`; `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
+
+---
+
+## 3. Gaps vs. Shipped Specs
+
+The features below are described or implied by LionDen's design intent (see [`vision-and-roadmap.md`](vision-and-roadmap.md)) and the shipped subsystem docs but are either incomplete, untested, or carry a known TODO. Grouped by category.
+
+### Known TODOs in code
+
+- **Imperative `connection.execute()` returns empty `outputs`.** `packages/network/src/connection.ts:313` has `// TODO: Parse outputs from transaction once confirmed`, returning `{ outputs: [], txId }` after on-chain broadcast.
+  - **Nuance**: this is on the low-level imperative API. The typed wrapper path (`.accepted()` / `.settled()` / `.rejected()` from generated bindings) does **not** depend on this — it parses `rawOutputs` from the confirmed transaction directly and projects them into the typed `outputs` shape. So:
+    - Code using typechain wrappers: full output parsing works.
+    - Code using the imperative `connection.execute(...)` path directly — including `ctx.execute(...)` / `ctx.raw.execute(...)` in on-chain mode — gets `txId` only, no outputs.
+  - Action: either implement parsing on the imperative path, or document the imperative API as txId-only and steer all output assertions through typed wrappers.
+
+### Integration gaps (code exists, no end-to-end coverage)
+
+- **HTTP / testnet deploy path**: `pm.deploy()`, HTTP fee estimation, HTTP balance check, HTTP confirmation polling, API key handling — all implemented, none exercised by a probe against a real endpoint.
+- **`--preflight` mode**: validation-only path implemented; no probe asserts the structured preflight output.
+- **`--dry-run`**: devnode-only build-without-broadcast implemented; HTTP dry-run not implemented; neither probed.
+- **`--skip-confirm` semantics**: flag implemented; deploy-state recording with `blockHeight: 0` (and similar partial-confirmation states) not probed.
+- **Nonzero `priorityFee` / `privateFee`**: flags wired through; no probe exercises actual fee arithmetic.
+- **Inter-deployment delay** (`deploy.interDeploymentDelay`, HTTP-only): default `12_000` ms set, never exercised end-to-end.
+- **Standalone `lionden export --out ...`**: auto-export proven by probe 1; explicit CLI path not probed.
+
+### Constructor variant gaps
+
+These gaps are relative to the five bug-hunt probes, not the full example suite. Some aleo-ports cover the behavior partially, as noted below.
+
+- **`@noupgrade` upgrade rejection**: upgrade task rejects `@noupgrade` records. The five-probe suite does not attempt one (probe 2 deploys `@noupgrade`, doesn't try to upgrade it), but `examples/aleo-ports/noupgrade` does exercise a rejected upgrade.
+- **`@checksum` constructor**: parser recognises the syntax; deploy and upgrade paths exist for it. `examples/aleo-ports/upgrades-vote` deploys a checksum-annotated program, but the real voting/checksum authorization flow is skipped.
+- **`@custom` constructor**: parser recognises the syntax; upgrade preflight emits a warning. `examples/aleo-ports/timelock` exercises a positive custom-constructor upgrade after block advancement, but no probe covers the negative low-height rejection path.
+- **Constructor immutability during upgrade**: no probe attempts to change constructor type, admin address, checksum params, or custom fingerprint between deploy and upgrade.
+- **`@admin` signer mismatch**: probe 4 uses the correct admin key; wrong-key upgrade rejection is not probed.
+
+### Recovery and failure-path gaps
+
+- **Pending *upgrade* recovery**: probe 5 covers pending `action: "deploy"`; the `previousEdition`-bearing pending-upgrade variant is not probed.
+- **Rejected broadcast / confirmation**: no probe exercises a real rejected deploy or upgrade transaction (Aleo converts rejected executes to fee-only on inclusion — the deploy/upgrade equivalents aren't exercised here).
+- **Upgrade from degraded/recovered records**: probe 5 creates a recovered record but never attempts an upgrade from it; degraded-record upgrade behavior is not exercised.
+- **Stale ABI snapshot after degraded overwrite**: covered by a unit regression, but not by a real devnode probe.
+- **ABI snapshot fallback to artifact**: probe 4 always has a snapshot; the missing-snapshot fallback to `artifacts/<programId>/abi.json` is not exercised.
+
+### Compatibility gaps
+
+- **Multiple networks**: only `devnode` is exercised. No probe simultaneously targets `devnode` + `testnet`/`mainnet`.
+- **Mainnet target**: untested end-to-end.
+- **Libraries in deploy context**: multi-program probes cover program imports, not `lib.leo` materialisation effects on deploy order.
+
+### Performance / DX gaps
+
+- **Proof-key disk caching**: keys are fetched per process. Large circuits (e.g. `fibonacci(64u8)`) can fail transiently with "Failed to download powers for degree X" until the keys are warmed in the current process.
+- **Block-advancement throughput**: ~1s per block on devnode (Insight 18 in the same doc). Block-height-gated tests with thresholds > ~30 risk timeouts.
+
+---
+
+## 4. Recommended V1 Checklist (Proposal)
+
+This is a **proposed** cut for a 1.0 release, not a ratified decision. It draws from §3 and prioritizes items that materially affect a user's ability to ship a program to a real network.
+
+| # | Item | Status | Why it matters for V1 |
+| --- | --- | --- | --- |
+| 1 | Plugin model, config lifecycle, CLI, hooks | ✅ Done | Foundation; every other feature depends on it |
+| 2 | Compile pipeline + typechain + cache | ✅ Done | The core developer-loop primitive |
+| 3 | `node` + `run` + devnode lifecycle | ✅ Done | Local development surface |
+| 4 | `deploy` / `upgrade` / `export` / `recipe` with `@noupgrade` + `@admin` on devnode (probes 1-5) | ✅ Done | Devnode happy-path coverage |
+| 5 | Testing harness (`setup`, fixtures, assertions, typed `outputs`) | ✅ Done | The de-facto way users will validate programs |
+| 6 | At least one passing HTTP-network end-to-end smoke (deploy + execute + export against a real testnet endpoint) | 🟡 Open | Without this, "deploy to mainnet/testnet" is unverified — biggest production-readiness gap |
+| 7 | Release-gate constructor probes for remaining risks: real `@checksum` authorization, `@custom` negative path, and `@noupgrade` rejection in the five-probe suite | 🟡 Open | Constructor types are core to ARC-0006 upgradability; aleo-ports cover some behavior, but the release probe set still misses security-relevant paths |
+| 8 | Negative-path probes for upgrade: wrong admin signer, constructor mutation between editions | 🟡 Open | Upgrade safety is a security boundary; happy-path-only is dangerous |
+| 9 | Resolve the `connection.execute()` outputs TODO — either implement parsing, or document the imperative API as txId-only with users steered to typed wrappers | 🟡 Open | Today the imperative path silently drops outputs; that surprises users using `ctx.execute(...)` / `ctx.raw.execute(...)` on-chain |
+| 10 | Pending-upgrade recovery probe (`action: "upgrade"` with `previousEdition`) | 🟡 Open | Upgrade-mid-crash recovery is the only state-recovery code path with no probe |
+| 11 | Curated type bindings (or equivalent typed helper) for `credits.aleo` and the most common network-imported programs | 🟡 Open | Today users call imported network programs through `ctx.raw.execute(...)` — no type safety. A curated binding for at least `credits.aleo` closes the most-cited DX gap until the generalized SDK ABI-extraction path (see §5) is available |
+| 12 | Proof-key disk caching | 🟡 Open | Large circuits can fail or stall while proof keys are fetched per process. A disk-backed cache would make heavyweight compile/test/deploy flows more predictable for V1 users |
+
+Items 1-5 are shipped today. Items 6-12 are the proposed open-set for 1.0. Items 6-10 are integration coverage and one documented-or-fixed TODO; items 11-12 are bounded DX/reliability additions for network-imported programs and heavyweight proving flows.
+
+If only one of 6-12 ships, item 6 (HTTP smoke) is the most operationally important. Item 9 is the lowest-effort.
+
+---
+
+## 5. Post-V1 / Out-Of-Scope
+
+Features explicitly deferred by the specs, or surfaced by the doko-js comparison (§6) but not on the V1 critical path.
+
+- **Custom test runners** beyond Vitest. Spec validates `framework: "vitest"` today.
+- **Mainnet probe automation**. Anything touching mainnet should be a deliberate, gated operation; full automation isn't urgent.
+- **Frontend / web bindings**. The vision doc hints at this; not in any current phase.
+- **Library effects on multi-program deploy ordering**. Libraries are compile-only today; deploy ordering treats them as not-deployable.
+- **Generalized typechain generation for any deployed `.aleo` (network-fetched or user-supplied bytecode)**. Blocked on SDK availability: requires `generate_abi_from_aleo` (or equivalent) in the `@provablehq/sdk` version LionDen consumes so we can derive an ABI from compiled Aleo bytecode rather than requiring Leo source. Tracking: [ProvableHQ/leo#29350](https://github.com/ProvableHQ/leo/pull/29350), merged upstream on 2026-04-30 but not exposed by the local `@provablehq/sdk` 0.10.5 dependency at this snapshot. Once that API is available in LionDen's SDK dependency, the compile pipeline can extend codegen to network-fetched programs and emit typed wrappers automatically — superseding the per-program curated bindings introduced for V1 (checklist item 11).
+- **Expanded testing utilities** — convenience helpers beyond what `@lionden/testing` ships today (`setup`, `loadFixture`, the `assertMapping*` / `assertBalance*` / `assertBlockHeightAtLeast` / `assertTransaction*` assertions, devnode accounts). Candidates worth considering: Vitest custom matchers (`expect(tx).toBeAccepted()`, `expect(mapping).toHaveValue(...)`, decryption-aware matchers), synthetic/parallel address generators for tests that need many recipients, named-account-aware fixture helpers. None of these are blocking — they're DX polish.
+- **Deployment verification on explorers.** EVM-style bytecode-to-source verification is out of scope for v1. Aleo stores and exposes the deployed Aleo Instructions program (the compilation target, not original Leo source), so users can inspect the canonical deployed program text via `getProgram()`. LionDen does not attempt to verify or publish original Leo source, compiler metadata, project layout, or source maps in v1.
+
+### Open question: devnode lifecycle control granularity
+
+Today `@lionden/testing`'s `setup()` is gated by `config.testing.autoStartDevnode` (default `true`). Devnode lifecycle is effectively coupled to whoever calls `setup()` first in a test process, with teardown driven by `ctx.teardown()` and fixture caching via `loadFixture`. The practical granularity is "per process" — Vitest typically runs each test file in its own worker, so the effective unit is "per file".
+
+Worth investigating before V1 / for post-V1 DX:
+
+- **Granularity options users might want**: per-process (today), per-suite (a fresh devnode for each `describe` block), per-test (fresh devnode for each `it`), shared across the whole run (one devnode for all files in a Vitest invocation).
+- **External lifecycle via Vitest hooks**: can `lionden test` expose a hook (or can the CLI accept a `--no-managed-devnode` flag) so users can manage devnode in a Vitest `globalSetup` / `globalTeardown` file? This is the pattern doko-js consumers (and the Sealance fork in `compliant-transfer-aleo`) use via Testcontainers in `vitest.global-setup.ts`. LionDen doesn't currently document a supported equivalent.
+- **Cross-file state sharing**: with the current per-file devnode, deployments don't persist across test files (each gets a fresh devnode). Some test suites want shared on-chain state across files (sequential, ordered execution) — that's not a supported pattern today.
+
+This is an open design question, not a known bug. Worth a design note before V1 to either document the supported pattern explicitly or expand the options.
+
+---
+
+## 6. Doko-js Parity (Reference)
+
+LionDen and **doko-js** ([github.com/venture23-aleo/doko-js](https://github.com/venture23-aleo/doko-js)) solve overlapping problems for Aleo/Leo developers. The catalog below is for sanity-checking scope — it is not a feature-by-feature roadmap. Sources: an upstream doko-js checkout inspected for this comparison (HEAD `662be4f`, packages at `1.1.0`, README still naming Leo `v3.4.0` / SnarkOS `v4.4.0`) plus the real-world `compliant-transfer-aleo` project, which carries Sealance-specific patches and harness code.
+
+### Where LionDen and doko-js are at parity
+
+- **Leo compile + TypeScript binding generation** (class-per-program, typed transitions).
+- **Mapping queries** (LionDen: `connection.getMappingValue()` + typechain `get<Mapping>()`; doko-js: `zkGetMapping()`).
+- **Private record decryption** (LionDen: `EncryptedRecord<T>.decrypt(key)`; doko-js: generated `decrypt<Name>()` helpers).
+- **Multi-account testing** (LionDen: `DEVNODE_ACCOUNTS` + `namedAccounts`; doko-js: per-network `accounts` array + `getAccounts()`).
+- **Multi-program / cross-program deploy** (both topologically order local dependencies).
+- **JS/TS test workflows around generated wrappers** (LionDen ships Vitest-first testing; upstream doko-js templates use Jest; Sealance doko-js consumers use Vitest/Testcontainers around doko-generated wrappers).
+
+### What LionDen has that doko-js does not (per inspected doko-js 1.1.0 checkout)
+
+- **ARC-0006 constructor model as a first-class concept.** LionDen parses the Leo program constructor annotation (`@noupgrade` / `@admin(address=...)` / `@checksum(...)` / `@custom(...)`) from source in `packages/plugin-deploy/src/constructor-parser.ts`, validates it at deploy preflight, snapshots it into the deployment record, and re-validates fingerprint immutability + admin-signer match at upgrade preflight. In the upstream doko-js checkout inspected for this comparison, doko-js does not tokenize or reason about these annotations anywhere in its parser/generator/CLI — the Leo CLI emits whatever the source declares and the chain enforces it. Doko-js's sample template includes `@noupgrade async constructor(){}` purely because Leo requires it; doko-js itself ignores it.
+- **First-class `upgrade` task** with ABI compatibility checks, constructor fingerprint comparison, and signer validation. Doko-js has no `upgrade` command at all — its `cli/src/scripts/deploy.ts` shells out to `leo deploy` and that's it; upgrades would be hand-rolled by the consumer.
+- **Deployment state with `complete` / `degraded` / `recovered` record statuses**, ABI snapshots, append-only history, pending markers, atomic temp+rename writes.
+- **Crash-recovery for pending deploys** via on-next-run reconciliation against on-chain state.
+- **`--preflight` and `--dry-run` deploy modes**.
+- **Recipe system** (`DeploymentContext` / `DeploymentRecipe`) with structural compatibility between CLI and test contexts.
+- **Named accounts with eager `configVariable` resolution** mapping human roles (`deployer`, `admin`, `treasury`) to per-network values.
+- **Source-first project layout** — no manual `program.json`.
+- **Ephemeral vs disk-backed deployment state**, picked per network with overrides.
+
+### What doko-js has that LionDen does not
+
+- **Wide adoption in existing Aleo projects.** Doko-js is the toolchain a number of Aleo projects (e.g., `compliant-transfer-aleo`) already depend on, with patched/forked builds in the wild. It is not actively maintained upstream and tends to lag behind new Leo CLI releases, so "widely used" is the better framing here than "production-grade" — but as a practical matter, switching off doko-js is a real cost for those projects. LionDen is in active early development; this is an adoption-and-momentum gap, not a feature gap.
+- **A battle-tested Leo v3.4-oriented compatibility lane.** Upstream doko-js still documents Leo `v3.4.0` as its baseline and has accumulated many fixes around that toolchain, generated wrappers, output parsing, record handling, and network execution. LionDen instead targets Leo v4 by default with scoped v3.5 deployable-program support.
+- **Type bindings for "imported" network programs (e.g. `credits.aleo`).** Doko-js (and its consumer templates) provides typed wrappers for pre-deployed Aleo programs so user code can invoke them in a type-safe way. LionDen currently fetches network dependencies as compiled Aleo source for the compile pipeline (see `defaultFetchNetworkDep` in `packages/leo-compiler/src/compiler.ts`) but does **not** emit typechain bindings for them — calls into `credits.aleo` and friends go through `ctx.raw.execute(...)` or the imperative connection API today. Two follow-ups, tracked separately:
+  - **V1 (open — see checklist item 11):** ship curated, first-party bindings (or a similarly ergonomic helper) for the most common network programs starting with `credits.aleo`, so users get a type-safe surface without waiting for upstream tooling.
+  - **Post-V1 (blocked on SDK availability — see §5):** generalized "generate bindings from any deployed `.aleo`" path, blocked on `generate_abi_from_aleo` (or equivalent) being available in the `@provablehq/sdk` version LionDen consumes. Tracking PR [ProvableHQ/leo#29350](https://github.com/ProvableHQ/leo/pull/29350) is merged upstream, but the local `@provablehq/sdk` 0.10.5 dependency does not expose it yet. Once available, LionDen can extend the existing typechain pipeline to consume network-fetched programs and emit wrappers automatically.
+
+### Different approach (not necessarily a gap either direction)
+
+- **Leo version baseline**: doko-js is a Leo v3.4.0-oriented toolchain with many compatibility fixes; LionDen targets v4 by default with scoped v3.5 deployable-program support.
+- **Typed program-wrapper generation**: LionDen builds wrappers from the structured JSON ABI emitted by modern Leo (`build/abi.json`; introduced in the v3.5 line and normalized for v3.5/v4 differences). Doko-js predates that ABI contract and instead parses compiled `.aleo` output into its own reflection model before generating TypeScript.
+- **Transaction building and broadcasting**: LionDen routes deploy/execute/upgrade through `@provablehq/sdk` APIs (`ProgramManager`, devnode transaction builders, broadcast helpers), using the TypeScript SDK facade backed by WASM internals. Doko-js shells out to the Leo CLI for execution/deploy flows, which keeps it close to CLI behavior but requires assembling command-line arguments and parsing process output/errors for transaction IDs, results, and failures.
+- **Test execution mode**: doko-js exposes execution-mode toggles (`SnarkExecute`, `LeoExecute`, etc.) at contract instantiation time; LionDen splits this into method-level `.locally()` (off-chain) vs. `.accepted()`/`.settled()`/`.rejected()` (on-chain).
+- **Default test runner**: upstream doko-js scaffolds Jest; LionDen's built-in test task is Vitest-first. Sealance doko-js consumers may use Vitest, but that comes from the consuming repo's harness rather than upstream doko-js.
+- **Post-deploy initialization** (calling a user-defined transition like `initialize_admin(...)` after the program is on-chain, separate from Leo's mandatory program constructor): both frameworks treat this as a userland convention — call a regular transition. LionDen formalizes the multi-step pattern with `recipe` / `DeploymentRecipe` so the same sequence runs from CLI or from a test fixture; doko-js consumers write ad-hoc TypeScript scripts (e.g., `compliant-transfer-aleo/scripts/initializeProgram.ts`). Reasoning about the Leo program constructor itself is **not** a "different approach" — see "ARC-0006 constructor model" above; that's a feature-presence gap, not a stylistic difference.
+
+---
+
+## 7. Where To Learn More
+
+- [`usage.md`](usage.md) — day-to-day usage walkthrough.
+- [`vision-and-roadmap.md`](vision-and-roadmap.md) — product direction, design decisions, known challenges, roadmap shape.
+- [`architecture.md`](architecture.md), [`compiler.md`](compiler.md), [`network.md`](network.md), [`deployment.md`](deployment.md), [`testing.md`](testing.md) — subsystem deep dives.
+- [`project-layout.md`](project-layout.md) — package map and contributor entry points.
+- [`leo-version-compatibility.md`](leo-version-compatibility.md) — v4 default, scoped v3.5 support.
+- [`json-abi.md`](json-abi.md) — ABI schema and codegen type mapping.
+- [`testing-strategy.md`](testing-strategy.md) — repo-wide test taxonomy and CI lanes.
+- [`agent-bug-hunt-workflow.md`](agent-bug-hunt-workflow.md) — how the disposable bug-hunt probes referenced above are structured.
+
+When code and any doc (including this one) disagree, trust the code.
