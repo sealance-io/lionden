@@ -353,6 +353,87 @@ describe("resolveConfig", () => {
     expect(resolved.paths.typechain).toBe("/tmp/test-project/new-path");
     expect(resolved.codegen.outDir).toBe("new-path");
   });
+
+  it("codegen.dynamicRecords defaults to an empty object", async () => {
+    const resolved = await resolve({}, [], projectRoot);
+    expect(resolved.codegen.dynamicRecords).toEqual({});
+  });
+
+  it("codegen.dynamicRecords attaches helperName to each entry", async () => {
+    const resolved = await resolve(
+      {
+        codegen: {
+          dynamicRecords: {
+            asPoolToken: {
+              sourceRecord: "Token",
+              schema: { owner: "address.private" },
+            },
+          },
+        },
+      },
+      [],
+      projectRoot,
+    );
+    expect(resolved.codegen.dynamicRecords).toEqual({
+      asPoolToken: {
+        helperName: "asPoolToken",
+        sourceRecord: "Token",
+        schema: { owner: "address.private" },
+      },
+    });
+  });
+
+  it("codegen.dynamicRecords carries sourceProgram when present", async () => {
+    const resolved = await resolve(
+      {
+        codegen: {
+          dynamicRecords: {
+            asPoolToken: {
+              sourceRecord: "Token",
+              sourceProgram: "stable_token.aleo",
+              schema: { owner: "address.private" },
+            },
+          },
+        },
+      },
+      [],
+      projectRoot,
+    );
+    expect(resolved.codegen.dynamicRecords["asPoolToken"]).toMatchObject({
+      helperName: "asPoolToken",
+      sourceProgram: "stable_token.aleo",
+    });
+  });
+
+  it("codegen.dynamicRecords drops malformed entries defensively (validation lives in plugin-leo)", async () => {
+    // Core normalization stays defensive: it must not throw on malformed input.
+    // The plugin-leo validateUserConfig hook surfaces these as
+    // ConfigValidationError before this normalization step in the normal flow,
+    // but if validation isn't installed (test setups, custom plugin stacks)
+    // we want the resolved value to be safe to consume.
+    const resolved = await resolve(
+      {
+        codegen: {
+          // Mix valid + malformed entries
+          dynamicRecords: {
+            good: {
+              sourceRecord: "Token",
+              schema: { owner: "address.private" },
+            },
+            // malformed: missing schema
+            broken1: { sourceRecord: "Token" } as any,
+            // malformed: schema is array
+            broken2: { sourceRecord: "Token", schema: ["x"] } as any,
+            // malformed: non-string sourceRecord
+            broken3: { sourceRecord: 42, schema: {} } as any,
+          },
+        },
+      },
+      [],
+      projectRoot,
+    );
+    expect(Object.keys(resolved.codegen.dynamicRecords)).toEqual(["good"]);
+  });
 });
 
 // ---------------------------------------------------------------------------

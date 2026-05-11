@@ -34,7 +34,7 @@ function makeConfig(
       buildTests: false,
       extraFlags: [],
     },
-    codegen: { enabled: true, outDir: "typechain" },
+    codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
     deploy: {
       defaultPriorityFee: 0,

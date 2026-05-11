@@ -78,7 +78,7 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
               },
             ],
             structs: [],
-            records: [{ name: "Token", fields: [{ name: "amount", type: "u64" }] }],
+            records: [{ path: ["Token"], fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }] }],
             mappings: [{ name: "balances", keyType: "address", valueType: "u64" }],
           },
           aleoSource: "",
@@ -101,7 +101,7 @@ describe("compile task contract", () => {
     result = createContractLre({
       plugins: [pluginLeo],
       configOverrides: {
-        codegen: { enabled: codegenEnabled, outDir: "typechain" },
+        codegen: { enabled: codegenEnabled, outDir: "typechain", dynamicRecords: {} },
       },
     });
     return result.lre;
@@ -180,5 +180,87 @@ describe("compile task contract", () => {
 
     // Should be called once per program (2 programs in mock)
     expect(generateBindings).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("dynamicRecords routing", () => {
+  let result: ContractLreResult;
+
+  afterEach(() => {
+    result?.cleanup();
+  });
+
+  async function runWithHelpers(
+    dynamicRecords: Record<string, unknown>,
+  ): Promise<{ generateBindings: ReturnType<typeof vi.fn>; error: Error | null }> {
+    const { generateBindings } = await import("@lionden/leo-compiler");
+    (generateBindings as ReturnType<typeof vi.fn>).mockClear();
+    result = createContractLre({
+      plugins: [pluginLeo],
+      configOverrides: {
+        codegen: { enabled: true, outDir: "typechain", dynamicRecords: dynamicRecords as any },
+      },
+    });
+    let error: Error | null = null;
+    try {
+      await result.lre.tasks.run("compile");
+    } catch (e) {
+      error = e as Error;
+    }
+    return { generateBindings: generateBindings as ReturnType<typeof vi.fn>, error };
+  }
+
+  it("routes a helper to the program owning the sourceRecord", async () => {
+    const { generateBindings, error } = await runWithHelpers({
+      asPoolToken: {
+        helperName: "asPoolToken",
+        sourceRecord: "Token",
+        schema: { amount: "u64.private" },
+      },
+    });
+    expect(error).toBeNull();
+    // token.aleo owns Token; hello.aleo has no records.
+    const tokenCall = generateBindings.mock.calls.find(
+      (call) => (call[0] as { program: string }).program === "token.aleo",
+    );
+    const helloCall = generateBindings.mock.calls.find(
+      (call) => (call[0] as { program: string }).program === "hello.aleo",
+    );
+    expect(tokenCall?.[2]).toEqual({
+      dynamicRecords: [
+        {
+          helperName: "asPoolToken",
+          sourceRecord: "Token",
+          sourceProgram: "token.aleo",
+          schema: { amount: "u64.private" },
+        },
+      ],
+    });
+    expect(helloCall?.[2]).toEqual({});
+  });
+
+  it("throws CodegenError when sourceRecord matches no compiled program", async () => {
+    const { error } = await runWithHelpers({
+      asMissing: {
+        helperName: "asMissing",
+        sourceRecord: "NonExistent",
+        schema: { amount: "u64.private" },
+      },
+    });
+    expect(error?.name).toBe("CodegenError");
+    expect(error?.message).toContain("'NonExistent' does not match any local record");
+  });
+
+  it("throws CodegenError on sourceProgram mismatch", async () => {
+    const { error } = await runWithHelpers({
+      asPoolToken: {
+        helperName: "asPoolToken",
+        sourceRecord: "Token",
+        sourceProgram: "hello.aleo",
+        schema: { amount: "u64.private" },
+      },
+    });
+    expect(error?.name).toBe("CodegenError");
+    expect(error?.message).toContain("'hello.aleo' does not declare record 'Token'");
   });
 });

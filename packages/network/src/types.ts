@@ -20,11 +20,21 @@ export interface ConfirmedTransitionRecord {
   /** Transition name, e.g. "mint_private". */
   readonly transitionName: string;
   /**
-   * Raw Leo-encoded output literals for this transition, in declaration order.
-   * Record outputs are ciphertexts (`record1...`); plaintext outputs are
-   * Leo literals (`123u32`, `aleo1...`, `{ ... }`, etc.).
+   * Raw outputs for this transition, in declaration order. Record outputs are
+   * record ciphertexts (`record1...`). Plaintext outputs are Leo literals
+   * (`123u32`, `aleo1...`, `{ ... }`, etc.) only when declared `public`;
+   * private and default-private (no visibility modifier) plaintext outputs are
+   * Aleo value ciphertexts (`ciphertext1...`) that callers must decrypt using
+   * the transition's `transitionPublicKey` and the recipient's view key (see
+   * the generated typechain's `EncryptedValue<T>` handles).
    */
   readonly rawOutputs: readonly string[];
+  /**
+   * Transition public key (`tpk`) carried by the on-chain transition. Required
+   * input to `Ciphertext.decryptWithTransitionInfo(...)` when decrypting
+   * private input or output ciphertexts produced by this transition.
+   */
+  readonly transitionPublicKey: string;
 }
 
 /** Confirmed transaction details. */

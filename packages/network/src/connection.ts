@@ -685,10 +685,18 @@ function parseTransition(
       `${path}.function`,
     );
   }
+  const transitionPublicKey = obj["tpk"];
+  if (typeof transitionPublicKey !== "string" || transitionPublicKey.length === 0) {
+    throw new TransactionShapeParseError(
+      `Transaction ${txId}: ${path}.tpk is missing or not a string. The transition public key is required to decrypt private inputs/outputs.`,
+      txId,
+      `${path}.tpk`,
+    );
+  }
   const rawOutputs = obj["outputs"];
   if (rawOutputs === undefined || rawOutputs === null) {
     // Transition with no outputs is valid (some transitions return nothing).
-    return { programId, transitionName, rawOutputs: [] };
+    return { programId, transitionName, rawOutputs: [], transitionPublicKey };
   }
   if (!Array.isArray(rawOutputs)) {
     throw new TransactionShapeParseError(
@@ -716,7 +724,7 @@ function parseTransition(
     return value;
   });
 
-  return { programId, transitionName, rawOutputs: outputValues };
+  return { programId, transitionName, rawOutputs: outputValues, transitionPublicKey };
 }
 
 function extractLocalExecutionOutputs(result: unknown): string[] {

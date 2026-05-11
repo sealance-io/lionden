@@ -109,28 +109,67 @@ Vitest remains a peer dependency of `@lionden/plugin-test`.
 
 This lets test suites stay concise without reimplementing common network checks.
 
-## Decrypting On-Chain Record Outputs
+## Typed Broadcast Results
 
-Local execution (`.locally(...)`) returns typed records directly. On-chain results (`.submitted()`, `.settled()`, `.accepted()`, `.rejected()`) carry `rawOutputs: readonly string[]` — Leo-encoded literals from the specific transition the caller invoked. Record outputs are ciphertexts (`record1...`) and must be decrypted before reuse.
+`.accepted(...)` returns `AcceptedTransition<TOutputs>`, `.settled(...)` returns the union `AcceptedTransition<TOutputs> | RejectedTransition`, and `.rejected(...)` returns `RejectedTransition`. The `outputs` field on `AcceptedTransition<TOutputs>` mirrors `.locally()`'s return shape with two substitutions driven by what the chain returns encrypted:
 
-Generated typechain emits an async `decrypt<RecordName>` free function per record declaration:
+- **Record outputs** → `EncryptedRecord<RecordName>` handles with `decrypt(key): Promise<RecordName>`.
+- **Private plaintext outputs** (Leo's default visibility) → `EncryptedValue<T>` handles with `decrypt(key): Promise<T>`.
+- **Public plaintext outputs** → decoded eagerly via the same deserializers used by `.locally()`.
+
+`AcceptedTransition<TOutputs>` also carries `transitionPublicKey: string` — the on-chain `tpk` needed by the SDK to decrypt private value ciphertexts. It's threaded through `EncryptedValue<T>.decrypt(...)` automatically; callers don't pass it directly. `RejectedTransition` has no `outputs` and no `transitionPublicKey` (fee-only inclusion carries neither).
 
 ```ts
+// Single record output → outputs is an EncryptedRecord<Token>
 const mintTx = await token.mint_private.accepted({ receiver, amount: 100n });
-const ciphertext = mintTx.rawOutputs[0]!;
-const mintedRecord = await decryptToken(ciphertext, ctx.accounts[0]);
-// mintedRecord is a typed Token with RECORD_RAW cached → can pass back into the next transition's .locally(...) call.
+const mintedRecord = await mintTx.outputs.decrypt(ctx.accounts[0]);
 await token.transfer_private.locally({ token: mintedRecord, ... });
+
+// Multi-output (Token, bigint) → outputs is a positional tuple
+const swap = await amm.swap.accepted({ ... });
+const [encryptedToken, leftoverAmount] = swap.outputs;
+const decoded = await encryptedToken.decrypt(ctx.accounts[0]);
+
+// Private plaintext output: u64 without `public` modifier → EncryptedValue<bigint>
+const compare = await governance.compare_strategies.accepted({ balance: 10000n });
+const [linear, quadratic] = compare.outputs;
+expect(await linear.decrypt(ctx.accounts[0])).toBe(10000n);
+expect(await quadratic.decrypt(ctx.accounts[0])).toBe(100n);
 ```
 
-The decrypt key is polymorphic: raw `APrivateKey1...` / `AViewKey1...` string (auto-detected by prefix), `{ viewKey }`, or `{ privateKey }`. Lionden `SignerInput` and devnode account objects (`{ privateKey, address }`) structurally match the `{ privateKey }` arm. Unrecognized strings throw `RecordDecryptionKeyError` (input-layer error) rather than producing misleading SDK failures.
+`rawOutputs: readonly string[]` is still available alongside `outputs` on every settled result. It carries the raw on-wire values from the specific transition the caller invoked (record ciphertexts, value ciphertexts, plain literals — whatever the chain returned).
 
-### `SettledTransition.rawOutputs` Transition Identity
+### Why private plaintext outputs need `decrypt`
+
+Aleo encrypts every non-`public` transition input and output on chain. The local SDK gives `.locally()` decoded plaintexts, but `.accepted()` / `.settled()` see the raw chain shape: `record1...` for record outputs, `ciphertext1...` for private plaintext outputs. `EncryptedValue<T>` wraps the value ciphertext + the per-output context (tpk, program, function, AVM global index) so a single `decrypt(key)` call drives `Ciphertext.decryptWithTransitionInfo(...)` under the hood. Public plaintext outputs are not encrypted on chain, so they're decoded eagerly with no `decrypt` hop.
+
+### Future-typed Outputs
+
+`outputs` carries only client-decodable transition outputs. Future-typed outputs (post-finalization values) appear in `rawOutputs` at their original ABI index but are not represented in the typed `outputs` projection. To inspect a Future output, read `rawOutputs[i]` at its original ABI index — the projector preserves positions, so an output at ABI index 1 always wraps `rawOutputs[1]` even if a Future occupies index 0.
+
+### `EncryptedRecord<T>` / `EncryptedValue<T>` Decryption Keys
+
+Both handles' `.decrypt(key)` accept the same polymorphic key shape (aliased as `DecryptionKey` for clarity, identical to `RecordDecryptionKey`): a raw `APrivateKey1...` / `AViewKey1...` string (auto-detected by prefix), `{ viewKey }`, or `{ privateKey }`. Lionden `SignerInput` and devnode account objects (`{ privateKey, address }`) structurally match the `{ privateKey }` arm. Unrecognized strings throw `RecordDecryptionKeyError`. SDK / ciphertext failures throw `LocalRecordDecryptionError` (records) or `LocalValueDecryptionError` (values) — keeping the error name aligned with the decryption phase.
+
+For workflows that need to defer decryption — pass the ciphertext between processes, decrypt under a different account, batch decrypts — read `mintTx.outputs.ciphertext` directly and call `decrypt<RecordName>(ciphertext, key)` (records) or `decryptValueCiphertext(ciphertext, viewKey, tpk, programId, transitionName, globalIndex)` (values) later. The free `decrypt<RecordName>` functions remain generated alongside the typed projection.
+
+### `rawOutputs` Transition Identity
 
 `rawOutputs` is filtered from the confirmed transaction's `transitions[]` by `(programId, transitionName)` match:
 
 - **Accepted**: exactly one matching transition is required. 0 or >1 throws `TransactionShapeError` so test assertions don't pick the wrong outputs from a cross-program tx. Reentrant or recursive flows must use `ctx.raw.execute(...)`.
 - **Rejected**: Aleo converts rejected executes to fee-only on inclusion, so `rawOutputs` is typically `[]`. The selector stays permissive — if a matching transition entry IS present, its outputs are surfaced; if multiple match, the first is picked. This preserves `.rejected()` semantics for finalizer failures.
+
+`RejectedTransition` does not carry an `outputs` field — fee-only inclusion has no typed-output projection to project.
+
+### Error Policy For Typed Projection
+
+`.settled()` and `.accepted()` wrap their typed projector with a narrow error policy:
+
+- `TransactionShapeError` thrown by the projector (from `BaseContract.rawOutputAt`, which validates per-index access) is **rethrown unchanged**, preserving the `outputIndex` context.
+- Any other error from the projector — including `TransitionInputError` from per-primitive parsers and native `Error` — is **wrapped as `TransactionShapeError` with `.cause` set** to the original. This keeps "bad on-chain data" failures classified as shape errors rather than misleading the caller that they provided bad input.
+
+For `EncryptedValue<T>.decrypt(key)` specifically: only `RecordDecryptionKeyError` (caller-input shape) passes through unwrapped. SDK failures, malformed-ciphertext rejections from the SDK, and deserializer failures (even other `LionDenTypechainError` subclasses) wrap as `LocalValueDecryptionError` with `outputIndex` populated. This narrow pass-through makes "wrong account" / "malformed plaintext" failures surface under a single phase-aligned error name.
 
 ## Building Dynamic Records (Leo v4 `dyn record` Inputs)
 

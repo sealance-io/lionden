@@ -25,9 +25,15 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
     // imported by the generated BaseContract template.
     "/virtual/network.d.ts": [
       "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare class NetworkRecordDecryptionError extends Error {",
       "  readonly kind: \"NetworkRecordDecryptionError\";",
+      "  readonly ciphertextPrefix: string;",
+      "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
+      "}",
+      "export declare class NetworkValueDecryptionError extends Error {",
+      "  readonly kind: \"NetworkValueDecryptionError\";",
       "  readonly ciphertextPrefix: string;",
       "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
       "}",
@@ -136,4 +142,34 @@ describe("codegen golden TypeScript validity", () => {
       expectGeneratedToTypecheck(goldenFile.replace(".ts", ""), output);
     });
   }
+});
+
+const INTERFACE_HELPERS_HELPERS = [
+  {
+    helperName: "asPoolToken",
+    sourceRecord: "Token",
+    sourceProgram: "stable_token.aleo",
+    schema: {
+      owner: "address.private",
+      amount: "u128.private",
+      _version: "u8.public",
+      _nonce: "group.public",
+    },
+  },
+];
+
+describe("codegen interface helpers", () => {
+  it("generates asPoolToken helper for the interface-helpers fixture", async () => {
+    const abi = loadAbi("interface-helpers.abi.json");
+    const output = generateBindings(abi, [abi], { dynamicRecords: INTERFACE_HELPERS_HELPERS });
+    await expect(output).toMatchFileSnapshot(
+      resolve(__dirname, "__goldens__", "interface-helpers.ts"),
+    );
+  });
+
+  it("interface-helpers.ts typechecks", () => {
+    const abi = loadAbi("interface-helpers.abi.json");
+    const output = generateBindings(abi, [abi], { dynamicRecords: INTERFACE_HELPERS_HELPERS });
+    expectGeneratedToTypecheck("interface-helpers", output);
+  });
 });

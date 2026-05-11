@@ -21,9 +21,15 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
     "/virtual/network.d.ts": [
       "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare class NetworkRecordDecryptionError extends Error {",
       "  readonly kind: \"NetworkRecordDecryptionError\";",
+      "  readonly ciphertextPrefix: string;",
+      "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
+      "}",
+      "export declare class NetworkValueDecryptionError extends Error {",
+      "  readonly kind: \"NetworkValueDecryptionError\";",
       "  readonly ciphertextPrefix: string;",
       "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
       "}",
@@ -255,7 +261,7 @@ describe("generateBindings", () => {
     expect(output).toContain('await this.expectLocalFailure("mint"');
     expect(output).toContain('return this.expectLocalFailure("mint"');
     expect(output).toContain('return this.submitTransition("mint"');
-    expect(output).toContain('return this.expectAccepted("transfer"');
+    expect(output).toContain('return this.expectAcceptedTyped("transfer"');
   });
 
   it("deserializes transition outputs to proper JS types", () => {
@@ -1388,5 +1394,351 @@ describe("generated TypeScript validity", () => {
 
     const output = generateBindings(abi);
     expectGeneratedToTypecheck("Check", output);
+  });
+});
+
+describe("interface conversion helper emission", () => {
+  const TOKEN_ABI: ProgramABI = {
+    program: "stable_token.aleo",
+    structs: [],
+    records: [
+      {
+        path: ["Token"],
+        fields: [
+          { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "None" },
+          { name: "_version", ty: { Primitive: { UInt: "U8" } }, mode: "None" },
+        ],
+      },
+    ],
+    mappings: [],
+    storage_variables: [],
+    transitions: [],
+  };
+
+  it("emits asXxx free function above the contract class", () => {
+    const output = generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+      dynamicRecords: [
+        {
+          helperName: "asPoolToken",
+          sourceRecord: "Token",
+          sourceProgram: "stable_token.aleo",
+          schema: {
+            owner: "address.private",
+            amount: "u128.private",
+            _version: "u8.public",
+            _nonce: "group.public",
+          },
+        },
+      ],
+    });
+    expect(output).toContain("export function asPoolToken(value: Token): LeoDynamicRecord");
+    expect(output).toContain("Leo.dynamicRecord(value, {");
+    expect(output).toContain('"address.private"');
+    expect(output).toContain('"u8.public"');
+    expect(output).toContain('"group.public"');
+    // `Leo` should be a value-import on this program only (helpers emitted).
+    expect(output).toContain("import { BaseContract, Leo, type");
+  });
+
+  it("does not import Leo as a value when no helpers are configured", () => {
+    const output = generateBindings(TOKEN_ABI);
+    expect(output).not.toContain("import { BaseContract, Leo,");
+    expect(output).toContain("import { BaseContract, type");
+  });
+
+  it("throws CodegenError when schema is missing a field", () => {
+    expect(() =>
+      generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+        dynamicRecords: [
+          {
+            helperName: "asPoolToken",
+            sourceRecord: "Token",
+            sourceProgram: "stable_token.aleo",
+            schema: {
+              owner: "address.private",
+              amount: "u128.private",
+              _nonce: "group.public",
+            },
+          },
+        ],
+      }),
+    ).toThrow(/schema keys do not match.+Missing: \[_version\]/);
+  });
+
+  it("throws CodegenError when schema has an extra field", () => {
+    expect(() =>
+      generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+        dynamicRecords: [
+          {
+            helperName: "asPoolToken",
+            sourceRecord: "Token",
+            sourceProgram: "stable_token.aleo",
+            schema: {
+              owner: "address.private",
+              amount: "u128.private",
+              _version: "u8.public",
+              _nonce: "group.public",
+              ghost: "field.private",
+            },
+          },
+        ],
+      }),
+    ).toThrow(/Extra: \[ghost\]/);
+  });
+
+  it("throws CodegenError when a schema primitive doesn't match the record field", () => {
+    expect(() =>
+      generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+        dynamicRecords: [
+          {
+            helperName: "asPoolToken",
+            sourceRecord: "Token",
+            sourceProgram: "stable_token.aleo",
+            schema: {
+              owner: "address.private",
+              amount: "field.private",
+              _version: "u8.public",
+              _nonce: "group.public",
+            },
+          },
+        ],
+      }),
+    ).toThrow(/schema\.amount: field has Leo type 'u128'.+schema says 'field'/);
+  });
+
+  it("rejects non-primitive record fields", () => {
+    const abi: ProgramABI = {
+      ...TOKEN_ABI,
+      records: [
+        {
+          path: ["Token"],
+          fields: [
+            { name: "data", ty: { Array: [{ Primitive: { UInt: "U8" } }, 4] }, mode: "None" },
+          ],
+        },
+      ],
+    };
+    expect(() =>
+      generateBindings(abi, [abi], {
+        dynamicRecords: [
+          {
+            helperName: "asPoolToken",
+            sourceRecord: "Token",
+            sourceProgram: "stable_token.aleo",
+            schema: { owner: "address.private", data: "u8.private", _nonce: "group.public" },
+          },
+        ],
+      }),
+    ).toThrow(/non-primitive field 'data'/);
+  });
+
+  it("rejects unsupported primitives like Identifier", () => {
+    const abi: ProgramABI = {
+      ...TOKEN_ABI,
+      records: [
+        {
+          path: ["Token"],
+          fields: [
+            { name: "id", ty: { Primitive: "Identifier" }, mode: "None" },
+          ],
+        },
+      ],
+    };
+    expect(() =>
+      generateBindings(abi, [abi], {
+        dynamicRecords: [
+          {
+            helperName: "asPoolToken",
+            sourceRecord: "Token",
+            sourceProgram: "stable_token.aleo",
+            schema: { owner: "address.private", id: "identifier.private", _nonce: "group.public" },
+          },
+        ],
+      }),
+    ).toThrow(/unsupported primitive 'identifier'/);
+  });
+
+  it("throws CodegenError when sourceRecord is not a local record", () => {
+    expect(() =>
+      generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+        dynamicRecords: [
+          {
+            helperName: "asPoolToken",
+            sourceRecord: "Mystery",
+            sourceProgram: "stable_token.aleo",
+            schema: { owner: "address.private", _nonce: "group.public" },
+          },
+        ],
+      }),
+    ).toThrow(/sourceRecord 'Mystery' is not a local record/);
+  });
+});
+
+describe("typed-output projector Future index contract", () => {
+  /**
+   * Critical invariant: rawOutputs keeps the ORIGINAL ABI output position
+   * (Futures occupy their slot). Typed `outputs` drops Future entries from
+   * the result shape but each non-Future output must still wrap rawOutputs
+   * at its *original* ABI index — never a compacted index.
+   */
+  function abiWithOutputs(outputs: readonly { ty: any }[]): ProgramABI {
+    return {
+      program: "future_demo.aleo",
+      structs: [],
+      records: [
+        {
+          path: ["Token"],
+          fields: [
+            { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "None" },
+          ],
+        },
+      ],
+      mappings: [],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "demo",
+          is_async: true,
+          inputs: [],
+          outputs: outputs.map((o) => ({ ty: o.ty, mode: "None" as const })),
+        },
+      ],
+    };
+  }
+
+  it("[Future, Token] wraps rawOutputs[1], not [0]", () => {
+    const abi = abiWithOutputs([
+      { ty: { Future: "demo.aleo" } },
+      { ty: { Record: rref("Token") } },
+    ]);
+    const output = generateBindings(abi);
+    // Single non-Future output → projector returns a bare value (no tuple).
+    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)');
+    expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)');
+    expect(output).toContain("Promise<AcceptedTransition<EncryptedRecord<Token>>>");
+  });
+
+  it("[Token, Future, u128] wraps rawOutputs[0] and rawOutputs[2], skipping index 1", () => {
+    // u128 is mode: "None" (default-private) in abiWithOutputs, so it becomes
+    // EncryptedValue<bigint> rather than bare bigint.
+    const abi = abiWithOutputs([
+      { ty: { Record: rref("Token") } },
+      { ty: { Future: "demo.aleo" } },
+      { ty: { Plaintext: { Primitive: { UInt: "U128" } } } },
+    ]);
+    const output = generateBindings(abi);
+    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)');
+    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 2)');
+    expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)');
+    expect(output).toContain("Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedValue<bigint>]>>");
+  });
+
+  it("all-Future outputs project to AcceptedTransition<void>", () => {
+    const abi = abiWithOutputs([{ ty: { Future: "demo.aleo" } }]);
+    const output = generateBindings(abi);
+    expect(output).toContain("Promise<AcceptedTransition<void>>");
+    expect(output).toContain("(_rawOutputs: readonly string[], _tpk: string) => undefined as void");
+    expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo"');
+  });
+});
+
+describe("mode-gated plaintext output emission", () => {
+  /**
+   * Public plaintext outputs come back as Leo literals on chain → eager
+   * decode. Private/None plaintext outputs come back as value ciphertexts
+   * (`ciphertext1...`) → wrap as `EncryptedValue<T>` so the caller can
+   * decrypt with a view key.
+   */
+  function abiOneOutput(
+    mode: "None" | "Public" | "Private",
+    inputs: readonly { name: string; mode: "None" | "Public" | "Private" }[] = [],
+  ): ProgramABI {
+    return {
+      program: "mode_demo.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "demo",
+          is_async: false,
+          inputs: inputs.map((i) => ({
+            name: i.name,
+            ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+            mode: i.mode,
+          })),
+          outputs: [
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode },
+          ],
+        },
+      ],
+    };
+  }
+
+  it("public plaintext output is eagerly decoded (no EncryptedValue handle)", () => {
+    const out = generateBindings(abiOneOutput("Public"));
+    expect(out).toContain("Promise<AcceptedTransition<bigint>>");
+    expect(out).toContain('BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0))');
+    // EncryptedValue may appear in the import list, but never as a generic
+    // type instantiation in this public-only program.
+    expect(out).not.toContain("EncryptedValue<");
+    expect(out).not.toContain("makeEncryptedValue");
+    // Projector uses _tpk since no private plaintext consumer.
+    expect(out).toContain("_tpk: string");
+  });
+
+  it('private plaintext output (mode "None") wraps as EncryptedValue<T>', () => {
+    const out = generateBindings(abiOneOutput("None"));
+    expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
+    expect(out).toContain('BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)');
+    // Projector binds `tpk` (no underscore) since at least one private plaintext.
+    expect(out).toMatch(/\(rawOutputs: readonly string\[\], tpk: string\) =>/);
+  });
+
+  it('explicit "Private" mode behaves the same as "None"', () => {
+    const out = generateBindings(abiOneOutput("Private"));
+    expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
+    expect(out).toContain("BaseContract.makeEncryptedValue");
+  });
+
+  it("globalIndex = inputs.length + abiIndex for private plaintext outputs", () => {
+    // 2 inputs + 1 private u64 output → output@abiIndex=0 → globalIndex=2.
+    const out = generateBindings(
+      abiOneOutput("None", [
+        { name: "a", mode: "Public" },
+        { name: "b", mode: "Public" },
+      ]),
+    );
+    expect(out).toContain('"mode_demo.aleo", "demo", 2, BaseContract.parseBigInt');
+  });
+
+  it("globalIndex for multi-output mix: public output + private output", () => {
+    // 1 input + [u64.public, u64.private] → public@0, private@1; globalIndex
+    // for private output is inputs.length(1) + abiIndex(1) = 2.
+    const abi: ProgramABI = {
+      program: "mixed_mode.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "demo",
+          is_async: false,
+          inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+          outputs: [
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+          ],
+        },
+      ],
+    };
+    const out = generateBindings(abi);
+    expect(out).toContain("Promise<AcceptedTransition<[bigint, EncryptedValue<bigint>]>>");
+    // Public@abi0 → eager parse on rawOutputs[0].
+    expect(out).toContain('BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 0))');
+    // Private@abi1 → makeEncryptedValue on rawOutputs[1] with globalIndex 1 + 1 = 2.
+    expect(out).toContain('BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 1), tpk, "mixed_mode.aleo", "demo", 2, BaseContract.parseBigInt)');
   });
 });

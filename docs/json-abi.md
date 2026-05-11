@@ -190,6 +190,62 @@ For every record in the ABI, codegen emits three helpers (plus the interface):
 
 Imported records (records declared in another program) reuse the originating program's generated helpers — no duplicate emission. See `docs/testing.md` for the decrypt key API and `SettledTransition.rawOutputs` transition-identity contract.
 
+### Interface Conversion Helpers (`codegen.dynamicRecords`)
+
+Programs that consume Leo v4 `dyn record` inputs through a shared interface (e.g. `compliant_amm` accepting any `Token`-shaped record) need a single-line conversion at every call site. Codegen can emit those helpers from a project-wide config map keyed by helper name:
+
+```ts
+// lionden.config.ts
+export default defineConfig({
+  codegen: {
+    dynamicRecords: {
+      asPoolToken: {
+        sourceRecord: "Token",
+        // Optional. Required only when multiple compiled programs declare a
+        // record with the generated name "Token".
+        sourceProgram: "stable_token.aleo",
+        schema: {
+          owner: "address.private",
+          amount: "u128.private",
+          _version: "u8.public",
+          _nonce: "group.public",
+        },
+      },
+    },
+  },
+});
+```
+
+The emitted free function lives alongside `decrypt<Name>` in the source program's generated module:
+
+```ts
+// typechain/StableToken.ts (generated)
+export function asPoolToken(value: Token): LeoDynamicRecord {
+  return Leo.dynamicRecord(value, {
+    owner: "address.private" as const,
+    amount: "u128.private" as const,
+    _version: "u8.public" as const,
+    _nonce: "group.public" as const,
+  } as const);
+}
+```
+
+Callers import `asPoolToken` directly: `await amm.add_liquidity.locally({ token: asPoolToken(tok), ... })`.
+
+**Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`.
+
+**Schema rules**:
+
+- Schema keys must exactly match the **generated record shape**: implicit `owner: address`, every ABI field that isn't a re-declaration of `owner`, and implicit `_nonce: group`.
+- Schema entry primitives must match each record field's declared type (visibility may differ — that's the point of the helper).
+- Supported primitives: `address`, `boolean`, `field`, `group`, `scalar`, `u8`-`u128`, `i8`-`i128`. `Identifier`, `Signature`, struct, array, and optional fields are rejected with `CodegenError` at compile time.
+
+**Validation layers**:
+
+- **Config shape** (plugin-leo `validateUserConfig` hook): non-object map, invalid helper names, non-object helpers, malformed schema entries → aggregated into `ConfigResolutionError`.
+- **ABI routing** (plugin-leo compile task): `sourceRecord` does not match a compiled program, ambiguous record name without `sourceProgram`, or `sourceProgram` doesn't declare the record → `CodegenError`.
+- **Schema vs generated record** (typescript-generator emit): missing/extra schema keys or primitive-type mismatch → `CodegenError`.
+
 ## Mappings
 
 On-chain key-value storage. Declared as `mapping name: KeyType => ValueType` in Leo.
@@ -253,14 +309,28 @@ Public entry points declared inside `program {}`. Each function compiles to an A
 |---|---|---|
 | `name` | `string` | Parameter name |
 | `ty` | `FunctionInput` | Input type |
-| `mode` | `Mode` | Visibility mode |
+| `mode` | `Mode` | Visibility mode (see below) |
 
 ### Output
 
 | Field | Type | Description |
 |---|---|---|
 | `ty` | `FunctionOutput` | Output type |
-| `mode` | `Mode` | Visibility mode |
+| `mode` | `Mode` | Visibility mode (see below) |
+
+### Mode
+
+```
+Mode = "None" | "Public" | "Private"
+```
+
+`Mode` records the visibility modifier Leo declared on each input or output:
+
+- `"Public"` — explicit `public` modifier; the value travels on chain as a plain Leo literal.
+- `"Private"` — explicit `private` modifier.
+- `"None"` — **no modifier written; Leo's default applies, which is private**. `"None"` is not a "missing data" marker; it's a real signal meaning "default-to-private".
+
+Lionden codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "None"` or `"Private"` come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See `docs/testing.md` for the typed-broadcast contract.
 
 ### FunctionInput
 

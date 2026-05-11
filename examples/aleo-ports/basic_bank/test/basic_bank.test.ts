@@ -8,8 +8,8 @@
 // The bank is hard-coded to `aleo1rhgdu77…` in the program, which matches
 // devnode account-0. This port keeps the local+accepted pattern where the
 // test wants a plaintext record and a separate finalize side effect. Newer
-// rawOutputs + decrypt<Record>(...) flows are demonstrated in the token
-// examples where the broadcasted private record is the value under test.
+// accepted().outputs.decrypt(...) flows are demonstrated in the token examples
+// where the broadcasted private record is the value under test.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,

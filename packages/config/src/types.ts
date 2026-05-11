@@ -231,6 +231,34 @@ export interface CodegenConfig {
   readonly enabled?: boolean;
   /** Target directory for generated files (relative to project root) */
   readonly outDir?: string;
+  /**
+   * Generate Leo interface conversion helpers. Each entry emits a free
+   * function in the program owning `sourceRecord`. Schema follows
+   * `Leo.dynamicRecord(...)`'s `DynamicRecordSchema<T>` shape — each value is
+   * a `${LeoPrimitiveType}.${LeoVisibility}` string. Map key becomes the
+   * emitted function name.
+   */
+  readonly dynamicRecords?: Record<string, DynamicRecordHelperConfig>;
+}
+
+export interface DynamicRecordHelperConfig {
+  /**
+   * Generated TypeScript record type name (`pathToTsName(record.path)`).
+   * Module-scoped records use their full disambiguated name, e.g.
+   * `Foo_Bar_Token` for `foo::bar::Token`.
+   */
+  readonly sourceRecord: string;
+  /**
+   * Program ID (ending in `.aleo`) owning `sourceRecord`. Required only when
+   * multiple compiled programs declare a record by the same generated name.
+   */
+  readonly sourceProgram?: string;
+  /**
+   * Per-field `<type>.<visibility>` schema. Keys must exactly match the
+   * generated record shape (implicit `owner: address` + ABI fields +
+   * implicit `_nonce: group`); visibility may differ per field.
+   */
+  readonly schema: Record<string, string>;
 }
 
 export interface TestingConfig {
@@ -296,6 +324,20 @@ export interface ResolvedCompilerConfig {
 export interface ResolvedCodegenConfig {
   readonly enabled: boolean;
   readonly outDir: string;
+  /**
+   * Normalized dynamic-record helpers. Each entry carries the map-key
+   * `helperName` field so codegen has everything it needs without re-keying.
+   * `sourceProgram` stays optional in the resolved form; plugin-leo binds it
+   * to the owning programId at codegen time when ABIs are available.
+   */
+  readonly dynamicRecords: Readonly<Record<string, ResolvedDynamicRecordHelper>>;
+}
+
+export interface ResolvedDynamicRecordHelper {
+  readonly helperName: string;
+  readonly sourceRecord: string;
+  readonly sourceProgram?: string;
+  readonly schema: Readonly<Record<string, string>>;
 }
 
 export interface ResolvedTestingConfig {
