@@ -100,6 +100,6 @@ These details are relevant to contributors working on the compiler and deploy pi
 
 - **Compiled bytecode.** v3.5 and v4 produce structurally identical `main.aleo` output: same `function`/`finalize` sections, same `constructor:` block layout, same `.future` dispatch. The v4 devnode accepts v3.5-compiled bytecode without issue.
 
-- **SDK compatibility.** `@provablehq/sdk@^0.10.2` builds and submits transactions for v3.5-compiled bytecode without modification. The SDK has no consensus-heights concept.
+- **SDK compatibility.** `@provablehq/sdk@^0.10.5` builds and submits transactions for v3.5-compiled bytecode without modification. The SDK has no consensus-heights concept.
 
 - **Managed Leo invocations.** LionDen passes `--disable-update-check` before every managed Leo command (`--version`, `build`, and `devnode start`). This is fixed behavior, not a user-configurable setting.
