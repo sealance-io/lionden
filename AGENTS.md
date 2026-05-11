@@ -49,6 +49,7 @@ Open the smallest relevant doc first:
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](docs/project-layout.md) |
 | Leo version support, v3.5 compatibility, `leoBinary`, devnode consensus heights, `lib.leo` limitations | [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md) |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) |
+| What features are shipped / missing for V1 / deferred; doko-js parity reference | [`docs/feature-status.md`](docs/feature-status.md) |
 | Agent-driven disposable bug-hunt probes | [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md) |
 
 ## Ground Truth Order

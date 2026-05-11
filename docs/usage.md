@@ -616,5 +616,6 @@ This guide stays at the happy-path level. For subsystem internals, follow the fo
 - [`leo-version-compatibility.md`](leo-version-compatibility.md) — Leo v4 default, v3.5 deployable support, `leoBinary`, devnode consensus heights.
 - [`project-layout.md`](project-layout.md) — full package map, example catalog, scaffolder template registry.
 - [`vision-and-roadmap.md`](vision-and-roadmap.md) — product goals, design decisions, roadmap framing.
+- [`feature-status.md`](feature-status.md) — what's shipped, what's missing for V1, what's deferred; includes a doko-js parity reference.
 
 When in doubt, read the relevant `examples/` project before inventing a new pattern — the examples are the most reliable record of what currently works.
