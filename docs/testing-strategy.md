@@ -606,6 +606,8 @@ Add this script when proof-specific tests are isolated:
 
 The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests delegate to `scripts/run-smoke-examples.mjs`, which invokes the CLI with `--config` for each example because the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. For each example, the runner compiles, runs `tsc -p <example>/tsconfig.json --noEmit`, then runs `lionden test`; pass `--no-typecheck` to skip the TypeScript check during local debugging. The runner keeps the curated core example list explicit and discovers `examples/aleo-ports/*/lionden.config.ts` dynamically. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`.
 
+Smoke lanes intentionally typecheck generated `typechain/**/*.ts` alongside example tests so wrapper API drift is caught before runtime-only tests can mask it.
+
 ## Vitest Project Configuration
 
 The root Vitest config already uses named projects.
