@@ -72,7 +72,7 @@ export function sharedFiles(projectName: string): TemplateFile[] {
             outDir: "dist",
             declaration: true,
           },
-          include: ["recipes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"],
+          include: ["typechain/**/*.ts", "recipes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"],
         },
         null,
         2,
