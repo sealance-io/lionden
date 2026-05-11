@@ -16,7 +16,7 @@ The current repo already reflects this tension:
 - `@lionden/plugin-test` runs project-local suites under `test/`
 - `@lionden/testing` creates an LRE, optionally starts a devnode, and exposes deploy/execute helpers
 - fixture reuse exists, but isolation still relies on fresh devnode lifecycle rather than snapshot/revert semantics
-- two packages (`packages/cli` and `packages/plugin-leo`) have zero test files today
+- each workspace package has at least some package-level coverage, and the root Vitest config already splits unit and contract projects
 
 This strategy proposes a testing model that accepts those constraints and organizes the suite accordingly.
 
@@ -25,12 +25,13 @@ This strategy proposes a testing model that accepts those constraints and organi
 The proposal below is based on the current implementation:
 
 - package tests run through the root Vitest config in [`vitest.config.ts`](../vitest.config.ts)
-- the root `test` script is currently `vitest run` in [`package.json`](../package.json), with `test:agent` and `test:watch` also defined
+- the root `test` script is currently `vitest run` in [`package.json`](../package.json), with `test:unit`, `test:contract`, `test:agent`, `test:watch`, `test:smoke`, and `test:smoke:aleo-ports` also defined
 - project tests run through the `test` task in [`packages/plugin-test/src/index.ts`](../packages/plugin-test/src/index.ts)
 - the programmatic test runner discovers `test/**/*.test.ts` under the project root in [`packages/plugin-test/src/test-runner.ts`](../packages/plugin-test/src/test-runner.ts)
 - `setup()` creates or reuses an LRE, optionally starts a devnode, connects to a network, and returns deploy/execute helpers in [`packages/testing/src/test-context.ts`](../packages/testing/src/test-context.ts)
 - fixture caching exists in [`packages/testing/src/fixtures.ts`](../packages/testing/src/fixtures.ts)
 - the network layer already supports `mode: "local" | "onchain"` execution in [`packages/network/src/types.ts`](../packages/network/src/types.ts) and [`packages/network/src/connection.ts`](../packages/network/src/connection.ts)
+- repo-private test fakes, temp-project builders, and shared mocks live in [`packages/test-internals`](../packages/test-internals)
 
 ## Strategy Goals
 
@@ -165,18 +166,19 @@ The current structure should stay mostly intact. The proposal is to clarify inte
 - `*.contract.test.ts` naming convention for contract tests that cross package boundaries, colocated in the package that owns the integration surface (e.g., `packages/core/src/task-dispatch.contract.test.ts`)
 - Vitest named projects select contract tests by filename pattern rather than directory, avoiding a new top-level `tests/` tree with its own `tsconfig.json` and import-path complexity
 
-### Add `packages/test-internals/` (Private)
+### Keep `packages/test-internals/` (Private)
 
-Create a private (`"private": true`, not published) package for repo-owned test infrastructure:
+Keep repo-owned test infrastructure in the private (`"private": true`, not published) `@lionden/test-internals` package. It currently contains:
 
 - `fakes/fake-network.ts`
-- `fakes/fake-task-runner.ts`
-- `fakes/fake-leo-runner.ts`
 - `builders/temp-project.ts`
-- `builders/example-project.ts`
-- `diagnostics/test-artifacts.ts`
+- `builders/contract-lre.ts`
+- `mock-config.ts`
+- `mock-connection.ts`
 
 This keeps `@lionden/testing` focused on the user-facing test context, assertions, and fixtures. Internal test fakes should not ship in a published package or couple repo-internal infrastructure to its release cycle.
+
+Potential future additions still belong here when needed, for example fake Leo process runners, example-project builders, and diagnostics helpers for failed smoke runs.
 
 ## Coverage Allocation By Subsystem
 
@@ -225,7 +227,7 @@ Coverage focus:
 - dispatch into the task registry
 
 Expectation:
-- this package currently has zero test files and is a high-value target for new coverage
+- this package now has package-level coverage for config discovery, task dispatch, and CLI/LRE contract behavior
 - argument parsing and help output are pure Tier 1 targets
 - avoid broad subprocess-heavy suites
 - use contract tests for config discovery and dispatch
@@ -300,7 +302,7 @@ Coverage focus:
 - orchestration between task args and compiler pipeline
 
 Expectation:
-- this package currently has zero test files and is a high-value target for new coverage
+- this package now has package-level coverage for task registration, routing, and compile-task orchestration
 - pure argument handling and task registration belong in Tier 1
 - orchestration with `leo-compiler` belongs in Tier 2
 
@@ -428,18 +430,18 @@ Recommended additions:
 - `loadDeploymentFixture()` for compile + deploy setup
 - `clearTestArtifacts()` for diagnostics cleanup
 
-## Contract Test Harness Proposal
+## Contract Test Harnesses
 
-The repo should provide first-class harnesses for the seams that are currently hardest to cover. These harnesses live in `packages/test-internals/`, not in the published `@lionden/testing` package.
+The repo provides initial harnesses for seams that are hard to cover with isolated unit tests. These harnesses live in `packages/test-internals/`, not in the published `@lionden/testing` package.
 
 ### Fake Network Harness
 
-Provide:
+Currently provided:
 
 - fake connection object implementing `NetworkConnection`
 - controllable execute responses
 - controllable mapping state
-- explicit confirmation and block-height behavior
+- controllable confirmation and block-height behavior
 - call recording for assertions
 
 Use for:
@@ -450,7 +452,7 @@ Use for:
 
 ### Fake Leo Harness
 
-Provide:
+Future addition:
 
 - fake process runner for `leo build` and `leo devnode`
 - configurable stdout/stderr/exit codes
@@ -465,7 +467,7 @@ Use for:
 
 ### Temp Project Builder
 
-Provide:
+Currently provided:
 
 - builder for config file, `programs/`, `scripts/`, and `test/`
 - fixture helpers for nested Leo imports and multi-program workspaces
@@ -562,21 +564,20 @@ These two lanes form the PR quality gate. They must be fast and reliable enough 
 
 - `npm run test:smoke`
 
-This lane should stay small enough to run on normal pull requests. If runtime becomes too high, split it into:
+This lane should stay small enough to run on normal pull requests. The larger ported-example lane is available separately as:
 
-- `npm run test:smoke:core`
-- `npm run test:smoke:examples`
+- `npm run test:smoke:aleo-ports`
 
-and use changed-path filtering in CI.
+If runtime becomes too high, split the core smoke lane further and use changed-path filtering in CI.
 
 ### Nightly Or Release Lane
 
 - `npm run test:prove` — add when proof-specific tests are isolated
 - optional SDK compatibility lane against the supported toolchain matrix
 
-## Proposed Script Surface
+## Current Script Surface
 
-The following scripts are recommended:
+The current root scripts are:
 
 ```json
 {
@@ -586,7 +587,8 @@ The following scripts are recommended:
     "test:contract": "vitest run --project contract",
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
-    "test:smoke": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/token/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/multi-program/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/nft-registry/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/upgradeable-counter/lionden.config.ts test && node --import tsx packages/cli/src/bin.ts --config examples/async-escrow/lionden.config.ts test"
+    "test:smoke": "<six curated examples via packages/cli/src/bin.ts --config ... test>",
+    "test:smoke:aleo-ports": "<ported Aleo examples via packages/cli/src/bin.ts --config ... test>"
   }
 }
 ```
@@ -601,18 +603,18 @@ Add this script when proof-specific tests are isolated:
 }
 ```
 
-The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests use `--config` to point the CLI at each example's config file, since the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. The `test:agent` and `test:watch` scripts are already in use and documented in `CLAUDE.md` and `AGENTS.md`. Note that the `test:smoke` script hardcodes example config paths — it needs maintenance when examples are added or removed.
+The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests use `--config` to point the CLI at each example's config file, since the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`. Note that the smoke scripts hardcode example config paths — they need maintenance when examples are added or removed.
 
 ## Vitest Project Configuration
 
-The root Vitest config should evolve from a single include pattern into named projects.
+The root Vitest config already uses named projects.
 
-Recommended projects:
+Current projects:
 
 - `unit` — selects `packages/*/src/**/*.test.ts` excluding `*.contract.test.ts`
 - `contract` — selects `packages/*/src/**/*.contract.test.ts`
 
-Add the `contract` project when the first contract test file is created. Do not force smoke tests into the root Vitest project if they naturally belong to project-local `lionden test` runs.
+Do not force smoke tests into the root Vitest project if they naturally belong to project-local `lionden test` runs.
 
 ## Coverage Policy
 
@@ -659,11 +661,15 @@ Recommended policy:
 
 ### Phase 0: Naming And Lane Separation
 
-- add this strategy doc
-- rename `test` to `test:fast`, add `test:smoke` script
-- keep current tests where they are, but classify them
+Status: mostly complete.
+
+- this strategy doc exists
+- root scripts expose `test`, `test:unit`, `test:contract`, `test:smoke`, and `test:smoke:aleo-ports`
+- current tests remain colocated with owning packages and are classified through Vitest project names plus filename conventions
 
 ### Phase 1: Example Smoke Cleanup
+
+Status: ongoing.
 
 - convert example suites to use `mode: "local"` for semantic transition checks
 - adopt `loadFixture()` for deploy setup in example tests
@@ -672,18 +678,24 @@ Recommended policy:
 
 ### Phase 2: Extract Shared Test Doubles
 
-- extract duplicated `mockConfig` patterns (repeated across ~5 test files) into a shared location
-- extract duplicated `mockConnection` factories into shared helpers
-- create `packages/test-internals/` as the home for repo-owned test infrastructure
+Status: partially complete.
+
+- `packages/test-internals/` exists as the home for repo-owned test infrastructure
+- `mock-config`, `mock-connection`, fake network, temp-project, and contract-LRE helpers exist there
+- continue moving duplicated ad hoc mocks into that package when touching nearby tests
 
 ### Phase 3: Contract Harnesses And First Contract Tests
 
-- add fake network and temp project builders under `packages/test-internals`
-- write 2-3 initial contract tests to validate the pattern before expanding
-- add the `contract` Vitest project and `test:contract` script once the first test exists
-- initial targets: CLI config discovery + dispatch, deploy task orchestration, `plugin-test` runner configuration
+Status: partially complete.
+
+- fake network and temp-project builders exist under `packages/test-internals`
+- initial contract tests exist for CLI dispatch, deploy orchestration, upgrade orchestration, plugin-leo compile orchestration, and plugin-test task behavior
+- the `contract` Vitest project and `test:contract` script exist
+- remaining work is to expand coverage only where a package boundary needs it
 
 ### Phase 4: Compiler And Codegen Goldens
+
+Status: ongoing.
 
 - expand golden coverage for compiler output, package materialization, and TypeScript codegen
 - copy stable fixture ABIs into `packages/leo-compiler/src/__fixtures__/` to decouple from example artifacts
@@ -691,26 +703,22 @@ Recommended policy:
 
 ### Phase 5: Proof Lane And Diagnostics
 
+Status: not started.
+
 - isolate proof-generation coverage into a dedicated CI lane
 - preserve useful failure artifacts automatically
 - establish runtime and flake budgets
 
-## Concrete Near-Term Backlog
+## Remaining Near-Term Backlog
 
-The first backlog should be small and high leverage.
+Keep the next backlog small and high leverage.
 
-1. Add `docs/testing-strategy.md` and link it from the existing doc map.
-2. Rename root `test` script to `test:fast`, add `test:smoke` script.
-3. Convert example tests to use `mode: "local"` for semantic transition checks and `loadFixture()` for deploy setup.
-4. Add basic Tier 1 tests for `packages/cli` (arg parsing, help output) and `packages/plugin-leo` (task registration).
-5. Extract duplicated `mockConfig` and `mockConnection` into `packages/test-internals/`.
-6. Create initial contract tests for:
-   - CLI config discovery and dispatch
-   - `plugin-test` runner configuration
-   - deploy task orchestration
-   - compiler command planning and cache decisions
-7. Copy stable fixture ABIs into `packages/leo-compiler/src/__fixtures__/` to decouple from example artifacts.
-8. Add one nightly `--prove` smoke path.
+1. Continue converting example tests to use `mode: "local"` for semantic transition checks and `loadFixture()` for deploy setup.
+2. Expand contract tests only at high-value boundaries that are still mostly covered through smoke tests.
+3. Keep moving duplicated mocks into `packages/test-internals/` when nearby tests change.
+4. Add more stable fixture ABIs and edge cases under `packages/leo-compiler/src/__fixtures__/` as codegen/parser coverage expands.
+5. Add one nightly `--prove` smoke path.
+6. Add failure-artifact capture for smoke and future proof lanes.
 
 ## Success Criteria
 

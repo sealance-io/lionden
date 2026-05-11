@@ -75,7 +75,7 @@ export async function main(argv: string[]): Promise<void> {
     console.log(`  Created ${result.filesCreated} files in ${result.projectDir}\n`);
     console.log("  Next steps:\n");
     console.log(`    cd ${projectName}`);
-    console.log("    npm install");
+    console.log("    npm install --ignore-scripts");
     console.log("    npx lionden compile");
     console.log("    npx lionden test");
     console.log("");

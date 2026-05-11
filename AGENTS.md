@@ -20,7 +20,9 @@ Do not load every doc up front. Most tasks only need one focused doc plus a few 
 - `packages/testing`: test LRE setup, devnode lifecycle, fixtures, assertions
 - `packages/plugin-*`: default task plugins
 - `packages/create-lionden`: project scaffolding
+- `packages/test-internals`: repo-private test fakes, builders, and shared mocks
 - `examples/`: concrete user-facing projects
+- `examples/aleo-ports/`: ported compatibility examples and smoke-test configs
 - `docs/`: focused deep dives for lazy loading
 
 ## Selective Disclosure Rules
@@ -47,6 +49,7 @@ Open the smallest relevant doc first:
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](docs/project-layout.md) |
 | Leo version support, v3.5 compatibility, `leoBinary`, devnode consensus heights, `lib.leo` limitations | [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md) |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) |
+| Agent-driven disposable bug-hunt probes | [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md) |
 
 ## Ground Truth Order
 
@@ -64,6 +67,7 @@ When sources disagree, use this order:
 - Avoid claiming that a workflow is stable unless you verified it in code or tests.
 - When running Vitest in agent workflows, prefer `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs. Vitest's `agent` reporter minimizes passing-test noise and token usage. Use `npm run test:unit` or `npm run test:contract` to run specific lanes.
 - Avoid adding a fixed `reporters` setting to shared Vitest config unless you intentionally want to override agent-aware reporter auto-detection or explicitly preserve `agent`.
+- Use `--ignore-scripts` for dependency installs, including `npm install --ignore-scripts` and `npm ci --ignore-scripts`.
 - If `node` or `npm` is missing from `PATH`, load `nvm` and use the repo version before concluding the toolchain is unavailable:
   `source "$HOME/.nvm/nvm.sh" && nvm use`
 - Keep edits aligned with the focused docs split:

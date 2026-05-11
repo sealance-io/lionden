@@ -42,12 +42,14 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `packages/plugin-deploy` | `deploy`, `upgrade`, and `export` tasks |
 | `packages/plugin-test` | `test` task with Vitest integration |
 | `packages/create-lionden` | Project scaffolder |
+| `packages/test-internals` | Repo-private test fakes, builders, and shared mocks |
 | `examples/hello-world` | Minimal example project |
 | `examples/token` | Richer example with mappings and private/public flows |
 | `examples/multi-program` | Cross-program calls, dependency graph, typechain |
 | `examples/nft-registry` | Structs, records, `loadFixture`, local execution mode |
 | `examples/upgradeable-counter` | `@admin` constructor, upgrade flow, multi-network config |
 | `examples/async-escrow` | Typechain bindings in tests, escrow state machine |
+| `examples/aleo-ports` | Ported Aleo examples used for compatibility smoke coverage |
 | `docs/` | Focused deep dives for lazy loading |
 
 ## Prerequisites
@@ -66,7 +68,7 @@ Network functionality depends on `@provablehq/sdk@^0.10.5` via `packages/network
 Install workspace dependencies:
 
 ```bash
-npm install
+npm install --ignore-scripts
 ```
 
 Build all packages:
@@ -232,6 +234,9 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, preflight, and hooks
 - [`docs/testing.md`](docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
+- [`docs/json-abi.md`](docs/json-abi.md): JSON ABI schema, parser normalization, and generated binding type rules
+- [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md): Leo v4 default behavior plus scoped v3.5 compatibility
+- [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md): disposable agent-driven bug-hunt probe workflow
 - [`AGENTS.md`](AGENTS.md): agent-specific navigation and selective disclosure rules
 
 ## Roadmap Framing

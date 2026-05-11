@@ -24,7 +24,7 @@ The target shape of LionDen is:
 - source-first Leo project layout under `programs/`
 - ABI-driven TypeScript bindings
 - Vitest-based test workflows
-- Leo v4 only
+- Leo v4 as the default line, with scoped Leo v3.5 deployable-program compatibility documented separately
 
 Those principles are broader than the current implementation and should be read as design direction rather than a claim that every interface is already complete.
 
@@ -38,7 +38,7 @@ The major decisions preserved from the original planning material are:
 4. ABI-driven code generation rather than regex-driven parsing of generated Aleo source.
 5. Support for local-style and on-chain-style execution flows in generated and runtime tooling.
 6. Vitest as the test runner instead of a custom LionDen-owned framework.
-7. Leo v4 only, with no backward-compatibility goal for older Leo syntax or tooling.
+7. Leo v4 is the primary baseline; Leo v3.5 support is intentionally scoped to deployable `main.leo` programs and compatibility workflows, not full library support.
 8. Source-first authoring in `programs/`, with LionDen materializing compiler-friendly package layouts internally.
 9. A Hardhat-like declarative plugin surface with config lifecycle hooks and task composition.
 10. A Provable SDK baseline aligned with devnode-aware APIs.
@@ -86,7 +86,7 @@ The most important engineering constraints preserved from the original design wo
 Use this file when you need to answer questions like:
 
 - Why is LionDen source-first?
-- Why is the framework Leo v4 only?
+- Why is Leo v4 the default framework baseline?
 - Why does the compiler rely on ABI output?
 - Why is devnode the default local workflow?
 - Which areas are foundational versus still maturing?
@@ -99,3 +99,4 @@ For implementation detail, switch back to the focused subsystem docs:
 - [`network.md`](network.md)
 - [`deployment.md`](deployment.md)
 - [`testing.md`](testing.md)
+- [`leo-version-compatibility.md`](leo-version-compatibility.md)
