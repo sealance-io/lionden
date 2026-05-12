@@ -6,7 +6,11 @@
  */
 
 import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
-import type { SdkObjects, SignerSdkObjects } from "./sdk-adapter.js";
+import type {
+  SdkObjects,
+  SdkProgramManagerBase,
+  SignerSdkObjects,
+} from "./sdk-adapter.js";
 import {
   buildRuntimeKeyIdentity,
   findCachedExecutionKeys,
@@ -157,17 +161,25 @@ export class AleoConnection implements NetworkConnection {
    */
   private async getEffectivePm(
     signerPrivateKey?: string,
-  ): Promise<{ pm: unknown; nc: unknown }> {
+  ): Promise<{ pm: unknown; nc: unknown; programManagerBase: SdkProgramManagerBase }> {
     const defaultSdk = await this.getSdkObjects();
 
     if (!signerPrivateKey || signerPrivateKey === this.privateKey) {
-      return { pm: defaultSdk.programManager, nc: defaultSdk.networkClient };
+      return {
+        pm: defaultSdk.programManager,
+        nc: defaultSdk.networkClient,
+        programManagerBase: defaultSdk.programManagerBase,
+      };
     }
 
     // Check resolved cache
     const resolved = this.signerSdkResolved.get(signerPrivateKey);
     if (resolved) {
-      return { pm: resolved.programManager, nc: defaultSdk.networkClient };
+      return {
+        pm: resolved.programManager,
+        nc: defaultSdk.networkClient,
+        programManagerBase: resolved.programManagerBase,
+      };
     }
 
     // Check inflight cache
@@ -203,7 +215,11 @@ export class AleoConnection implements NetworkConnection {
     }
 
     const signerSdk = await inflight;
-    return { pm: signerSdk.programManager, nc: defaultSdk.networkClient };
+    return {
+      pm: signerSdk.programManager,
+      nc: defaultSdk.networkClient,
+      programManagerBase: signerSdk.programManagerBase,
+    };
   }
 
   async getBalance(address?: string): Promise<bigint> {
@@ -265,9 +281,11 @@ export class AleoConnection implements NetworkConnection {
 
     // Resolve the effective ProgramManager — uses a per-signer isolated PM
     // when options.signer is provided, otherwise the connection's default.
-    const { pm: effectivePm, nc: effectiveNc } = await this.getEffectivePm(
-      options?.signer?.privateKey,
-    );
+    const {
+      pm: effectivePm,
+      nc: effectiveNc,
+      programManagerBase,
+    } = await this.getEffectivePm(options?.signer?.privateKey);
     const pm = effectivePm as any;
     const mode = options?.mode ?? "onchain";
 
@@ -314,6 +332,7 @@ export class AleoConnection implements NetworkConnection {
     } else {
       const persistentExecution = await this.getPersistentExecutionOptions(
         pm,
+        programManagerBase,
         effectiveNc as any,
         programId,
         transitionName,
@@ -336,6 +355,7 @@ export class AleoConnection implements NetworkConnection {
 
   private async getPersistentExecutionOptions(
     pm: any,
+    programManagerBase: SdkProgramManagerBase,
     nc: { getProgram(id: string): Promise<string>; getLatestProgramEdition?: (id: string) => Promise<number> },
     programId: string,
     transitionName: string,
@@ -371,6 +391,7 @@ export class AleoConnection implements NetworkConnection {
     });
     const keyBytes = cached ?? await this.synthesizeAndCacheExecutionKeys({
       pm,
+      programManagerBase,
       artifacts,
       transitionName,
       args,
@@ -395,6 +416,7 @@ export class AleoConnection implements NetworkConnection {
   private async synthesizeAndCacheExecutionKeys(
     options: {
       pm: any;
+      programManagerBase: SdkProgramManagerBase;
       artifacts: ProgramExecutionArtifacts;
       transitionName: string;
       args: string[];
@@ -402,20 +424,24 @@ export class AleoConnection implements NetworkConnection {
       sdkMetadata: { sdkVersion?: string; wasmVersion?: string };
     },
   ): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
-    if (typeof options.pm.synthesizeKeys !== "function") {
-      throw new Error(
-        "Provable SDK ProgramManager does not expose synthesizeKeys(); " +
-          "filesystem key caching requires SDK key synthesis support.",
-      );
-    }
-
-    const [provingKey, verifyingKey] = await options.pm.synthesizeKeys(
+    const runtime = await import("./sdk-adapter.js");
+    const privateKey = getProgramManagerPrivateKey(options.pm);
+    const preparedInputs = prepareExecutionInputs(
+      options.pm,
       options.artifacts.source,
       options.transitionName,
       options.args,
     );
-    const provingKeyBytes = keyToBytes(provingKey, "proving");
-    const verifyingKeyBytes = keyToBytes(verifyingKey, "verifying");
+    const { provingKeyBytes, verifyingKeyBytes } =
+      await runtime.synthesizeExecutionKeyBytes({
+        programManagerBase: options.programManagerBase,
+        privateKey,
+        source: options.artifacts.source,
+        transitionName: options.transitionName,
+        inputs: preparedInputs,
+        ...(options.artifacts.imports === undefined ? {} : { imports: options.artifacts.imports }),
+        ...(options.identity.edition === undefined ? {} : { edition: options.identity.edition }),
+      });
 
     writeCachedExecutionKeys(
       {
@@ -683,21 +709,34 @@ async function getLatestProgramEditionIfAvailable(
   }
 }
 
-function keyToBytes(key: unknown, label: "proving" | "verifying"): Uint8Array {
-  if (!key || typeof (key as { toBytes?: unknown }).toBytes !== "function") {
-    throw new Error(`Synthesized ${label} key does not expose toBytes().`);
+function getProgramManagerPrivateKey(pm: unknown): any {
+  const account = (pm as { account?: unknown })?.account;
+  if (!account || typeof (account as { privateKey?: unknown }).privateKey !== "function") {
+    throw new Error(
+      "Filesystem key-cache synthesis requires the SDK ProgramManager to have an account with privateKey().",
+    );
   }
-  const raw = (key as { toBytes(): unknown }).toBytes();
-  if (raw instanceof Uint8Array) {
-    return new Uint8Array(raw);
+  return (account as { privateKey(): unknown }).privateKey();
+}
+
+function prepareExecutionInputs(
+  pm: unknown,
+  source: string,
+  transitionName: string,
+  args: string[],
+): string[] {
+  if (typeof (pm as { prepareInputs?: unknown }).prepareInputs !== "function") {
+    throw new Error(
+      "Filesystem key-cache synthesis requires SDK ProgramManager.prepareInputs().",
+    );
   }
-  if (raw instanceof ArrayBuffer) {
-    return new Uint8Array(raw);
+  const prepared = (pm as {
+    prepareInputs(source: string, transitionName: string, args: string[]): unknown;
+  }).prepareInputs(source, transitionName, args);
+  if (!Array.isArray(prepared)) {
+    throw new Error("SDK ProgramManager.prepareInputs() returned a non-array value.");
   }
-  if (Array.isArray(raw)) {
-    return new Uint8Array(raw);
-  }
-  throw new Error(`Synthesized ${label} key bytes are not Uint8Array-compatible.`);
+  return prepared.map((value) => String(value));
 }
 
 /** Best-effort destroy of an SDK Account to release WASM private-key state. */

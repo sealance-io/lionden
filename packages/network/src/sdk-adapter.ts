@@ -16,6 +16,14 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createRequire } from "node:module";
+import {
+  CREDITS_KEY_CACHE_FORMAT,
+  fingerprintBytes,
+  fingerprintFile,
+  fingerprintsEqual,
+  readCreditsKeyCacheMetadata,
+  writeCreditsKeyCacheMetadata,
+} from "@lionden/core";
 import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 
@@ -29,11 +37,14 @@ type SdkFunctionKeyProvider = NonNullable<ConstructorParameters<SdkModule["Progr
 type SdkKeySearchParams = Parameters<SdkFunctionKeyProvider["functionKeys"]>[0];
 type SdkFunctionKeyPair = Awaited<ReturnType<SdkFunctionKeyProvider["functionKeys"]>>;
 type SdkKeyStore = Awaited<ReturnType<SdkFunctionKeyProvider["keyStore"]>>;
+export type SdkProgramManagerBase = SdkModule["ProgramManagerBase"];
+type SdkPrivateKey = InstanceType<SdkModule["PrivateKey"]>;
 
 export interface SdkObjects {
   account: InstanceType<SdkModule["Account"]>;
   networkClient: InstanceType<SdkModule["AleoNetworkClient"]>;
   programManager: InstanceType<SdkModule["ProgramManager"]>;
+  programManagerBase: SdkProgramManagerBase;
   keyProvider: SdkFunctionKeyProvider;
   recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
 }
@@ -47,6 +58,16 @@ export interface SdkRuntimeMetadata {
   readonly sdkVersion?: string;
   readonly wasmVersion?: string;
   readonly wasmHash: string;
+}
+
+export interface SynthesizeExecutionKeyBytesOptions {
+  readonly programManagerBase: SdkProgramManagerBase;
+  readonly privateKey: SdkPrivateKey;
+  readonly source: string;
+  readonly transitionName: string;
+  readonly inputs: readonly string[];
+  readonly imports?: Record<string, string>;
+  readonly edition?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +173,7 @@ export async function createSdkObjects(
       LocalFileKeyStore,
       NetworkRecordProvider,
       ProgramManager,
+      ProgramManagerBase,
     } = sdk;
 
     // Create account
@@ -166,13 +188,18 @@ export async function createSdkObjects(
     // Create key and record providers
     const keyProvider = new AleoKeyProvider();
     keyProvider.useCache(true);
-    const effectiveKeyProvider: SdkFunctionKeyProvider =
-      opts.keyCache?.storage === "filesystem"
-        ? new PersistentFunctionKeyProvider(
-          keyProvider,
-          new LocalFileKeyStore(opts.keyCache.path),
-        )
-        : keyProvider;
+
+    let effectiveKeyProvider: SdkFunctionKeyProvider = keyProvider;
+    if (opts.keyCache?.storage === "filesystem" && opts.keyCache.path) {
+      const cachePath = opts.keyCache.path;
+      const { wasmHash } = getSdkRuntimeMetadata(opts.network);
+      await warmupFeeKeys(keyProvider, sdk, cachePath, opts.network, wasmHash);
+      effectiveKeyProvider = new PersistentFunctionKeyProvider(
+        keyProvider,
+        new LocalFileKeyStore(cachePath),
+        { sdk, cachePath, network: opts.network, wasmHash },
+      );
+    }
     const recordProvider = new NetworkRecordProvider(account, networkClient);
 
     // Create program manager — pass networkClientOptions so the PM's internal
@@ -189,6 +216,7 @@ export async function createSdkObjects(
       account,
       networkClient,
       programManager,
+      programManagerBase: ProgramManagerBase,
       keyProvider: effectiveKeyProvider,
       recordProvider,
     };
@@ -214,6 +242,7 @@ export interface SignerSdkObjects {
   account: InstanceType<SdkModule["Account"]>;
   recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
   programManager: InstanceType<SdkModule["ProgramManager"]>;
+  programManagerBase: SdkProgramManagerBase;
 }
 
 export interface CreateSignerSdkObjectsOptions {
@@ -224,10 +253,20 @@ export interface CreateSignerSdkObjectsOptions {
   apiKey?: string;
 }
 
+export interface FeeKeyPersistenceConfig {
+  readonly sdk: SdkModule;
+  readonly cachePath: string;
+  readonly network: AleoNetwork;
+  readonly wasmHash: string;
+}
+
+type FeeKeyName = "fee_public" | "fee_private";
+
 export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
   constructor(
     private readonly delegate: SdkFunctionKeyProvider,
     private readonly fileStore: NonNullable<SdkKeyStore>,
+    private readonly feePersistence?: FeeKeyPersistenceConfig,
   ) {}
 
   async keyStore(): Promise<SdkKeyStore> {
@@ -254,12 +293,16 @@ export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
     return this.delegate.functionKeys(params);
   }
 
-  feePrivateKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.feePrivateKeys();
+  async feePrivateKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.feePrivateKeys();
+    this.persistFeeIfMissing("fee_private", keys[0]);
+    return keys;
   }
 
-  feePublicKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.feePublicKeys();
+  async feePublicKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.feePublicKeys();
+    this.persistFeeIfMissing("fee_public", keys[0]);
+    return keys;
   }
 
   inclusionKeys(): Promise<SdkFunctionKeyPair> {
@@ -281,6 +324,139 @@ export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
   unBondPublicKeys(): Promise<SdkFunctionKeyPair> {
     return this.delegate.unBondPublicKeys();
   }
+
+  private persistFeeIfMissing(name: FeeKeyName, provingKey: unknown): void {
+    const config = this.feePersistence;
+    if (!config) return;
+    try {
+      const credits = (config.sdk as unknown as { CREDITS_PROGRAM_KEYS: Record<string, { locator: string }> }).CREDITS_PROGRAM_KEYS;
+      const locator = credits[name]?.locator;
+      if (!locator) return;
+      const paths = creditsCachePaths(config.cachePath, config.wasmHash, config.network, locator);
+      const bytes = keyToBytes(provingKey, "proving");
+      const fingerprint = fingerprintBytes(bytes);
+      // Skip the write only when the existing on-disk entry is complete and
+      // matches what we would write (both files present, metadata identity +
+      // fingerprint align). Anything torn or stale gets rewritten so warmup
+      // can pick it up on the next run.
+      if (isCreditsEntryCurrent(paths, locator, config, fingerprint)) return;
+      writeFileAtomic(paths.prover, bytes);
+      writeCreditsKeyCacheMetadata(paths.metadata, {
+        format: CREDITS_KEY_CACHE_FORMAT,
+        locator,
+        network: config.network,
+        wasmHash: config.wasmHash,
+        prover: fingerprint,
+      });
+    } catch (err) {
+      // Persistence is opportunistic — never block the caller.
+      console.debug(
+        `LionDen: failed to persist credits.aleo/${name} proving key: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+}
+
+/** @internal — exported for testing. */
+export async function warmupFeeKeys(
+  keyProvider: InstanceType<SdkModule["AleoKeyProvider"]>,
+  sdk: SdkModule,
+  cachePath: string,
+  network: AleoNetwork,
+  wasmHash: string,
+): Promise<void> {
+  const credits = (sdk as unknown as {
+    CREDITS_PROGRAM_KEYS: Record<string, { locator: string; verifyingKey: () => unknown }>;
+  }).CREDITS_PROGRAM_KEYS;
+  for (const name of ["fee_public", "fee_private"] as const) {
+    const key = credits[name];
+    if (!key) continue;
+    try {
+      const paths = creditsCachePaths(cachePath, wasmHash, network, key.locator);
+      if (!fs.existsSync(paths.prover) || !fs.existsSync(paths.metadata)) continue;
+
+      const metadata = readCreditsKeyCacheMetadata(paths.metadata);
+      if (!metadata) continue;
+      if (metadata.locator !== key.locator) continue;
+      if (metadata.network !== network) continue;
+      if (metadata.wasmHash !== wasmHash) continue;
+
+      const bytes = new Uint8Array(fs.readFileSync(paths.prover));
+      if (!fingerprintsEqual(fingerprintBytes(bytes), metadata.prover)) continue;
+
+      const provingKey = sdk.ProvingKey.fromBytes(bytes);
+      const verifyingKey = key.verifyingKey();
+      keyProvider.cacheKeys(
+        key.locator,
+        [provingKey, verifyingKey] as Parameters<SdkFunctionKeyProvider["cacheKeys"]>[1],
+      );
+    } catch (err) {
+      console.debug(
+        `LionDen: skipping credits.aleo/${name} warmup: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+}
+
+function isCreditsEntryCurrent(
+  paths: { prover: string; metadata: string },
+  locator: string,
+  config: FeeKeyPersistenceConfig,
+  fingerprint: ReturnType<typeof fingerprintBytes>,
+): boolean {
+  if (!fs.existsSync(paths.prover) || !fs.existsSync(paths.metadata)) return false;
+  let metadata;
+  try {
+    metadata = readCreditsKeyCacheMetadata(paths.metadata);
+  } catch {
+    return false;
+  }
+  if (!metadata) return false;
+  if (metadata.locator !== locator) return false;
+  if (metadata.network !== config.network) return false;
+  if (metadata.wasmHash !== config.wasmHash) return false;
+  if (!fingerprintsEqual(metadata.prover, fingerprint)) return false;
+  // Confirm the on-disk prover bytes actually match the metadata claim.
+  // Otherwise a corrupted .prover with intact metadata sneaks past write-back
+  // and gets rejected by warmup on the next run, leaving a permanently cold
+  // entry.
+  let onDisk;
+  try {
+    onDisk = fingerprintFile(paths.prover);
+  } catch {
+    return false;
+  }
+  return fingerprintsEqual(onDisk, fingerprint);
+}
+
+function creditsCachePaths(
+  cachePath: string,
+  wasmHash: string,
+  network: AleoNetwork,
+  locator: string,
+): { dir: string; prover: string; metadata: string } {
+  // `locator` includes `/` and `:`; base64url avoids any filesystem-hostile chars.
+  const safeLocator = Buffer.from(locator, "utf-8").toString("base64url");
+  const dir = path.join(cachePath, "lionden-credits", wasmHash, network);
+  return {
+    dir,
+    prover: path.join(dir, `${safeLocator}.prover`),
+    metadata: path.join(dir, `${safeLocator}.metadata.json`),
+  };
+}
+
+function writeFileAtomic(filePath: string, bytes: Uint8Array): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
+  );
+  fs.writeFileSync(tmpPath, bytes);
+  fs.renameSync(tmpPath, filePath);
 }
 
 export async function createExecutionKeysFromBytes(
@@ -292,6 +468,26 @@ export async function createExecutionKeysFromBytes(
   return {
     provingKey: sdk.ProvingKey.fromBytes(new Uint8Array(keyBytes.provingKey)),
     verifyingKey: sdk.VerifyingKey.fromBytes(new Uint8Array(keyBytes.verifyingKey)),
+  };
+}
+
+export async function synthesizeExecutionKeyBytes(
+  options: SynthesizeExecutionKeyBytesOptions,
+): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
+  const keyPair = await options.programManagerBase.synthesizeKeyPair(
+    options.privateKey,
+    options.source,
+    options.transitionName,
+    [...options.inputs],
+    options.imports,
+    options.edition,
+  );
+  const provingKey = keyPair.provingKey();
+  const verifyingKey = keyPair.verifyingKey();
+
+  return {
+    provingKeyBytes: keyToBytes(provingKey, "proving"),
+    verifyingKeyBytes: keyToBytes(verifyingKey, "verifying"),
   };
 }
 
@@ -320,6 +516,7 @@ export async function createSignerSdkObjects(
     AleoNetworkClient,
     NetworkRecordProvider,
     ProgramManager,
+    ProgramManagerBase,
   } = sdk;
 
   const account = new Account({ privateKey: opts.privateKey });
@@ -339,7 +536,7 @@ export async function createSignerSdkObjects(
   );
   programManager.setAccount(account);
 
-  return { account, recordProvider, programManager };
+  return { account, recordProvider, programManager, programManagerBase: ProgramManagerBase };
 }
 
 /**
@@ -382,6 +579,23 @@ export async function checkDevnodeSdkSupport(): Promise<void> {
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+function keyToBytes(key: unknown, label: "proving" | "verifying"): Uint8Array {
+  if (!key || typeof (key as { toBytes?: unknown }).toBytes !== "function") {
+    throw new Error(`Synthesized ${label} key does not expose toBytes().`);
+  }
+  const raw = (key as { toBytes(): unknown }).toBytes();
+  if (raw instanceof Uint8Array) {
+    return new Uint8Array(raw);
+  }
+  if (raw instanceof ArrayBuffer) {
+    return new Uint8Array(raw);
+  }
+  if (Array.isArray(raw)) {
+    return new Uint8Array(raw);
+  }
+  throw new Error(`Synthesized ${label} key bytes are not Uint8Array-compatible.`);
 }
 
 /**

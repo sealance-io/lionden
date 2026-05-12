@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { sha256Json, sha256Text } from "@lionden/core";
+import { readRuntimeKeyCacheMetadata, sha256Json, sha256Text } from "@lionden/core";
 import {
   buildRuntimeKeyIdentity,
   writeCachedExecutionKeys,
@@ -11,12 +11,14 @@ import {
 const mockRun = vi.fn();
 const mockExecute = vi.fn();
 const mockSynthesizeKeys = vi.fn();
+const mockSynthesizeExecutionKeyBytes = vi.fn();
 const mockBuildDevnodeExec = vi.fn();
 const mockSubmitTransaction = vi.fn();
 const mockGetProgramMappingValue = vi.fn();
 const mockGetLatestHeight = vi.fn();
 const mockGetProgram = vi.fn();
 const mockGetLatestProgramEdition = vi.fn();
+const mockPrepareInputs = vi.fn();
 const mockCreateSdkObjects = vi.fn();
 const mockCreateSignerSdkObjects = vi.fn();
 const mockCreateExecutionKeysFromBytes = vi.fn();
@@ -28,6 +30,7 @@ vi.mock("./sdk-adapter.js", () => ({
   createSdkObjects: mockCreateSdkObjects,
   createSignerSdkObjects: mockCreateSignerSdkObjects,
   createExecutionKeysFromBytes: mockCreateExecutionKeysFromBytes,
+  synthesizeExecutionKeyBytes: mockSynthesizeExecutionKeyBytes,
   getSdkRuntimeMetadata: mockGetSdkRuntimeMetadata,
   checkDevnodeSdkSupport: mockCheckDevnodeSdkSupport,
   initConsensusHeights: mockInitConsensusHeights,
@@ -62,6 +65,13 @@ describe("AleoConnection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
+    const mockPrivateKey = { kind: "private-key" };
+    const mockAccount = {
+      address: () => ({ to_string: () => "aleo1derived" }),
+      privateKey: () => mockPrivateKey,
+    };
+    const mockProgramManagerBase = { kind: "ProgramManagerBase" };
+
     mockGetProgram.mockResolvedValue("program hello.aleo { }");
     mockSubmitTransaction.mockResolvedValue("at1broadcast");
     mockGetProgramMappingValue.mockResolvedValue("100u64");
@@ -73,6 +83,13 @@ describe("AleoConnection", () => {
       { toBytes: () => new Uint8Array([10, 11]) },
       { toBytes: () => new Uint8Array([12, 13]) },
     ]);
+    mockSynthesizeExecutionKeyBytes.mockResolvedValue({
+      provingKeyBytes: new Uint8Array([10, 11]),
+      verifyingKeyBytes: new Uint8Array([12, 13]),
+    });
+    mockPrepareInputs.mockImplementation(
+      (_source: string, _transition: string, inputs: string[]) => inputs,
+    );
     mockCreateExecutionKeysFromBytes.mockImplementation(async (_network, bytes) => ({
       provingKey: { kind: "proving", bytes: [...bytes.provingKey] },
       verifyingKey: { kind: "verifying", bytes: [...bytes.verifyingKey] },
@@ -84,9 +101,7 @@ describe("AleoConnection", () => {
     });
 
     mockCreateSdkObjects.mockResolvedValue({
-      account: {
-        address: () => ({ to_string: () => "aleo1derived" }),
-      },
+      account: mockAccount,
       networkClient: {
         getProgram: mockGetProgram,
         submitTransaction: mockSubmitTransaction,
@@ -98,8 +113,11 @@ describe("AleoConnection", () => {
         run: mockRun,
         execute: mockExecute,
         synthesizeKeys: mockSynthesizeKeys,
+        prepareInputs: mockPrepareInputs,
+        account: mockAccount,
         buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
       },
+      programManagerBase: mockProgramManagerBase,
       keyProvider: {},
       recordProvider: {},
     });
@@ -355,7 +373,16 @@ describe("AleoConnection", () => {
         await connection.execute("hello.aleo", "main", ["1u32"]);
         await connection.execute("hello.aleo", "main", ["2u32"]);
 
-        expect(mockSynthesizeKeys).toHaveBeenCalledOnce();
+        expect(mockSynthesizeKeys).not.toHaveBeenCalled();
+        expect(mockPrepareInputs).toHaveBeenCalledOnce();
+        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledOnce();
+        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledWith(expect.objectContaining({
+          privateKey: { kind: "private-key" },
+          source,
+          transitionName: "main",
+          inputs: ["1u32"],
+          edition: 3,
+        }));
         expect(mockCreateExecutionKeysFromBytes).toHaveBeenCalledTimes(2);
         expect(mockExecute).toHaveBeenNthCalledWith(1, expect.objectContaining({
           provingKey: { kind: "proving", bytes: [10, 11] },
@@ -365,6 +392,90 @@ describe("AleoConnection", () => {
           provingKey: { kind: "proving", bytes: [10, 11] },
           verifyingKey: { kind: "verifying", bytes: [12, 13] },
         }));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("synthesizes with recursive local imports and hashes the same graph", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const appSource =
+          "import foo.aleo;\nprogram app.aleo;\nfunction main:\n  output 1u32 as u32.private;\n";
+        const fooSource =
+          "import bar.aleo;\nprogram foo.aleo;\nfunction helper:\n  output 1u32 as u32.private;\n";
+        const barSource =
+          "program bar.aleo;\nfunction helper:\n  output 2u32 as u32.private;\n";
+
+        for (const [programId, source] of [
+          ["app.aleo", appSource],
+          ["foo.aleo", fooSource],
+          ["bar.aleo", barSource],
+        ] as const) {
+          const artifactDir = path.join(artifactsDir, programId);
+          fs.mkdirSync(artifactDir, { recursive: true });
+          fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        }
+
+        const connection = createHttpConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("app.aleo", "main", ["1u32"]);
+
+        const expectedImports = {
+          "bar.aleo": barSource,
+          "foo.aleo": fooSource,
+        };
+        expect(mockGetProgram).not.toHaveBeenCalled();
+        expect(mockSynthesizeKeys).not.toHaveBeenCalled();
+        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledWith(expect.objectContaining({
+          source: appSource,
+          imports: expectedImports,
+        }));
+
+        const runtimeRoot = path.join(cachePath, "lionden-runtime");
+        const entryDir = path.join(runtimeRoot, fs.readdirSync(runtimeRoot)[0]!);
+        const metadata = readRuntimeKeyCacheMetadata(path.join(entryDir, "metadata.json"))!;
+        expect(metadata.identity.importsHash).toBe(sha256Json({
+          imports: [
+            { programId: "bar.aleo", sourceHash: sha256Text(barSource) },
+            { programId: "foo.aleo", sourceHash: sha256Text(fooSource) },
+          ],
+        }));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("synthesizes filesystem keys with undefined edition for not-yet-deployed programs", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const artifactDir = path.join(artifactsDir, "hello.aleo");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const source = "program hello.aleo { }";
+        fs.mkdirSync(artifactDir, { recursive: true });
+        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        mockGetLatestProgramEdition.mockRejectedValueOnce(new Error("not deployed"));
+
+        const connection = createDevnodeConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
+
+        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledWith(expect.objectContaining({
+          source,
+          transitionName: "main",
+          inputs: ["1u32"],
+        }));
+        expect(mockSynthesizeExecutionKeyBytes.mock.calls[0]![0]).not.toHaveProperty("edition");
+        expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("edition");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
