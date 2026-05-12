@@ -18,11 +18,12 @@ const repoRoot = resolve(scriptDir, "..");
 const args = process.argv.slice(2);
 const listOnly = args.includes("--list");
 const typecheck = !args.includes("--no-typecheck");
-const groups = args.filter((arg) => arg !== "--list" && arg !== "--no-typecheck");
+const prove = args.includes("--prove");
+const groups = args.filter((arg) => arg !== "--list" && arg !== "--no-typecheck" && arg !== "--prove");
 const requestedGroups = groups.length > 0 ? groups : ["core"];
 
 function usage() {
-  console.error("Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [core] [aleo-ports] [all]");
+  console.error("Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [core] [aleo-ports] [all]");
 }
 
 function coreConfigs() {
@@ -97,7 +98,15 @@ for (const config of configs) {
     ]);
   }
 
-  run("test", ["--import", "tsx", "packages/cli/src/bin.ts", "--config", config, "test"]);
+  run("test", [
+    "--import",
+    "tsx",
+    "packages/cli/src/bin.ts",
+    "--config",
+    config,
+    "test",
+    ...(prove ? ["--prove"] : []),
+  ]);
 }
 
 function run(label, commandArgs) {
