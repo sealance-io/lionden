@@ -206,7 +206,7 @@ These gaps are relative to the five bug-hunt probes, not the full example suite.
 
 ### Performance / DX gaps
 
-- **Proof-key disk caching**: shipped. Runtime per-transition execution keys, compile-time sidecar refs, and `credits.aleo` fee keys are all persistable via `sdk.keyCache.storage = "filesystem"`. See [`research/key-caching.md`](research/key-caching.md).
+- **Proof-key disk caching**: shipped and enabled by default. Runtime per-transition execution keys, compile-time sidecar refs, and `credits.aleo` fee keys persist under the filesystem SDK key cache unless projects opt out with `sdk.keyCache.storage = "memory"`. See [`research/key-caching.md`](research/key-caching.md).
 - **Compile-time proving-key pre-warm**: deferred. The runtime cache amortizes synthesis cost to a single first-call write-back per identity; a compile-time pre-warm is blocked on an upstream SDK API change (real inputs required for `synthesizeKeyPair`). See [`research/key-caching.md`](research/key-caching.md).
 - **Block-advancement throughput**: ~1s per block on devnode (Insight 18 in the same doc). Block-height-gated tests with thresholds > ~30 risk timeouts.
 

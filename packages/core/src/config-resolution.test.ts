@@ -35,8 +35,10 @@ describe("resolveConfig", () => {
     expect(resolved.testing.autoStartDevnode).toBe(true);
     expect(resolved.deploy.defaultPriorityFee).toBe(0);
     expect(resolved.deploy.confirmTransactions).toBe(true);
-    expect(resolved.sdk.keyCache.storage).toBe("memory");
-    expect(resolved.sdk.keyCache.path).toBeUndefined();
+    expect(resolved.sdk.keyCache).toEqual({
+      storage: "filesystem",
+      path: "/tmp/test-project/artifacts/.cache/provable-keys/.aleo",
+    });
   });
 
   it("provides a default devnode network", async () => {
@@ -113,6 +115,32 @@ describe("resolveConfig", () => {
       storage: "filesystem",
       path: "/tmp/test-project/artifacts/.cache/provable-keys/.aleo",
     });
+  });
+
+  it("allows opting out of filesystem SDK key caching", async () => {
+    const resolved = await resolve(
+      { sdk: { keyCache: { storage: "memory" } } },
+      [],
+      projectRoot,
+    );
+
+    expect(resolved.sdk.keyCache).toEqual({ storage: "memory" });
+  });
+
+  it("does not retain the default filesystem path when a plugin resolves memory SDK key caching", async () => {
+    const plugin: LionDenPlugin = {
+      id: "memory-sdk-cache-plugin",
+      hookHandlers: {
+        config: {
+          resolveConfig: () => ({
+            sdk: { keyCache: { storage: "memory" } },
+          }),
+        },
+      },
+    };
+
+    const { resolved } = await resolveConfig({}, [plugin], projectRoot);
+    expect(resolved.sdk.keyCache).toEqual({ storage: "memory" });
   });
 
   it("normalizes filesystem SDK key cache paths to a .aleo directory", async () => {

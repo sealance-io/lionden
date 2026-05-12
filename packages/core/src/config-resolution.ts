@@ -261,7 +261,7 @@ function resolveSdkConfig(
   artifactsPath: string,
 ): ResolvedSdkConfig {
   const keyCache = config.sdk?.keyCache;
-  const storage = keyCache?.storage ?? "memory";
+  const storage = keyCache?.storage ?? "filesystem";
 
   if (storage === "memory") {
     return { keyCache: { storage } };
@@ -517,15 +517,26 @@ function mergePartial(
     codegen: { ...base.codegen, ...(partial.codegen ?? {}) },
     testing: { ...base.testing, ...(partial.testing ?? {}) },
     deploy: { ...base.deploy, ...(partial.deploy ?? {}) },
-    sdk: {
-      ...base.sdk,
-      ...(partial.sdk ?? {}),
-      keyCache: {
-        ...base.sdk.keyCache,
-        ...(partial.sdk?.keyCache ?? {}),
-      },
-    },
+    sdk: mergeSdkConfig(base.sdk, partial.sdk),
     networks: { ...base.networks, ...(partial.networks ?? {}) },
     namedAccounts: { ...base.namedAccounts, ...(partial.namedAccounts ?? {}) },
   } as LionDenResolvedConfig;
+}
+
+function mergeSdkConfig(
+  base: LionDenResolvedConfig["sdk"],
+  partial: Partial<LionDenResolvedConfig["sdk"]> | undefined,
+): LionDenResolvedConfig["sdk"] {
+  const mergedKeyCache = {
+    ...base.keyCache,
+    ...(partial?.keyCache ?? {}),
+  };
+
+  return {
+    ...base,
+    ...(partial ?? {}),
+    keyCache: mergedKeyCache.storage === "memory"
+      ? { storage: "memory" }
+      : mergedKeyCache,
+  };
 }
