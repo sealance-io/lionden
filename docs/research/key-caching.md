@@ -4,13 +4,15 @@ When to read this: use this file for the rationale behind LionDen's key-cache la
 
 ## What ships today
 
-LionDen persists proving-key material in three coordinated places, all opt-in via:
+LionDen persists proving-key material in three coordinated places by default:
 
 ```ts
 sdk: {
   keyCache: { storage: "filesystem" },
 }
 ```
+
+Projects that need process-local SDK caching only can opt out with `sdk.keyCache.storage = "memory"`.
 
 Default filesystem location is `artifacts/.cache/provable-keys/.aleo` (`packages/core/src/config-resolution.ts`). The three caches:
 

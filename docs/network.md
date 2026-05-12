@@ -79,13 +79,15 @@ At the platform level, devnode and snarkOS nodes expose the same REST surface fo
 
 When a task supplies a custom signer key, `createSignerSdkObjects()` builds an isolated `Account`, `ProgramManager`, and `NetworkRecordProvider` for that signer while sharing the key provider with the default connection.
 
-SDK proving-key caching defaults to the SDK's in-memory provider cache. Projects can opt into filesystem-backed execution key persistence with:
+SDK proving-key caching defaults to filesystem-backed execution key persistence:
 
 ```ts
 sdk: {
   keyCache: { storage: "filesystem" },
 }
 ```
+
+Projects that need process-local SDK caching only can opt out with `sdk.keyCache.storage = "memory"`.
 
 The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention.
 

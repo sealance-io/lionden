@@ -299,12 +299,12 @@ export interface DeployConfig {
 }
 
 export interface SdkConfig {
-  /** Proving/verifying key cache settings. Defaults to in-memory SDK caching. */
+  /** Proving/verifying key cache settings. Defaults to filesystem-backed caching. */
   readonly keyCache?: SdkKeyCacheConfig;
 }
 
 export interface SdkKeyCacheConfig {
-  /** Cache storage backend. Default: "memory" */
+  /** Cache storage backend. Default: "filesystem" */
   readonly storage?: "memory" | "filesystem";
   /** Filesystem cache directory. Relative paths resolve from project root. */
   readonly path?: string;
