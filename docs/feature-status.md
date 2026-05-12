@@ -1,6 +1,6 @@
 # LionDen Feature Status
 
-**Last verified:** 2026-05-11
+**Last verified:** 2026-05-12
 
 A snapshot of what currently works in LionDen, what's still missing for a 1.0, and what's deferred past V1. This doc is anchored to **shipped behavior** in the codebase, the working examples under `examples/`, and the bug-hunt probes that have been run against the deploy/upgrade subsystem during development.
 
@@ -206,7 +206,8 @@ These gaps are relative to the five bug-hunt probes, not the full example suite.
 
 ### Performance / DX gaps
 
-- **Proof-key disk caching**: keys are fetched per process. Large circuits (e.g. `fibonacci(64u8)`) can fail transiently with "Failed to download powers for degree X" until the keys are warmed in the current process.
+- **Proof-key disk caching**: shipped. Runtime per-transition execution keys, compile-time sidecar refs, and `credits.aleo` fee keys are all persistable via `sdk.keyCache.storage = "filesystem"`. See [`research/key-caching.md`](research/key-caching.md).
+- **Compile-time proving-key pre-warm**: deferred. The runtime cache amortizes synthesis cost to a single first-call write-back per identity; a compile-time pre-warm is blocked on an upstream SDK API change (real inputs required for `synthesizeKeyPair`). See [`research/key-caching.md`](research/key-caching.md).
 - **Block-advancement throughput**: ~1s per block on devnode (Insight 18 in the same doc). Block-height-gated tests with thresholds > ~30 risk timeouts.
 
 ---
@@ -228,11 +229,11 @@ This is a **proposed** cut for a 1.0 release, not a ratified decision. It draws 
 | 9 | Resolve the `connection.execute()` outputs TODO — either implement parsing, or document the imperative API as txId-only with users steered to typed wrappers | 🟡 Open | Today the imperative path silently drops outputs; that surprises users using `ctx.execute(...)` / `ctx.raw.execute(...)` on-chain |
 | 10 | Pending-upgrade recovery probe (`action: "upgrade"` with `previousEdition`) | 🟡 Open | Upgrade-mid-crash recovery is the only state-recovery code path with no probe |
 | 11 | Curated type bindings (or equivalent typed helper) for `credits.aleo` and the most common network-imported programs | 🟡 Open | Today users call imported network programs through `ctx.raw.execute(...)` — no type safety. A curated binding for at least `credits.aleo` closes the most-cited DX gap until the generalized SDK ABI-extraction path (see §5) is available |
-| 12 | Proof-key disk caching | 🟡 Open | Large circuits can fail or stall while proof keys are fetched per process. A disk-backed cache would make heavyweight compile/test/deploy flows more predictable for V1 users |
+| 12 | Proof-key disk caching (runtime + sidecar + fee keys) | ✅ Done | Filesystem-backed cache lands the predictable-heavyweight-flow win cited in §3. Compile-time pre-warm remains deferred; see [`research/key-caching.md`](research/key-caching.md) |
 
-Items 1-5 are shipped today. Items 6-12 are the proposed open-set for 1.0. Items 6-10 are integration coverage and one documented-or-fixed TODO; items 11-12 are bounded DX/reliability additions for network-imported programs and heavyweight proving flows.
+Items 1-5 are shipped today. Item 12 is also shipped (per the §3 update above). Items 6-11 are the proposed open-set for 1.0: integration coverage, one documented-or-fixed TODO, and the curated `credits.aleo` bindings.
 
-If only one of 6-12 ships, item 6 (HTTP smoke) is the most operationally important. Item 9 is the lowest-effort.
+If only one of 6-11 ships, item 6 (HTTP smoke) is the most operationally important. Item 9 is the lowest-effort.
 
 ---
 
