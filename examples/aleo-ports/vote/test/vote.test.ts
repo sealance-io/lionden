@@ -1,12 +1,12 @@
 // Port of tmp/leo-examples/vote/. Upstream run.sh isn't checked in; the
 // canonical flow per src/main.leo is propose → new_ticket → agree/disagree.
 // The proposal id is derived inside propose via BHP256::hash_to_field(title),
-// so the test pulls it off a typed Proposal record returned from local mode.
+// so the test reads it off the accepted Proposal record after decryption.
 //
-// The tests intentionally use local mode when they need a plaintext Proposal
-// or Ticket before a later transition. Broadcasted record outputs can also be
-// recovered through accepted().outputs.decrypt(...), as shown in the token
-// examples.
+// Transitions that finalize on chain are exercised through a single
+// .accepted() call, recovering record outputs (Proposal pid, spendable Ticket)
+// via confirmed.outputs.decrypt(...). Proving needs the on-chain state paths,
+// so we don't pre-run them in local mode.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
@@ -62,12 +62,11 @@ describe("vote.aleo", () => {
       proposer: Leo.address(proposer()),
     };
 
-    // Local: capture the typed Proposal record so we can read pid.
-    const [proposal] = await vote.withSigner(proposer()).propose.locally({ info });
+    // Broadcast fires the finalize so tickets[pid] is set to 0; the Proposal
+    // record carries the pid derived inside the program.
+    const confirmed = await vote.withSigner(proposer()).propose.accepted({ info });
+    const proposal = await confirmed.outputs.decrypt(proposer());
     pid = proposal.id;
-
-    // Broadcast: actually fire the finalize so tickets[pid] is set to 0.
-    await vote.withSigner(proposer()).propose.accepted({ info });
 
     expect(await vote.getTickets(pid)).toBe(0n);
   });
@@ -80,8 +79,10 @@ describe("vote.aleo", () => {
 
   it("agree() increments agree_votes[pid]", async () => {
     expect(pid).toBeDefined();
-    // Issue a Ticket plaintext (local mode → no mapping side effect on tickets).
-    const [ticket] = await vote.new_ticket.locally({ pid: pid!, voter: voter() });
+    // Spendable ticket comes off the accepted new_ticket transition so the
+    // proven agree transition can resolve its on-chain state path.
+    const confirmed = await vote.new_ticket.accepted({ pid: pid!, voter: voter() });
+    const ticket = await confirmed.outputs.decrypt(voter());
 
     await vote.withSigner(voter()).agree.accepted({ ticket });
     expect(await vote.getAgree_votes(pid!)).toBe(1n);
@@ -89,7 +90,8 @@ describe("vote.aleo", () => {
 
   it("disagree() increments disagree_votes[pid]", async () => {
     expect(pid).toBeDefined();
-    const [ticket] = await vote.new_ticket.locally({ pid: pid!, voter: voter() });
+    const confirmed = await vote.new_ticket.accepted({ pid: pid!, voter: voter() });
+    const ticket = await confirmed.outputs.decrypt(voter());
 
     await vote.withSigner(voter()).disagree.accepted({ ticket });
     expect(await vote.getDisagree_votes(pid!)).toBe(1n);
