@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import * as crypto from "node:crypto";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import { keyArtifactsMetadataPath, readKeyArtifactsMetadata } from "@lionden/core";
 import { defaultFetchNetworkDep, compilePipeline } from "./compiler.js";
 import {
   getCachedNetworkDep,
@@ -404,6 +405,7 @@ describe("compilePipeline network dep handling", () => {
         skipDeployed: true,
         autoExport: false,
       },
+      sdk: { keyCache: { storage: "memory" } },
       namedAccounts: {},
       ...overrides,
     };
@@ -447,6 +449,14 @@ describe("compilePipeline network dep handling", () => {
 
       const args = fs.readFileSync(argsLog, "utf-8").trim().split("\n");
       expect(args.slice(0, 2)).toEqual(["--disable-update-check", "build"]);
+      expect(readKeyArtifactsMetadata(
+        keyArtifactsMetadataPath(artifactsDir, "app.aleo"),
+      )).toMatchObject({
+        format: "lionden.keyArtifacts.v1",
+        programId: "app.aleo",
+        sourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        importsHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
     } finally {
       process.env.PATH = originalPath;
       if (originalLog === undefined) {
@@ -454,6 +464,54 @@ describe("compilePipeline network dep handling", () => {
       } else {
         process.env.LIONDEN_LEO_ARGS_LOG = originalLog;
       }
+    }
+  });
+
+  it("records unambiguous prover and verifier artifact refs in the sidecar", async () => {
+    writeProgram(
+      "app",
+      "program app.aleo {\n  fn main() {}\n}\n",
+    );
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        "pkg=\"\"",
+        "prev=\"\"",
+        "for arg in \"$@\"; do",
+        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
+        "  prev=\"$arg\"",
+        "done",
+        "id=$(basename \"$pkg\")",
+        "mkdir -p \"$pkg/build\"",
+        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[{\"name\":\"main\",\"inputs\":[],\"outputs\":[]}]}\\n' \"$id\" > \"$pkg/build/abi.json\"",
+        "printf 'program %s {}\\n' \"$id\" > \"$pkg/build/main.aleo\"",
+        "printf 'prover' > \"$pkg/build/main.prover\"",
+        "printf 'verifier' > \"$pkg/build/main.verifier\"",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      await compilePipeline(makeConfig());
+
+      const sidecar = readKeyArtifactsMetadata(
+        keyArtifactsMetadataPath(artifactsDir, "app.aleo"),
+      );
+      expect(sidecar?.functions).toHaveLength(1);
+      expect(sidecar?.functions?.[0]).toMatchObject({
+        transition: "main",
+        prover: { path: "main.prover" },
+        verifier: { path: "main.verifier" },
+      });
+    } finally {
+      process.env.PATH = originalPath;
     }
   });
 

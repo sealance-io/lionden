@@ -72,6 +72,7 @@ export function createMockConfig(
       interDeploymentDelay: undefined,
       autoExport: false,
     },
+    sdk: { keyCache: { storage: "memory" } },
     ...rest,
   } as LionDenResolvedConfig;
 }

@@ -1,20 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { sha256Json, sha256Text } from "@lionden/core";
+import {
+  buildRuntimeKeyIdentity,
+  writeCachedExecutionKeys,
+} from "./execution-key-cache.js";
 
 const mockRun = vi.fn();
 const mockExecute = vi.fn();
+const mockSynthesizeKeys = vi.fn();
 const mockBuildDevnodeExec = vi.fn();
 const mockSubmitTransaction = vi.fn();
 const mockGetProgramMappingValue = vi.fn();
 const mockGetLatestHeight = vi.fn();
 const mockGetProgram = vi.fn();
+const mockGetLatestProgramEdition = vi.fn();
 const mockCreateSdkObjects = vi.fn();
 const mockCreateSignerSdkObjects = vi.fn();
+const mockCreateExecutionKeysFromBytes = vi.fn();
+const mockGetSdkRuntimeMetadata = vi.fn();
 const mockCheckDevnodeSdkSupport = vi.fn();
 const mockInitConsensusHeights = vi.fn();
 
 vi.mock("./sdk-adapter.js", () => ({
   createSdkObjects: mockCreateSdkObjects,
   createSignerSdkObjects: mockCreateSignerSdkObjects,
+  createExecutionKeysFromBytes: mockCreateExecutionKeysFromBytes,
+  getSdkRuntimeMetadata: mockGetSdkRuntimeMetadata,
   checkDevnodeSdkSupport: mockCheckDevnodeSdkSupport,
   initConsensusHeights: mockInitConsensusHeights,
 }));
@@ -52,8 +66,22 @@ describe("AleoConnection", () => {
     mockSubmitTransaction.mockResolvedValue("at1broadcast");
     mockGetProgramMappingValue.mockResolvedValue("100u64");
     mockGetLatestHeight.mockResolvedValue(42);
+    mockGetLatestProgramEdition.mockResolvedValue(3);
     mockBuildDevnodeExec.mockResolvedValue("mock-tx-bytes");
     mockExecute.mockResolvedValue("at1executed");
+    mockSynthesizeKeys.mockResolvedValue([
+      { toBytes: () => new Uint8Array([10, 11]) },
+      { toBytes: () => new Uint8Array([12, 13]) },
+    ]);
+    mockCreateExecutionKeysFromBytes.mockImplementation(async (_network, bytes) => ({
+      provingKey: { kind: "proving", bytes: [...bytes.provingKey] },
+      verifyingKey: { kind: "verifying", bytes: [...bytes.verifyingKey] },
+    }));
+    mockGetSdkRuntimeMetadata.mockReturnValue({
+      sdkVersion: "0.10.5",
+      wasmVersion: "0.10.5",
+      wasmHash: "f".repeat(64),
+    });
 
     mockCreateSdkObjects.mockResolvedValue({
       account: {
@@ -64,10 +92,12 @@ describe("AleoConnection", () => {
         submitTransaction: mockSubmitTransaction,
         getProgramMappingValue: mockGetProgramMappingValue,
         getLatestHeight: mockGetLatestHeight,
+        getLatestProgramEdition: mockGetLatestProgramEdition,
       },
       programManager: {
         run: mockRun,
         execute: mockExecute,
+        synthesizeKeys: mockSynthesizeKeys,
         buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
       },
       keyProvider: {},
@@ -255,6 +285,89 @@ describe("AleoConnection", () => {
         privateFee: false,
       });
       expect(result.txId).toBe("at1executed");
+    });
+
+    it("injects cached filesystem keys and local program source without fetching the program", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const artifactDir = path.join(artifactsDir, "hello.aleo");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const source = "program hello.aleo { }";
+        fs.mkdirSync(artifactDir, { recursive: true });
+        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+
+        const identity = buildRuntimeKeyIdentity({
+          network: "testnet",
+          programId: "hello.aleo",
+          transition: "main",
+          edition: 3,
+          sourceHash: sha256Text(source),
+          importsHash: sha256Json({ imports: [] }),
+          wasmHash: "f".repeat(64),
+        });
+        writeCachedExecutionKeys(
+          {
+            identity,
+            provingKeyBytes: new Uint8Array([1, 2, 3]),
+            verifyingKeyBytes: new Uint8Array([4, 5]),
+          },
+          cachePath,
+        );
+
+        const connection = createHttpConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("hello.aleo", "main", ["1u32"]);
+
+        expect(mockGetProgram).not.toHaveBeenCalled();
+        expect(mockSynthesizeKeys).not.toHaveBeenCalled();
+        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+          programName: "hello.aleo",
+          functionName: "main",
+          program: source,
+          edition: 3,
+          provingKey: { kind: "proving", bytes: [1, 2, 3] },
+          verifyingKey: { kind: "verifying", bytes: [4, 5] },
+        }));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("synthesizes and persists filesystem keys on miss, then hits the runtime cache", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const artifactDir = path.join(artifactsDir, "hello.aleo");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const source = "program hello.aleo { }";
+        fs.mkdirSync(artifactDir, { recursive: true });
+        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+
+        const connection = createHttpConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("hello.aleo", "main", ["1u32"]);
+        await connection.execute("hello.aleo", "main", ["2u32"]);
+
+        expect(mockSynthesizeKeys).toHaveBeenCalledOnce();
+        expect(mockCreateExecutionKeysFromBytes).toHaveBeenCalledTimes(2);
+        expect(mockExecute).toHaveBeenNthCalledWith(1, expect.objectContaining({
+          provingKey: { kind: "proving", bytes: [10, 11] },
+          verifyingKey: { kind: "verifying", bytes: [12, 13] },
+        }));
+        expect(mockExecute).toHaveBeenNthCalledWith(2, expect.objectContaining({
+          provingKey: { kind: "proving", bytes: [10, 11] },
+          verifyingKey: { kind: "verifying", bytes: [12, 13] },
+        }));
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it("returns { outputs: [], txId } for onchain execution", async () => {

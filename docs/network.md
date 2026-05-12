@@ -79,6 +79,28 @@ At the platform level, devnode and snarkOS nodes expose the same REST surface fo
 
 When a task supplies a custom signer key, `createSignerSdkObjects()` builds an isolated `Account`, `ProgramManager`, and `NetworkRecordProvider` for that signer while sharing the key provider with the default connection.
 
+SDK proving-key caching defaults to the SDK's in-memory provider cache. Projects can opt into filesystem-backed execution key persistence with:
+
+```ts
+sdk: {
+  keyCache: { storage: "filesystem" },
+}
+```
+
+The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention. The cache is used only for proven execution paths. Devnode's default fast execution path still skips proof generation unless `prove: true` is set.
+
+Runtime execution key identity is circuit-based: network, program id, transition, edition when available, local or fetched program source hash, import source hash, and the actual `@provablehq/wasm` artifact SHA-256. Execution inputs are intentionally excluded. SDK and WASM package versions are stored as diagnostics only.
+
+Lookup order for proven executions is:
+
+1. compiler sidecar refs to existing `.prover` / `.verifier` files when both files exist and fingerprints match
+2. LionDen's runtime synthesis cache under the configured key-cache path
+3. SDK synthesis on miss, followed by an atomic runtime-cache write and execution with injected proving/verifying keys
+
+Known caveat: LionDen passes locally resolved program source and imports to execution, but the current SDK `synthesizeKeys()` API does not accept pre-resolved imports and internally calls `AleoNetworkClient.getProgramImports(program)`. For programs with imports, filesystem key-cache synthesis therefore requires those imports to be available from the connected network; otherwise the first cache miss can fail before LionDen has key bytes to persist. Once cached, execution uses the persisted keys and LionDen's locally resolved artifacts.
+
+Translation keys are not persisted yet because the current SDK exposes metadata but no public execution injection hook.
+
 ### Transaction Building And Broadcasting
 
 The SDK exposes two families of transaction builders: standard methods for real networks and `buildDevnode*` variants that skip proof generation for local development speed. LionDen branches on `connection.type` at every transaction entry point:

@@ -8,6 +8,7 @@ import type {
   ResolvedDynamicRecordHelper,
   ResolvedTestingConfig,
   ResolvedDeployConfig,
+  ResolvedSdkConfig,
   ResolvedPaths,
   ResolvedNetworkConfig,
   NetworkUserConfig,
@@ -209,6 +210,8 @@ function buildDefaults(
     autoExport: config.deploy?.autoExport ?? false,
   };
 
+  const sdk: ResolvedSdkConfig = resolveSdkConfig(config, projectRoot, paths.artifacts);
+
   // Resolve networks
   const networks: Record<string, ResolvedNetworkConfig> = {};
   const userNetworks = config.networks ?? {};
@@ -247,8 +250,39 @@ function buildDefaults(
     codegen,
     testing,
     deploy,
+    sdk,
     namedAccounts,
   };
+}
+
+function resolveSdkConfig(
+  config: LionDenUserConfig,
+  projectRoot: string,
+  artifactsPath: string,
+): ResolvedSdkConfig {
+  const keyCache = config.sdk?.keyCache;
+  const storage = keyCache?.storage ?? "memory";
+
+  if (storage === "memory") {
+    return { keyCache: { storage } };
+  }
+
+  const rawPath = keyCache?.path ?? path.join(artifactsPath, ".cache", "provable-keys");
+  const expandedPath = expandTilde(rawPath);
+  const absolutePath = path.isAbsolute(expandedPath)
+    ? expandedPath
+    : path.resolve(projectRoot, expandedPath);
+
+  return {
+    keyCache: {
+      storage,
+      path: normalizeAleoKeyCachePath(absolutePath),
+    },
+  };
+}
+
+function normalizeAleoKeyCachePath(p: string): string {
+  return path.basename(p) === ".aleo" ? p : path.join(p, ".aleo");
 }
 
 /**
@@ -483,6 +517,14 @@ function mergePartial(
     codegen: { ...base.codegen, ...(partial.codegen ?? {}) },
     testing: { ...base.testing, ...(partial.testing ?? {}) },
     deploy: { ...base.deploy, ...(partial.deploy ?? {}) },
+    sdk: {
+      ...base.sdk,
+      ...(partial.sdk ?? {}),
+      keyCache: {
+        ...base.sdk.keyCache,
+        ...(partial.sdk?.keyCache ?? {}),
+      },
+    },
     networks: { ...base.networks, ...(partial.networks ?? {}) },
     namedAccounts: { ...base.namedAccounts, ...(partial.namedAccounts ?? {}) },
   } as LionDenResolvedConfig;

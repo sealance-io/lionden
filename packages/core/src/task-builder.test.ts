@@ -164,6 +164,7 @@ describe("createLre config-level tasks", () => {
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
     deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    sdk: { keyCache: { storage: "memory" as const } },
     namedAccounts: {},
   } satisfies LionDenResolvedConfig;
 
@@ -211,6 +212,7 @@ describe("artifact store", () => {
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
     deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    sdk: { keyCache: { storage: "memory" as const } },
     namedAccounts: {},
   } satisfies LionDenResolvedConfig;
 

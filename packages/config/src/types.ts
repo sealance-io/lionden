@@ -201,6 +201,9 @@ export interface LionDenUserConfig {
   /** Deploy settings */
   readonly deploy?: DeployConfig;
 
+  /** Provable SDK integration settings */
+  readonly sdk?: SdkConfig;
+
   /**
    * Named accounts — human-readable roles mapped to per-network account values.
    *
@@ -295,6 +298,18 @@ export interface DeployConfig {
   readonly ephemeral?: boolean;
 }
 
+export interface SdkConfig {
+  /** Proving/verifying key cache settings. Defaults to in-memory SDK caching. */
+  readonly keyCache?: SdkKeyCacheConfig;
+}
+
+export interface SdkKeyCacheConfig {
+  /** Cache storage backend. Default: "memory" */
+  readonly storage?: "memory" | "filesystem";
+  /** Filesystem cache directory. Relative paths resolve from project root. */
+  readonly path?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Resolved config (all optionals filled, paths absolute, variables resolved)
 // ---------------------------------------------------------------------------
@@ -357,6 +372,16 @@ export interface ResolvedDeployConfig {
   readonly autoExport: boolean;
 }
 
+export interface ResolvedSdkConfig {
+  readonly keyCache: ResolvedSdkKeyCacheConfig;
+}
+
+export interface ResolvedSdkKeyCacheConfig {
+  readonly storage: "memory" | "filesystem";
+  /** Absolute effective filesystem path when storage is "filesystem". */
+  readonly path?: string;
+}
+
 /** Resolved network config — discriminated by type, all fields populated */
 export interface ResolvedDevnodeNetworkConfig {
   readonly type: "devnode";
@@ -398,6 +423,7 @@ export interface LionDenResolvedConfig {
   readonly codegen: ResolvedCodegenConfig;
   readonly testing: ResolvedTestingConfig;
   readonly deploy: ResolvedDeployConfig;
+  readonly sdk: ResolvedSdkConfig;
   /** Resolved named accounts. Empty record when not configured. */
   readonly namedAccounts: ResolvedNamedAccountsConfig;
 }

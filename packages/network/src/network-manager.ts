@@ -164,6 +164,8 @@ export class NetworkManagerImpl implements NetworkManager {
           endpoint,
           networkId: config.network,
           privateKey,
+          artifactsDir: this.config.paths.artifacts,
+          keyCache: this.config.sdk.keyCache,
         });
       }
       case "http": {
@@ -174,6 +176,8 @@ export class NetworkManagerImpl implements NetworkManager {
           networkId: config.network,
           privateKey: config.privateKey,
           apiKey: config.apiKey,
+          artifactsDir: this.config.paths.artifacts,
+          keyCache: this.config.sdk.keyCache,
         });
       }
     }

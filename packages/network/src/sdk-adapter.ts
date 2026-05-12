@@ -12,7 +12,11 @@
  * the mainnet surface in the current SDK release.
  */
 
-import type { AleoNetwork } from "@lionden/config";
+import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { createRequire } from "node:module";
+import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 
 // ---------------------------------------------------------------------------
@@ -21,13 +25,28 @@ import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 
 type SdkModule = typeof TestnetSdk;
 type SupportedSdkNetwork = "testnet" | "mainnet";
+type SdkFunctionKeyProvider = NonNullable<ConstructorParameters<SdkModule["ProgramManager"]>[1]>;
+type SdkKeySearchParams = Parameters<SdkFunctionKeyProvider["functionKeys"]>[0];
+type SdkFunctionKeyPair = Awaited<ReturnType<SdkFunctionKeyProvider["functionKeys"]>>;
+type SdkKeyStore = Awaited<ReturnType<SdkFunctionKeyProvider["keyStore"]>>;
 
 export interface SdkObjects {
   account: InstanceType<SdkModule["Account"]>;
   networkClient: InstanceType<SdkModule["AleoNetworkClient"]>;
   programManager: InstanceType<SdkModule["ProgramManager"]>;
-  keyProvider: InstanceType<SdkModule["AleoKeyProvider"]>;
+  keyProvider: SdkFunctionKeyProvider;
   recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
+}
+
+export interface SdkExecutionKeys {
+  provingKey: ReturnType<SdkModule["ProvingKey"]["fromBytes"]>;
+  verifyingKey: ReturnType<SdkModule["VerifyingKey"]["fromBytes"]>;
+}
+
+export interface SdkRuntimeMetadata {
+  readonly sdkVersion?: string;
+  readonly wasmVersion?: string;
+  readonly wasmHash: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -38,6 +57,7 @@ const SDK_VERSION = "^0.10.5";
 
 let sdkInitPromise: Promise<void> | undefined;
 const sdkModuleCache = new Map<AleoNetwork, Promise<SdkModule>>();
+const requireFromHere = createRequire(import.meta.url);
 
 function normalizeSdkNetwork(network: AleoNetwork): SupportedSdkNetwork {
   switch (network) {
@@ -102,6 +122,7 @@ export interface CreateSdkObjectsOptions {
   privateKey?: string;
   /** API key passed as Authorization header to AleoNetworkClient. */
   apiKey?: string;
+  keyCache?: ResolvedSdkKeyCacheConfig;
 }
 
 /**
@@ -128,6 +149,7 @@ export async function createSdkObjects(
       Account,
       AleoNetworkClient,
       AleoKeyProvider,
+      LocalFileKeyStore,
       NetworkRecordProvider,
       ProgramManager,
     } = sdk;
@@ -144,19 +166,32 @@ export async function createSdkObjects(
     // Create key and record providers
     const keyProvider = new AleoKeyProvider();
     keyProvider.useCache(true);
+    const effectiveKeyProvider: SdkFunctionKeyProvider =
+      opts.keyCache?.storage === "filesystem"
+        ? new PersistentFunctionKeyProvider(
+          keyProvider,
+          new LocalFileKeyStore(opts.keyCache.path),
+        )
+        : keyProvider;
     const recordProvider = new NetworkRecordProvider(account, networkClient);
 
     // Create program manager — pass networkClientOptions so the PM's internal
     // network client inherits API key headers for authenticated endpoints.
     const programManager = new ProgramManager(
       opts.endpoint,
-      keyProvider,
+      effectiveKeyProvider,
       recordProvider,
       networkClientOptions,
     );
     programManager.setAccount(account);
 
-    return { account, networkClient, programManager, keyProvider, recordProvider };
+    return {
+      account,
+      networkClient,
+      programManager,
+      keyProvider: effectiveKeyProvider,
+      recordProvider,
+    };
   } catch (err: unknown) {
     throw new Error(
       `Failed to create SDK objects for network "${opts.network}" at ${opts.endpoint}. ` +
@@ -187,6 +222,86 @@ export interface CreateSignerSdkObjectsOptions {
   network: AleoNetwork;
   keyProvider: SdkObjects["keyProvider"];
   apiKey?: string;
+}
+
+export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
+  constructor(
+    private readonly delegate: SdkFunctionKeyProvider,
+    private readonly fileStore: NonNullable<SdkKeyStore>,
+  ) {}
+
+  async keyStore(): Promise<SdkKeyStore> {
+    return this.fileStore;
+  }
+
+  bondPublicKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.bondPublicKeys();
+  }
+
+  bondValidatorKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.bondValidatorKeys();
+  }
+
+  cacheKeys(keyId: string, keys: SdkFunctionKeyPair): void {
+    this.delegate.cacheKeys(keyId, keys);
+  }
+
+  claimUnbondPublicKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.claimUnbondPublicKeys();
+  }
+
+  functionKeys(params?: SdkKeySearchParams): Promise<SdkFunctionKeyPair> {
+    return this.delegate.functionKeys(params);
+  }
+
+  feePrivateKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.feePrivateKeys();
+  }
+
+  feePublicKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.feePublicKeys();
+  }
+
+  inclusionKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.inclusionKeys();
+  }
+
+  joinKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.joinKeys();
+  }
+
+  splitKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.splitKeys();
+  }
+
+  transferKeys(visibility: string): Promise<SdkFunctionKeyPair> {
+    return this.delegate.transferKeys(visibility);
+  }
+
+  unBondPublicKeys(): Promise<SdkFunctionKeyPair> {
+    return this.delegate.unBondPublicKeys();
+  }
+}
+
+export async function createExecutionKeysFromBytes(
+  network: AleoNetwork,
+  keyBytes: { provingKey: Uint8Array; verifyingKey: Uint8Array },
+): Promise<SdkExecutionKeys> {
+  await initSdk();
+  const sdk = await loadSdkModule(network);
+  return {
+    provingKey: sdk.ProvingKey.fromBytes(new Uint8Array(keyBytes.provingKey)),
+    verifyingKey: sdk.VerifyingKey.fromBytes(new Uint8Array(keyBytes.verifyingKey)),
+  };
+}
+
+export function getSdkRuntimeMetadata(network: AleoNetwork): SdkRuntimeMetadata {
+  const wasmPath = resolveWasmArtifactPath(network);
+  return {
+    sdkVersion: readPackageVersion(resolvePackageRoot("@provablehq/sdk/testnet.js")),
+    wasmVersion: readPackageVersion(resolvePackageRoot(`@provablehq/wasm/${normalizeSdkNetwork(network)}.js`)),
+    wasmHash: crypto.createHash("sha256").update(fs.readFileSync(wasmPath)).digest("hex"),
+  };
 }
 
 /**
@@ -282,6 +397,40 @@ export async function initConsensusHeights(): Promise<void> {
     }
   } catch {
     // Non-fatal — may not be needed for all operations
+  }
+}
+
+function resolveWasmArtifactPath(network: AleoNetwork): string {
+  const modulePath = requireFromHere.resolve(
+    `@provablehq/wasm/${normalizeSdkNetwork(network)}.js`,
+  );
+  return path.join(path.dirname(modulePath), "aleo_wasm.wasm");
+}
+
+function resolvePackageRoot(specifier: string): string | undefined {
+  try {
+    let current = path.dirname(requireFromHere.resolve(specifier));
+    while (true) {
+      const packageJson = path.join(current, "package.json");
+      if (fs.existsSync(packageJson)) return current;
+      const parent = path.dirname(current);
+      if (parent === current) return undefined;
+      current = parent;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+function readPackageVersion(packageRoot: string | undefined): string | undefined {
+  if (!packageRoot) return undefined;
+  try {
+    const raw = JSON.parse(
+      fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8"),
+    ) as { version?: unknown };
+    return typeof raw.version === "string" ? raw.version : undefined;
+  } catch {
+    return undefined;
   }
 }
 

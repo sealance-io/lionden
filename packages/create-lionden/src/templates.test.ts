@@ -123,6 +123,7 @@ describe("templates", () => {
       const gitignore = files.find((f) => f.path === ".gitignore");
       expect(gitignore).toBeDefined();
       expect(gitignore!.content).toContain("node_modules/");
+      expect(gitignore!.content).toContain(".aleo/");
     });
 
     it("package.json has @lionden dependencies including plugins", () => {
