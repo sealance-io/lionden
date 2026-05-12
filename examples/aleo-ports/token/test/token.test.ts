@@ -4,12 +4,14 @@
 // transfer_private_to_public.
 //
 // Patterns used here:
-//   - Pure transitions (mint_private, transfer_private) → typed local-mode call.
+//   - Pure transitions with no finalize side effect (mint_private parity,
+//     transfer_private) → typed local-mode call.
 //   - Final-only (mint_public, transfer_public) → accepted(); assert
 //     mapping after via typed getAccount(addr).
-//   - Mixed transitions can either use local mode for plaintext previews, or
-//     accepted().outputs.decrypt(...) when the broadcasted record is the output
-//     that needs to be chained/asserted.
+//   - Mixed transitions that finalize on chain are exercised through a single
+//     accepted() call, recovering record outputs with
+//     confirmed.outputs.decrypt(...). Proving needs the on-chain state paths,
+//     so we don't pre-run them in local mode.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
@@ -88,20 +90,19 @@ describe("token.aleo", () => {
   });
 
   it("transfer_private_to_public yields a remainder Token + bumps account[receiver]", async () => {
-    // Mint a fresh 50-token to bob (private) — mint_private is pure, ok in local.
-    const bobToken = await token.withSigner(bob()).mint_private.locally({ receiver: bob(), amount: 50n });
+    // Mint a private Token to bob on chain so the proven transfer below has a
+    // record with a valid state path to spend.
+    const minted = await token.withSigner(bob()).mint_private.accepted({ receiver: bob(), amount: 50n });
+    const bobToken = await minted.outputs.decrypt(bob());
 
-    // Local: capture remainder Token plaintext.
-    const [remainder] = await token
-      .withSigner(bob())
-      .transfer_private_to_public.locally({ sender: bobToken, receiver: alice(), amount: 20n });
-    expect(remainder.amount).toBe(30n);
-
-    // Broadcast: actually fire finalize → account[alice] += 20.
+    // Broadcast: fire finalize → account[alice] += 20.
     // alice had 90 (after prior transfer_public). After this: 110.
-    await token
+    const confirmed = await token
       .withSigner(bob())
       .transfer_private_to_public.accepted({ sender: bobToken, receiver: alice(), amount: 20n });
+    const remainder = await confirmed.outputs.decrypt(bob());
+    expect(remainder.owner).toBe(bob().address);
+    expect(remainder.amount).toBe(30n);
     expect(await token.getAccount(alice())).toBe(110n);
   });
 
