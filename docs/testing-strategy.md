@@ -572,7 +572,7 @@ If runtime becomes too high, split the core smoke lane further and use changed-p
 
 ### Nightly Or Release Lane
 
-- `npm run test:prove` — add when proof-specific tests are isolated
+- `npm run test:smoke:all:prove`
 - optional SDK compatibility lane against the supported toolchain matrix
 
 ## Current Script Surface
@@ -588,23 +588,17 @@ The current root scripts are:
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
     "test:smoke": "node scripts/run-smoke-examples.mjs core",
+    "test:smoke:prove": "node scripts/run-smoke-examples.mjs --prove core",
     "test:smoke:aleo-ports": "node scripts/run-smoke-examples.mjs aleo-ports",
-    "test:smoke:all": "node scripts/run-smoke-examples.mjs all"
-  }
-}
-```
-
-Add this script when proof-specific tests are isolated:
-
-```json
-{
-  "scripts": {
-    "test:prove": "node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts test --prove"
+    "test:smoke:aleo-ports:prove": "node scripts/run-smoke-examples.mjs --prove aleo-ports",
+    "test:smoke:all": "node scripts/run-smoke-examples.mjs all",
+    "test:smoke:all:prove": "node scripts/run-smoke-examples.mjs --prove all"
   }
 }
 ```
 
 The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests delegate to `scripts/run-smoke-examples.mjs`, which invokes the CLI with `--config` for each example because the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. For each example, the runner compiles, runs `tsc -p <example>/tsconfig.json --noEmit`, then runs `lionden test`; pass `--no-typecheck` to skip the TypeScript check during local debugging. The runner keeps the curated core example list explicit and discovers `examples/aleo-ports/*/lionden.config.ts` dynamically. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`.
+Pass `--prove` to the smoke runner, or use one of the `*:prove` scripts, to forward `lionden test --prove` into every selected example.
 
 Smoke lanes intentionally typecheck generated `typechain/**/*.ts` alongside example tests so wrapper API drift is caught before runtime-only tests can mask it.
 

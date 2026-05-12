@@ -16,8 +16,11 @@
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
     "test:smoke": "node scripts/run-smoke-examples.mjs core",
+    "test:smoke:prove": "node scripts/run-smoke-examples.mjs --prove core",
     "test:smoke:aleo-ports": "node scripts/run-smoke-examples.mjs aleo-ports",
+    "test:smoke:aleo-ports:prove": "node scripts/run-smoke-examples.mjs --prove aleo-ports",
     "test:smoke:all": "node scripts/run-smoke-examples.mjs all",
+    "test:smoke:all:prove": "node scripts/run-smoke-examples.mjs --prove all",
     "lint": "eslint packages/"
   },
   "devDependencies": {
