@@ -129,7 +129,7 @@ Current program artifact output is copied into `artifacts/<programId>/` and incl
 
 Deploy state is tracked separately by the deploy plugin.
 
-The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records the program id, compiled source hash, import hash, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. The compiler does not synthesize proving keys during `compile`; with Leo versions that emit no key files, the sidecar is identity-only and runtime filesystem caching remains lazy.
+The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records the program id, compiled source hash, import hash, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. Compile-time proving-key synthesis is intentionally deferred — see [`research/key-caching.md`](research/key-caching.md) for the design rationale and the SDK gap that would unblock it.
 
 ## Design Direction
 
