@@ -200,15 +200,26 @@ async function resolveProgramImports(
     networkClient: { getProgram(id: string): Promise<string> };
   },
 ): Promise<Record<string, string> | undefined> {
-  const importIds = parseImportIds(options.programSource);
-  if (importIds.length === 0) return undefined;
+  const imports = new Map<string, string>();
 
-  const imports: Record<string, string> = {};
-  for (const importId of importIds) {
-    const local = readLocalProgramSource(options.artifactsDir, importId);
-    imports[importId] = local?.source ?? await options.networkClient.getProgram(importId);
-  }
-  return imports;
+  const visit = async (programSource: string, ancestry: Set<string>): Promise<void> => {
+    for (const importId of parseImportIds(programSource)) {
+      if (imports.has(importId) || ancestry.has(importId)) continue;
+
+      const local = readLocalProgramSource(options.artifactsDir, importId);
+      const importSource = local?.source ?? await options.networkClient.getProgram(importId);
+      imports.set(importId, importSource);
+
+      const nextAncestry = new Set(ancestry);
+      nextAncestry.add(importId);
+      await visit(importSource, nextAncestry);
+    }
+  };
+
+  await visit(options.programSource, new Set());
+  if (imports.size === 0) return undefined;
+
+  return Object.fromEntries([...imports.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 function parseImportIds(programSource: string): string[] {

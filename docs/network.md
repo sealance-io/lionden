@@ -87,7 +87,18 @@ sdk: {
 }
 ```
 
-The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention. The cache is used only for proven execution paths. Devnode's default fast execution path still skips proof generation unless `prove: true` is set.
+The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention.
+
+Filesystem key persistence covers LionDen-managed proven execution transition keys and the supported SDK fee keys (`credits.aleo/fee_public`, `credits.aleo/fee_private`):
+
+| Path | Filesystem key cache behavior |
+| --- | --- |
+| On-chain execute with proof generation | cached and injected |
+| Devnode execute without `prove: true` | not used; devnode fast path skips proofs |
+| Local `mode: "local"` execution | not used |
+| SDK fee keys such as `credits.aleo/fee_public` | persisted under `lionden-credits/<wasmHash>/<network>/<encoded-locator>.prover`; warmup-on-init populates the SDK key provider cache, write-back-after-fetch persists proving-key bytes on first use |
+| Deploy / upgrade program keys | not persisted by LionDen v1 |
+| Translation keys | not persisted by LionDen v1 |
 
 Runtime execution key identity is circuit-based: network, program id, transition, edition when available, local or fetched program source hash, import source hash, and the actual `@provablehq/wasm` artifact SHA-256. Execution inputs are intentionally excluded. SDK and WASM package versions are stored as diagnostics only.
 
@@ -95,9 +106,11 @@ Lookup order for proven executions is:
 
 1. compiler sidecar refs to existing `.prover` / `.verifier` files when both files exist and fingerprints match
 2. LionDen's runtime synthesis cache under the configured key-cache path
-3. SDK synthesis on miss, followed by an atomic runtime-cache write and execution with injected proving/verifying keys
+3. LionDen synthesis through the SDK-resolved WASM `ProgramManagerBase` on miss, followed by an atomic runtime-cache write and execution with injected proving/verifying keys
 
-Known caveat: LionDen passes locally resolved program source and imports to execution, but the current SDK `synthesizeKeys()` API does not accept pre-resolved imports and internally calls `AleoNetworkClient.getProgramImports(program)`. For programs with imports, filesystem key-cache synthesis therefore requires those imports to be available from the connected network; otherwise the first cache miss can fail before LionDen has key bytes to persist. Once cached, execution uses the persisted keys and LionDen's locally resolved artifacts.
+LionDen resolves program source and imports from local artifacts first, falling back to the connected network, and passes the resolved import graph to both synthesis and execution. SDK-controlled paths outside the transition-key cache that LionDen does *not* persist — deploy/upgrade transaction building, translation keys, and non-fee credits.aleo functions such as transfers and bonds — still use the SDK's own fetch/cache behavior.
+
+Fee-key persistence (`credits.aleo/fee_public`, `credits.aleo/fee_private`) is keyed by the SDK locator, the runtime `@provablehq/wasm` SHA-256, and the network. On startup, LionDen reads any on-disk proving-key bytes that match the fingerprint in the sibling `.metadata.json`, deserializes them through `sdk.ProvingKey.fromBytes`, and pre-populates the SDK's `AleoKeyProvider` cache via the public `cacheKeys()` API — so the SDK's own fee-key code path returns from cache without a network fetch. The first time the SDK does fetch (cold cache, or stale wasmHash), `PersistentFunctionKeyProvider.feePublicKeys/feePrivateKeys` writes the bytes back to disk for the next process. Verifying keys are never persisted; they come from the WASM-bundled credits.aleo metadata and are reconstructed for free on each warmup.
 
 Translation keys are not persisted yet because the current SDK exposes metadata but no public execution injection hook.
 

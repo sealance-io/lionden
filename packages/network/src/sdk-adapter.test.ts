@@ -6,7 +6,7 @@
  * These tests load the real @provablehq/sdk WASM module, so they
  * verify actual construction rather than mocked delegation.
  */
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -14,6 +14,7 @@ import {
   createSdkObjects,
   createSignerSdkObjects,
   PersistentFunctionKeyProvider,
+  synthesizeExecutionKeyBytes,
   decryptRecordCiphertext,
   decryptValueCiphertext,
   deriveViewKey,
@@ -54,6 +55,7 @@ describe("createSdkObjects()", () => {
       ? (defaultSdk.account as any).address().to_string()
       : String((defaultSdk.account as any).address);
     expect(addr).toBe(DEVNODE_ADDR);
+    expect(typeof defaultSdk.programManagerBase.synthesizeKeyPair).toBe("function");
   });
 
   it("passes API key to ProgramManager's internal network client", async () => {
@@ -114,6 +116,7 @@ describe("createSignerSdkObjects()", () => {
       ? (signerSdk.account as any).address().to_string()
       : String((signerSdk.account as any).address);
     expect(signerAddr).toBe(SIGNER_ADDR);
+    expect(typeof signerSdk.programManagerBase.synthesizeKeyPair).toBe("function");
 
     // Verify it's not the default account
     const defaultAddr = typeof (defaultSdk.account as any).address === "function"
@@ -200,6 +203,71 @@ describe("createSignerSdkObjects()", () => {
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("synthesizeExecutionKeyBytes()", () => {
+  it("passes prepared inputs, imports, explicit private key, and edition to ProgramManagerBase", async () => {
+    const privateKey = { kind: "private-key" };
+    const keyPair = {
+      provingKey: vi.fn(() => ({ toBytes: () => new Uint8Array([1, 2]) })),
+      verifyingKey: vi.fn(() => ({ toBytes: () => new Uint8Array([3, 4]) })),
+    };
+    const programManagerBase = {
+      synthesizeKeyPair: vi.fn().mockResolvedValue(keyPair),
+    };
+    const imports = { "dep.aleo": "program dep.aleo;" };
+
+    const result = await synthesizeExecutionKeyBytes({
+      programManagerBase: programManagerBase as any,
+      privateKey: privateKey as any,
+      source: "import dep.aleo;\nprogram app.aleo;",
+      transitionName: "main",
+      inputs: ["prepared"],
+      imports,
+      edition: 7,
+    });
+
+    expect(programManagerBase.synthesizeKeyPair).toHaveBeenCalledWith(
+      privateKey,
+      "import dep.aleo;\nprogram app.aleo;",
+      "main",
+      ["prepared"],
+      imports,
+      7,
+    );
+    expect(keyPair.provingKey).toHaveBeenCalledOnce();
+    expect(keyPair.verifyingKey).toHaveBeenCalledOnce();
+    expect([...result.provingKeyBytes]).toEqual([1, 2]);
+    expect([...result.verifyingKeyBytes]).toEqual([3, 4]);
+  });
+
+  it("leaves imports and edition undefined when they are unknown", async () => {
+    const privateKey = { kind: "private-key" };
+    const keyPair = {
+      provingKey: vi.fn(() => ({ toBytes: () => new Uint8Array([1]) })),
+      verifyingKey: vi.fn(() => ({ toBytes: () => new Uint8Array([2]) })),
+    };
+    const programManagerBase = {
+      synthesizeKeyPair: vi.fn().mockResolvedValue(keyPair),
+    };
+
+    await synthesizeExecutionKeyBytes({
+      programManagerBase: programManagerBase as any,
+      privateKey: privateKey as any,
+      source: "program hello.aleo;",
+      transitionName: "main",
+      inputs: ["prepared"],
+    });
+
+    expect(programManagerBase.synthesizeKeyPair).toHaveBeenCalledWith(
+      privateKey,
+      "program hello.aleo;",
+      "main",
+      ["prepared"],
+      undefined,
+      undefined,
+    );
   });
 });
 

@@ -4,6 +4,7 @@ import * as path from "node:path";
 
 export const KEY_ARTIFACTS_FORMAT = "lionden.keyArtifacts.v1";
 export const RUNTIME_KEY_CACHE_FORMAT = "lionden.runtimeKeyCache.v1";
+export const CREDITS_KEY_CACHE_FORMAT = "lionden.creditsKeyCache.v1";
 
 export interface KeyFingerprint {
   readonly sha256: string;
@@ -52,6 +53,14 @@ export interface RuntimeKeyCacheMetadata {
   readonly diagnostics?: RuntimeKeyCacheDiagnostics;
 }
 
+export interface CreditsKeyCacheMetadata {
+  readonly format: typeof CREDITS_KEY_CACHE_FORMAT;
+  readonly locator: string;
+  readonly network: string;
+  readonly wasmHash: string;
+  readonly prover: KeyFingerprint;
+}
+
 export class KeyArtifactsMetadataError extends Error {
   constructor(message: string) {
     super(message);
@@ -93,6 +102,21 @@ export function writeRuntimeKeyCacheMetadata(
   metadata: RuntimeKeyCacheMetadata,
 ): void {
   parseRuntimeKeyCacheMetadata(metadata, filePath);
+  writeJsonAtomic(filePath, metadata);
+}
+
+export function readCreditsKeyCacheMetadata(
+  filePath: string,
+): CreditsKeyCacheMetadata | undefined {
+  if (!fs.existsSync(filePath)) return undefined;
+  return parseCreditsKeyCacheMetadata(readJson(filePath), filePath);
+}
+
+export function writeCreditsKeyCacheMetadata(
+  filePath: string,
+  metadata: CreditsKeyCacheMetadata,
+): void {
+  parseCreditsKeyCacheMetadata(metadata, filePath);
   writeJsonAtomic(filePath, metadata);
 }
 
@@ -217,6 +241,28 @@ function parseRuntimeKeyCacheMetadata(
     prover,
     verifier,
     ...(diagnostics === undefined ? {} : { diagnostics }),
+  };
+}
+
+function parseCreditsKeyCacheMetadata(
+  value: unknown,
+  filePath: string,
+): CreditsKeyCacheMetadata {
+  if (!isRecord(value)) {
+    throw invalidMetadata(filePath, "expected an object");
+  }
+  if (value["format"] !== CREDITS_KEY_CACHE_FORMAT) {
+    throw invalidMetadata(
+      filePath,
+      `unsupported format ${JSON.stringify(value["format"])}`,
+    );
+  }
+  return {
+    format: CREDITS_KEY_CACHE_FORMAT,
+    locator: expectString(value, "locator", filePath),
+    network: expectString(value, "network", filePath),
+    wasmHash: expectString(value, "wasmHash", filePath),
+    prover: expectFingerprint(value["prover"], "prover", filePath),
   };
 }
 

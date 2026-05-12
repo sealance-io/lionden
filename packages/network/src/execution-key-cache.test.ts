@@ -12,6 +12,7 @@ import {
 import {
   buildRuntimeKeyIdentity,
   findCachedExecutionKeys,
+  resolveProgramExecutionArtifacts,
   writeCachedExecutionKeys,
   type ProgramExecutionArtifacts,
 } from "./execution-key-cache.js";
@@ -159,5 +160,43 @@ describe("execution key cache", () => {
     expect(hit?.source).toBe("sidecar");
     expect([...hit!.provingKeyBytes]).toEqual([7]);
     expect([...hit!.verifyingKeyBytes]).toEqual([8]);
+  });
+
+  it("resolves local imports recursively for execution identity", async () => {
+    const artifactsDir = path.join(tmpDir, "artifacts");
+    const appSource = "import foo.aleo;\nprogram app.aleo;";
+    const fooSource = "import bar.aleo;\nprogram foo.aleo;";
+    const barSource = "program bar.aleo;";
+
+    for (const [programId, source] of [
+      ["app.aleo", appSource],
+      ["foo.aleo", fooSource],
+      ["bar.aleo", barSource],
+    ] as const) {
+      const artifactDir = path.join(artifactsDir, programId);
+      fs.mkdirSync(artifactDir, { recursive: true });
+      fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+    }
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      artifactsDir,
+      programId: "app.aleo",
+      networkClient: {
+        getProgram: async (programId) => {
+          throw new Error(`unexpected network fetch for ${programId}`);
+        },
+      },
+    });
+
+    expect(artifacts.imports).toEqual({
+      "bar.aleo": barSource,
+      "foo.aleo": fooSource,
+    });
+    expect(artifacts.importsHash).toBe(sha256Json({
+      imports: [
+        { programId: "bar.aleo", sourceHash: sha256Text(barSource) },
+        { programId: "foo.aleo", sourceHash: sha256Text(fooSource) },
+      ],
+    }));
   });
 });

@@ -60,12 +60,15 @@ export type { CreateLreOptions } from "./lre.js";
 export {
   KEY_ARTIFACTS_FORMAT,
   RUNTIME_KEY_CACHE_FORMAT,
+  CREDITS_KEY_CACHE_FORMAT,
   KeyArtifactsMetadataError,
   keyArtifactsMetadataPath,
   readKeyArtifactsMetadata,
   writeKeyArtifactsMetadata,
   readRuntimeKeyCacheMetadata,
   writeRuntimeKeyCacheMetadata,
+  readCreditsKeyCacheMetadata,
+  writeCreditsKeyCacheMetadata,
   fingerprintBytes,
   fingerprintFile,
   sha256Text,
@@ -82,4 +85,5 @@ export type {
   RuntimeKeyIdentity,
   RuntimeKeyCacheDiagnostics,
   RuntimeKeyCacheMetadata,
+  CreditsKeyCacheMetadata,
 } from "./key-artifacts.js";
