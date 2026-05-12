@@ -45,6 +45,7 @@ function makeConfig(
       skipDeployed: true,
       autoExport: false,
     },
+    sdk: { keyCache: { storage: "memory" } },
     namedAccounts: {},
     ...overrides,
   };

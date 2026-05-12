@@ -55,3 +55,31 @@ export { preflightLeo } from "./leo-preflight.js";
 // LRE
 export { createLre } from "./lre.js";
 export type { CreateLreOptions } from "./lre.js";
+
+// Key artifact metadata
+export {
+  KEY_ARTIFACTS_FORMAT,
+  RUNTIME_KEY_CACHE_FORMAT,
+  KeyArtifactsMetadataError,
+  keyArtifactsMetadataPath,
+  readKeyArtifactsMetadata,
+  writeKeyArtifactsMetadata,
+  readRuntimeKeyCacheMetadata,
+  writeRuntimeKeyCacheMetadata,
+  fingerprintBytes,
+  fingerprintFile,
+  sha256Text,
+  sha256Json,
+  verifyKeyFileRef,
+  resolveKeyFileRef,
+  fingerprintsEqual,
+} from "./key-artifacts.js";
+export type {
+  KeyFingerprint,
+  KeyFileRef,
+  KeyArtifactFunctionRef,
+  KeyArtifactsMetadata,
+  RuntimeKeyIdentity,
+  RuntimeKeyCacheDiagnostics,
+  RuntimeKeyCacheMetadata,
+} from "./key-artifacts.js";

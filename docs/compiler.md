@@ -125,8 +125,11 @@ Current program artifact output is copied into `artifacts/<programId>/` and incl
 - `main.aleo`
 - generated prover files when present
 - generated verifier files when present
+- `lionden-key-artifacts.json`
 
 Deploy state is tracked separately by the deploy plugin.
+
+The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records the program id, compiled source hash, import hash, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. The compiler does not synthesize proving keys during `compile`; with Leo versions that emit no key files, the sidecar is identity-only and runtime filesystem caching remains lazy.
 
 ## Design Direction
 

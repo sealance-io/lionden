@@ -87,6 +87,7 @@ artifacts/
 build/
 typechain/
 .cache/
+.aleo/
 *.tsbuildinfo
 *.log
 .env

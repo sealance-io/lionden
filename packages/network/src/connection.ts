@@ -5,8 +5,15 @@
  * transaction broadcasting, and to ProgramManager for transaction building.
  */
 
-import type { AleoNetwork } from "@lionden/config";
+import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
 import type { SdkObjects, SignerSdkObjects } from "./sdk-adapter.js";
+import {
+  buildRuntimeKeyIdentity,
+  findCachedExecutionKeys,
+  resolveProgramExecutionArtifacts,
+  writeCachedExecutionKeys,
+  type ProgramExecutionArtifacts,
+} from "./execution-key-cache.js";
 import {
   NetworkConfirmationTimeoutError,
   type NetworkConnection,
@@ -24,6 +31,10 @@ export interface ConnectionOptions {
   privateKey?: string;
   /** API key for explorer/node authentication. */
   apiKey?: string;
+  /** Absolute artifacts directory for local source/key metadata lookup. */
+  artifactsDir?: string;
+  /** Resolved Provable SDK key-cache config. */
+  keyCache?: ResolvedSdkKeyCacheConfig;
 }
 
 /**
@@ -54,6 +65,8 @@ export class AleoConnection implements NetworkConnection {
   readonly networkId: AleoNetwork;
   readonly privateKey?: string;
   readonly apiKey?: string;
+  private readonly artifactsDir?: string;
+  private readonly keyCache?: ResolvedSdkKeyCacheConfig;
 
   private sdkObjects?: SdkObjects;
   private sdkObjectsPromise?: Promise<SdkObjects>;
@@ -82,6 +95,8 @@ export class AleoConnection implements NetworkConnection {
     this.networkId = options.networkId;
     this.privateKey = options.privateKey;
     this.apiKey = options.apiKey;
+    this.artifactsDir = options.artifactsDir;
+    this.keyCache = options.keyCache;
 
     // Devnode connections support block advancement
     if (this.type === "devnode") {
@@ -119,6 +134,7 @@ export class AleoConnection implements NetworkConnection {
           endpoint: this.endpoint,
           privateKey: this.privateKey,
           apiKey: this.apiKey,
+          keyCache: this.keyCache,
         });
         // Guard: if close() was called while we were initializing,
         // destroy the account and bail out.
@@ -257,23 +273,19 @@ export class AleoConnection implements NetworkConnection {
 
     if (mode === "local") {
       // Local execution — run without generating proofs.
-      // SDK's run() expects the full program source code as first arg.
-      // Fetch it from the node if we only have a program ID.
       const nc = effectiveNc as any;
-      const programSource: string = await nc.getProgram(programId);
-
-      // Fetch imported program sources for cross-program local execution.
-      // The compiled Aleo source lists all transitive imports at the top;
-      // pm.run() needs them as a Record<programId, source> in its 5th arg.
-      const programImports =
-        await fetchProgramImports(nc, programSource);
+      const artifacts = await resolveProgramExecutionArtifacts({
+        artifactsDir: this.artifactsDir,
+        programId,
+        networkClient: nc,
+      });
 
       const result = await pm.run(
-        programSource,
+        artifacts.source,
         transitionName,
         args,
         false, // proveExecution = false
-        programImports,
+        artifacts.imports,
       );
       const outputs = extractLocalExecutionOutputs(result);
       return {
@@ -300,6 +312,13 @@ export class AleoConnection implements NetworkConnection {
       });
       txId = await this.broadcastTransaction(tx);
     } else {
+      const persistentExecution = await this.getPersistentExecutionOptions(
+        pm,
+        effectiveNc as any,
+        programId,
+        transitionName,
+        args,
+      );
       // Standard execution via ProgramManager
       txId = await pm.execute({
         programName: programId,
@@ -307,11 +326,111 @@ export class AleoConnection implements NetworkConnection {
         inputs: args,
         priorityFee: options?.fee ?? 0,
         privateFee: options?.privateFee ?? false,
+        ...(persistentExecution ?? {}),
       });
     }
 
     // TODO: Parse outputs from transaction once confirmed
     return { outputs: [], txId };
+  }
+
+  private async getPersistentExecutionOptions(
+    pm: any,
+    nc: { getProgram(id: string): Promise<string>; getLatestProgramEdition?: (id: string) => Promise<number> },
+    programId: string,
+    transitionName: string,
+    args: string[],
+  ): Promise<Record<string, unknown> | undefined> {
+    if (this.keyCache?.storage !== "filesystem" || !this.keyCache.path) {
+      return undefined;
+    }
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      artifactsDir: this.artifactsDir,
+      programId,
+      networkClient: nc,
+      includeSidecar: true,
+    });
+    const edition = await getLatestProgramEditionIfAvailable(nc, programId);
+    const runtime = await import("./sdk-adapter.js");
+    const sdkMetadata = runtime.getSdkRuntimeMetadata(this.networkId);
+    const identity = buildRuntimeKeyIdentity({
+      network: this.networkId,
+      programId,
+      transition: transitionName,
+      edition,
+      sourceHash: artifacts.sourceHash,
+      importsHash: artifacts.importsHash,
+      wasmHash: sdkMetadata.wasmHash,
+    });
+
+    const cached = findCachedExecutionKeys({
+      cachePath: this.keyCache.path,
+      identity,
+      artifacts,
+    });
+    const keyBytes = cached ?? await this.synthesizeAndCacheExecutionKeys({
+      pm,
+      artifacts,
+      transitionName,
+      args,
+      identity,
+      sdkMetadata,
+    });
+
+    const keys = await runtime.createExecutionKeysFromBytes(this.networkId, {
+      provingKey: keyBytes.provingKeyBytes,
+      verifyingKey: keyBytes.verifyingKeyBytes,
+    });
+
+    return {
+      program: artifacts.source,
+      ...(artifacts.imports === undefined ? {} : { imports: artifacts.imports }),
+      ...(edition === undefined ? {} : { edition }),
+      provingKey: keys.provingKey,
+      verifyingKey: keys.verifyingKey,
+    };
+  }
+
+  private async synthesizeAndCacheExecutionKeys(
+    options: {
+      pm: any;
+      artifacts: ProgramExecutionArtifacts;
+      transitionName: string;
+      args: string[];
+      identity: import("@lionden/core").RuntimeKeyIdentity;
+      sdkMetadata: { sdkVersion?: string; wasmVersion?: string };
+    },
+  ): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
+    if (typeof options.pm.synthesizeKeys !== "function") {
+      throw new Error(
+        "Provable SDK ProgramManager does not expose synthesizeKeys(); " +
+          "filesystem key caching requires SDK key synthesis support.",
+      );
+    }
+
+    const [provingKey, verifyingKey] = await options.pm.synthesizeKeys(
+      options.artifacts.source,
+      options.transitionName,
+      options.args,
+    );
+    const provingKeyBytes = keyToBytes(provingKey, "proving");
+    const verifyingKeyBytes = keyToBytes(verifyingKey, "verifying");
+
+    writeCachedExecutionKeys(
+      {
+        identity: options.identity,
+        provingKeyBytes,
+        verifyingKeyBytes,
+        diagnostics: {
+          ...(options.sdkMetadata.sdkVersion === undefined ? {} : { sdkVersion: options.sdkMetadata.sdkVersion }),
+          ...(options.sdkMetadata.wasmVersion === undefined ? {} : { wasmVersion: options.sdkMetadata.wasmVersion }),
+        },
+      },
+      this.keyCache!.path!,
+    );
+
+    return { provingKeyBytes, verifyingKeyBytes };
   }
 
   async waitForConfirmation(
@@ -551,6 +670,36 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function getLatestProgramEditionIfAvailable(
+  nc: { getLatestProgramEdition?: (id: string) => Promise<number> },
+  programId: string,
+): Promise<number | undefined> {
+  if (typeof nc.getLatestProgramEdition !== "function") return undefined;
+  try {
+    const edition = await nc.getLatestProgramEdition(programId);
+    return Number.isInteger(edition) && edition >= 0 ? edition : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function keyToBytes(key: unknown, label: "proving" | "verifying"): Uint8Array {
+  if (!key || typeof (key as { toBytes?: unknown }).toBytes !== "function") {
+    throw new Error(`Synthesized ${label} key does not expose toBytes().`);
+  }
+  const raw = (key as { toBytes(): unknown }).toBytes();
+  if (raw instanceof Uint8Array) {
+    return new Uint8Array(raw);
+  }
+  if (raw instanceof ArrayBuffer) {
+    return new Uint8Array(raw);
+  }
+  if (Array.isArray(raw)) {
+    return new Uint8Array(raw);
+  }
+  throw new Error(`Synthesized ${label} key bytes are not Uint8Array-compatible.`);
+}
+
 /** Best-effort destroy of an SDK Account to release WASM private-key state. */
 function tryDestroyAccount(account: unknown): void {
   if (account && typeof (account as any).destroy === "function") {
@@ -560,36 +709,6 @@ function tryDestroyAccount(account: unknown): void {
       // Non-fatal — some SDK versions may not support destroy
     }
   }
-}
-
-/**
- * Parse `import <name>.aleo;` declarations from compiled Aleo source and
- * fetch each imported program from the network.  The compiled format lists
- * all transitive imports at the top level, so no recursion is needed.
- *
- * Returns `undefined` when the program has no imports (avoids passing an
- * empty object to pm.run() which some SDK versions may not expect).
- */
-async function fetchProgramImports(
-  nc: { getProgram(id: string): Promise<string> },
-  programSource: string,
-): Promise<Record<string, string> | undefined> {
-  const importPattern = /import\s+([\w]+\.aleo)\s*;/g;
-  const importIds: string[] = [];
-  let match;
-  while ((match = importPattern.exec(programSource)) !== null) {
-    importIds.push(match[1]!);
-  }
-  if (importIds.length === 0) return undefined;
-
-  const sources = await Promise.all(
-    importIds.map((id) => nc.getProgram(id)),
-  );
-  const imports: Record<string, string> = {};
-  for (let i = 0; i < importIds.length; i++) {
-    imports[importIds[i]!] = sources[i]!;
-  }
-  return imports;
 }
 
 /**

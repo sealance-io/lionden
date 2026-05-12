@@ -4,6 +4,16 @@ import * as crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import {
+  fingerprintFile,
+  keyArtifactsMetadataPath,
+  sha256Json,
+  sha256Text,
+  writeKeyArtifactsMetadata,
+  type KeyArtifactFunctionRef,
+  type KeyArtifactsMetadata,
+  type KeyFileRef,
+} from "@lionden/core";
 import type {
   DiscoveredUnit,
   CompilationResult,
@@ -219,6 +229,10 @@ export async function compilePipeline(
       // Copy final artifacts to artifactsDir/<programId>/
       const artifactDir = path.join(config.paths.artifacts, unit.programId);
       copyArtifacts(buildDir, artifactDir);
+      writeKeyArtifactsMetadata(
+        keyArtifactsMetadataPath(config.paths.artifacts, unit.programId),
+        buildKeyArtifactsMetadata(pkgDir, buildDir, artifactDir, unit.programId, abi),
+      );
 
       results.push({
         unit,
@@ -299,6 +313,135 @@ function copyArtifacts(buildDir: string, destDir: string): void {
       fs.copyFileSync(path.join(buildDir, file), path.join(destDir, file));
     }
   }
+}
+
+function buildKeyArtifactsMetadata(
+  packageDir: string,
+  buildDir: string,
+  artifactDir: string,
+  programId: string,
+  abi: ProgramABI,
+): KeyArtifactsMetadata {
+  const sourcePath = path.join(buildDir, "main.aleo");
+  const sourceHash = fs.existsSync(sourcePath)
+    ? sha256Text(fs.readFileSync(sourcePath, "utf-8"))
+    : sha256Text("");
+  const functions = collectKeyArtifactFunctionRefs(artifactDir, programId, abi);
+
+  return {
+    format: "lionden.keyArtifacts.v1",
+    programId,
+    sourceHash,
+    importsHash: hashPackageImports(path.join(packageDir, "imports")),
+    ...(functions.length === 0 ? {} : { functions }),
+  };
+}
+
+function hashPackageImports(importsDir: string): string {
+  if (!fs.existsSync(importsDir)) {
+    return sha256Json({ imports: [] });
+  }
+
+  const imports = listFilesRecursive(importsDir).map((filePath) => {
+    const relativePath = toPortablePath(path.relative(importsDir, filePath));
+    return {
+      path: relativePath,
+      sourceHash: sha256Text(fs.readFileSync(filePath, "utf-8")),
+    };
+  });
+
+  return sha256Json({ imports });
+}
+
+function listFilesRecursive(root: string): string[] {
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...listFilesRecursive(entryPath));
+    } else if (entry.isFile()) {
+      out.push(entryPath);
+    }
+  }
+  return out.sort((a, b) => a.localeCompare(b));
+}
+
+function collectKeyArtifactFunctionRefs(
+  artifactDir: string,
+  programId: string,
+  abi: ProgramABI,
+): KeyArtifactFunctionRef[] {
+  if (!fs.existsSync(artifactDir)) return [];
+
+  const proverByStem = new Map<string, string>();
+  const verifierByStem = new Map<string, string>();
+  for (const file of fs.readdirSync(artifactDir)) {
+    const filePath = path.join(artifactDir, file);
+    if (!fs.statSync(filePath).isFile()) continue;
+    if (file.endsWith(".prover")) {
+      proverByStem.set(file.slice(0, -".prover".length), file);
+    } else if (file.endsWith(".verifier")) {
+      verifierByStem.set(file.slice(0, -".verifier".length), file);
+    }
+  }
+
+  const pairedStems = [...proverByStem.keys()]
+    .filter((stem) => verifierByStem.has(stem))
+    .sort((a, b) => a.localeCompare(b));
+  if (pairedStems.length === 0) return [];
+
+  return abi.transitions.flatMap((transition) => {
+    const stem = findUnambiguousKeyStem(
+      pairedStems,
+      programId,
+      transition.name,
+      abi.transitions.length,
+    );
+    if (!stem) return [];
+    const prover = proverByStem.get(stem);
+    const verifier = verifierByStem.get(stem);
+    if (!prover || !verifier) return [];
+    return [{
+      transition: transition.name,
+      prover: keyFileRef(artifactDir, prover),
+      verifier: keyFileRef(artifactDir, verifier),
+    }];
+  });
+}
+
+function findUnambiguousKeyStem(
+  pairedStems: readonly string[],
+  programId: string,
+  transition: string,
+  transitionCount: number,
+): string | undefined {
+  const programBase = programId.endsWith(".aleo")
+    ? programId.slice(0, -".aleo".length)
+    : programId;
+  const candidates = [
+    transition,
+    `${programBase}.${transition}`,
+    `${programId}.${transition}`,
+    `${programBase}_${transition}`,
+  ];
+  for (const candidate of candidates) {
+    if (pairedStems.includes(candidate)) return candidate;
+  }
+  return transitionCount === 1 && pairedStems.length === 1
+    ? pairedStems[0]
+    : undefined;
+}
+
+function keyFileRef(artifactDir: string, file: string): KeyFileRef {
+  const filePath = path.join(artifactDir, file);
+  return {
+    path: toPortablePath(path.relative(artifactDir, filePath)),
+    fingerprint: fingerprintFile(filePath),
+  };
+}
+
+function toPortablePath(p: string): string {
+  return p.split(path.sep).join("/");
 }
 
 /**

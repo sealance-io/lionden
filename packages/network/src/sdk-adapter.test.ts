@@ -7,9 +7,13 @@
  * verify actual construction rather than mocked delegation.
  */
 import { describe, it, expect, afterAll } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   createSdkObjects,
   createSignerSdkObjects,
+  PersistentFunctionKeyProvider,
   decryptRecordCiphertext,
   decryptValueCiphertext,
   deriveViewKey,
@@ -66,6 +70,26 @@ describe("createSdkObjects()", () => {
     expect(ncHeaders).toBeDefined();
     expect(ncHeaders["Authorization"]).toBe("Bearer test-api-key");
     try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+
+  it("wraps the SDK key provider once for filesystem key cache mode", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-sdk-keys-"));
+    try {
+      const sdk = await createSdkObjects({
+        network: "testnet",
+        endpoint: "http://127.0.0.1:3030",
+        privateKey: DEVNODE_KEY,
+        keyCache: { storage: "filesystem", path: path.join(tmpDir, ".aleo") },
+      });
+
+      expect(sdk.keyProvider).toBeInstanceOf(PersistentFunctionKeyProvider);
+      expect((sdk.programManager as any).keyProvider).toBe(sdk.keyProvider);
+      await expect(sdk.keyProvider.keyStore()).resolves.toBeDefined();
+
+      try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -150,6 +174,32 @@ describe("createSignerSdkObjects()", () => {
     expect(pm.keyProvider).toBe(defaultSdk.keyProvider);
 
     try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+
+  it("reuses the persistent key provider for signer ProgramManagers", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-sdk-keys-"));
+    try {
+      const sdk = await createSdkObjects({
+        network: "testnet",
+        endpoint: "http://127.0.0.1:3030",
+        privateKey: DEVNODE_KEY,
+        keyCache: { storage: "filesystem", path: path.join(tmpDir, ".aleo") },
+      });
+      const signerSdk = await createSignerSdkObjects({
+        privateKey: SIGNER_KEY,
+        endpoint: "http://127.0.0.1:3030",
+        network: "testnet",
+        keyProvider: sdk.keyProvider,
+      });
+
+      expect(sdk.keyProvider).toBeInstanceOf(PersistentFunctionKeyProvider);
+      expect((signerSdk.programManager as any).keyProvider).toBe(sdk.keyProvider);
+
+      try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+      try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

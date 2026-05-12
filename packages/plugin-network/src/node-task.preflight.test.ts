@@ -71,6 +71,7 @@ function makeConfig(): LionDenResolvedConfig {
       skipDeployed: true,
       autoExport: false,
     },
+    sdk: { keyCache: { storage: "memory" } },
     namedAccounts: {},
   };
 }

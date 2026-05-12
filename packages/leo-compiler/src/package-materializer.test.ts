@@ -46,6 +46,7 @@ function mockConfig(): LionDenResolvedConfig {
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
     deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    sdk: { keyCache: { storage: "memory" } },
     namedAccounts: {},
   };
 }

@@ -35,6 +35,8 @@ describe("resolveConfig", () => {
     expect(resolved.testing.autoStartDevnode).toBe(true);
     expect(resolved.deploy.defaultPriorityFee).toBe(0);
     expect(resolved.deploy.confirmTransactions).toBe(true);
+    expect(resolved.sdk.keyCache.storage).toBe("memory");
+    expect(resolved.sdk.keyCache.path).toBeUndefined();
   });
 
   it("provides a default devnode network", async () => {
@@ -98,6 +100,39 @@ describe("resolveConfig", () => {
     expect(resolved.paths.programs).toBe("/tmp/test-project/src/programs");
     expect(resolved.paths.artifacts).toBe("/tmp/test-project/build");
     expect(resolved.paths.typechain).toBe("/tmp/test-project/generated");
+  });
+
+  it("resolves filesystem SDK key cache path under artifacts by default", async () => {
+    const resolved = await resolve(
+      { sdk: { keyCache: { storage: "filesystem" } } },
+      [],
+      projectRoot,
+    );
+
+    expect(resolved.sdk.keyCache).toEqual({
+      storage: "filesystem",
+      path: "/tmp/test-project/artifacts/.cache/provable-keys/.aleo",
+    });
+  });
+
+  it("normalizes filesystem SDK key cache paths to a .aleo directory", async () => {
+    const resolved = await resolve(
+      { sdk: { keyCache: { storage: "filesystem", path: "cache/provable" } } },
+      [],
+      projectRoot,
+    );
+
+    expect(resolved.sdk.keyCache.path).toBe("/tmp/test-project/cache/provable/.aleo");
+  });
+
+  it("does not append .aleo twice for filesystem SDK key cache paths", async () => {
+    const resolved = await resolve(
+      { sdk: { keyCache: { storage: "filesystem", path: "cache/provable/.aleo" } } },
+      [],
+      projectRoot,
+    );
+
+    expect(resolved.sdk.keyCache.path).toBe("/tmp/test-project/cache/provable/.aleo");
   });
 
   it("respects user-specified compiler settings", async () => {
