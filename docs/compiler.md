@@ -104,7 +104,7 @@ const governance = createGovernance({
 });
 ```
 
-`imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` for per-call overrides, and `withSigner()` clones preserve the instance-level list. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
+`imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` as a per-call additive layer, and `withSigner()` clones preserve the instance-level list. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
 
 `@lionden/plugin-leo` then generates TypeScript output when codegen is enabled:
 

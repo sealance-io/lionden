@@ -132,6 +132,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 | `compiler` | `leo build` knobs: `enableDce`, `conditionalBlockMaxDepth`, `buildTests`, `extraFlags` | sensible defaults |
 | `codegen.enabled` | Generate `typechain/` on each compile | `true` |
 | `codegen.dynamicRecords` | Emit `Leo.dynamicRecord(...)` helpers ([details](json-abi.md#interface-conversion-helpers-codegendynamicrecords)) | — |
+| `execution.imports` | Runtime imports for dynamic-dispatch targets ([details](network.md#runtime-imports-for-dynamic-dispatch)) | `{}` |
 | `testing.timeout` | Per-test timeout in ms | `120_000` |
 | `testing.autoStartDevnode` | Whether `setup()` auto-starts a devnode | `true` |
 | `deploy.confirmTransactions` / `confirmationTimeout` | Wait for confirmation; ms cap | `true` / `60_000` |
@@ -559,6 +560,24 @@ See `examples/multi-program`. Key ideas:
 - A library (`programs/math_utils/lib.leo`) is compile-only — it's never deployed.
 - A program that imports another program via `program_name.aleo::transition` automatically gets the transitive program included in topological deploy order.
 - `ctx.deploy("rewards")` will deploy `treasury` first if `rewards` depends on it.
+
+### Runtime imports for dynamic dispatch
+
+Leo v4 dynamic dispatch (`Interface@(target)::fn(...)`) selects the target program at execute time, so LionDen cannot infer those targets from static `import` statements. Declare possible runtime targets with `execution.imports` instead of adding fake imports just to make execution work:
+
+```ts
+export default defineConfig({
+  execution: {
+    imports: {
+      "governance.aleo": ["voting_power.aleo", "quadratic_power.aleo"],
+    },
+  },
+});
+```
+
+Each entry can be a bare program name, a `.aleo` program id, or a local `.aleo` path. The same imports can also be carried by a generated wrapper instance (`createGovernance({ imports: [...] })`) or added for one call via `options.imports`.
+
+Runtime imports are execution-time dependencies only. They do not affect compile or deploy ordering, so deploy strategy/target programs explicitly before deploying or executing the dispatch hub. See `examples/aleo-ports/dynamic_dispatch` and [`network.md`](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
 
 ### Upgradeable program with admin
 
