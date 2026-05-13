@@ -84,6 +84,27 @@ If the devnode exits unexpectedly after `start()` resolves, `DevnodeManager` wri
 
 At the platform level, devnode and snarkOS nodes expose the same REST surface for blocks, transactions, programs, mappings, and block height. LionDen uses network endpoints both for runtime interaction and for fetching deployed program sources as compiler dependencies.
 
+## Runtime Imports For Dynamic Dispatch
+
+Leo v4 supports runtime dynamic dispatch via `Interface@(target)::fn(...)`, where the target program is selected by an `identifier` value at execute time. The SDK/VM cannot discover those targets from the dispatching program's static `import` statements, so LionDen exposes a layered "runtime imports" surface that threads the additional program sources into every execution path (`pm.run` for local mode, `buildDevnodeExecutionTransaction` for the devnode fast-path, and `pm.execute` for the standard/proven path).
+
+Three layers, all additive (deduped by canonical id and absolute path, sorted for cache identity stability):
+
+1. **Config defaults** — `config.execution.imports[programId]` (project-wide).
+2. **Instance-level** — `createGovernance({ imports: [...] })` on the generated wrapper.
+3. **Per-call** — `options.imports` on `.accepted()` / `.locally()` / `.settled()` / etc., and on raw `connection.execute(..., { imports })`.
+
+Each entry is one of:
+- a bare Leo program name (`"voting_power"` → normalized to `voting_power.aleo`)
+- an explicit program id (`"voting_power.aleo"`)
+- a path to a local `.aleo` file (relative paths anchor to the project root; `~` expands to the user's home directory)
+
+Path refs must exist on disk — missing files raise a config error rather than falling through to network fetch. Program-id refs follow the existing artifacts-first / network-fallback chain used by static imports. Two refs that resolve to the same canonical program id but different source content throw a conflict error with both ref origins listed.
+
+Runtime imports contribute to `importsHash` in the proving-key cache identity, so introducing a new dispatch target invalidates any cached keys for the dispatching program on first execute and re-caches under the new identity.
+
+Runtime imports are **execution-time** dependencies only, not deploy-time deps. The compiler's static-import-based dependency resolver does not follow them, so a dispatch hub's strategy programs must be deployed explicitly (or pulled in via the normal `import` graph elsewhere). See `examples/aleo-ports/dynamic_dispatch` for the canonical pattern.
+
 ## Provable SDK Integration
 
 `packages/network/src/sdk-adapter.ts` is the single point of contact with `@provablehq/sdk`. It loads the SDK module dynamically on first use and initializes the WASM thread pool once per process. Other network and deploy code imports helpers from that module rather than touching the SDK directly.

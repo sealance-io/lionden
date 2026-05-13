@@ -96,6 +96,16 @@ The ABI is the contract between Leo compilation and TypeScript code generation. 
 
 Generated bindings are the preferred user-facing API when the ABI is known. They encode ABI shape, Leo value serialization, visibility, encrypted output handles, and record helpers in TypeScript. Raw string execution remains available as an escape hatch for dynamic ABI situations, post-upgrade calls, or cases where the generated wrapper cannot yet model the call.
 
+Each generated wrapper factory accepts a `BaseContractOptions` argument:
+
+```ts
+const governance = createGovernance({
+  imports: ["voting_power.aleo", "quadratic_power.aleo"],
+});
+```
+
+`imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` for per-call overrides, and `withSigner()` clones preserve the instance-level list. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
+
 `@lionden/plugin-leo` then generates TypeScript output when codegen is enabled:
 
 - `BaseContract.ts`

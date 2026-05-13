@@ -59,6 +59,7 @@ Plugins are **declarative**: users list them in `defineConfig({ plugins: [...] }
 - **Task builder API**: `task(id, desc).addOption({...}).setAction(fn).build()` and `overrideTask(id).setAction(fn).build()` — see `packages/core/src/task-builder.ts`.
 - **Source-first Leo layout**: users write `.leo` files in `programs/` without `program.json`. The compiler materializes Leo CLI packages internally during `compilePipeline()`.
 - **Config variable resolution is eager**: `configVariable()` values are resolved for ALL networks during config resolution, not lazily for the active network. A `configVariable()` without a default will throw even on devnode runs if the env var is unset.
+- **Runtime imports for dynamic dispatch**: programs that use Leo v4 `Interface@(target)::fn(...)` declare their dispatch targets in `config.execution.imports[programId]`, on the typechain factory (`createX({ imports })`), or per-call (`options.imports`) — NOT as static `import` statements. Runtime imports are execution-time deps only; deploy order still follows static `import`s. See `docs/network.md` § Runtime Imports For Dynamic Dispatch.
 - **nvm fallback**: if `node` or `npm` is missing from `PATH`, load nvm before concluding the toolchain is unavailable: `source "$HOME/.nvm/nvm.sh" && nvm use`.
 
 ## Contributor Entry Points
