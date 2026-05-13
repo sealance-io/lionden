@@ -84,6 +84,11 @@ export async function main(): Promise<void> {
   // Create LRE — use post-extend config for tasks (plugins may inject tasks via extendUserConfig)
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   const lre = createLre({ config, plugins, globalOptions, configTasks });
+  parsed = parseArgs(
+    process.argv.slice(2),
+    globalOptionDefs,
+    (taskId) => lre.tasks.getTaskDefinition(taskId),
+  );
 
   // Handle help
   if (parsed.globalArgs.help) {

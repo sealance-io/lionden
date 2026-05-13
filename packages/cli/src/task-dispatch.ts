@@ -1,5 +1,11 @@
-import type { LionDenRuntimeEnvironment, TaskDefinition, GlobalOptionDefinition } from "@lionden/core";
+import type {
+  GlobalOptionDefinition,
+  LionDenRuntimeEnvironment,
+  TaskDefinition,
+} from "@lionden/core";
 import { logger } from "./output/logger.js";
+
+export type TaskDefinitionLookup = (taskId: string) => TaskDefinition | undefined;
 
 export interface ParsedArgs {
   taskId: string | null;
@@ -22,10 +28,12 @@ export interface ParsedArgs {
 export function parseArgs(
   argv: string[],
   pluginGlobalOptions?: Map<string, { pluginId: string; definition: GlobalOptionDefinition }>,
+  getTaskDefinition?: TaskDefinitionLookup,
 ): ParsedArgs {
   const globalArgs: ParsedArgs["globalArgs"] = {};
   const taskArgs: Record<string, unknown> = {};
   let taskId: string | null = null;
+  let taskDefinition: TaskDefinition | undefined;
   let parsingGlobal = true;
 
   // Build set of known plugin global option names for matching
@@ -57,14 +65,20 @@ export function parseArgs(
         }
       } else if (!arg.startsWith("--")) {
         taskId = arg;
+        taskDefinition = getTaskDefinition?.(taskId);
         parsingGlobal = false;
       }
     } else {
       // Task arguments
       if (arg.startsWith("--")) {
         const name = arg.slice(2);
+        const taskArg = taskDefinition
+          ? findTaskArgumentDefinition(taskDefinition, name)
+          : undefined;
         const next = argv[i + 1];
-        if (next && !next.startsWith("--")) {
+        if (taskArg?.type === "boolean") {
+          taskArgs[name] = true;
+        } else if (next && !next.startsWith("--")) {
           taskArgs[name] = next;
           i++;
         } else {
@@ -81,6 +95,37 @@ export function parseArgs(
   }
 
   return { taskId, taskArgs, globalArgs };
+}
+
+function findTaskArgumentDefinition(
+  taskDefinition: TaskDefinition,
+  rawName: string,
+): { type: "string" | "number" | "boolean" } | undefined {
+  for (const flag of taskDefinition.flags ?? []) {
+    if (matchesTaskArgumentName(flag.name, rawName)) {
+      return { type: "boolean" };
+    }
+  }
+
+  for (const option of taskDefinition.options ?? []) {
+    if (matchesTaskArgumentName(option.name, rawName)) {
+      return { type: option.type };
+    }
+  }
+
+  return undefined;
+}
+
+function matchesTaskArgumentName(
+  definitionName: string,
+  rawName: string,
+): boolean {
+  return rawName === definitionName || rawName === camelToKebab(definitionName);
+}
+
+/** Convert camelCase to kebab-case (e.g., "noCompile" -> "no-compile"). */
+function camelToKebab(name: string): string {
+  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
 }
 
 /**

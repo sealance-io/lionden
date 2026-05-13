@@ -1,8 +1,31 @@
 import { describe, it, expect } from "vitest";
-import { ArgumentType, type GlobalOptionDefinition } from "@lionden/core";
+import {
+  ArgumentType,
+  type GlobalOptionDefinition,
+  type TaskDefinition,
+} from "@lionden/core";
 import { parseArgs } from "./task-dispatch.js";
 
 describe("parseArgs", () => {
+  function defineTask(
+    definition: Pick<TaskDefinition, "id"> & Partial<TaskDefinition>,
+  ): TaskDefinition {
+    return {
+      description: "Test task",
+      action: async () => undefined,
+      ...definition,
+    };
+  }
+
+  function lookupFor(
+    ...definitions: TaskDefinition[]
+  ): (taskId: string) => TaskDefinition | undefined {
+    const byId = new Map(
+      definitions.map((definition) => [definition.id, definition]),
+    );
+    return (taskId) => byId.get(taskId);
+  }
+
   it("returns null taskId for empty argv", () => {
     const result = parseArgs([]);
     expect(result.taskId).toBeNull();
@@ -65,6 +88,104 @@ describe("parseArgs", () => {
   it("collects positional task arguments into _positional array", () => {
     const result = parseArgs(["run", "scripts/seed.ts", "extra"]);
     expect(result.taskArgs["_positional"]).toEqual(["scripts/seed.ts", "extra"]);
+  });
+
+  it("keeps positionals after known boolean task flags", () => {
+    const result = parseArgs(
+      ["test", "--no-compile", "test/skip-devnode.test.ts"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "test",
+          flags: [{ name: "noCompile", description: "Skip compile" }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs["no-compile"]).toBe(true);
+    expect(result.taskArgs["_positional"]).toEqual(["test/skip-devnode.test.ts"]);
+  });
+
+  it("keeps positionals before known boolean task flags", () => {
+    const result = parseArgs(
+      ["test", "test/file.test.ts", "--prove"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "test",
+          flags: [{ name: "prove", description: "Enable proofs" }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs["_positional"]).toEqual(["test/file.test.ts"]);
+    expect(result.taskArgs["prove"]).toBe(true);
+  });
+
+  it("keeps positionals after known boolean task options", () => {
+    const result = parseArgs(
+      ["compile", "--force", "programs/hello"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "compile",
+          options: [
+            { name: "force", type: "boolean", description: "Force compile" },
+          ],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs["force"]).toBe(true);
+    expect(result.taskArgs["_positional"]).toEqual(["programs/hello"]);
+  });
+
+  it("continues to consume values for known string and number task options", () => {
+    const result = parseArgs(
+      ["deploy", "--program", "hello", "--priority-fee", "100"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "deploy",
+          options: [
+            { name: "program", type: "string", description: "Program name" },
+            { name: "priorityFee", type: "number", description: "Priority fee" },
+          ],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs).toEqual({ program: "hello", "priority-fee": "100" });
+  });
+
+  it("preserves greedy fallback for unknown tasks", () => {
+    const result = parseArgs(
+      ["missing", "--no-compile", "test/file.test.ts"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "test",
+          flags: [{ name: "noCompile", description: "Skip compile" }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs).toEqual({ "no-compile": "test/file.test.ts" });
+  });
+
+  it("preserves greedy fallback for unknown options on known tasks", () => {
+    const result = parseArgs(
+      ["test", "--unknown", "test/file.test.ts"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "test",
+          flags: [{ name: "noCompile", description: "Skip compile" }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs).toEqual({ unknown: "test/file.test.ts" });
   });
 
   it("separates global options from task options", () => {

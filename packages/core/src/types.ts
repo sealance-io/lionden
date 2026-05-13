@@ -314,6 +314,8 @@ export interface TaskRunner {
   has(taskId: string): boolean;
   /** Get all registered task IDs */
   getTaskIds(): string[];
+  /** Get the registered task definition, if any */
+  getTaskDefinition(taskId: string): TaskDefinition | undefined;
 }
 
 export type HookDispatchMode = "serial" | "waterfall" | "parallel";
