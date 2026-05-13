@@ -154,7 +154,7 @@ Five disposable agent-driven probes have been run against the deploy/upgrade sub
 
 ### `examples/aleo-ports/` — 21 compatibility ports
 
-Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)`; `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
+Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)` and declares its runtime dispatch targets in `execution.imports["governance.aleo"]` rather than as static `import` statements (see [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch)); `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
 
 ---
 

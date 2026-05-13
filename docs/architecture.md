@@ -52,6 +52,8 @@ Config variables are supported through `configVariable()` and resolved during co
 
 The current implementation resolves all config hook handlers from plugins up front, runs extension as a waterfall, aggregates validation errors, merges plugin-provided partial resolved config, and throws `ConfigResolutionError` with collected validation failures.
 
+Both `validateUserConfig` and `validateResolvedConfig` run two passes: core-owned built-in validators first (for fields like `execution.imports` that belong to the core config schema rather than to any plugin), then plugin-contributed handlers. Built-in validators sit inline in `resolveConfig()` and accumulate `ConfigValidationError`s alongside handler results — there is no separate hook surface for them. Path-existence checks on `execution.imports` happen in the resolved-config pass, where `paths.root` is available to anchor relative refs.
+
 ## Plugin Model
 
 `packages/core/src/types.ts` defines `LionDenPlugin`. A plugin can provide:
