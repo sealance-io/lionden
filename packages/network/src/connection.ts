@@ -31,6 +31,7 @@ import {
   type ConfirmedTransaction,
   type ConfirmedTransitionRecord,
   type ExecuteOptions,
+  type RawTransitionOutput,
 } from "./types.js";
 
 export interface ConnectionOptions {
@@ -841,7 +842,7 @@ function tryDestroyAccount(account: unknown): void {
  *   - txType === "execute" with missing/malformed execution or transitions
  *     (would silently lose typed outputs otherwise)
  *   - any malformed transition entry (missing program/function, non-array
- *     outputs, non-string output.value)
+ *     outputs, output.value present but not a string)
  */
 function parseConfirmedTransitions(
   txData: Record<string, unknown> | undefined,
@@ -940,7 +941,7 @@ function parseTransition(
       `${path}.outputs`,
     );
   }
-  const outputValues = rawOutputs.map((output, outputIndex) => {
+  const outputValues: RawTransitionOutput[] = rawOutputs.map((output, outputIndex) => {
     if (typeof output !== "object" || output === null) {
       throw new TransactionShapeParseError(
         `Transaction ${txId}: ${path}.outputs[${outputIndex}] is not an object.`,
@@ -948,10 +949,27 @@ function parseTransition(
         `${path}.outputs[${outputIndex}]`,
       );
     }
-    const value = (output as Record<string, unknown>)["value"];
+    const outputObject = output as Record<string, unknown>;
+    if (!Object.prototype.hasOwnProperty.call(outputObject, "value")) {
+      const id = outputObject["id"];
+      if (typeof id !== "string" || id.length === 0) {
+        throw new TransactionShapeParseError(
+          `Transaction ${txId}: ${path}.outputs[${outputIndex}] has no value and no string id.`,
+          txId,
+          `${path}.outputs[${outputIndex}].id`,
+        );
+      }
+      const type = outputObject["type"];
+      return {
+        kind: "idOnly",
+        id,
+        type: typeof type === "string" && type.length > 0 ? type : "unknown",
+      };
+    }
+    const value = outputObject["value"];
     if (typeof value !== "string") {
       throw new TransactionShapeParseError(
-        `Transaction ${txId}: ${path}.outputs[${outputIndex}].value is missing or not a string.`,
+        `Transaction ${txId}: ${path}.outputs[${outputIndex}].value is not a string.`,
         txId,
         `${path}.outputs[${outputIndex}].value`,
       );

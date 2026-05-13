@@ -6,6 +6,8 @@ export type {
   TransitionCallResult,
   ConfirmedTransaction,
   ConfirmedTransitionRecord,
+  IdOnlyTransitionOutput,
+  RawTransitionOutput,
   ExecuteOptions,
   DevnodeStartOptions,
   DevnodeLogMode,

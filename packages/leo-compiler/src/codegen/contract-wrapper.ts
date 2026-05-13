@@ -106,6 +106,14 @@ export interface SubmittedTransition {
   readonly txId: string;
 }
 
+export interface IdOnlyRawOutput {
+  readonly kind: "idOnly";
+  readonly type: string;
+  readonly id: string;
+}
+
+export type RawTransitionOutput = string | IdOnlyRawOutput;
+
 /**
  * Settled transition with status pinned to "accepted" but without typed
  * outputs. Used by \`expectAccepted\` and as the structural base for
@@ -129,7 +137,7 @@ export interface SubmittedTransition {
 export interface AcceptedTransitionBase extends SubmittedTransition {
   readonly blockHeight: number;
   readonly status: "accepted";
-  readonly rawOutputs: readonly string[];
+  readonly rawOutputs: readonly RawTransitionOutput[];
   /**
    * Transition public key (\`tpk\`) from the on-chain confirmed transition.
    * Required input to value-ciphertext decryption (\`EncryptedValue<T>.decrypt\`).
@@ -161,7 +169,7 @@ export interface AcceptedTransition<TOutputs> extends AcceptedTransitionBase {
 export interface RejectedTransition extends SubmittedTransition {
   readonly blockHeight: number;
   readonly status: "rejected";
-  readonly rawOutputs: readonly string[];
+  readonly rawOutputs: readonly RawTransitionOutput[];
 }
 
 /**
@@ -738,7 +746,7 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions,
-    project: (rawOutputs: readonly string[], tpk: string) => TOutputs,
+    project: (rawOutputs: readonly RawTransitionOutput[], tpk: string) => TOutputs,
   ): Promise<AcceptedTransition<TOutputs> | RejectedTransition> {
     const settled = await this.settleTransition(transitionName, args, options);
     if (settled.status === "accepted") {
@@ -769,7 +777,7 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions,
-    project: (rawOutputs: readonly string[], tpk: string) => TOutputs,
+    project: (rawOutputs: readonly RawTransitionOutput[], tpk: string) => TOutputs,
   ): Promise<AcceptedTransition<TOutputs>> {
     const accepted = await this.expectAccepted(transitionName, args, options);
     const outputs = this.runProjector(transitionName, accepted.rawOutputs, accepted.transitionPublicKey, project);
@@ -785,9 +793,9 @@ export abstract class BaseContract {
 
   private runProjector<TOutputs>(
     transitionName: string,
-    rawOutputs: readonly string[],
+    rawOutputs: readonly RawTransitionOutput[],
     tpk: string,
-    project: (rawOutputs: readonly string[], tpk: string) => TOutputs,
+    project: (rawOutputs: readonly RawTransitionOutput[], tpk: string) => TOutputs,
   ): TOutputs {
     try {
       return project(rawOutputs, tpk);
@@ -810,15 +818,22 @@ export abstract class BaseContract {
    * typed projections).
    */
   static rawOutputAt(
-    rawOutputs: readonly string[],
+    rawOutputs: readonly RawTransitionOutput[],
     programId: string,
     transitionName: string,
     abiIndex: number,
   ): string {
     const value = rawOutputs[abiIndex];
     if (typeof value !== "string") {
+      const kind = value === undefined
+        ? "undefined"
+        : value === null
+          ? "null"
+          : typeof value === "object" && "kind" in value && value.kind === "idOnly"
+            ? "id-only output " + value.id
+            : typeof value;
       throw new TransactionShapeError(
-        "Expected " + programId + "/" + transitionName + " to have raw output at ABI index " + abiIndex + ", got " + (value === undefined ? "undefined" : typeof value) + ".",
+        "Expected " + programId + "/" + transitionName + " to have raw output at ABI index " + abiIndex + ", got " + kind + ".",
         { programId, transition: transitionName, outputIndex: abiIndex },
       );
     }
@@ -1200,8 +1215,8 @@ export abstract class BaseContract {
    */
   protected selectAcceptedTransition(
     transitionName: string,
-    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly string[]; readonly transitionPublicKey: string }[] | undefined,
-  ): { readonly rawOutputs: readonly string[]; readonly transitionPublicKey: string } {
+    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly RawTransitionOutput[]; readonly transitionPublicKey: string }[] | undefined,
+  ): { readonly rawOutputs: readonly RawTransitionOutput[]; readonly transitionPublicKey: string } {
     const list = transitions ?? [];
     const matches = list.filter(
       (t) => t.programId === this.programId && t.transitionName === transitionName,
@@ -1231,8 +1246,8 @@ export abstract class BaseContract {
    */
   protected selectRejectedTransitionOutputs(
     transitionName: string,
-    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly string[] }[] | undefined,
-  ): readonly string[] {
+    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly RawTransitionOutput[] }[] | undefined,
+  ): readonly RawTransitionOutput[] {
     const list = transitions ?? [];
     const matches = list.filter(
       (t) => t.programId === this.programId && t.transitionName === transitionName,

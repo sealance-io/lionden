@@ -13,6 +13,7 @@ import {
   compilePipeline,
   generateBindings,
   generateBaseContract,
+  resolveContractClassName as resolveGeneratedContractClassName,
   pathToTsName,
   CodegenError,
   type CompileOptions,
@@ -158,15 +159,9 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
         );
       }
 
-      // Generate index.ts barrel export
-      const exports = programResults.map((r) => {
-        const className = programIdToClassName(r.unit.programId);
-        return `export * from "./${className}.js";`;
-      });
-      exports.unshift('export * from "./BaseContract.js";');
       fs.writeFileSync(
         path.join(typechainDir, "index.ts"),
-        exports.join("\n") + "\n",
+        buildTypechainIndex(programResults, helpersByProgram),
       );
     }
 
@@ -214,6 +209,85 @@ function programIdToClassName(programId: string): string {
     .split(/[_\-.]/)
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join("");
+}
+
+function buildTypechainIndex(
+  programResults: readonly ProgramCompilationResult[],
+  helpersByProgram: ReadonlyMap<string, NonNullable<GenerateBindingsOptions["dynamicRecords"]>>,
+): string {
+  const modules = programResults.map((result) => ({
+    fileName: programIdToClassName(result.unit.programId),
+    exports: getProgramExports(
+      result,
+      helpersByProgram.get(result.unit.programId) ?? [],
+    ),
+  }));
+  const counts = new Map<string, number>();
+  for (const module of modules) {
+    for (const name of [...module.exports.types, ...module.exports.values]) {
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+
+  const lines = ['export * from "./BaseContract.js";'];
+  const suppressed = [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([name]) => name)
+    .sort();
+  if (suppressed.length > 0) {
+    lines.push(
+      `// Omitted duplicate exports: ${suppressed.join(", ")}. Import them from the specific program module instead.`,
+    );
+  }
+  for (const module of modules) {
+    const safeTypes = module.exports.types.filter((name) => counts.get(name) === 1);
+    const safeValues = module.exports.values.filter((name) => counts.get(name) === 1);
+    if (safeTypes.length > 0) {
+      lines.push(`export type { ${safeTypes.join(", ")} } from "./${module.fileName}.js";`);
+    }
+    if (safeValues.length > 0) {
+      lines.push(`export { ${safeValues.join(", ")} } from "./${module.fileName}.js";`);
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+function getProgramExports(
+  result: ProgramCompilationResult,
+  helpers: readonly NonNullable<GenerateBindingsOptions["dynamicRecords"]>[number][],
+): { types: string[]; values: string[] } {
+  const abi = result.abi;
+  const types = new Set<string>();
+  const values = new Set<string>();
+  const className = resolveGeneratedContractClassName(result.abi);
+
+  for (const struct of abi.structs ?? []) {
+    const name = pathToTsName(struct.path);
+    types.add(name);
+    values.add(`serialize${name}`);
+    values.add(`deserialize${name}`);
+  }
+
+  for (const record of abi.records ?? []) {
+    const name = pathToTsName(record.path);
+    types.add(name);
+    values.add(`serialize${name}`);
+    values.add(`deserialize${name}`);
+    values.add(`decrypt${name}`);
+  }
+
+  if ((abi.storage_variables ?? []).length > 0) {
+    types.add(`${className}Storage`);
+  }
+
+  for (const helper of helpers) {
+    values.add(helper.helperName);
+  }
+
+  values.add(className);
+  values.add(`create${className}`);
+
+  return { types: [...types], values: [...values] };
 }
 
 /**

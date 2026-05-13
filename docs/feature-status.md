@@ -1,6 +1,6 @@
 # LionDen Feature Status
 
-**Last verified:** 2026-05-12
+**Last verified:** 2026-05-13
 
 A snapshot of what currently works in LionDen, what's still missing for a 1.0, and what's deferred past V1. This doc is anchored to **shipped behavior** in the codebase, the working examples under `examples/`, and the bug-hunt probes that have been run against the deploy/upgrade subsystem during development.
 
@@ -152,9 +152,9 @@ Five disposable agent-driven probes have been run against the deploy/upgrade sub
 | `examples/upgradeable-counter` | `@admin` constructor, full upgrade flow via `lre.tasks.run("upgrade", ...)`, `ctx.raw.execute()` for post-upgrade ABI, `assertMappingValue`, `assertBalanceAtLeast`, `assertBlockHeightAtLeast` |
 | `examples/async-escrow` | Finalize-only transitions, mapping state mutation, `.failsLocally()` (off-chain assert), `.rejected()` (on-chain finalize failure) |
 
-### `examples/aleo-ports/` — 21 compatibility ports
+### `examples/aleo-ports/` — 22 compatibility ports
 
-Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)` and declares its runtime dispatch targets in `execution.imports["governance.aleo"]` rather than as static `import` statements (see [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch)); `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
+Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `dynamic_records`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)` and declares its runtime dispatch targets in `execution.imports["governance.aleo"]` rather than as static `import` statements (see [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch)); `dynamic_records` combines runtime dispatch with Leo v4 `dyn record` inputs, generated `codegen.dynamicRecords` helpers, wrapper instance imports, and per-call imports; `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
 
 ---
 

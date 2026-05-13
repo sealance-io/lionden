@@ -1573,6 +1573,34 @@ describe("AleoConnection", () => {
       });
     });
 
+    it("preserves id-only output entries so ABI output positions do not shift", async () => {
+      mockConfirmation({
+        type: "execute",
+        transaction: {
+          type: "execute",
+          execution: {
+            transitions: [
+              {
+                program: "token_router.aleo",
+                function: "demo_transfer",
+                tpk: "tpk_router",
+                outputs: [
+                  { type: "record", id: "intermediate" },
+                  { type: "record", id: "returned", value: "record1returned" },
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      const result = await createDevnodeConnection().waitForConfirmation("at1test");
+      expect(result.transitions[0]!.rawOutputs).toEqual([
+        { kind: "idOnly", type: "record", id: "intermediate" },
+        "record1returned",
+      ]);
+    });
+
     it("fails fast on malformed JSON body in 200 OK confirmation (no retry, no timeout masking)", async () => {
       const blockBody = {
         block_hash: TEST_BLOCK_HASH,
