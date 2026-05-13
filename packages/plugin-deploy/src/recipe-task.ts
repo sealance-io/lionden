@@ -17,6 +17,8 @@ import type { NetworkManager, NetworkConnection } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import { createNamedAccountAccessor } from "@lionden/config";
 import type { DeploymentContext } from "./recipe-types.js";
+import type { DeploymentManager } from "./deployment-manager.js";
+import type { DeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
 
 // ---------------------------------------------------------------------------
@@ -69,7 +71,7 @@ export async function recipeAction(
 // CLI deployment context factory
 // ---------------------------------------------------------------------------
 
-function createCliDeploymentContext(
+export function createCliDeploymentContext(
   lre: LionDenRuntimeEnvironment,
   connection: NetworkConnection,
   networkName: string,
@@ -83,27 +85,65 @@ function createCliDeploymentContext(
     named: createNamedAccountAccessor(lre.namedAccounts, networkName),
 
     async deploy(programName, opts) {
+      const normalizedId = normalizeProgramId(programName);
+      const deploymentCache = lre.deployments as DeploymentManager | null;
+
+      if (!opts?.noSkipDeployed) {
+        const cached = getCachedDeployment(
+          deploymentCache,
+          normalizedId,
+          networkName,
+        );
+        if (isCompleteDeploymentWithTxId(cached)) {
+          return { programId: normalizedId, txId: cached.txId };
+        }
+      }
+
       const taskResult = await lre.tasks.run("deploy", {
         program: programName,
         network: networkName,
         noCompile: opts?.noCompile ?? true, // pre-compiled by recipe task
         priorityFee: opts?.priorityFee,
+        noSkipDeployed: opts?.noSkipDeployed,
       });
 
       // Unwrap DeployTaskResult discriminated union
       const wrapped = taskResult as { mode?: string; results?: unknown[] };
+      if (wrapped.mode && wrapped.mode !== "deploy") {
+        throw new DeployError(
+          `Expected deploy task to return mode "deploy", got "${wrapped.mode}". ` +
+            `This may indicate --preflight or --dry-run was passed unexpectedly.`,
+        );
+      }
+
       const results: Array<{ programId: string; txId: string }> =
         wrapped.mode === "deploy" && Array.isArray(wrapped.results)
           ? (wrapped.results as Array<{ programId: string; txId: string }>)
           : (taskResult as Array<{ programId: string; txId: string }>);
 
-      const last = results[results.length - 1];
-      if (!last) {
-        throw new DeployError(
-          `Deploy task returned no results for "${programName}".`,
-        );
+      const deployed = getDeployResultForProgram(results, normalizedId);
+      if (deployed) {
+        return {
+          programId: normalizeProgramId(deployed.programId),
+          txId: deployed.txId,
+        };
       }
-      return { programId: last.programId, txId: last.txId };
+
+      const cached = getCachedDeployment(
+        deploymentCache,
+        normalizedId,
+        networkName,
+      );
+      if (isCompleteDeploymentWithTxId(cached)) {
+        return { programId: normalizedId, txId: cached.txId };
+      }
+
+      throw createEmptyDeployResultError(
+        programName,
+        normalizedId,
+        networkName,
+        cached,
+      );
     },
 
     async execute(programId, transitionName, args, opts) {
@@ -115,4 +155,60 @@ function createCliDeploymentContext(
       return { outputs: result.outputs, txId: result.txId };
     },
   };
+}
+
+function normalizeProgramId(programName: string): string {
+  return programName.endsWith(".aleo") ? programName : `${programName}.aleo`;
+}
+
+function getCachedDeployment(
+  deploymentCache: DeploymentManager | null | undefined,
+  programId: string,
+  networkName: string,
+): DeploymentRecord | null {
+  return deploymentCache?.getCached(programId, networkName) ?? null;
+}
+
+function isCompleteDeploymentWithTxId(
+  record: DeploymentRecord | null,
+): record is DeploymentRecord & { readonly status: "complete"; readonly txId: string } {
+  return (
+    record?.status === "complete" &&
+    typeof record.txId === "string" &&
+    record.txId.length > 0
+  );
+}
+
+function getDeployResultForProgram(
+  results: Array<{ programId: string; txId: string }>,
+  normalizedId: string,
+): { programId: string; txId: string } | undefined {
+  return (
+    results.find((result) => normalizeProgramId(result.programId) === normalizedId) ??
+    results[results.length - 1]
+  );
+}
+
+function createEmptyDeployResultError(
+  requestedProgram: string,
+  normalizedId: string,
+  networkName: string,
+  cached: DeploymentRecord | null,
+): DeployError {
+  return new DeployError(
+    `Deploy task produced no transaction for "${requestedProgram}" on network "${networkName}", ` +
+      `and no complete cached deployment with a txId exists for "${normalizedId}" ` +
+      `(${describeCachedDeployment(cached)}). ` +
+      `Use { noSkipDeployed: true } when the recipe must fail instead of reusing or skipping an existing deployment.`,
+  );
+}
+
+function describeCachedDeployment(cached: DeploymentRecord | null): string {
+  if (!cached) {
+    return "cached state: none";
+  }
+  if (cached.status === "complete") {
+    return "cached state: complete record without txId";
+  }
+  return `cached state: ${cached.status} record without txId`;
 }

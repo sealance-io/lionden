@@ -204,10 +204,9 @@ const INITIAL_SUPPLY = 1_000_000n;
  * Run from CLI:   lionden recipe --file recipes/setup.ts
  * Run from tests: await setupToken(ctx)  (TestContext satisfies DeploymentContext)
  *
- * Note: this recipe is intended for first-time deployment only. Re-running it
- * on a network where token.aleo is already deployed will fail because the
- * deploy step returns no results when skipDeployed skips all targets and
- * DeploymentContext.deploy() does not accept a noSkipDeployed override.
+ * Note: this recipe is intended for first-time deployment only. It passes
+ * noSkipDeployed so re-running it fails instead of reusing an existing
+ * token.aleo deployment and minting the initial supply again.
  */
 export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
   const { deployer, treasury } = ctx.named.require({
@@ -215,7 +214,7 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
     treasury: "address",
   });
 
-  const { programId } = await ctx.deploy("token");
+  const { programId } = await ctx.deploy("token", { noSkipDeployed: true });
 
   const token = createTokenContract().connect(ctx.lre);
   await token.withSigner(deployer).mint_public.accepted({

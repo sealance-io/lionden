@@ -18,7 +18,10 @@ import type { ManagedDevnode } from "./devnode-lifecycle.js";
 import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
 import { clearFixtures } from "./fixtures.js";
 import { createTestLre } from "./lre-factory.js";
-import type { DeploymentCacheAccessor } from "./deployment-cache.js";
+import type {
+  CachedDeploymentRecord,
+  DeploymentCacheAccessor,
+} from "./deployment-cache.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,6 +86,8 @@ export interface DeployOptions {
   skipConfirm?: boolean;
   /** Skip compilation before deploying (artifacts must already exist) */
   noCompile?: boolean;
+  /** Fail instead of reusing or skipping already-deployed programs. */
+  noSkipDeployed?: boolean;
 }
 
 export interface DeployResult {
@@ -177,16 +182,14 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     },
 
     async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
-      const normalizedId = programName.endsWith(".aleo")
-        ? programName
-        : `${programName}.aleo`;
+      const normalizedId = normalizeProgramId(programName);
 
       // Check deployment cache first (sync, zero-latency for previously deployed programs)
       const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
-      if (deploymentCache) {
+      if (deploymentCache && !deployOpts?.noSkipDeployed) {
         const cached = deploymentCache.getCached(normalizedId, connectedNetwork);
-        if (cached && cached.status === "complete" && cached.txId) {
-          return { programId: cached.programId, txId: cached.txId };
+        if (isCompleteDeploymentWithTxId(cached)) {
+          return { programId: normalizedId, txId: cached.txId };
         }
       }
 
@@ -196,6 +199,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,
         noCompile: deployOpts?.noCompile,
+        noSkipDeployed: deployOpts?.noSkipDeployed,
       });
 
       // Unwrap DeployTaskResult discriminated union
@@ -213,11 +217,25 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
           ? (wrapped.results as Array<{ programId: string; txId: string }>)
           : (taskResult as Array<{ programId: string; txId: string }>);
 
-      const last = results[results.length - 1];
-      if (!last) {
-        throw new Error(`Deploy task returned no results for "${programName}".`);
+      const deployed = getDeployResultForProgram(results, normalizedId);
+      if (deployed) {
+        return {
+          programId: normalizeProgramId(deployed.programId),
+          txId: deployed.txId,
+        };
       }
-      return { programId: last.programId, txId: last.txId };
+
+      const cached = deploymentCache?.getCached(normalizedId, connectedNetwork) ?? null;
+      if (isCompleteDeploymentWithTxId(cached)) {
+        return { programId: normalizedId, txId: cached.txId };
+      }
+
+      throw createEmptyDeployResultError(
+        programName,
+        normalizedId,
+        connectedNetwork,
+        cached,
+      );
     },
 
     execute: executeRaw,
@@ -243,4 +261,54 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   };
 
   return ctx;
+}
+
+function normalizeProgramId(programName: string): string {
+  return programName.endsWith(".aleo") ? programName : `${programName}.aleo`;
+}
+
+function isCompleteDeploymentWithTxId(
+  record: CachedDeploymentRecord | null,
+): record is CachedDeploymentRecord & { readonly txId: string } {
+  return (
+    record?.status === "complete" &&
+    typeof record.txId === "string" &&
+    record.txId.length > 0
+  );
+}
+
+function getDeployResultForProgram(
+  results: Array<{ programId: string; txId: string }>,
+  normalizedId: string,
+): { programId: string; txId: string } | undefined {
+  return (
+    results.find((result) => normalizeProgramId(result.programId) === normalizedId) ??
+    results[results.length - 1]
+  );
+}
+
+function createEmptyDeployResultError(
+  requestedProgram: string,
+  normalizedId: string,
+  networkName: string,
+  cached: CachedDeploymentRecord | null,
+): Error {
+  return new Error(
+    `Deploy task produced no transaction for "${requestedProgram}" on network "${networkName}", ` +
+      `and no complete cached deployment with a txId exists for "${normalizedId}" ` +
+      `(${describeCachedDeployment(cached)}). ` +
+      `Use { noSkipDeployed: true } when the recipe or test setup must fail instead of reusing or skipping an existing deployment.`,
+  );
+}
+
+function describeCachedDeployment(
+  cached: CachedDeploymentRecord | null,
+): string {
+  if (!cached) {
+    return "cached state: none";
+  }
+  if (cached.status === "complete") {
+    return "cached state: complete record without txId";
+  }
+  return `cached state: ${cached.status} record without txId`;
 }
