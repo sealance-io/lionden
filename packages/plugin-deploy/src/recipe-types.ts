@@ -48,6 +48,8 @@ export interface DeploymentContext {
 export interface RecipeDeployOptions {
   priorityFee?: number;
   noCompile?: boolean;
+  /** Fail instead of reusing or skipping already-deployed programs. */
+  noSkipDeployed?: boolean;
 }
 
 export interface RecipeDeployResult {

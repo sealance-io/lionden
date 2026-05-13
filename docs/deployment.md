@@ -253,9 +253,11 @@ lionden recipe --file ./recipes/setup.ts --no-compile
 
 The recipe task compiles all programs once before running the recipe function. Individual `ctx.deploy()` calls default to `{ noCompile: true }` to avoid redundant compilation in multi-deploy recipes.
 
+`ctx.deploy()` may return an existing complete deployment record when the requested program is already deployed and local state has a `txId`. Degraded or recovered records are not returned because they do not identify the original deployment transaction. Use `{ noSkipDeployed: true }` for first-time-only recipes that should fail instead of reusing or skipping an existing deployment.
+
 `DeploymentContext` provides:
 
-- `deploy(programName, opts?)` — deploys a program and returns `{ programId, txId }`
+- `deploy(programName, opts?)` — deploys a program or returns a cached complete deployment as `{ programId, txId }`
 - `execute(programId, transitionName, args, opts?)` — executes a transition
 - `accounts` — well-known devnode accounts (empty array on HTTP networks)
 - `namedAccounts` — resolved named accounts for the active network (see [Named Accounts](#named-accounts))
@@ -350,7 +352,7 @@ export const setupToken: DeploymentRecipe = async (ctx) => {
     deployer: "signer",
     treasury: "address",
   });
-  await ctx.deploy("token");
+  await ctx.deploy("token", { noSkipDeployed: true });
 
   await ctx.execute("token.aleo", "mint_public", [treasury.address, "10000u64"], {
     signer: deployer,

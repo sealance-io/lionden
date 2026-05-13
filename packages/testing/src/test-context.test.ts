@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
 import { createMockConnection } from "@lionden/test-internals";
+import type {
+  CachedDeploymentRecord,
+  DeploymentCacheAccessor,
+} from "./deployment-cache.js";
 
 vi.mock("@lionden/core", async (importOriginal) => {
   const original = await importOriginal<typeof import("@lionden/core")>();
@@ -113,6 +117,35 @@ function mockLre(): LionDenRuntimeEnvironment {
     globalOptions: {},
     namedAccounts: {},
   } as unknown as LionDenRuntimeEnvironment;
+}
+
+function cachedDeployment(
+  programId: string,
+  options: {
+    readonly status?: string;
+    readonly txId?: string | null;
+    readonly blockHeight?: number | null;
+  } = {},
+): CachedDeploymentRecord {
+  return {
+    status: options.status ?? "complete",
+    programId,
+    txId: options.txId === undefined ? "at1cached" : options.txId,
+    blockHeight: options.blockHeight === undefined ? 1 : options.blockHeight,
+    constructor: { type: "noupgrade" },
+  };
+}
+
+function attachDeploymentCache(
+  lre: LionDenRuntimeEnvironment,
+  getCached: DeploymentCacheAccessor["getCached"],
+): void {
+  Object.defineProperty(lre, "deployments", {
+    value: {
+      getCached,
+      invalidateSession: vi.fn(),
+    } satisfies DeploymentCacheAccessor,
+  });
 }
 
 describe("test-context", () => {
@@ -261,6 +294,7 @@ describe("test-context", () => {
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
+        noSkipDeployed: undefined,
       });
       expect(result.programId).toBe("hello.aleo");
       expect(result.txId).toBe("at1deploy");
@@ -278,6 +312,117 @@ describe("test-context", () => {
         priorityFee: 1000,
         skipConfirm: true,
         noCompile: undefined,
+        noSkipDeployed: undefined,
+      });
+    });
+
+    it("returns a cached complete deployment without calling deploy", async () => {
+      const lre = mockLre();
+      const getCached = vi
+        .fn<DeploymentCacheAccessor["getCached"]>()
+        .mockReturnValue(cachedDeployment("hello.aleo"));
+      attachDeploymentCache(lre, getCached);
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.deploy("hello");
+
+      expect(result).toEqual({ programId: "hello.aleo", txId: "at1cached" });
+      expect(getCached).toHaveBeenCalledWith("hello.aleo", "devnode");
+      expect(lre.tasks.run).not.toHaveBeenCalled();
+    });
+
+    it("bypasses the cached pre-check when noSkipDeployed is true", async () => {
+      const lre = mockLre();
+      const getCached = vi
+        .fn<DeploymentCacheAccessor["getCached"]>()
+        .mockReturnValue(cachedDeployment("hello.aleo"));
+      attachDeploymentCache(lre, getCached);
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.deploy("hello", { noSkipDeployed: true });
+
+      expect(result).toEqual({ programId: "hello.aleo", txId: "at1deploy" });
+      expect(getCached).not.toHaveBeenCalled();
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "hello",
+        network: "devnode",
+        priorityFee: undefined,
+        skipConfirm: undefined,
+        noCompile: undefined,
+        noSkipDeployed: true,
+      });
+    });
+
+    it("returns complete cached state after an empty deploy result", async () => {
+      const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [],
+      });
+      const getCached = vi
+        .fn<DeploymentCacheAccessor["getCached"]>()
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce(cachedDeployment("hello.aleo", { txId: "at1post" }));
+      attachDeploymentCache(lre, getCached);
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.deploy("hello");
+
+      expect(result).toEqual({ programId: "hello.aleo", txId: "at1post" });
+      expect(getCached).toHaveBeenCalledTimes(2);
+    });
+
+    it("throws clearly when empty deploy results leave only degraded cached state", async () => {
+      const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [],
+      });
+      const getCached = vi
+        .fn<DeploymentCacheAccessor["getCached"]>()
+        .mockReturnValue(cachedDeployment("hello.aleo", {
+          status: "degraded",
+          txId: null,
+          blockHeight: null,
+        }));
+      attachDeploymentCache(lre, getCached);
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await expect(ctx.deploy("hello")).rejects.toThrow(
+        /no complete cached deployment with a txId exists for "hello\.aleo".*degraded record without txId/s,
+      );
+    });
+
+    it("throws clearly when empty deploy results have no complete cached state", async () => {
+      const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [],
+      });
+      attachDeploymentCache(
+        lre,
+        vi.fn<DeploymentCacheAccessor["getCached"]>().mockReturnValue(null),
+      );
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await expect(ctx.deploy("hello")).rejects.toThrow(
+        /no complete cached deployment with a txId exists for "hello\.aleo".*cached state: none/s,
+      );
+    });
+
+    it("passes noSkipDeployed through to the deploy task", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.deploy("token", { noSkipDeployed: true });
+
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "token",
+        network: "devnode",
+        priorityFee: undefined,
+        skipConfirm: undefined,
+        noCompile: undefined,
+        noSkipDeployed: true,
       });
     });
   });

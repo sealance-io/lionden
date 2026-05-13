@@ -297,6 +297,8 @@ What `setup()` gives you:
 - `ctx.namedAccounts` and `ctx.named.signer(...)` / `.address(...)` / `.require(...)` — see [Named Accounts](#named-accounts)
 - `ctx.deploy(name, opts?)`, `ctx.execute(...)`, `ctx.raw.execute(...)`, `ctx.advanceBlocks(n)`, `ctx.teardown()`
 
+`ctx.deploy()` can return a cached complete deployment `{ programId, txId }` when the program is already deployed in the connected context. Pass `{ noSkipDeployed: true }` when a test fixture must prove the deploy happened in that run.
+
 `setup()` honors `testing.autoStartDevnode`. The devnode is started once per `loadFixture()` and torn down by `teardown()`. `loadFixture()` caches the result across tests in the same file/suite — keep deploy logic in the fixture function so you don't redeploy per test.
 
 `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so a deployment recipe written for the CLI can be called directly from a test fixture without casts. See `examples/token/test/token.test.ts` for a recipe-driven fixture.
@@ -399,7 +401,7 @@ export const setupToken: DeploymentRecipe = async (ctx) => {
     deployer: "signer",
     treasury: "address",
   });
-  await ctx.deploy("token");
+  await ctx.deploy("token", { noSkipDeployed: true });
 
   const token = createTokenContract().connect(ctx.lre);
   await token.withSigner(deployer).mint_public.accepted({
@@ -426,7 +428,7 @@ Or from a test, since `TestContext` structurally satisfies `DeploymentContext`:
 await setupToken(ctx);
 ```
 
-The recipe task compiles once up front, then individual `ctx.deploy()` calls default to `noCompile: true`.
+The recipe task compiles once up front, then individual `ctx.deploy()` calls default to `noCompile: true`. `ctx.deploy()` may return an existing complete deployment record; pass `{ noSkipDeployed: true }` for first-time-only setup recipes that should fail instead of reusing an existing deployment.
 
 ## Upgrading Programs
 
