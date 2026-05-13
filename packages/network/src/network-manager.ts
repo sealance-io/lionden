@@ -136,6 +136,16 @@ export class NetworkManagerImpl implements NetworkManager {
     return conn.waitForConfirmation(txId, timeout);
   }
 
+  async getTransitionOutputs(
+    txId: string,
+    programId: string,
+    transitionName: string,
+    timeout?: number,
+  ) {
+    const conn = this.requireConnection();
+    return conn.getTransitionOutputs(txId, programId, transitionName, timeout);
+  }
+
   private requireConnection(): NetworkConnection {
     if (!this.activeConnection) {
       throw new Error(

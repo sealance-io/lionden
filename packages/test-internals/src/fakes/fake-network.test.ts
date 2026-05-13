@@ -40,7 +40,9 @@ describe("FakeNetworkConnection", () => {
       txId: "at1custom",
     });
 
-    const result = await conn.execute("token.aleo", "mint", ["100u64"]);
+    const result = await conn.execute("token.aleo", "mint", ["100u64"], {
+      awaitConfirmation: true,
+    });
     expect(result.outputs).toEqual(["100u64"]);
     expect(result.txId).toBe("at1custom");
   });
@@ -49,8 +51,20 @@ describe("FakeNetworkConnection", () => {
     const conn = new FakeNetworkConnection();
     conn.setDefaultExecuteResponse({ outputs: ["999u32"] });
 
-    const result = await conn.execute("any.aleo", "anything", []);
+    const result = await conn.execute("any.aleo", "anything", [], {
+      awaitConfirmation: true,
+    });
     expect(result.outputs).toEqual(["999u32"]);
+  });
+
+  it("execute is fire-and-forget on-chain by default (mirrors AleoConnection)", async () => {
+    const conn = new FakeNetworkConnection();
+    conn.setDefaultExecuteResponse({ outputs: ["999u32"] });
+
+    const result = await conn.execute("any.aleo", "anything", []);
+    expect(result.outputs).toEqual([]);
+    expect(result.rawOutputs).toBeUndefined();
+    expect(result.txId).toBeDefined();
   });
 
   it("execute auto-generates txId when response has none", async () => {
@@ -220,7 +234,9 @@ describe("FakeNetworkManager", () => {
     const manager = new FakeNetworkManager({ connection: conn });
     await manager.connect();
 
-    const result = await manager.execute("p.aleo", "fn", []);
+    const result = await manager.execute("p.aleo", "fn", [], {
+      awaitConfirmation: true,
+    });
     expect(result.outputs).toEqual(["42u32"]);
     expect(conn.getCallsTo("execute")).toHaveLength(1);
   });

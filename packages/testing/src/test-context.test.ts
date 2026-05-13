@@ -54,6 +54,7 @@ function mockLre(options: { readonly connection?: NetworkConnection } = {}): Lio
     execute: vi.fn(),
     getMappingValue: vi.fn(),
     waitForConfirmation: vi.fn(),
+    getTransitionOutputs: vi.fn(),
   };
 
   return {
@@ -536,7 +537,8 @@ describe("test-context", () => {
       await ctx.execute("hello.aleo", "main", ["1u32", "2u32"]);
 
       expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", ["1u32", "2u32"], { mode: "onchain", fee: undefined, prove: false },
+        "hello.aleo", "main", ["1u32", "2u32"],
+        { mode: "onchain", fee: undefined, prove: false, signer: undefined, awaitConfirmation: true },
       );
     });
 
@@ -548,7 +550,8 @@ describe("test-context", () => {
       await ctx.execute("hello.aleo", "main", ["1u32"]);
 
       expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", ["1u32"], { mode: "onchain", fee: undefined, prove: true },
+        "hello.aleo", "main", ["1u32"],
+        { mode: "onchain", fee: undefined, prove: true, signer: undefined, awaitConfirmation: true },
       );
     });
 
@@ -559,7 +562,8 @@ describe("test-context", () => {
       await ctx.execute("hello.aleo", "main", [], { mode: "local" });
 
       expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", [], { mode: "local", fee: undefined, prove: false },
+        "hello.aleo", "main", [],
+        { mode: "local", fee: undefined, prove: false, signer: undefined },
       );
     });
 
@@ -570,8 +574,38 @@ describe("test-context", () => {
       await ctx.execute("hello.aleo", "main", [], { mode: "onchain", fee: 500 });
 
       expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", [], { mode: "onchain", fee: 500, prove: false },
+        "hello.aleo", "main", [],
+        { mode: "onchain", fee: 500, prove: false, signer: undefined, awaitConfirmation: true },
       );
+    });
+
+    it("forwards awaitConfirmation: false to the underlying connection", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.execute("hello.aleo", "main", [], { awaitConfirmation: false });
+
+      expect(ctx.connection.execute).toHaveBeenCalledWith(
+        "hello.aleo", "main", [],
+        { mode: "onchain", fee: undefined, prove: false, signer: undefined, awaitConfirmation: false },
+      );
+    });
+
+    it("surfaces rawOutputs when the underlying connection returns them", async () => {
+      const connection = createMockConnection({
+        execute: vi.fn().mockResolvedValue({
+          outputs: ["1u32"],
+          rawOutputs: ["1u32"],
+          txId: "at1exec",
+        }),
+      });
+      const lre = mockLre({ connection });
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.execute("hello.aleo", "main", []);
+      expect(result.rawOutputs).toEqual(["1u32"]);
+      expect(result.outputs).toEqual(["1u32"]);
+      expect(result.txId).toBe("at1exec");
     });
   });
 
@@ -583,7 +617,20 @@ describe("test-context", () => {
       await ctx.raw.execute("hello.aleo", "post_upgrade", ["1u32"], { mode: "local" });
 
       expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "post_upgrade", ["1u32"], { mode: "local", fee: undefined, prove: false },
+        "hello.aleo", "post_upgrade", ["1u32"],
+        { mode: "local", fee: undefined, prove: false, signer: undefined },
+      );
+    });
+
+    it("defaults to awaitConfirmation: true on the on-chain path", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.raw.execute("hello.aleo", "post_upgrade", ["1u32"]);
+
+      expect(ctx.connection.execute).toHaveBeenCalledWith(
+        "hello.aleo", "post_upgrade", ["1u32"],
+        { mode: "onchain", fee: undefined, prove: false, signer: undefined, awaitConfirmation: true },
       );
     });
 

@@ -37,7 +37,11 @@ vi.mock("./sdk-adapter.js", () => ({
 }));
 
 import { AleoConnection } from "./connection.js";
-import { NetworkConfirmationTimeoutError } from "./types.js";
+import {
+  NetworkConfirmationTimeoutError,
+  TransitionRejectedError,
+  TransitionSelectionError,
+} from "./types.js";
 
 function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>) {
   return new AleoConnection({
@@ -1679,6 +1683,173 @@ describe("AleoConnection", () => {
 
       expect(result.status).toBe("accepted");
       expect(confirmedCallCount).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getTransitionOutputs() + execute() awaitConfirmation behavior
+  // -------------------------------------------------------------------------
+
+  describe("getTransitionOutputs() / awaitConfirmation", () => {
+    let fetchMock: ReturnType<typeof vi.fn>;
+    const TEST_BLOCK_HASH = "ab1blockconfirmoutputs00000000000000000000000000000000000000";
+
+    type Transition = {
+      program: string;
+      function: string;
+      outputs: Array<Record<string, unknown>>;
+      tpk?: string;
+    };
+
+    function mockConfirmation(
+      transitions: readonly Transition[],
+      opts: { txId?: string; status?: "accepted" | "rejected"; height?: number } = {},
+    ) {
+      const txId = opts.txId ?? "at1broadcast";
+      const status = opts.status ?? "accepted";
+      const height = opts.height ?? 42;
+      // Aleo confirms rejected execute transactions as fee-only on inclusion;
+      // the chain's parser keys off transaction.type for status, not the outer
+      // confirmation envelope's status field.
+      const txInner: Record<string, unknown> =
+        status === "rejected"
+          ? { type: "fee", id: txId }
+          : {
+              type: "execute",
+              id: txId,
+              execution: {
+                transitions: transitions.map((t) => ({
+                  program: t.program,
+                  function: t.function,
+                  outputs: t.outputs,
+                  tpk: t.tpk ?? `tpk_${t.program}_${t.function}`,
+                })),
+              },
+            };
+      const txBody: Record<string, unknown> = {
+        status,
+        type: "execute",
+        index: 0,
+        finalize: [],
+        transaction: txInner,
+      };
+      const blockBody = {
+        block_hash: TEST_BLOCK_HASH,
+        header: { metadata: { network: 1, round: height, height } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => txBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(TEST_BLOCK_HASH) };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => blockBody };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+    }
+
+    beforeEach(() => {
+      fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+    });
+
+    it("execute() with awaitConfirmation: true returns parsed outputs and rawOutputs", async () => {
+      mockConfirmation([
+        {
+          program: "token.aleo",
+          function: "mint_public",
+          outputs: [
+            { type: "public", value: "100u64" },
+            { type: "public", value: "aleo1recipient" },
+          ],
+        },
+      ]);
+      const connection = createDevnodeConnection();
+
+      const result = await connection.execute("token.aleo", "mint_public", ["100u64"], {
+        awaitConfirmation: true,
+      });
+
+      expect(result.txId).toBe("at1broadcast");
+      expect(result.outputs).toEqual(["100u64", "aleo1recipient"]);
+      expect(result.rawOutputs).toEqual(["100u64", "aleo1recipient"]);
+    });
+
+    it("execute() with awaitConfirmation omitted stays fire-and-forget", async () => {
+      const connection = createDevnodeConnection();
+
+      const result = await connection.execute("token.aleo", "mint_public", ["100u64"]);
+
+      expect(result.outputs).toEqual([]);
+      expect(result.rawOutputs).toBeUndefined();
+      expect(result.txId).toBe("at1broadcast");
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("execute() with awaitConfirmation: false stays fire-and-forget", async () => {
+      const connection = createDevnodeConnection();
+
+      const result = await connection.execute("token.aleo", "mint_public", ["100u64"], {
+        awaitConfirmation: false,
+      });
+
+      expect(result.outputs).toEqual([]);
+      expect(result.rawOutputs).toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("execute() with awaitConfirmation: true throws TransitionRejectedError when rejected", async () => {
+      mockConfirmation([], { status: "rejected" });
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.execute("token.aleo", "mint_public", ["100u64"], {
+          awaitConfirmation: true,
+        }),
+      ).rejects.toBeInstanceOf(TransitionRejectedError);
+    });
+
+    it("getTransitionOutputs() returns outputs for the matching transition", async () => {
+      mockConfirmation([
+        {
+          program: "token.aleo",
+          function: "mint_public",
+          outputs: [{ type: "public", value: "100u64" }],
+        },
+      ]);
+      const connection = createDevnodeConnection();
+
+      const result = await connection.getTransitionOutputs(
+        "at1broadcast",
+        "token.aleo",
+        "mint_public",
+      );
+
+      expect(result.outputs).toEqual(["100u64"]);
+      expect(result.rawOutputs).toEqual(["100u64"]);
+      expect(result.txId).toBe("at1broadcast");
+    });
+
+    it("getTransitionOutputs() throws TransitionSelectionError when no transition matches", async () => {
+      mockConfirmation([
+        {
+          program: "token.aleo",
+          function: "approve",
+          outputs: [],
+        },
+      ]);
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.getTransitionOutputs(
+          "at1broadcast",
+          "token.aleo",
+          "mint_public",
+        ),
+      ).rejects.toBeInstanceOf(TransitionSelectionError);
     });
   });
 

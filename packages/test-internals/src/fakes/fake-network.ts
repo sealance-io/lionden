@@ -8,7 +8,11 @@ import type {
   DevnodeAccount,
 } from "@lionden/network";
 import type { AleoNetwork, NamedAccounts } from "@lionden/config";
-import { DEVNODE_ACCOUNTS } from "@lionden/network";
+import {
+  DEVNODE_ACCOUNTS,
+  TransitionRejectedError,
+  selectMatchingTransition,
+} from "@lionden/network";
 
 // ---------------------------------------------------------------------------
 // Call recording
@@ -177,18 +181,63 @@ export class FakeNetworkConnection implements NetworkConnection {
     const response = this.executeResponses.get(key) ?? this.defaultExecuteResponse;
     const txId = response.txId ?? `at1fake${this.txCounter++}`;
     this.blockHeight++;
-    // Memo the originating transition so waitForConfirmation(txId) can mirror
-    // its outputs without the test having to wire transitions[] separately.
-    // Only memo for on-chain executes — local-mode executes don't broadcast.
-    if (options?.mode !== "local") {
-      this.confirmedTransitionByTxId.set(txId, {
-        programId,
-        transitionName,
-        rawOutputs: response.outputs,
-        transitionPublicKey: "tpk_synthetic_" + txId,
-      });
+    if (options?.mode === "local") {
+      // Local mode: no broadcast, no confirmation, no memoization. Production
+      // AleoConnection returns the SDK's local execution outputs here.
+      return { outputs: response.outputs, txId };
     }
-    return { outputs: response.outputs, txId };
+    // On-chain: memo the originating transition so waitForConfirmation /
+    // getTransitionOutputs can mirror its outputs later.
+    this.confirmedTransitionByTxId.set(txId, {
+      programId,
+      transitionName,
+      rawOutputs: response.outputs,
+      transitionPublicKey: "tpk_synthetic_" + txId,
+    });
+    if (options?.awaitConfirmation === true) {
+      return this.getTransitionOutputs(txId, programId, transitionName);
+    }
+    // Fire-and-forget on-chain — mirror production AleoConnection.execute,
+    // which returns outputs: [] when the caller didn't opt into awaiting.
+    return { outputs: [], txId };
+  }
+
+  async getTransitionOutputs(
+    txId: string,
+    programId: string,
+    transitionName: string,
+    timeout?: number,
+  ): Promise<TransitionCallResult> {
+    this.calls.push({
+      method: "getTransitionOutputs",
+      args: [txId, programId, transitionName, timeout],
+      timestamp: Date.now(),
+    });
+    const confirmed = await this.waitForConfirmation(txId, timeout);
+    if (confirmed.status === "rejected") {
+      throw new TransitionRejectedError(
+        `Transition ${programId}/${transitionName} was rejected (fake; txId ${txId}).`,
+        {
+          txId: confirmed.txId,
+          programId,
+          transitionName,
+          blockHeight: confirmed.blockHeight,
+        },
+      );
+    }
+    const transition = selectMatchingTransition(
+      programId,
+      transitionName,
+      confirmed.transitions,
+    );
+    const outputs = transition.rawOutputs.map((o) =>
+      typeof o === "string" ? o : o.id,
+    );
+    return {
+      outputs,
+      rawOutputs: transition.rawOutputs,
+      txId: confirmed.txId,
+    };
   }
 
   async waitForConfirmation(
@@ -328,6 +377,20 @@ export class FakeNetworkManager implements NetworkManager {
 
   async waitForConfirmation(txId: string, timeout?: number) {
     return this.requireConnection().waitForConfirmation(txId, timeout);
+  }
+
+  async getTransitionOutputs(
+    txId: string,
+    programId: string,
+    transitionName: string,
+    timeout?: number,
+  ): Promise<TransitionCallResult> {
+    return this.requireConnection().getTransitionOutputs(
+      txId,
+      programId,
+      transitionName,
+      timeout,
+    );
   }
 
   private requireConnection(): FakeNetworkConnection {

@@ -63,6 +63,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Transaction confirmation polling: `GET /{network}/transaction/confirmed/{txId}`, block-height resolution via `GET /{network}/find/blockHash/{txId}` + `GET /{network}/block/{blockHash}` | same |
 | Mapping reads: `connection.getMappingValue(programId, mapping, key)` | same |
 | Balance and block-height helpers on `AleoConnection` | same |
+| Low-level `connection.execute()` is fire-and-forget by default (broadcasts, returns `{ outputs: [], txId }`); awaited outputs available via `{ awaitConfirmation: true }` or the standalone `connection.getTransitionOutputs(txId, programId, transitionName)` helper. Rejected → `TransitionRejectedError`; 0/>1 transition matches → `TransitionSelectionError` (see [`network.md` § `execute()` and transition outputs](network.md#execute-and-transition-outputs)) | `packages/network/src/connection.ts`, `packages/network/src/transition-selector.ts` |
 | Deployed program source fetch via `getProgramSource()` | same |
 | `node` task: `--port` (default 3030), `--manual-blocks`, `--network` (testnet/mainnet/canary) | `packages/plugin-network/src/index.ts` |
 | `run` task: positional script path, optional `--network`; imports the script and calls `default` or `main` | same |
@@ -99,7 +100,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Assertions exported: `assertMappingValue`, `assertMappingEmpty`, `assertTransactionConfirmed`, `assertTransactionRejected`, `assertBalanceAtLeast`, `assertBalance`, `assertBlockHeightAtLeast` | `packages/testing/src/index.ts` line 24-33, `packages/testing/src/assertions.ts` |
 | Devnode account utilities: `DEVNODE_ACCOUNTS`, `getDefaultAccount`, `getAccount`, `getAddresses`, `getAccountByAddress` | `packages/testing/src/index.ts` line 36-42 |
 | Typed broadcast results: `AcceptedTransition<T>` carries decoded `outputs` parsed from the confirmed transaction (records → `EncryptedRecord<T>`, private plaintext → `EncryptedValue<T>`, public plaintext → decoded eagerly) | base contract `expectAcceptedTyped` |
-| `ctx.raw.execute(programId, transitionName, args[])` escape hatch for post-upgrade transitions and dynamic ABI calls | `packages/testing/src/test-context.ts` |
+| `ctx.raw.execute(programId, transitionName, args[])` escape hatch for post-upgrade transitions and dynamic ABI calls. Awaits confirmation and returns parsed `outputs` (and `rawOutputs` for id-only dynamic-record entries) by default; reentrant flows opt out via `{ awaitConfirmation: false }` + `ctx.connection.waitForConfirmation(txId)` | `packages/testing/src/test-context.ts` |
 | `test` task: `--grep`, `--timeout`, `--no-compile`, `--prove` (sets `LIONDEN_PROVE=true`) | `packages/plugin-test/src/index.ts` |
 | Vitest integration sets `LIONDEN_PROJECT_ROOT`, scopes discovery to `test/**/*.test.ts`, returns summarized counts | `packages/plugin-test/src/test-runner.ts` |
 | Vitest `agent` reporter usage convention (`npm run test:agent`) for low-noise agent runs | repo root `package.json` |
@@ -162,14 +163,6 @@ Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bub
 
 The features below are described or implied by LionDen's design intent (see [`vision-and-roadmap.md`](vision-and-roadmap.md)) and the shipped subsystem docs but are either incomplete, untested, or carry a known TODO. Grouped by category.
 
-### Known TODOs in code
-
-- **Imperative `connection.execute()` returns empty `outputs`.** `packages/network/src/connection.ts:313` has `// TODO: Parse outputs from transaction once confirmed`, returning `{ outputs: [], txId }` after on-chain broadcast.
-  - **Nuance**: this is on the low-level imperative API. The typed wrapper path (`.accepted()` / `.settled()` / `.rejected()` from generated bindings) does **not** depend on this — it parses `rawOutputs` from the confirmed transaction directly and projects them into the typed `outputs` shape. So:
-    - Code using typechain wrappers: full output parsing works.
-    - Code using the imperative `connection.execute(...)` path directly — including `ctx.execute(...)` / `ctx.raw.execute(...)` in on-chain mode — gets `txId` only, no outputs.
-  - Action: either implement parsing on the imperative path, or document the imperative API as txId-only and steer all output assertions through typed wrappers.
-
 ### Integration gaps (code exists, no end-to-end coverage)
 
 - **HTTP / testnet deploy path**: `pm.deploy()`, HTTP fee estimation, HTTP balance check, HTTP confirmation polling, API key handling — all implemented, none exercised by a probe against a real endpoint.
@@ -226,14 +219,14 @@ This is a **proposed** cut for a 1.0 release, not a ratified decision. It draws 
 | 6 | At least one passing HTTP-network end-to-end smoke (deploy + execute + export against a real testnet endpoint) | 🟡 Open | Without this, "deploy to mainnet/testnet" is unverified — biggest production-readiness gap |
 | 7 | Release-gate constructor probes for remaining risks: real `@checksum` authorization, `@custom` negative path, and `@noupgrade` rejection in the five-probe suite | 🟡 Open | Constructor types are core to ARC-0006 upgradability; aleo-ports cover some behavior, but the release probe set still misses security-relevant paths |
 | 8 | Negative-path probes for upgrade: wrong admin signer, constructor mutation between editions | 🟡 Open | Upgrade safety is a security boundary; happy-path-only is dangerous |
-| 9 | Resolve the `connection.execute()` outputs TODO — either implement parsing, or document the imperative API as txId-only with users steered to typed wrappers | 🟡 Open | Today the imperative path silently drops outputs; that surprises users using `ctx.execute(...)` / `ctx.raw.execute(...)` on-chain |
+| 9 | Resolve the `connection.execute()` outputs TODO — low-level `connection.execute()` is fire-and-forget by default; user-facing helpers (`ctx.execute`, `ctx.raw.execute`, recipe `execute`) auto-await and return parsed outputs; `connection.getTransitionOutputs(...)` + `awaitConfirmation: true` are the network-layer output paths | ✅ Done | `packages/network/src/connection.ts` (execute + new `getTransitionOutputs`), `packages/network/src/transition-selector.ts`, `packages/testing/src/test-context.ts`, `packages/plugin-deploy/src/recipe-task.ts` |
 | 10 | Pending-upgrade recovery probe (`action: "upgrade"` with `previousEdition`) | 🟡 Open | Upgrade-mid-crash recovery is the only state-recovery code path with no probe |
 | 11 | Curated type bindings (or equivalent typed helper) for `credits.aleo` and the most common network-imported programs | 🟡 Open | Today users call imported network programs through `ctx.raw.execute(...)` — no type safety. A curated binding for at least `credits.aleo` closes the most-cited DX gap until the generalized SDK ABI-extraction path (see §5) is available |
 | 12 | Proof-key disk caching (runtime + sidecar + fee keys) | ✅ Done | Filesystem-backed cache lands the predictable-heavyweight-flow win cited in §3. Compile-time pre-warm remains deferred; see [`research/key-caching.md`](research/key-caching.md) |
 
-Items 1-5 are shipped today. Item 12 is also shipped (per the §3 update above). Items 6-11 are the proposed open-set for 1.0: integration coverage, one documented-or-fixed TODO, and the curated `credits.aleo` bindings.
+Items 1-5 are shipped today. Items 9 and 12 are also shipped (per the entries above and the §3 update). Items 6-8, 10, and 11 are the remaining proposed open-set for 1.0: integration coverage, constructor / upgrade negative-path probes, and the curated `credits.aleo` bindings.
 
-If only one of 6-11 ships, item 6 (HTTP smoke) is the most operationally important. Item 9 is the lowest-effort.
+If only one of the open items ships, item 6 (HTTP smoke) is the most operationally important.
 
 ---
 
