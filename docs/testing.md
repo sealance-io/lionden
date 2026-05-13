@@ -61,6 +61,7 @@ Current behavior:
 
 - derives defaults from the first configured devnode network when available
 - starts a devnode unless the caller skips it
+- verifies a manually supplied devnode is reachable up front when setup uses a devnode network but did not start one
 - returns a managed handle with endpoint metadata
 - tears it down during cleanup
 
