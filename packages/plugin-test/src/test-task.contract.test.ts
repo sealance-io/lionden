@@ -95,6 +95,23 @@ describe("test task contract", () => {
     expect(vitestConfig.include).toEqual(["test/**/*.test.ts"]);
   });
 
+  it("uses positional test files as vitest include patterns and preserves --grep", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("test", {
+      noCompile: true,
+      grep: "orders",
+      _positional: ["test/orders.test.ts", "test/tally.test.ts"],
+    });
+
+    const { startVitest } = await import("vitest/node");
+    const callArgs = (startVitest as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const vitestConfig = callArgs[2] as Record<string, unknown>;
+
+    expect(vitestConfig.include).toEqual(["test/orders.test.ts", "test/tally.test.ts"]);
+    expect(vitestConfig.testNamePattern).toBe("orders");
+  });
+
   it("--timeout overrides default from config", async () => {
     const lre = createTestLre();
 
@@ -136,6 +153,28 @@ describe("test task contract", () => {
 
     const taskIds = compileSpy.mock.calls.map((c) => c[0]);
     expect(taskIds).toContain("compile");
+  });
+
+  it("defaults to serial file execution (fileParallelism: false)", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("test", { noCompile: true });
+
+    const { startVitest } = await import("vitest/node");
+    const callArgs = (startVitest as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const vitestConfig = callArgs[2] as Record<string, unknown>;
+    expect(vitestConfig.fileParallelism).toBe(false);
+  });
+
+  it("--parallel enables fileParallelism", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("test", { noCompile: true, parallel: true });
+
+    const { startVitest } = await import("vitest/node");
+    const callArgs = (startVitest as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const vitestConfig = callArgs[2] as Record<string, unknown>;
+    expect(vitestConfig.fileParallelism).toBe(true);
   });
 
   it("--prove sets LIONDEN_PROVE env var", async () => {

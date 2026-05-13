@@ -79,23 +79,37 @@ Current flow:
 
 Current task options:
 
+- `[files...]`
 - `--grep`
 - `--timeout`
 - `--no-compile`
 - `--prove`
+- `--parallel`
 
 `--prove` is forwarded through `LIONDEN_PROVE=true` so test execution can force proof generation.
+
+Use `lionden test [files...]` to run a managed Vitest subset while keeping LionDen's compile step, suite hooks, and managed devnode lifecycle:
+
+```bash
+lionden test test/orders.test.ts
+lionden test test/orders.test.ts test/tally.test.ts --grep orders
+lionden test "test/**/*.integration.test.ts"
+```
+
+File and glob positionals are passed to Vitest as include patterns with the LionDen project root as Vitest's root. They are not resolved relative to the shell's current working directory. File positionals compose with `--grep`: the file/glob list limits the test files, then Vitest applies the test-name pattern inside those files.
+
+LionDen does not currently prevalidate that each positional path exists. A typo such as `test/oders.test.ts` follows Vitest's no-match behavior; clearer no-matching-file UX is a future enhancement.
 
 ## Vitest Integration
 
 The programmatic Vitest runner currently:
 
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
-- scopes test discovery to `test/**/*.test.ts`
+- scopes test discovery to `test/**/*.test.ts` by default, or to the provided `lionden test [files...]` include patterns
 - applies timeout overrides from task args or config
 - returns summarized pass/fail counts
 
-Vitest remains a peer dependency of `@lionden/plugin-test`.
+Vitest remains a peer dependency of `@lionden/plugin-test`. Running `npx vitest` directly is still available, but it bypasses LionDen's compile step, testing hooks, and managed devnode lifecycle.
 
 ## Fixtures And Assertions
 

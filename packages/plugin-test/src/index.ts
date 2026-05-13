@@ -3,6 +3,7 @@ import {
   type TestingHookHandlers,
   type ConfigHookHandlers,
   type ConfigValidationError,
+  ArgumentType,
   task,
 } from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
@@ -64,11 +65,23 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     name: "prove",
     description: "Generate proofs during execution (slower)",
   })
+  .addFlag({
+    name: "parallel",
+    description: "Run test files in parallel (default: serial, to avoid devnode contention)",
+  })
+  .addPositionalArgument({
+    name: "files",
+    type: ArgumentType.FILE,
+    description: "Test file or glob patterns to run",
+  })
   .setAction(async (args, lre) => {
     const grep = args["grep"] as string | undefined;
     const timeout = args["timeout"] as number | undefined;
     const noCompile = args["noCompile"] as boolean | undefined;
     const prove = args["prove"] as boolean | undefined;
+    const parallel = args["parallel"] as boolean | undefined;
+    const positionals = args["_positional"] as string[] | undefined;
+    const files = positionals && positionals.length > 0 ? positionals : undefined;
 
     // 1. Compile unless --no-compile
     if (!noCompile) {
@@ -87,6 +100,8 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
         timeout: timeout ?? lre.config.testing.timeout,
         compile: !noCompile,
         prove: prove ?? false,
+        parallel: parallel ?? false,
+        files,
       });
 
       console.log(
