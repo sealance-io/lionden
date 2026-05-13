@@ -87,6 +87,61 @@ describe("CLI dispatch contract", () => {
     expect(actionCalls[0]!["name"]).toBe("world");
   });
 
+  it("reparses with LRE task metadata before dispatch", async () => {
+    const actionCalls: Record<string, unknown>[] = [];
+
+    const testPlugin: LionDenPlugin = {
+      id: "test-contract-plugin",
+      name: "Contract Test Plugin",
+      tasks: [
+        task("test", "Run tests")
+          .addFlag({ name: "noCompile", description: "Skip compile" })
+          .setAction(async (args) => {
+            actionCalls.push(args);
+          })
+          .build(),
+      ],
+    };
+
+    const projectDir = createTempProject(
+      `export default { leoVersion: "4.0.0" };`,
+    );
+    const configPath = findConfigFile(projectDir)!;
+    const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
+    const plugins = resolvePluginOrder([testPlugin]);
+    const globalOptionDefs = collectGlobalOptions(plugins);
+
+    const firstParsed = parseArgs(
+      ["test", "--no-compile", "test/skip-devnode.test.ts"],
+      globalOptionDefs,
+    );
+    expect(firstParsed.taskArgs).toEqual({
+      "no-compile": "test/skip-devnode.test.ts",
+    });
+
+    const { resolved } = await resolveConfig(
+      rawConfig as LionDenUserConfig,
+      plugins,
+      projectRoot,
+    );
+    const lre = createLre({ config: resolved, plugins });
+    const parsed = parseArgs(
+      ["test", "--no-compile", "test/skip-devnode.test.ts"],
+      globalOptionDefs,
+      (taskId) => lre.tasks.getTaskDefinition(taskId),
+    );
+
+    await dispatchTask(lre, parsed);
+
+    expect(actionCalls).toHaveLength(1);
+    expect(actionCalls[0]).toEqual(
+      expect.objectContaining({
+        noCompile: true,
+        _positional: ["test/skip-devnode.test.ts"],
+      }),
+    );
+  });
+
   it("loadConfigFile handles default export shape correctly", async () => {
     // Export an object with custom fields
     const projectDir = createTempProject(
