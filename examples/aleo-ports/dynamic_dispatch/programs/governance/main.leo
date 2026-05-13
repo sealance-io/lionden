@@ -16,15 +16,11 @@
 // call signature.  At the AVM level, the dispatch checks that the named
 // program has a matching `compute_power(u64) -> u64` function.
 //
-// Lionden deviation from upstream: upstream declares deploy-time deps in
-// `program.json` (`dependencies: [voting_power.aleo, quadratic_power.aleo]`).
-// Lionden's source-first layout has no `program.json`, and the
-// dependency-resolver only follows static `import` statements — identifier
-// literals like `'voting_power'` are not parsed as deps. So the dispatch
-// targets are listed as imports here even though they aren't consumed
-// statically; the runtime still uses dynamic dispatch via interface.
-import voting_power.aleo;
-import quadratic_power.aleo;
+// Dynamic dispatch targets are declared in lionden.config.ts under
+// `execution.imports["governance.aleo"]` rather than as static `import`
+// statements: identifier literals like `'voting_power'` are not parsed
+// as deploy-time deps, and lionden threads the configured runtime
+// imports through the SDK when this program executes.
 
 interface VotingStrategy {
     fn compute_power(balance: u64) -> u64;

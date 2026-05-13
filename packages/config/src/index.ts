@@ -23,6 +23,9 @@ export type {
   DeployConfig,
   SdkConfig,
   SdkKeyCacheConfig,
+  ExecutionConfig,
+  ResolvedExecutionConfig,
+  RuntimeImportRef,
   ResolvedPaths,
   ResolvedCompilerConfig,
   ResolvedCodegenConfig,
@@ -39,6 +42,15 @@ export type {
   ResolvedNamedAccountEntry,
   ResolvedNamedAccountsConfig,
 } from "./types.js";
+export type { RuntimeImportDiagnostic } from "./execution-imports.js";
+export {
+  normalizeProgramId,
+  looksLikePath,
+  classifyRuntimeImportRef,
+  isValidExecutionImportsMapKey,
+  normalizeRuntimeImportRef,
+  checkRuntimeImportRefExists,
+} from "./execution-imports.js";
 export type {
   LionDenUserConfigExtensions,
   LionDenResolvedConfigExtensions,

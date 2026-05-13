@@ -12,4 +12,9 @@ export default defineConfig({
     devnode: { type: "devnode", autoBlock: true },
   },
   testing: { timeout: 240_000 },
+  execution: {
+    imports: {
+      "governance.aleo": ["voting_power.aleo", "quadratic_power.aleo"],
+    },
+  },
 });

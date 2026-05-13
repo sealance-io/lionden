@@ -406,6 +406,7 @@ describe("compilePipeline network dep handling", () => {
         autoExport: false,
       },
       sdk: { keyCache: { storage: "memory" } },
+      execution: { imports: {} },
       namedAccounts: {},
       ...overrides,
     };

@@ -102,6 +102,13 @@ export interface ExecuteOptions {
   fee?: number;
   /** Override the signer for this execution. */
   signer?: Signer;
+  /**
+   * Additional programs to load into the VM at execute time. Each entry
+   * is a Leo program id (bare or `.aleo`) or a path to a local `.aleo`
+   * file. Required for transitions that perform dynamic dispatch where
+   * the targets cannot be inferred from static `import` statements.
+   */
+  imports?: readonly string[];
 }
 
 export interface ExecuteResult {
@@ -176,6 +183,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       fee: execOpts?.fee,
       prove,
       signer: execOpts?.signer,
+      ...(execOpts?.imports === undefined ? {} : { imports: execOpts.imports }),
     });
     return { outputs: result.outputs, txId: result.txId };
   };

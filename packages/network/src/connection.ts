@@ -5,7 +5,13 @@
  * transaction broadcasting, and to ProgramManager for transaction building.
  */
 
-import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
+import type {
+  AleoNetwork,
+  ResolvedSdkKeyCacheConfig,
+  RuntimeImportRef,
+} from "@lionden/config";
+import { normalizeRuntimeImportRef } from "@lionden/config";
+import * as fs from "node:fs";
 import type {
   SdkObjects,
   SdkProgramManagerBase,
@@ -39,6 +45,17 @@ export interface ConnectionOptions {
   artifactsDir?: string;
   /** Resolved Provable SDK key-cache config. */
   keyCache?: ResolvedSdkKeyCacheConfig;
+  /**
+   * Absolute project root, used to anchor relative path refs that arrive
+   * via per-call `ExecuteOptions.imports`. Config-level execution imports
+   * are already absolutized before they reach the connection.
+   */
+  projectRoot: string;
+  /**
+   * Resolved config-level runtime-import refs, keyed by dispatching
+   * program id. Concatenated with per-call refs at execute time.
+   */
+  executionImports?: Readonly<Record<string, readonly RuntimeImportRef[]>>;
 }
 
 /**
@@ -71,6 +88,8 @@ export class AleoConnection implements NetworkConnection {
   readonly apiKey?: string;
   private readonly artifactsDir?: string;
   private readonly keyCache?: ResolvedSdkKeyCacheConfig;
+  private readonly projectRoot: string;
+  private readonly executionImports: Readonly<Record<string, readonly RuntimeImportRef[]>>;
 
   private sdkObjects?: SdkObjects;
   private sdkObjectsPromise?: Promise<SdkObjects>;
@@ -101,6 +120,8 @@ export class AleoConnection implements NetworkConnection {
     this.apiKey = options.apiKey;
     this.artifactsDir = options.artifactsDir;
     this.keyCache = options.keyCache;
+    this.projectRoot = options.projectRoot;
+    this.executionImports = options.executionImports ?? {};
 
     // Devnode connections support block advancement
     if (this.type === "devnode") {
@@ -287,17 +308,27 @@ export class AleoConnection implements NetworkConnection {
       programManagerBase,
     } = await this.getEffectivePm(options?.signer?.privateKey);
     const pm = effectivePm as any;
+    const nc = effectiveNc as any;
     const mode = options?.mode ?? "onchain";
+
+    // Resolve runtime imports (config layer + per-call layer) once.
+    // Path refs are absolutized via @lionden/config helpers; missing files
+    // fail-fast here with a clear error before we touch the SDK.
+    const runtimeImports = this.collectRuntimeImports(programId, options?.imports);
+
+    // Resolve program source + transitive imports once for every mode.
+    // includeSidecar=true is safe everywhere; it's a cheap fs read and only
+    // consulted when the filesystem keycache path is exercised below.
+    const artifacts = await resolveProgramExecutionArtifacts({
+      artifactsDir: this.artifactsDir,
+      programId,
+      networkClient: nc,
+      includeSidecar: true,
+      runtimeImports,
+    });
 
     if (mode === "local") {
       // Local execution — run without generating proofs.
-      const nc = effectiveNc as any;
-      const artifacts = await resolveProgramExecutionArtifacts({
-        artifactsDir: this.artifactsDir,
-        programId,
-        networkClient: nc,
-      });
-
       const result = await pm.run(
         artifacts.source,
         transitionName,
@@ -319,6 +350,8 @@ export class AleoConnection implements NetworkConnection {
       !options?.prove &&
       typeof pm.buildDevnodeExecutionTransaction === "function";
 
+    const importsSlice = artifacts.imports === undefined ? {} : { imports: artifacts.imports };
+
     if (useDevnodeFastPath) {
       // Devnode fast-path — skips proof generation
       const tx = await pm.buildDevnodeExecutionTransaction({
@@ -327,16 +360,19 @@ export class AleoConnection implements NetworkConnection {
         inputs: args,
         priorityFee: options?.fee ?? 0,
         privateFee: options?.privateFee ?? false,
+        program: artifacts.source,
+        ...importsSlice,
       });
       txId = await this.broadcastTransaction(tx);
     } else {
-      const persistentExecution = await this.getPersistentExecutionOptions(
+      const persistentExtras = await this.getPersistentExecutionOptions(
         pm,
         programManagerBase,
-        effectiveNc as any,
+        nc,
         programId,
         transitionName,
         args,
+        artifacts,
       );
       // Standard execution via ProgramManager
       txId = await pm.execute({
@@ -345,12 +381,40 @@ export class AleoConnection implements NetworkConnection {
         inputs: args,
         priorityFee: options?.fee ?? 0,
         privateFee: options?.privateFee ?? false,
-        ...(persistentExecution ?? {}),
+        program: artifacts.source,
+        ...importsSlice,
+        ...(persistentExtras ?? {}),
       });
     }
 
     // TODO: Parse outputs from transaction once confirmed
     return { outputs: [], txId };
+  }
+
+  /**
+   * Merge config-level and per-call runtime-import refs. Per-call entries
+   * are normalized against `this.projectRoot`; path refs that don't exist
+   * fail-fast here with a config-style error. Output is sorted and deduped
+   * by `(kind, value)` for cache identity stability.
+   */
+  private collectRuntimeImports(
+    programId: string,
+    callRefs: readonly string[] | undefined,
+  ): readonly RuntimeImportRef[] {
+    const fromConfig = this.executionImports[programId] ?? [];
+    const fromCall: RuntimeImportRef[] = [];
+    for (const raw of callRefs ?? []) {
+      const ref = normalizeRuntimeImportRef(raw, this.projectRoot);
+      if (ref.kind === "path") {
+        if (!fs.existsSync(ref.absolutePath)) {
+          throw new Error(
+            `Runtime import path not found: ${ref.absolutePath} (from per-call options.imports ${JSON.stringify(raw)})`,
+          );
+        }
+      }
+      fromCall.push(ref);
+    }
+    return dedupAndSortRuntimeImports([...fromConfig, ...fromCall]);
   }
 
   private async getPersistentExecutionOptions(
@@ -360,17 +424,12 @@ export class AleoConnection implements NetworkConnection {
     programId: string,
     transitionName: string,
     args: string[],
+    artifacts: ProgramExecutionArtifacts,
   ): Promise<Record<string, unknown> | undefined> {
     if (this.keyCache?.storage !== "filesystem" || !this.keyCache.path) {
       return undefined;
     }
 
-    const artifacts = await resolveProgramExecutionArtifacts({
-      artifactsDir: this.artifactsDir,
-      programId,
-      networkClient: nc,
-      includeSidecar: true,
-    });
     const edition = await getLatestProgramEditionIfAvailable(nc, programId);
     const runtime = await import("./sdk-adapter.js");
     const sdkMetadata = runtime.getSdkRuntimeMetadata(this.networkId);
@@ -405,8 +464,6 @@ export class AleoConnection implements NetworkConnection {
     });
 
     return {
-      program: artifacts.source,
-      ...(artifacts.imports === undefined ? {} : { imports: artifacts.imports }),
       ...(edition === undefined ? {} : { edition }),
       provingKey: keys.provingKey,
       verifyingKey: keys.verifyingKey,
@@ -694,6 +751,26 @@ export class AleoConnection implements NetworkConnection {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function dedupAndSortRuntimeImports(
+  refs: readonly RuntimeImportRef[],
+): readonly RuntimeImportRef[] {
+  const seen = new Set<string>();
+  const out: RuntimeImportRef[] = [];
+  for (const ref of refs) {
+    const key = ref.kind === "programId" ? `id:${ref.programId}` : `path:${ref.absolutePath}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  out.sort((a, b) => {
+    const aKey = a.kind === "programId" ? a.programId : a.absolutePath;
+    const bKey = b.kind === "programId" ? b.programId : b.absolutePath;
+    if (aKey === bKey) return 0;
+    return aKey < bKey ? -1 : 1;
+  });
+  return out;
 }
 
 async function getLatestProgramEditionIfAvailable(

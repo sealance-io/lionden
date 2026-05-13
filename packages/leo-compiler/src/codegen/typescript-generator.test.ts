@@ -239,7 +239,7 @@ describe("generateBindings", () => {
   it("generates contract class extending BaseContract", () => {
     const output = generateBindings(SAMPLE_ABI);
     expect(output).toContain("export class TokenContract extends BaseContract");
-    expect(output).toContain('super("token.aleo")');
+    expect(output).toContain('super("token.aleo", options);');
   });
 
   it("generates typed transition methods", () => {
@@ -316,7 +316,7 @@ describe("generateBindings", () => {
 
   it("generates factory function", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("export function createTokenContract(): TokenContract");
+    expect(output).toContain("export function createTokenContract(options?: BaseContractOptions): TokenContract");
   });
 
   it("resolves second-order class name collision", () => {
@@ -344,7 +344,7 @@ describe("generateBindings", () => {
     };
     const output = generateBindings(abi);
     expect(output).toContain("export class TokenContractContract extends BaseContract");
-    expect(output).toContain("export function createTokenContractContract(): TokenContractContract");
+    expect(output).toContain("export function createTokenContractContract(options?: BaseContractOptions): TokenContractContract");
     // Interfaces must still use the original names
     expect(output).toContain("export interface Token {");
     expect(output).toContain("export interface TokenContract {");
