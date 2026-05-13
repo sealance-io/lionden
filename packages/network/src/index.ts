@@ -8,6 +8,7 @@ export type {
   ConfirmedTransitionRecord,
   ExecuteOptions,
   DevnodeStartOptions,
+  DevnodeLogMode,
   ConfirmationTimeoutStage,
   NetworkConfirmationTimeoutContext,
 } from "./types.js";

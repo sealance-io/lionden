@@ -61,6 +61,7 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     defaultValue: 3030,
   })
   .addFlag({ name: "manualBlocks", description: "Disable automatic block creation" })
+  .addFlag({ name: "quiet", description: "Suppress devnode log output" })
   .addOption({
     name: "network",
     type: "string",
@@ -70,6 +71,7 @@ const nodeTask = task("node", "Start a local Aleo devnode")
   .setAction(async (args, lre) => {
     const port = args["port"] as number;
     const manualBlocks = args["manualBlocks"] as boolean;
+    const quiet = args["quiet"] as boolean;
     const network = args["network"] as "testnet" | "mainnet" | "canary";
 
     const socketAddr = `127.0.0.1:${port}`;
@@ -105,6 +107,7 @@ const nodeTask = task("node", "Start a local Aleo devnode")
       network,
       leoBinary: lre.config.leoBinary,
       consensusHeights,
+      logMode: quiet ? "quiet-buffered" : "inherit",
     });
 
     console.log(`Devnode running at ${devnode.endpoint}`);
@@ -113,10 +116,13 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     }
     console.log("Press Ctrl-C to stop\n");
 
-    // Keep the process alive
-    await new Promise<void>(() => {
-      // Never resolves — runs until SIGINT/SIGTERM
-    });
+    const exit = await devnode.waitForExit();
+    // The SIGINT/SIGTERM shutdown handler calls process.exit(0) before we
+    // reach here, so this branch only runs on an unexpected devnode exit.
+    // Treat both non-zero codes and signal-only exits (e.g. SIGKILL →
+    // { code: null, signal: "SIGKILL" }) as failure.
+    const cleanExit = exit.code === 0 && exit.signal === null;
+    process.exit(cleanExit ? 0 : 1);
   })
   .build();
 

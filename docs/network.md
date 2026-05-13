@@ -63,9 +63,24 @@ Current `node` task flags:
 
 - `--port`
 - `--manual-blocks`
+- `--quiet`
 - `--network`
 
-The task keeps the process alive until interrupted.
+The task keeps the process alive until either Ctrl-C / SIGTERM (clean exit) or the devnode itself exits unexpectedly (in which case the task exits non-zero so wrapper scripts see the failure).
+
+### Devnode log mode
+
+`DevnodeManager.start({ logMode })` selects how the devnode subprocess's stdout/stderr are handled. Both piped streams are always drained — never left attached without a consumer — to avoid a pipe-fill stall under heavy log output.
+
+| `logMode`        | Behavior                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `quiet-buffered` | (default for managed/test) Drain both, retain last 64 KiB per stream in a ring buffer. Surfaced in `getLogTail()` and in error messages on health-check timeout, unexpected exit, and the unexpected-exit diagnostic written to `process.stderr`. |
+| `inherit`        | (default for `lionden node`) Pass stdout/stderr straight through to the parent process's stdio.                                |
+| `forward`        | Drain in JS, invoke `onStdout` / `onStderr` per chunk, AND retain the same 64 KiB ring buffer.                                 |
+
+Set `LIONDEN_DEVNODE_LOGS=inherit` (or `=1`) to surface devnode logs from managed test devnodes without editing code; `=forward` writes each chunk to `process.stderr` prefixed with `[devnode] `. Precedence is strict: **explicit caller `logMode` wins over the env var, env wins over default.** That means `lionden node --quiet` (which sets `logMode: "quiet-buffered"` explicitly) is still quiet even when `LIONDEN_DEVNODE_LOGS=inherit` is set.
+
+If the devnode exits unexpectedly after `start()` resolves, `DevnodeManager` writes a one-line diagnostic to `process.stderr` including the buffered stderr tail (or, in `inherit` mode, a pointer to the terminal logs above). This converts a silent hang on subsequent broadcasts into a visible cause-of-failure. Programs that need to react to the exit can `await manager.waitForExit()` instead.
 
 At the platform level, devnode and snarkOS nodes expose the same REST surface for blocks, transactions, programs, mappings, and block height. LionDen uses network endpoints both for runtime interaction and for fetching deployed program sources as compiler dependencies.
 
