@@ -67,6 +67,8 @@ Current behavior:
 
 `setup()` respects `config.testing.autoStartDevnode`.
 
+Managed devnodes default to `logMode: "quiet-buffered"` — output is drained and ring-buffered (last 64 KiB per stream). Set `LIONDEN_DEVNODE_LOGS=inherit` to surface devnode logs to the test runner output without editing test code. See [`network.md`](network.md#devnode-log-mode) for the full log-mode contract and precedence rules.
+
 ## Test Runner Task
 
 `packages/plugin-test/src/index.ts` exposes the `test` task.

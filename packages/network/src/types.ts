@@ -250,6 +250,20 @@ export interface DevnodeAccount {
 // Devnode lifecycle
 // ---------------------------------------------------------------------------
 
+/**
+ * How `DevnodeManager` handles the devnode subprocess's stdout/stderr.
+ *
+ * - `"quiet-buffered"` (default): drain both streams, retain the last ~64 KiB
+ *   per stream in an internal ring buffer. The buffered tail is surfaced in
+ *   error messages on health-check timeout / unexpected exit and is readable
+ *   via `getLogTail()`.
+ * - `"inherit"`: pass stdout/stderr straight through to the parent process.
+ *   No JS-side capture; `getLogTail()` returns empty strings.
+ * - `"forward"`: drain in JS, invoke `onStdout` / `onStderr` per chunk, AND
+ *   retain the same 64 KiB ring buffer.
+ */
+export type DevnodeLogMode = "quiet-buffered" | "inherit" | "forward";
+
 export interface DevnodeStartOptions {
   /** REST API socket address. Default: "127.0.0.1:3030" */
   socketAddr?: string;
@@ -273,4 +287,14 @@ export interface DevnodeStartOptions {
    * Required for V9/constructor support on devnode.
    */
   consensusHeights?: string;
+  /**
+   * How to handle the devnode subprocess's stdout/stderr. Default:
+   * `"quiet-buffered"`. The `LIONDEN_DEVNODE_LOGS` env var overrides the
+   * default but never overrides an explicit caller-supplied value.
+   */
+  logMode?: DevnodeLogMode;
+  /** Per-chunk stdout callback. Invoked only when `logMode === "forward"`. */
+  onStdout?: (chunk: Buffer) => void;
+  /** Per-chunk stderr callback. Invoked only when `logMode === "forward"`. */
+  onStderr?: (chunk: Buffer) => void;
 }

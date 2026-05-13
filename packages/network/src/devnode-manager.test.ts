@@ -13,32 +13,44 @@ vi.stubGlobal("fetch", mockFetch);
 
 import { spawn } from "node:child_process";
 
-function createMockProcess(): EventEmitter & {
+type MockProc = EventEmitter & {
   exitCode: number | null;
   kill: ReturnType<typeof vi.fn>;
+  stdout: EventEmitter;
   stderr: EventEmitter;
-} {
-  const proc = new EventEmitter() as any;
+};
+
+function createMockProcess(): MockProc {
+  const proc = new EventEmitter() as MockProc;
   proc.exitCode = null;
   proc.kill = vi.fn((signal?: string) => {
     proc.exitCode = signal === "SIGKILL" ? 137 : 0;
     proc.emit("exit", proc.exitCode);
     return true;
   });
+  proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
   return proc;
 }
 
 describe("DevnodeManager", () => {
   let manager: DevnodeManager;
+  let originalEnv: string | undefined;
 
   beforeEach(() => {
     manager = new DevnodeManager();
     vi.clearAllMocks();
+    originalEnv = process.env["LIONDEN_DEVNODE_LOGS"];
+    delete process.env["LIONDEN_DEVNODE_LOGS"];
   });
 
   afterEach(async () => {
     await manager.stop();
+    if (originalEnv === undefined) {
+      delete process.env["LIONDEN_DEVNODE_LOGS"];
+    } else {
+      process.env["LIONDEN_DEVNODE_LOGS"] = originalEnv;
+    }
   });
 
   it("isRunning returns false initially", () => {
@@ -48,8 +60,6 @@ describe("DevnodeManager", () => {
   it("start spawns leo devnode with correct args", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);
-
-    // Health check succeeds immediately
     mockFetch.mockResolvedValue({ ok: true });
 
     await manager.start({ socketAddr: "127.0.0.1:4040" });
@@ -65,7 +75,7 @@ describe("DevnodeManager", () => {
         "--private-key",
         "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
       ],
-      expect.objectContaining({ stdio: ["ignore", "ignore", "pipe"] }),
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
     );
     expect(manager.endpoint).toBe("http://127.0.0.1:4040");
   });
@@ -150,7 +160,6 @@ describe("DevnodeManager", () => {
     vi.mocked(spawn).mockReturnValue(mockProc as any);
     mockFetch.mockRejectedValue(new Error("connection refused"));
 
-    // Simulate spawn error
     setTimeout(() => {
       mockProc.emit("error", new Error("ENOENT"));
     }, 10);
@@ -217,12 +226,469 @@ describe("DevnodeManager", () => {
     vi.mocked(spawn).mockReturnValue(mockProc as any);
     mockFetch.mockRejectedValue(new Error("connection refused"));
 
-    // Simulate process exit with error
     setTimeout(() => {
       mockProc.exitCode = 1;
       mockProc.emit("exit", 1);
     }, 10);
 
-    await expect(manager.start()).rejects.toThrow("exited with code 1");
+    await expect(manager.start()).rejects.toThrow("Devnode exited (code 1)");
+  });
+
+  // ---------------------------------------------------------------------------
+  // Log-mode dispatch
+  // ---------------------------------------------------------------------------
+
+  describe("logMode", () => {
+    it("inherit mode passes through stdio to parent", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start({ logMode: "inherit" });
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ stdio: ["ignore", "inherit", "inherit"] }),
+      );
+      expect(manager.getLogTail()).toEqual({ stdout: "", stderr: "" });
+    });
+
+    it("forward mode pipes streams, invokes callbacks, and populates buffer", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const onStdout = vi.fn();
+      const onStderr = vi.fn();
+
+      await manager.start({ logMode: "forward", onStdout, onStderr });
+
+      const stdoutChunk = Buffer.from("out-1\n");
+      const stderrChunk = Buffer.from("err-1\n");
+      mockProc.stdout.emit("data", stdoutChunk);
+      mockProc.stderr.emit("data", stderrChunk);
+
+      expect(onStdout).toHaveBeenCalledWith(stdoutChunk);
+      expect(onStderr).toHaveBeenCalledWith(stderrChunk);
+      expect(manager.getLogTail()).toEqual({
+        stdout: "out-1\n",
+        stderr: "err-1\n",
+      });
+    });
+
+    it("quiet-buffered mode does not invoke forward callbacks", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const onStdout = vi.fn();
+      await manager.start({ logMode: "quiet-buffered", onStdout });
+      mockProc.stdout.emit("data", Buffer.from("hi"));
+
+      expect(onStdout).not.toHaveBeenCalled();
+      expect(manager.getLogTail().stdout).toBe("hi");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Structural invariant: drain listeners attach synchronously before yielding.
+  // ---------------------------------------------------------------------------
+
+  describe("structural invariant: drain listeners attach pre-yield", () => {
+    it("quiet-buffered mode attaches data listeners to stdout and stderr before any await", () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      // fetch never resolves — start() yields and waits forever.
+      mockFetch.mockImplementation(() => new Promise(() => {}));
+
+      // Fire-and-forget; do NOT await. Per the invariant, the drain listeners
+      // must be attached before start() yields its first await.
+      void manager.start();
+
+      expect(mockProc.stdout.listenerCount("data")).toBeGreaterThan(0);
+      expect(mockProc.stderr.listenerCount("data")).toBeGreaterThan(0);
+    });
+
+    it("forward mode attaches data listeners to stdout and stderr before any await", () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockImplementation(() => new Promise(() => {}));
+
+      void manager.start({ logMode: "forward", onStdout: () => {}, onStderr: () => {} });
+
+      expect(mockProc.stdout.listenerCount("data")).toBeGreaterThan(0);
+      expect(mockProc.stderr.listenerCount("data")).toBeGreaterThan(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Ring buffer trimming
+  // ---------------------------------------------------------------------------
+
+  describe("ring buffer", () => {
+    it("retains only the last 64 KiB per stream", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start();
+
+      // Write 80 KiB of distinguishable chunks to stderr.
+      const chunkSize = 1024;
+      const totalChunks = 80;
+      for (let i = 0; i < totalChunks; i++) {
+        // Each chunk is filled with the byte value (i % 256) so we can tell
+        // which chunks survived.
+        mockProc.stderr.emit("data", Buffer.alloc(chunkSize, i % 256));
+      }
+
+      const { stderr } = manager.getLogTail();
+      // Tail must be exactly 64 KiB; oldest 16 KiB were trimmed.
+      expect(stderr.length).toBe(64 * 1024);
+    });
+
+    it("getLogTail starts empty before any chunk", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start();
+
+      expect(manager.getLogTail()).toEqual({ stdout: "", stderr: "" });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Env var precedence
+  // ---------------------------------------------------------------------------
+
+  describe("LIONDEN_DEVNODE_LOGS env var", () => {
+    it("=inherit applies only when caller does not pass logMode", async () => {
+      process.env["LIONDEN_DEVNODE_LOGS"] = "inherit";
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start();
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ stdio: ["ignore", "inherit", "inherit"] }),
+      );
+    });
+
+    it("=1 is equivalent to =inherit", async () => {
+      process.env["LIONDEN_DEVNODE_LOGS"] = "1";
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start();
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ stdio: ["ignore", "inherit", "inherit"] }),
+      );
+    });
+
+    it("=forward writes prefixed chunks to process.stderr", async () => {
+      process.env["LIONDEN_DEVNODE_LOGS"] = "forward";
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      await manager.start();
+      mockProc.stdout.emit("data", Buffer.from("hello-stdout"));
+      mockProc.stderr.emit("data", Buffer.from("hello-stderr"));
+
+      expect(writeSpy).toHaveBeenCalledWith("[devnode] hello-stdout");
+      expect(writeSpy).toHaveBeenCalledWith("[devnode] hello-stderr");
+
+      writeSpy.mockRestore();
+    });
+
+    it("explicit caller logMode beats env var (caller > env)", async () => {
+      process.env["LIONDEN_DEVNODE_LOGS"] = "inherit";
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start({ logMode: "quiet-buffered" });
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+      );
+    });
+
+    it("=0 has no effect", async () => {
+      process.env["LIONDEN_DEVNODE_LOGS"] = "0";
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start();
+
+      expect(spawn).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Array),
+        expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // waitForExit contract
+  // ---------------------------------------------------------------------------
+
+  describe("waitForExit", () => {
+    it("throws synchronously before start()", () => {
+      expect(() => manager.waitForExit()).toThrow(
+        "DevnodeManager has not been started",
+      );
+    });
+
+    it("resolves after stop() with exit info", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      await manager.start();
+      const exitP = manager.waitForExit();
+      await manager.stop();
+
+      await expect(exitP).resolves.toEqual({ code: 0, signal: null });
+      // Second call after termination returns same info.
+      await expect(manager.waitForExit()).resolves.toEqual({
+        code: 0,
+        signal: null,
+      });
+    });
+
+    it("after spawn-time error (no exit event) resolves with { code: null, signal: null }", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockRejectedValue(new Error("connection refused"));
+
+      setTimeout(() => {
+        mockProc.emit("error", new Error("ENOENT"));
+      }, 10);
+
+      await expect(manager.start()).rejects.toThrow("Failed to start devnode");
+      await expect(manager.waitForExit()).resolves.toEqual({
+        code: null,
+        signal: null,
+      });
+      expect(manager.isRunning()).toBe(false);
+      // stop() must return without hanging on an exit event that will never come.
+      await expect(manager.stop()).resolves.toBeUndefined();
+    });
+
+    it("signal-only exit resolves with { code: null, signal: 'SIGKILL' }", async () => {
+      const mockProc = createMockProcess();
+      // Override kill so it emits with signal-only exit info.
+      mockProc.kill = vi.fn(() => {
+        mockProc.exitCode = null;
+        mockProc.emit("exit", null, "SIGKILL");
+        return true;
+      });
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      await manager.start();
+      // Emit exit AFTER start resolved, unexpectedly (not via stop()).
+      mockProc.emit("exit", null, "SIGKILL");
+
+      await expect(manager.waitForExit()).resolves.toEqual({
+        code: null,
+        signal: "SIGKILL",
+      });
+      expect(manager.isRunning()).toBe(false);
+      // Diagnostic uses "signal SIGKILL", not "code null".
+      const diagnosticCalls = writeSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.startsWith("[lionden]"));
+      expect(diagnosticCalls.length).toBe(1);
+      expect(diagnosticCalls[0]).toContain("signal SIGKILL");
+      expect(diagnosticCalls[0]).not.toContain("code null");
+
+      // A follow-up stop() is a no-op (does not re-send SIGTERM).
+      mockProc.kill.mockClear();
+      await manager.stop();
+      expect(mockProc.kill).not.toHaveBeenCalled();
+
+      writeSpy.mockRestore();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Unexpected-exit diagnostic
+  // ---------------------------------------------------------------------------
+
+  describe("unexpected-exit diagnostic", () => {
+    it("fires exactly once on exit after start resolves, includes stderr tail", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      await manager.start();
+      mockProc.stderr.emit("data", Buffer.from("fatal: out of memory\n"));
+      mockProc.emit("exit", 137, null);
+
+      const diagnostics = writeSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.startsWith("[lionden]"));
+      expect(diagnostics.length).toBe(1);
+      expect(diagnostics[0]).toContain("code 137");
+      expect(diagnostics[0]).toContain("fatal: out of memory");
+
+      writeSpy.mockRestore();
+    });
+
+    it("does NOT fire when stop() initiated the shutdown", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      await manager.start();
+      await manager.stop();
+
+      const diagnostics = writeSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.startsWith("[lionden]"));
+      expect(diagnostics).toEqual([]);
+
+      writeSpy.mockRestore();
+    });
+
+    it("does NOT fire on exit during start (before health-check passes)", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockRejectedValue(new Error("connection refused"));
+
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      setTimeout(() => {
+        mockProc.exitCode = 1;
+        mockProc.emit("exit", 1, null);
+      }, 10);
+
+      await expect(manager.start()).rejects.toThrow("Devnode exited");
+
+      const diagnostics = writeSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.startsWith("[lionden]"));
+      expect(diagnostics).toEqual([]);
+
+      writeSpy.mockRestore();
+    });
+
+    it("inherit mode diagnostic points to terminal logs", async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc as any);
+      mockFetch.mockResolvedValue({ ok: true });
+
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      await manager.start({ logMode: "inherit" });
+      mockProc.emit("exit", 1, null);
+
+      const diagnostics = writeSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.startsWith("[lionden]"));
+      expect(diagnostics.length).toBe(1);
+      expect(diagnostics[0]).toContain("see terminal logs above");
+
+      writeSpy.mockRestore();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Restart cycle: per-process state must fully reset.
+  // ---------------------------------------------------------------------------
+
+  describe("restart cycle", () => {
+    it("second start() resets exit promise, diagnostic flag, and log buffer", async () => {
+      const writeSpy = vi
+        .spyOn(process.stderr, "write")
+        .mockImplementation(() => true);
+
+      // First life: clean stop.
+      const proc1 = createMockProcess();
+      vi.mocked(spawn).mockReturnValueOnce(proc1 as any);
+      mockFetch.mockResolvedValue({ ok: true });
+      await manager.start();
+      proc1.stderr.emit("data", Buffer.from("first-run\n"));
+      await manager.stop();
+
+      // Second life: unexpected exit.
+      const proc2 = createMockProcess();
+      vi.mocked(spawn).mockReturnValueOnce(proc2 as any);
+      await manager.start();
+      proc2.stderr.emit("data", Buffer.from("second-run\n"));
+      proc2.emit("exit", 137, null);
+
+      // waitForExit resolves with the SECOND run's exit info, not stale 0.
+      await expect(manager.waitForExit()).resolves.toEqual({
+        code: 137,
+        signal: null,
+      });
+
+      // Diagnostic fired exactly once (for the second run), not at all for the
+      // first (which was a clean stop()).
+      const diagnostics = writeSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((s) => s.startsWith("[lionden]"));
+      expect(diagnostics.length).toBe(1);
+      expect(diagnostics[0]).toContain("code 137");
+
+      // getLogTail reflects ONLY the second run's chunks.
+      expect(manager.getLogTail().stderr).toBe("second-run\n");
+      expect(manager.getLogTail().stderr).not.toContain("first-run");
+
+      writeSpy.mockRestore();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Error message renders the buffered tail.
+  // ---------------------------------------------------------------------------
+
+  it("non-zero exit error includes buffered stderr tail", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockRejectedValue(new Error("connection refused"));
+
+    setTimeout(() => {
+      mockProc.stderr.emit("data", Buffer.from("fatal: out of memory\n"));
+      mockProc.exitCode = 1;
+      mockProc.emit("exit", 1);
+    }, 10);
+
+    await expect(manager.start()).rejects.toThrow(/fatal: out of memory/);
   });
 });
