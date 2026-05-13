@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { NetworkManager } from "@lionden/network";
+import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { createMockConnection } from "@lionden/test-internals";
 import type {
   CachedDeploymentRecord,
@@ -41,8 +41,8 @@ vi.mock("./lre-factory.js", async () => {
 import { setup } from "./test-context.js";
 import { preflightLeo } from "@lionden/core";
 
-function mockLre(): LionDenRuntimeEnvironment {
-  const connection = createMockConnection({
+function mockLre(options: { readonly connection?: NetworkConnection } = {}): LionDenRuntimeEnvironment {
+  const connection = options.connection ?? createMockConnection({
     execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1exec" }),
   });
   const manager: NetworkManager = {
@@ -157,6 +157,7 @@ describe("test-context", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     process.env = { ...originalEnv };
   });
 
@@ -240,6 +241,106 @@ describe("test-context", () => {
       const { startDevnode } = await import("./devnode-lifecycle.js");
       expect(preflightLeo).not.toHaveBeenCalled();
       expect(startDevnode).not.toHaveBeenCalled();
+    });
+
+    it("checks manual devnode reachability when autoStartDevnode is false", async () => {
+      const getBlockHeight = vi.fn().mockRejectedValue(new Error("SDK init failed"));
+      const connection = createMockConnection({ getBlockHeight });
+      const lre = mockLre({ connection });
+      Object.defineProperty(lre.config, "testing", {
+        value: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: false },
+        writable: true,
+      });
+
+      await expect(setup({ lre })).rejects.toThrow(
+        /Devnode network "devnode" is not reachable at http:\/\/127\.0\.0\.1:3030 .*testing\.autoStartDevnode is false.*Cause:/,
+      );
+      expect(getBlockHeight).toHaveBeenCalledOnce();
+      expect(connection.close).toHaveBeenCalledOnce();
+    });
+
+    it("checks manual devnode reachability when skipDevnode is true", async () => {
+      const getBlockHeight = vi.fn().mockRejectedValue(new Error("fetch failed"));
+      const connection = createMockConnection({ getBlockHeight });
+      const lre = mockLre({ connection });
+
+      await expect(setup({ lre, skipDevnode: true })).rejects.toThrow(
+        /Devnode network "devnode" is not reachable at http:\/\/127\.0\.0\.1:3030 .*setup\(\{ skipDevnode: true \}\) was passed.*Cause:/,
+      );
+      expect(getBlockHeight).toHaveBeenCalledOnce();
+      expect(connection.close).toHaveBeenCalledOnce();
+    });
+
+    it("reports both manual devnode reasons when skipDevnode and autoStartDevnode=false combine", async () => {
+      const getBlockHeight = vi.fn().mockRejectedValue(new Error("node offline"));
+      const connection = createMockConnection({ getBlockHeight });
+      const lre = mockLre({ connection });
+      Object.defineProperty(lre.config, "testing", {
+        value: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: false },
+        writable: true,
+      });
+
+      await expect(setup({ lre, skipDevnode: true })).rejects.toThrow(
+        /setup\(\{ skipDevnode: true \}\) was passed and testing\.autoStartDevnode is false/,
+      );
+      expect(getBlockHeight).toHaveBeenCalledOnce();
+      expect(connection.close).toHaveBeenCalledOnce();
+    });
+
+    it("continues when manual devnode reachability check succeeds", async () => {
+      const getBlockHeight = vi.fn().mockResolvedValue(42);
+      const connection = createMockConnection({ getBlockHeight });
+      const lre = mockLre({ connection });
+
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      expect(ctx.connection).toBe(connection);
+      expect(getBlockHeight).toHaveBeenCalledOnce();
+    });
+
+    it("does not health-check HTTP connections during manual setup", async () => {
+      const getBlockHeight = vi.fn().mockRejectedValue(new Error("should not run"));
+      const connection = createMockConnection({
+        type: "http",
+        name: "testnet",
+        endpoint: "https://api.explorer.provable.com/v1",
+        getBlockHeight,
+      });
+      const lre = mockLre({ connection });
+
+      const ctx = await setup({ lre, skipDevnode: true, network: "testnet" });
+
+      expect(ctx.connection).toBe(connection);
+      expect(getBlockHeight).not.toHaveBeenCalled();
+    });
+
+    it("does not run the manual health-check when setup started a managed devnode", async () => {
+      const getBlockHeight = vi.fn().mockRejectedValue(new Error("should not run"));
+      const connection = createMockConnection({ getBlockHeight });
+      const lre = mockLre({ connection });
+
+      const ctx = await setup({ lre });
+
+      expect(ctx.connection).toBe(connection);
+      expect(getBlockHeight).not.toHaveBeenCalled();
+    });
+
+    it("times out manual devnode reachability checks with the same clear error shape", async () => {
+      vi.useFakeTimers();
+      const getBlockHeight = vi.fn(
+        () => new Promise<number>(() => {}),
+      );
+      const connection = createMockConnection({ getBlockHeight });
+      const lre = mockLre({ connection });
+
+      const setupPromise = setup({ lre, skipDevnode: true });
+      const assertion = expect(setupPromise).rejects.toThrow(
+        /Devnode network "devnode" is not reachable at http:\/\/127\.0\.0\.1:3030 .*setup\(\{ skipDevnode: true \}\) was passed.*Cause: manual devnode health check timed out after 5000ms/,
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await assertion;
+      expect(connection.close).toHaveBeenCalledOnce();
     });
   });
 

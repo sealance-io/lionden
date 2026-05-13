@@ -23,6 +23,8 @@ import type {
   DeploymentCacheAccessor,
 } from "./deployment-cache.js";
 
+const MANUAL_DEVNODE_HEALTH_TIMEOUT_MS = 5_000;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -154,6 +156,14 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   const connectedNetwork = networkName ?? lre.config.defaultNetwork;
   const connection = await manager.connect(connectedNetwork);
 
+  if (!managedDevnode && connection.type === "devnode") {
+    await assertManualDevnodeReachable(
+      connection,
+      connectedNetwork,
+      getManualDevnodeReasons(skipDevnode, lre.config.testing.autoStartDevnode),
+    );
+  }
+
   // 3. Build context
   const executeRaw = async (
     programId: string,
@@ -261,6 +271,82 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   };
 
   return ctx;
+}
+
+async function assertManualDevnodeReachable(
+  connection: NetworkConnection,
+  networkName: string,
+  reasons: readonly string[],
+): Promise<void> {
+  try {
+    await withTimeout(
+      connection.getBlockHeight(),
+      MANUAL_DEVNODE_HEALTH_TIMEOUT_MS,
+      `manual devnode health check timed out after ${MANUAL_DEVNODE_HEALTH_TIMEOUT_MS}ms`,
+    );
+  } catch (err) {
+    await Promise.resolve(connection.close()).catch(() => {});
+    const cause = causeMessage(err);
+    throw new Error(
+      `Devnode network "${networkName}" is not reachable at ${connection.endpoint} ` +
+        `(Aleo network "${connection.networkId}"). ` +
+        `setup() did not start a managed devnode because ${formatReasons(reasons)}. ` +
+        `Start a devnode for that endpoint, enable testing.autoStartDevnode, ` +
+        `or pass a reachable network. Cause: ${cause}`,
+      { cause: err },
+    );
+  }
+}
+
+function getManualDevnodeReasons(
+  skipDevnode: boolean | undefined,
+  autoStartDevnode: boolean,
+): string[] {
+  const reasons: string[] = [];
+  if (skipDevnode) {
+    reasons.push("setup({ skipDevnode: true }) was passed");
+  }
+  if (!autoStartDevnode) {
+    reasons.push("testing.autoStartDevnode is false");
+  }
+  return reasons.length > 0 ? reasons : ["no managed devnode was started"];
+}
+
+function formatReasons(reasons: readonly string[]): string {
+  if (reasons.length === 1) {
+    return reasons[0]!;
+  }
+  return `${reasons.slice(0, -1).join(", ")} and ${reasons[reasons.length - 1]!}`;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+function causeMessage(cause: unknown): string {
+  if (cause instanceof Error && cause.message.length > 0) {
+    return cause.message;
+  }
+  if (typeof cause === "string" && cause.length > 0) {
+    return cause;
+  }
+  return String(cause);
 }
 
 function normalizeProgramId(programName: string): string {
