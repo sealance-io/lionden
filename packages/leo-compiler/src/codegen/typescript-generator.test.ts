@@ -1637,7 +1637,7 @@ describe("typed-output projector Future index contract", () => {
     const abi = abiWithOutputs([{ ty: { Future: "demo.aleo" } }]);
     const output = generateBindings(abi);
     expect(output).toContain("Promise<AcceptedTransition<void>>");
-    expect(output).toContain("(_rawOutputs: readonly string[], _tpk: string) => undefined as void");
+    expect(output).toContain("(_rawOutputs: readonly RawTransitionOutput[], _tpk: string) => undefined as void");
     expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo"');
   });
 });
@@ -1693,7 +1693,7 @@ describe("mode-gated plaintext output emission", () => {
     expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
     expect(out).toContain('BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)');
     // Projector binds `tpk` (no underscore) since at least one private plaintext.
-    expect(out).toMatch(/\(rawOutputs: readonly string\[\], tpk: string\) =>/);
+    expect(out).toMatch(/\(rawOutputs: readonly RawTransitionOutput\[\], tpk: string\) =>/);
   });
 
   it('explicit "Private" mode behaves the same as "None"', () => {

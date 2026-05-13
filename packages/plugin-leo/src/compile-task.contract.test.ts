@@ -87,6 +87,22 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
     }),
     generateBindings: vi.fn().mockReturnValue("// generated bindings\n"),
     generateBaseContract: vi.fn().mockReturnValue("// base contract\n"),
+    resolveContractClassName: vi.fn(
+      (abi: { program: string; structs?: { path: string[] }[]; records?: { path: string[] }[] }) => {
+        const base = abi.program
+          .replace(/\.aleo$/, "")
+          .split(/[_\-.]/)
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join("");
+        const typeNames = new Set([
+          ...(abi.structs ?? []).map((s) => s.path.join("_")),
+          ...(abi.records ?? []).map((r) => r.path.join("_")),
+        ]);
+        let candidate = base;
+        while (typeNames.has(candidate)) candidate += "Contract";
+        return candidate;
+      },
+    ),
   };
 });
 
@@ -153,6 +169,49 @@ describe("compile task contract", () => {
     expect(indexContent).toContain("BaseContract");
     expect(indexContent).toContain("Hello");
     expect(indexContent).toContain("Token");
+  });
+
+  it("omits duplicate record helper exports from the typechain barrel", async () => {
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockResolvedValueOnce({
+      results: ["gold_token", "silver_token"].map((name) => ({
+        unit: {
+          kind: "program" as const,
+          programId: `${name}.aleo`,
+          sourceDir: `/tmp/test/programs/${name}`,
+          entryFile: `/tmp/test/programs/${name}/main.leo`,
+          allSources: ["main.leo"],
+        },
+        cached: false,
+        packageDir: `/tmp/test/.cache/${name}`,
+        buildDir: `/tmp/test/.cache/${name}/build`,
+        abi: {
+          program: `${name}.aleo`,
+          structs: [],
+          records: [
+            {
+              path: ["Token"],
+              fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }],
+            },
+          ],
+          mappings: [],
+          storage_variables: [],
+          transitions: [],
+        },
+        aleoSource: "",
+      })),
+    } as any);
+
+    const lre = createTestLre(true);
+    await lre.tasks.run("compile");
+
+    const indexContent = fs.readFileSync(path.join(lre.config.paths.typechain, "index.ts"), "utf-8");
+    expect(indexContent).toContain(
+      "Omitted duplicate exports: Token, decryptToken, deserializeToken, serializeToken.",
+    );
+    expect(indexContent).not.toContain("export type { Token }");
+    expect(indexContent).toContain("export { GoldToken, createGoldToken }");
+    expect(indexContent).toContain("export { SilverToken, createSilverToken }");
   });
 
   it("skips TypeScript bindings when --noTypechain is set", async () => {

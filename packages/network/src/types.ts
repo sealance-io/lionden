@@ -13,6 +13,14 @@ export interface TransitionCallResult {
   readonly txId?: string;
 }
 
+export interface IdOnlyTransitionOutput {
+  readonly kind: "idOnly";
+  readonly type: string;
+  readonly id: string;
+}
+
+export type RawTransitionOutput = string | IdOnlyTransitionOutput;
+
 /** One confirmed transition within a confirmed transaction. */
 export interface ConfirmedTransitionRecord {
   /** Program id, e.g. "token.aleo". */
@@ -21,14 +29,16 @@ export interface ConfirmedTransitionRecord {
   readonly transitionName: string;
   /**
    * Raw outputs for this transition, in declaration order. Record outputs are
-   * record ciphertexts (`record1...`). Plaintext outputs are Leo literals
-   * (`123u32`, `aleo1...`, `{ ... }`, etc.) only when declared `public`;
-   * private and default-private (no visibility modifier) plaintext outputs are
-   * Aleo value ciphertexts (`ciphertext1...`) that callers must decrypt using
-   * the transition's `transitionPublicKey` and the recipient's view key (see
-   * the generated typechain's `EncryptedValue<T>` handles).
+   * record ciphertexts (`record1...`) when the node exposes a value. Id-only
+   * dynamic-record outputs are represented as `{ kind: "idOnly", ... }` so
+   * ABI positions remain stable for generated projectors. Plaintext outputs
+   * are Leo literals (`123u32`, `aleo1...`, `{ ... }`, etc.) only when
+   * declared `public`; private and default-private plaintext outputs are Aleo
+   * value ciphertexts (`ciphertext1...`) that callers must decrypt using the
+   * transition's `transitionPublicKey` and the recipient's view key (see the
+   * generated typechain's `EncryptedValue<T>` handles).
    */
-  readonly rawOutputs: readonly string[];
+  readonly rawOutputs: readonly RawTransitionOutput[];
   /**
    * Transition public key (`tpk`) carried by the on-chain transition. Required
    * input to `Ciphertext.decryptWithTransitionInfo(...)` when decrypting

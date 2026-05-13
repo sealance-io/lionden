@@ -66,7 +66,7 @@ export function generateBindings(
   options: GenerateBindingsOptions = {},
 ): string {
   const lines: string[] = [];
-  const className = resolveClassName(abi);
+  const className = resolveContractClassName(abi);
   const ctx = createGenerationContext(abi, allAbis);
 
   const helpers = (options.dynamicRecords ?? []).filter(
@@ -78,11 +78,11 @@ export function generateBindings(
   lines.push("");
   if (helpers.length > 0) {
     lines.push(
-      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   } else {
     lines.push(
-      'import { BaseContract, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   }
   lines.push(...generateExternalImports(ctx));
@@ -1227,7 +1227,7 @@ function formatProjectorExpr(
   const inputCount = transition.inputs.length;
 
   if (visibleIndices.length === 0) {
-    return `(_rawOutputs: readonly string[], ${tpkParam}: string) => undefined as void`;
+    return `(_rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string) => undefined as void`;
   }
 
   const rawAccess = (abiIndex: number): string =>
@@ -1241,12 +1241,12 @@ function formatProjectorExpr(
 
   if (visibleIndices.length === 1) {
     const abiIndex = visibleIndices[0]!;
-    return `(rawOutputs: readonly string[], ${tpkParam}: string) => ${decodeForIndex(abiIndex)}`;
+    return `(rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string) => ${decodeForIndex(abiIndex)}`;
   }
 
   const tupleType = formatTypedOutputType(transition.outputs, ctx);
   const elems = visibleIndices.map(decodeForIndex);
-  return `(rawOutputs: readonly string[], ${tpkParam}: string) => ([${elems.join(", ")}] as ${tupleType})`;
+  return `(rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string) => ([${elems.join(", ")}] as ${tupleType})`;
 }
 
 function projectorElementExpr(
@@ -1293,7 +1293,7 @@ function programIdToClassName(programId: string): string {
 }
 
 /** Derive a class name that does not collide with struct/record interface names. */
-function resolveClassName(abi: ProgramABI): string {
+export function resolveContractClassName(abi: ProgramABI): string {
   const base = programIdToClassName(abi.program);
   const typeNames = new Set<string>([
     ...abi.structs.map((s) => pathToTsName(s.path)),

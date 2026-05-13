@@ -1245,6 +1245,22 @@ describe("BaseContract runtime", () => {
         expect(err.outputIndex).toBe(0);
       }
     });
+
+    it("throws with the original ABI index when the entry is id-only", () => {
+      try {
+        BaseContract.rawOutputAt(
+          [{ kind: "idOnly", type: "record_dynamic", id: "dynamic-id" }],
+          "p.aleo",
+          "t",
+          0,
+        );
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.outputIndex).toBe(0);
+        expect(err.message).toContain("id-only output dynamic-id");
+      }
+    });
   });
 
   describe("makeEncryptedRecord", () => {

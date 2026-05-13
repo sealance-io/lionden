@@ -73,6 +73,7 @@ export {
 export {
   generateBindings,
   generateBaseContract,
+  resolveContractClassName,
   type GenerateBindingsOptions,
 } from "./codegen/typescript-generator.js";
 export { primitiveToTs, plaintextToTs, aleoTypeToTs, pathToTsName } from "./codegen/type-mapper.js";
