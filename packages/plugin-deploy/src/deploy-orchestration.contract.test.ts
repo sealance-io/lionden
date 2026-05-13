@@ -173,7 +173,7 @@ describe("deploy orchestration contract", () => {
     expect(taskIds).not.toContain("compile");
   });
 
-  it("runs compile when noCompile is not set", async () => {
+  it("scopes implicit compile to the selected bare program", async () => {
     const { lre } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
     ]);
@@ -182,8 +182,46 @@ describe("deploy orchestration contract", () => {
 
     await deployAction({ program: "hello" }, lre);
 
+    expect(compileSpy).toHaveBeenCalledWith("compile", { program: "hello" });
+  });
+
+  it("passes the selected .aleo program through to implicit compile", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    const compileSpy = vi.spyOn(lre.tasks, "run");
+
+    await deployAction({ program: "hello.aleo" }, lre);
+
+    expect(compileSpy).toHaveBeenCalledWith("compile", {
+      program: "hello.aleo",
+    });
+  });
+
+  it("runs full implicit compile when no program is selected", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    const compileSpy = vi.spyOn(lre.tasks, "run");
+
+    await deployAction({}, lre);
+
+    expect(compileSpy).toHaveBeenCalledWith("compile");
+  });
+
+  it("skips compile when preflight is true", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    const compileSpy = vi.spyOn(lre.tasks, "run");
+
+    await deployAction({ program: "hello", preflight: true }, lre);
+
     const taskIds = compileSpy.mock.calls.map((c) => c[0]);
-    expect(taskIds).toContain("compile");
+    expect(taskIds).not.toContain("compile");
   });
 
   it("returns preflight result when --preflight flag is set", async () => {
