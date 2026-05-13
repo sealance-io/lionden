@@ -105,7 +105,11 @@ export async function deployAction(
 
   // 1. Compile first (unless --noCompile or --preflight)
   if (!options.noCompile && !options.preflight) {
-    await lre.tasks.run("compile");
+    if (options.program) {
+      await lre.tasks.run("compile", { program: options.program });
+    } else {
+      await lre.tasks.run("compile");
+    }
   }
 
   // 2. Discover all units for source-dir mapping and dependency ordering

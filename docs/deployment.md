@@ -47,6 +47,7 @@ Resolved paths include `config.paths.deployments`, the absolute path for deploym
 Current behavior:
 
 - compiles first unless `--no-compile` or `--preflight` is set
+- scopes that implicit compile to the selected program and its compile dependencies when `--program` is set
 - discovers deployable programs and compile-only libraries from source
 - resolves dependency order
 - reads compiled programs and ABIs from the LRE artifact store
