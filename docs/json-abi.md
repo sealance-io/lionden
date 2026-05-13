@@ -232,7 +232,7 @@ export function asPoolToken(value: Token): LeoDynamicRecord {
 
 Callers import `asPoolToken` directly: `await amm.add_liquidity.locally({ token: asPoolToken(tok), ... })`.
 
-**Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`.
+**Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`. Set `sourceProgram` when more than one compiled program declares the same generated record name; `examples/aleo-ports/dynamic_records` uses this for `gold_token.aleo::Token` and `silver_token.aleo::Token`.
 
 **Schema rules**:
 

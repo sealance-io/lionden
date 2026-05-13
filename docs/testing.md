@@ -156,7 +156,7 @@ expect(await linear.decrypt(ctx.accounts[0])).toBe(10000n);
 expect(await quadratic.decrypt(ctx.accounts[0])).toBe(100n);
 ```
 
-`rawOutputs: readonly string[]` is still available alongside `outputs` on every settled result. It carries the raw on-wire values from the specific transition the caller invoked (record ciphertexts, value ciphertexts, plain literals — whatever the chain returned).
+`rawOutputs: readonly RawTransitionOutput[]` is still available alongside `outputs` on every settled result. String entries carry the raw on-wire values from the specific transition the caller invoked (record ciphertexts, value ciphertexts, plain literals — whatever the chain returned). Id-only dynamic-record outputs are preserved in position as `{ kind: "idOnly", id, type }` entries, so ABI-indexed projectors do not shift later outputs.
 
 ### Why private plaintext outputs need `decrypt`
 
@@ -208,6 +208,8 @@ await amm.add_liquidity.locally({ token: tokenInput, ... });
 ```
 
 Values are range-checked at runtime (integer bit-widths, address prefix, etc.). Missing or extra keys vs. the schema throw `TransitionInputError` with the offending key listed. The raw string escape hatch `Leo.unsafe.dynamicRecord("{ owner: ... }")` remains available for pre-built literals.
+
+For repeated conversions from a generated concrete record type, prefer a `codegen.dynamicRecords` helper such as `asGoldToken(token)` over retyping the schema at every call site. See [`json-abi.md` § Interface Conversion Helpers](json-abi.md#interface-conversion-helpers-codegendynamicrecords) and `examples/aleo-ports/dynamic_records`.
 
 ## Strategy And Design Direction
 

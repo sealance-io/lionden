@@ -68,7 +68,7 @@ npx lionden test
 
 ### Open an existing project
 
-Either clone it or copy one of the examples under `examples/` (`hello-world`, `token`, `multi-program`, `nft-registry`, `upgradeable-counter`, `async-escrow`) into a fresh directory. Each example is a self-contained workspace with its own `lionden.config.ts`, `programs/`, `scripts/`, `test/`, and (sometimes) `recipes/`.
+Either clone it or copy one of the examples under `examples/` (`hello-world`, `token`, `multi-program`, `nft-registry`, `upgradeable-counter`, `async-escrow`) into a fresh directory. For Leo compatibility patterns, also inspect the focused aleo-ports such as `examples/aleo-ports/dynamic_dispatch` and `examples/aleo-ports/dynamic_records`. Each example is a self-contained workspace with its own `lionden.config.ts`, `programs/`, `scripts/`, `test/`, and (sometimes) `recipes/`.
 
 The examples are the canonical reference for "how does a real LionDen project look?" Prefer reading them over inventing your own setup.
 
@@ -563,7 +563,9 @@ See `examples/multi-program`. Key ideas:
 
 ### Runtime imports for dynamic dispatch
 
-Leo v4 dynamic dispatch (`Interface@(target)::fn(...)`) selects the target program at execute time, so LionDen cannot infer those targets from static `import` statements. Declare possible runtime targets with `execution.imports` instead of adding fake imports just to make execution work:
+Leo v4 dynamic dispatch (`Interface@(target)::fn(...)`) selects the target program at execute time, so LionDen cannot infer those targets from static `import` statements. Provide possible runtime targets explicitly instead of adding fake Leo imports just to make execution work.
+
+Use config defaults when every call from a dispatching program needs the same target set:
 
 ```ts
 export default defineConfig({
@@ -575,9 +577,76 @@ export default defineConfig({
 });
 ```
 
-Each entry can be a bare program name, a `.aleo` program id, or a local `.aleo` path. The same imports can also be carried by a generated wrapper instance (`createGovernance({ imports: [...] })`) or added for one call via `options.imports`.
+Use wrapper instance imports when a particular test or script wants to carry the targets with one contract object:
 
-Runtime imports are execution-time dependencies only. They do not affect compile or deploy ordering, so deploy strategy/target programs explicitly before deploying or executing the dispatch hub. See `examples/aleo-ports/dynamic_dispatch` and [`network.md`](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
+```ts
+const router = createTokenRouter({
+  imports: ["gold_token.aleo", "silver_token.aleo"],
+});
+router.connect(ctx.lre);
+```
+
+Use per-call imports for one focused call:
+
+```ts
+await router.demo_transfer.accepted(
+  { target: Leo.identifier("gold_token"), token: asGoldToken(token) },
+  { imports: ["gold_token.aleo", "silver_token.aleo"] },
+);
+```
+
+Each entry can be a bare program name, a `.aleo` program id, or a local `.aleo` path. The three layers are additive: `execution.imports`, wrapper instance imports, then per-call `options.imports`.
+
+Runtime imports are execution-time dependencies only. They do not affect compile or deploy ordering, so deploy strategy/target programs explicitly before deploying or executing the dispatch hub. See `examples/aleo-ports/dynamic_dispatch` for config defaults, `examples/aleo-ports/dynamic_records` for wrapper/per-call imports, and [`network.md`](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
+
+### Dynamic record inputs
+
+Leo v4 `dyn record` inputs need a typed dynamic-record literal on the TypeScript side. For one-off calls, build it directly with `Leo.dynamicRecord(value, schema)`:
+
+```ts
+const tokenInput = Leo.dynamicRecord(
+  { owner: Leo.address(owner), amount: 100n, _nonce: Leo.group(nonce) },
+  {
+    owner: "address.private",
+    amount: "u64.private",
+    _nonce: "group.public",
+  },
+);
+```
+
+When a concrete record type repeatedly crosses a `dyn record` interface, configure `codegen.dynamicRecords` so compile emits a helper next to that record's generated module:
+
+```ts
+export default defineConfig({
+  codegen: {
+    dynamicRecords: {
+      asGoldToken: {
+        sourceProgram: "gold_token.aleo",
+        sourceRecord: "Token",
+        schema: {
+          owner: "address.private",
+          amount: "u64.private",
+          purity: "u64.private",
+          _nonce: "group.public",
+        },
+      },
+    },
+  },
+});
+```
+
+Then call the dispatching wrapper with the generated helper:
+
+```ts
+import { asGoldToken } from "../typechain/GoldToken.js";
+
+await router.demo_transfer.accepted({
+  target: Leo.identifier("gold_token"),
+  token: asGoldToken(token),
+});
+```
+
+Use `sourceProgram` when more than one compiled program declares the same record name. See `examples/aleo-ports/dynamic_records` and [`json-abi.md`](json-abi.md#interface-conversion-helpers-codegendynamicrecords) for the exact helper rules.
 
 ### Upgradeable program with admin
 
