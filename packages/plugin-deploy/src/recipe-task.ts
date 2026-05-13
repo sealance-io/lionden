@@ -147,12 +147,22 @@ export function createCliDeploymentContext(
     },
 
     async execute(programId, transitionName, args, opts) {
+      const mode = opts?.mode ?? "onchain";
+      const awaitOpt =
+        mode === "onchain"
+          ? { awaitConfirmation: opts?.awaitConfirmation ?? true }
+          : {};
       const result = await connection.execute(programId, transitionName, args, {
-        mode: opts?.mode ?? "onchain",
+        mode,
         fee: opts?.fee,
         signer: opts?.signer,
+        ...awaitOpt,
       });
-      return { outputs: result.outputs, txId: result.txId };
+      return {
+        outputs: result.outputs,
+        ...(result.rawOutputs === undefined ? {} : { rawOutputs: result.rawOutputs }),
+        txId: result.txId,
+      };
     },
   };
 }

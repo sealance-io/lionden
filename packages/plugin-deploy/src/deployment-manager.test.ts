@@ -106,6 +106,7 @@ function makeNetworkManager(connection = createMockConnection()): NetworkManager
     execute: vi.fn(),
     getMappingValue: vi.fn(),
     waitForConfirmation: vi.fn(),
+    getTransitionOutputs: vi.fn(),
   };
 }
 
@@ -202,6 +203,7 @@ describe("devnode: getDeployment validates on-chain", () => {
       execute: vi.fn(),
       getMappingValue: vi.fn(),
       waitForConfirmation: vi.fn(),
+      getTransitionOutputs: vi.fn(),
     };
     const dm2 = new DeploymentManagerImpl(makeConfig(), () => managerWithNull, makeArtifactStore());
 

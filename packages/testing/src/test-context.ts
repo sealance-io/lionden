@@ -7,7 +7,13 @@
  */
 
 import { preflightLeo, type LionDenRuntimeEnvironment } from "@lionden/core";
-import type { NetworkConnection, NetworkManager, DevnodeAccount, Signer } from "@lionden/network";
+import type {
+  NetworkConnection,
+  NetworkManager,
+  DevnodeAccount,
+  Signer,
+  RawTransitionOutput,
+} from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import {
   createNamedAccountAccessor,
@@ -109,10 +115,24 @@ export interface ExecuteOptions {
    * the targets cannot be inferred from static `import` statements.
    */
   imports?: readonly string[];
+  /**
+   * On-chain mode only. When omitted or `true`, the call awaits confirmation
+   * and returns the matching transition's parsed outputs. When `false`, the
+   * call returns immediately after broadcast with `outputs: []`; callers can
+   * fetch outputs later via `ctx.connection.getTransitionOutputs(...)` or
+   * inspect transitions directly via `ctx.connection.waitForConfirmation(...)`
+   * (the documented escape hatch for reentrant or recursive flows).
+   */
+  awaitConfirmation?: boolean;
 }
 
 export interface ExecuteResult {
   readonly outputs: string[];
+  /**
+   * Faithful on-chain output shape including the `idOnly` discriminator for
+   * dynamic-record outputs. Present only when the call awaited confirmation.
+   */
+  readonly rawOutputs?: readonly RawTransitionOutput[];
   readonly txId?: string;
 }
 
@@ -178,14 +198,24 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     args: string[],
     execOpts?: ExecuteOptions,
   ): Promise<ExecuteResult> => {
+    const mode = execOpts?.mode ?? "onchain";
+    const awaitOpt =
+      mode === "onchain"
+        ? { awaitConfirmation: execOpts?.awaitConfirmation ?? true }
+        : {};
     const result = await connection.execute(programId, transitionName, args, {
-      mode: execOpts?.mode ?? "onchain",
+      mode,
       fee: execOpts?.fee,
       prove,
       signer: execOpts?.signer,
+      ...awaitOpt,
       ...(execOpts?.imports === undefined ? {} : { imports: execOpts.imports }),
     });
-    return { outputs: result.outputs, txId: result.txId };
+    return {
+      outputs: result.outputs,
+      ...(result.rawOutputs === undefined ? {} : { rawOutputs: result.rawOutputs }),
+      txId: result.txId,
+    };
   };
 
   const ctx: TestContext = {

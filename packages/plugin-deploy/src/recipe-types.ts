@@ -8,7 +8,12 @@
  */
 
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { NetworkConnection, Signer, DevnodeAccount } from "@lionden/network";
+import type {
+  NetworkConnection,
+  Signer,
+  DevnodeAccount,
+  RawTransitionOutput,
+} from "@lionden/network";
 import type { NamedAccountAccessor, NamedAccounts } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
@@ -61,10 +66,22 @@ export interface RecipeExecuteOptions {
   mode?: "local" | "onchain";
   fee?: number;
   signer?: Signer;
+  /**
+   * On-chain mode only. When omitted or `true`, the call awaits confirmation
+   * and returns the matching transition's parsed outputs. When `false`, the
+   * call returns immediately after broadcast with `outputs: []`; callers can
+   * fetch outputs later via `connection.getTransitionOutputs(...)`.
+   */
+  awaitConfirmation?: boolean;
 }
 
 export interface RecipeExecuteResult {
   readonly outputs: string[];
+  /**
+   * Faithful on-chain output shape including the `idOnly` discriminator for
+   * dynamic-record outputs. Present only when the call awaited confirmation.
+   */
+  readonly rawOutputs?: readonly RawTransitionOutput[];
   readonly txId?: string;
 }
 

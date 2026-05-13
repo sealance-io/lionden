@@ -13,8 +13,15 @@ export type {
   DevnodeLogMode,
   ConfirmationTimeoutStage,
   NetworkConfirmationTimeoutContext,
+  TransitionRejectedContext,
+  TransitionSelectionContext,
 } from "./types.js";
-export { NetworkConfirmationTimeoutError } from "./types.js";
+export {
+  NetworkConfirmationTimeoutError,
+  TransitionRejectedError,
+  TransitionSelectionError,
+} from "./types.js";
+export { selectMatchingTransition } from "./transition-selector.js";
 
 export { AleoConnection, type ConnectionOptions, TransactionShapeParseError } from "./connection.js";
 export { NetworkManagerImpl } from "./network-manager.js";

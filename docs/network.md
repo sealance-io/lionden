@@ -44,6 +44,19 @@ Connection creation currently maps:
 
 `NetworkConnection.getProgramSource(programId)` returns compiled Aleo source for deployed programs and `null` for missing programs. Deployment preflight, deployment-state validation, and compiler network dependency fetching rely on this behavior.
 
+### `execute()` and transition outputs
+
+`connection.execute(programId, transitionName, args, options?)` is the low-level imperative path. In `mode: "local"` it returns the SDK's local execution outputs synchronously. In on-chain mode (the default) it broadcasts the transaction and returns `{ outputs: [], txId }` — **fire-and-forget by default**, to preserve the typechain `submitTransition()` path's expectation that `.submitted()` doesn't wait and `.accepted()` / `.settled()` run their own confirmation poll.
+
+Two ways to recover outputs after on-chain broadcast:
+
+- **Opt in at call time**: pass `{ awaitConfirmation: true }`. `execute()` awaits confirmation, picks the matching `(programId, transitionName)` transition from `transitions[]`, and returns `{ outputs, rawOutputs, txId }`. Throws `TransitionRejectedError` if the transaction was confirmed as fee-only / rejected, and `TransitionSelectionError` if zero or more than one transitions match (reentrant flows — see the escape hatch below).
+- **Fetch later**: call `connection.getTransitionOutputs(txId, programId, transitionName, timeout?)`. Same return shape and error semantics as the `awaitConfirmation: true` path. Useful when the caller broadcast many transitions in parallel and wants to resolve outputs after the fact.
+
+`TransitionCallResult.outputs` stays `string[]` for ergonomic ABI deserializers (e.g. `Leo.u32(result.outputs[0])`). Id-only dynamic-record outputs are surfaced as their `id` string in `outputs`; the faithful on-chain shape (with the `idOnly` discriminator) is preserved separately in `TransitionCallResult.rawOutputs`.
+
+User-facing wrappers (`ctx.execute`, `ctx.raw.execute`, the recipe `DeploymentContext.execute`) flip the default to `awaitConfirmation: true` at their layer. The reentrant escape hatch for those callers is `{ awaitConfirmation: false }` followed by `connection.waitForConfirmation(txId)` to inspect all transitions directly.
+
 ## Devnode Lifecycle
 
 `packages/network/src/devnode-manager.ts` wraps `leo devnode start`.

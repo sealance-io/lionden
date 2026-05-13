@@ -5,11 +5,25 @@ import type { AleoNetwork, NamedAccounts } from "@lionden/config";
 // ---------------------------------------------------------------------------
 
 /**
- * Result from executing a program transition.
- * Shape matches the contract wrapper's TransitionCallResult.
+ * Result from executing a program transition at the network layer.
+ *
+ * - `outputs` is always present. In local mode it carries the SDK's local
+ *   execution outputs. In on-chain mode it is `[]` unless the caller opted
+ *   in to awaiting confirmation (`ExecuteOptions.awaitConfirmation === true`
+ *   or `getTransitionOutputs(...)` was called), in which case it carries the
+ *   matching transition's `rawOutputs` flattened to strings (id-only entries
+ *   are serialized to their `id` so the common case stays `string[]`).
+ * - `rawOutputs` is present only on the awaited on-chain path. It preserves
+ *   the faithful on-chain shape, including the `idOnly` discriminator for
+ *   dynamic-record outputs.
+ *
+ * Generated typechain wrappers consume this result (via `executeRaw`) but
+ * surface their own typed output shape on top of `rawOutputs`; their public
+ * return type is not this interface.
  */
 export interface TransitionCallResult {
   readonly outputs: string[];
+  readonly rawOutputs?: readonly RawTransitionOutput[];
   readonly txId?: string;
 }
 
@@ -85,6 +99,77 @@ export class NetworkConfirmationTimeoutError extends Error {
   }
 }
 
+export interface TransitionRejectedContext {
+  readonly txId: string;
+  readonly programId: string;
+  readonly transitionName: string;
+  readonly blockHeight: number;
+}
+
+/**
+ * Thrown by `connection.getTransitionOutputs(...)` (and by `execute(...)`
+ * when `awaitConfirmation: true`) if the confirmed transaction landed with
+ * `status: "rejected"`. Rejected execute transactions are converted to
+ * fee-only on inclusion, so the original transition outputs are not
+ * recoverable from the chain.
+ */
+export class TransitionRejectedError extends Error {
+  readonly kind = "TransitionRejectedError" as const;
+  readonly txId: string;
+  readonly programId: string;
+  readonly transitionName: string;
+  readonly blockHeight: number;
+
+  constructor(message: string, context: TransitionRejectedContext) {
+    super(message);
+    this.name = "TransitionRejectedError";
+    this.txId = context.txId;
+    this.programId = context.programId;
+    this.transitionName = context.transitionName;
+    this.blockHeight = context.blockHeight;
+  }
+}
+
+export interface TransitionSelectionContext {
+  readonly programId: string;
+  readonly transitionName: string;
+  readonly matchCount: number;
+  readonly availableTransitions: readonly string[];
+  /**
+   * Present when the selector is invoked downstream of a successful broadcast
+   * (e.g. via `connection.execute({ awaitConfirmation: true })` or
+   * `connection.getTransitionOutputs(...)`). Callers that hit the reentrant
+   * multi-match case need this id to look up the full confirmed transaction.
+   */
+  readonly txId?: string;
+}
+
+/**
+ * Thrown by `selectMatchingTransition(...)` when the confirmed transaction
+ * does not contain exactly one transition matching `(programId, transitionName)`.
+ * Reentrant and recursive flows hit the multi-match case — opt out of the
+ * default await via `{ awaitConfirmation: false }` and inspect
+ * `connection.waitForConfirmation(txId).transitions` directly.
+ */
+export class TransitionSelectionError extends Error {
+  readonly kind = "TransitionSelectionError" as const;
+  readonly programId: string;
+  readonly transitionName: string;
+  readonly matchCount: number;
+  readonly availableTransitions: readonly string[];
+  readonly txId?: string;
+
+  constructor(message: string, context: TransitionSelectionContext) {
+    super(message);
+    this.name = "TransitionSelectionError";
+    this.programId = context.programId;
+    this.transitionName = context.transitionName;
+    this.matchCount = context.matchCount;
+    this.availableTransitions = context.availableTransitions;
+    this.txId = context.txId;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Signer
 // ---------------------------------------------------------------------------
@@ -124,6 +209,23 @@ export interface ExecuteOptions {
    * cannot be discovered from static `import` statements.
    */
   imports?: readonly string[];
+  /**
+   * On-chain mode only. When `true`, `execute()` awaits confirmation and
+   * returns the matching transition's parsed outputs. When `false` or
+   * omitted, `execute()` returns immediately after broadcast with
+   * `outputs: []`; callers can fetch outputs later via
+   * `connection.getTransitionOutputs(txId, programId, transitionName)`.
+   *
+   * Defaults to `false` at this layer to preserve fire-and-forget semantics
+   * for generated typechain `submitTransition()`, which calls
+   * `network.execute(...)` and runs its own `waitForConfirmation` for
+   * `.accepted()` / `.settled()`. The user-facing wrappers
+   * (`ctx.execute`, `ctx.raw.execute`, recipe `execute`) flip the default
+   * to `true` at their layer.
+   *
+   * No effect in `mode: "local"` (local mode returns outputs synchronously).
+   */
+  awaitConfirmation?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -171,6 +273,24 @@ export interface NetworkConnection {
     txId: string,
     timeout?: number,
   ): Promise<ConfirmedTransaction>;
+
+  /**
+   * Await confirmation of `txId` and return the parsed outputs for the
+   * matching `(programId, transitionName)` transition.
+   *
+   * Throws `TransitionRejectedError` if the confirmed transaction has
+   * `status: "rejected"` (fee-only on inclusion; outputs are not recoverable).
+   * Throws `TransitionSelectionError` if the confirmed transaction does not
+   * contain exactly one matching transition — see the error message for the
+   * reentrant escape hatch (`awaitConfirmation: false` + manual
+   * `waitForConfirmation(txId)`).
+   */
+  getTransitionOutputs(
+    txId: string,
+    programId: string,
+    transitionName: string,
+    timeout?: number,
+  ): Promise<TransitionCallResult>;
 
   /** Advance blocks on devnode. Only available on devnode connections. */
   advanceBlocks?(count: number): Promise<void>;
@@ -251,6 +371,17 @@ export interface NetworkManager {
     txId: string,
     timeout?: number,
   ): Promise<ConfirmedTransaction>;
+
+  /**
+   * Fetch parsed outputs for a confirmed transition on the active connection.
+   * Convenience method — delegates to getConnection().getTransitionOutputs().
+   */
+  getTransitionOutputs(
+    txId: string,
+    programId: string,
+    transitionName: string,
+    timeout?: number,
+  ): Promise<TransitionCallResult>;
 }
 
 // ---------------------------------------------------------------------------

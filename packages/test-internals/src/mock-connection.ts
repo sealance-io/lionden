@@ -35,6 +35,10 @@ export function createMockConnection(
       status: "accepted",
       transitions: [],
     }),
+    getTransitionOutputs: vi.fn().mockResolvedValue({
+      outputs: ["1u32"],
+      txId: "at1mock",
+    }),
     getBlockHeight: vi.fn().mockResolvedValue(100),
     getProgramSource: vi.fn().mockResolvedValue(null),
     advanceBlocks: vi.fn().mockResolvedValue(undefined),

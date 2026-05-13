@@ -26,6 +26,7 @@ import {
 } from "./execution-key-cache.js";
 import {
   NetworkConfirmationTimeoutError,
+  TransitionRejectedError,
   type NetworkConnection,
   type TransitionCallResult,
   type ConfirmedTransaction,
@@ -33,6 +34,7 @@ import {
   type ExecuteOptions,
   type RawTransitionOutput,
 } from "./types.js";
+import { selectMatchingTransition } from "./transition-selector.js";
 
 export interface ConnectionOptions {
   type: "devnode" | "http";
@@ -388,8 +390,48 @@ export class AleoConnection implements NetworkConnection {
       });
     }
 
-    // TODO: Parse outputs from transaction once confirmed
-    return { outputs: [], txId };
+    if (options?.awaitConfirmation !== true) {
+      return { outputs: [], txId };
+    }
+    return this.getTransitionOutputs(txId, programId, transitionName);
+  }
+
+  /**
+   * Await confirmation of `txId` and return the parsed outputs for the
+   * matching `(programId, transitionName)` transition. Used internally by
+   * `execute()` when `awaitConfirmation: true`, and exposed as a public
+   * follow-up for callers that opted into fire-and-forget broadcast.
+   */
+  async getTransitionOutputs(
+    txId: string,
+    programId: string,
+    transitionName: string,
+    timeout?: number,
+  ): Promise<TransitionCallResult> {
+    const confirmed = await this.waitForConfirmation(txId, timeout);
+    if (confirmed.status === "rejected") {
+      throw new TransitionRejectedError(
+        `Transition ${programId}/${transitionName} was rejected on inclusion (txId ${txId}); rejected execute transactions are converted to fee-only and carry no transition outputs.`,
+        {
+          txId: confirmed.txId,
+          programId,
+          transitionName,
+          blockHeight: confirmed.blockHeight,
+        },
+      );
+    }
+    const transition = selectMatchingTransition(
+      programId,
+      transitionName,
+      confirmed.transitions,
+      confirmed.txId,
+    );
+    const outputs = transition.rawOutputs.map(toOutputString);
+    return {
+      outputs,
+      rawOutputs: transition.rawOutputs,
+      txId: confirmed.txId,
+    };
   }
 
   /**
@@ -815,6 +857,16 @@ function prepareExecutionInputs(
     throw new Error("SDK ProgramManager.prepareInputs() returned a non-array value.");
   }
   return prepared.map((value) => String(value));
+}
+
+/**
+ * Flatten a `RawTransitionOutput` to a string for the `outputs: string[]`
+ * field of `TransitionCallResult`. Plain string entries pass through;
+ * id-only dynamic-record outputs surface their `id`. The faithful shape is
+ * preserved separately in `TransitionCallResult.rawOutputs`.
+ */
+function toOutputString(output: RawTransitionOutput): string {
+  return typeof output === "string" ? output : output.id;
 }
 
 /** Best-effort destroy of an SDK Account to release WASM private-key state. */
