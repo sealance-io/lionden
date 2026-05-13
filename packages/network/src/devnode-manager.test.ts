@@ -16,7 +16,6 @@ import { spawn } from "node:child_process";
 function createMockProcess(): EventEmitter & {
   exitCode: number | null;
   kill: ReturnType<typeof vi.fn>;
-  stdout: EventEmitter;
   stderr: EventEmitter;
 } {
   const proc = new EventEmitter() as any;
@@ -26,7 +25,6 @@ function createMockProcess(): EventEmitter & {
     proc.emit("exit", proc.exitCode);
     return true;
   });
-  proc.stdout = new EventEmitter();
   proc.stderr = new EventEmitter();
   return proc;
 }
@@ -67,7 +65,7 @@ describe("DevnodeManager", () => {
         "--private-key",
         "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
       ],
-      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+      expect.objectContaining({ stdio: ["ignore", "ignore", "pipe"] }),
     );
     expect(manager.endpoint).toBe("http://127.0.0.1:4040");
   });
