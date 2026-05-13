@@ -19,6 +19,22 @@ export interface TestRunnerOptions {
   compile?: boolean;
   /** Generate proofs during execution (slower). Default: false */
   prove?: boolean;
+  /**
+   * Test file or glob patterns to include. Defaults to the standard test glob.
+   *
+   * Patterns are passed directly to Vitest with the project root configured
+   * as Vitest's root.
+   */
+  files?: string[];
+  /**
+   * Run test files in parallel. Default: false.
+   *
+   * LionDen tests connect to a single devnode/HTTP endpoint, so parallel
+   * file execution creates nonce/deploy contention. Default serial execution
+   * keeps multi-file projects predictable; users with isolated test files
+   * can opt in via `--parallel` on the `test` task.
+   */
+  parallel?: boolean;
   /** Project root directory. */
   root: string;
 }
@@ -63,9 +79,10 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
     // Run against the LionDen project only; repo-level Vitest workspace
     // config should not leak into scaffolded/example project execution.
     config: false,
-    include: ["test/**/*.test.ts"],
+    include: options.files ?? ["test/**/*.test.ts"],
     testTimeout: options.timeout ?? 120_000,
     hookTimeout: options.timeout ?? 120_000,
+    fileParallelism: options.parallel === true,
     ...(options.grep ? { testNamePattern: options.grep } : {}),
   });
 
