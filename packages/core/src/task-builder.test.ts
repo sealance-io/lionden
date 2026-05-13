@@ -165,6 +165,7 @@ describe("createLre config-level tasks", () => {
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
     deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
     sdk: { keyCache: { storage: "memory" as const } },
+    execution: { imports: {} },
     namedAccounts: {},
   } satisfies LionDenResolvedConfig;
 
@@ -213,6 +214,7 @@ describe("artifact store", () => {
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
     deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
     sdk: { keyCache: { storage: "memory" as const } },
+    execution: { imports: {} },
     namedAccounts: {},
   } satisfies LionDenResolvedConfig;
 

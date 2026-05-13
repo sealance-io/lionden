@@ -95,10 +95,13 @@ afterAll(() => {
 });
 
 /** Create a concrete subclass to access protected methods. */
-function createTestContract(programId = "test.aleo") {
+function createTestContract(
+  programId = "test.aleo",
+  options?: { imports?: readonly string[] },
+) {
   class TestContract extends BaseContract {
-    constructor(id = programId) {
-      super(id);
+    constructor(id = programId, ctorOpts: { imports?: readonly string[] } | undefined = options) {
+      super(id, ctorOpts);
     }
     // Expose protected methods for testing
     async testExecuteLocal(...args: any[]) {
@@ -1527,6 +1530,67 @@ describe("BaseContract runtime", () => {
         expect(err.message).toContain("kaboom");
         expect((err.cause as Error).message).toBe("kaboom");
       }
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // runtime imports
+  // -------------------------------------------------------------------------
+
+  describe("runtime imports", () => {
+    it("forwards instance-level imports into network.execute", async () => {
+      const spy = vi.fn().mockResolvedValue({ outputs: [], txId: "at1ok" });
+      const contract = createTestContract("governance.aleo", {
+        imports: ["voting_power.aleo"],
+      });
+      contract.connect(mockLre({ execute: spy }));
+
+      await contract.testExecuteLocal("get_voting_power", []);
+
+      expect(spy).toHaveBeenCalledOnce();
+      const opts = spy.mock.calls[0]![3];
+      expect(opts.imports).toEqual(["voting_power.aleo"]);
+    });
+
+    it("merges instance-level and per-call imports", async () => {
+      const spy = vi.fn().mockResolvedValue({ outputs: [], txId: "at1ok" });
+      const contract = createTestContract("governance.aleo", {
+        imports: ["voting_power.aleo"],
+      });
+      contract.connect(mockLre({ execute: spy }));
+
+      await contract.testExecuteLocal("get_voting_power", [], {
+        imports: ["quadratic_power.aleo"],
+      });
+
+      const opts = spy.mock.calls[0]![3];
+      expect(opts.imports).toEqual(["voting_power.aleo", "quadratic_power.aleo"]);
+    });
+
+    it("omits imports from the wire when neither layer is set", async () => {
+      const spy = vi.fn().mockResolvedValue({ outputs: [], txId: "at1ok" });
+      const contract = createTestContract("hello.aleo");
+      contract.connect(mockLre({ execute: spy }));
+
+      await contract.testExecuteLocal("main", ["1u32"]);
+
+      const opts = spy.mock.calls[0]![3];
+      expect(opts.imports).toBeUndefined();
+    });
+
+    it("withSigner clone preserves instanceImports", async () => {
+      const spy = vi.fn().mockResolvedValue({ outputs: [], txId: "at1ok" });
+      const contract = createTestContract("governance.aleo", {
+        imports: ["voting_power.aleo"],
+      });
+      contract.connect(mockLre({ execute: spy }));
+
+      const withSig = contract.withSigner({ privateKey: "k", address: "aleo1signer" });
+      await (withSig as any).testExecuteLocal("get_voting_power", []);
+
+      const opts = spy.mock.calls[0]![3];
+      expect(opts.imports).toEqual(["voting_power.aleo"]);
+      expect(opts.signer).toEqual({ privateKey: "k", address: "aleo1signer" });
     });
   });
 });

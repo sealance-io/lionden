@@ -105,6 +105,15 @@ export interface ExecuteOptions {
    * or in `"local"` mode.
    */
   prove?: boolean;
+  /**
+   * Additional programs to load into the VM at execute time. Each entry is
+   * a Leo program id (bare `voting_power` or `voting_power.aleo`) or a path
+   * to a local `.aleo` file (relative paths anchor to project root).
+   * Merged with config-level `execution.imports[programId]` for this call.
+   * Required when the program performs dynamic dispatch and the targets
+   * cannot be discovered from static `import` statements.
+   */
+  imports?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------

@@ -29,13 +29,15 @@ import { Leo } from "../typechain/BaseContract.js";
 async function deployDispatch() {
   const ctx = await setup();
   try {
-    // Deploying governance transitively deploys voting_power and
-    // quadratic_power in topological order (per packages/leo-compiler
-    // dependency-resolver). The two implementer programs are listed as
-    // explicit `import` statements in governance/main.leo even though
-    // dispatch is via interface — lionden's source-first layout has no
-    // program.json, and the dependency-resolver only follows static
-    // imports.
+    // Runtime dispatch targets are declared in lionden.config.ts under
+    // `execution.imports["governance.aleo"]`, not as static `import`
+    // statements in governance/main.leo. That config makes the SDK load
+    // the strategy programs at execute time but does NOT make them
+    // deploy-time deps — the dependency resolver only follows static
+    // imports — so each strategy program is deployed explicitly here
+    // before the dispatch hub.
+    await ctx.deploy("voting_power", { noCompile: true });
+    await ctx.deploy("quadratic_power", { noCompile: true });
     await ctx.deploy("governance", { noCompile: true });
     return { ctx };
   } catch (error) {

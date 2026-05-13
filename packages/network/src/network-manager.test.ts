@@ -52,6 +52,7 @@ const mockConfig: LionDenResolvedConfig = {
     autoExport: false,
   },
   sdk: { keyCache: { storage: "memory" } },
+  execution: { imports: {} },
   namedAccounts: {},
 };
 
@@ -157,6 +158,28 @@ describe("NetworkManagerImpl", () => {
     expect(conn.privateKey).toBe(
       "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
     );
+  });
+
+  it("threads projectRoot and executionImports into devnode and http connections", async () => {
+    const importsConfig = {
+      ...mockConfig,
+      execution: {
+        imports: {
+          "governance.aleo": [
+            { kind: "programId" as const, programId: "voting_power.aleo" },
+          ],
+        },
+      },
+    };
+    const mgr = new NetworkManagerImpl(importsConfig);
+
+    const devnodeConn = await mgr.connect("devnode") as any;
+    expect(devnodeConn.projectRoot).toBe(mockConfig.paths.root);
+    expect(devnodeConn.executionImports).toEqual(importsConfig.execution.imports);
+
+    const httpConn = await mgr.connect("testnet") as any;
+    expect(httpConn.projectRoot).toBe(mockConfig.paths.root);
+    expect(httpConn.executionImports).toEqual(importsConfig.execution.imports);
   });
 
   it("connect creates a fresh connection when cached one is closed", async () => {

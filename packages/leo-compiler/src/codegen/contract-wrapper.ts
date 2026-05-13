@@ -60,6 +60,32 @@ export interface BaseCallOptions {
   prove?: boolean;
   /** Override the signer for this call. */
   signer?: SignerInput;
+  /**
+   * Additional programs to load into the VM at execute time. Each entry
+   * is a Leo program id (bare or \`.aleo\`) or a path to a local \`.aleo\`
+   * file (relative paths anchor to project root). Merged with any
+   * instance-level imports (set via \`createX({ imports })\`) and the
+   * config-level \`execution.imports[programId]\`. Required for
+   * dynamic-dispatch targets that cannot be inferred from static
+   * \`import\` statements.
+   */
+  imports?: readonly string[];
+}
+
+/**
+ * Options accepted by every generated contract factory (\`createX({...})\`)
+ * and the underlying \`BaseContract\` constructor. Currently exposes a list
+ * of runtime imports that the wrapper carries on every call — useful for
+ * dispatch hubs that need the same set of dynamic targets on each call.
+ */
+export interface BaseContractOptions {
+  /**
+   * Runtime imports declared at instance creation time. Same accepted
+   * shapes as \`BaseCallOptions.imports\`: bare names, \`.aleo\` ids, or
+   * paths. Merged additively with per-call \`options.imports\` in
+   * \`executeRaw\`.
+   */
+  readonly imports?: readonly string[];
 }
 
 export interface LocalExecutionOptions extends Omit<BaseCallOptions, "privateFee"> {}
@@ -449,11 +475,13 @@ export abstract class BaseContract {
   static readonly RECORD_RAW: typeof RECORD_RAW = RECORD_RAW;
 
   protected readonly programId: string;
+  protected readonly instanceImports: readonly string[];
   protected lre: LionDenRuntimeEnvironment | null = null;
   protected signer?: SignerInput;
 
-  constructor(programId: string) {
+  constructor(programId: string, options?: BaseContractOptions) {
     this.programId = programId;
+    this.instanceImports = options?.imports ?? [];
   }
 
   /** Connect this contract wrapper to an LRE instance. */
@@ -464,12 +492,13 @@ export abstract class BaseContract {
 
   /**
    * Return a new contract instance bound to a specific signer.
-   * The returned instance shares the same LRE connection but all
-   * transitions will execute as the given signer.
+   * The returned instance shares the same LRE connection and any
+   * instance-level runtime imports, but all transitions will execute
+   * as the given signer.
    */
   withSigner(signer: SignerInput): this {
-    const ContractClass = this.constructor as new () => this;
-    const instance = new ContractClass();
+    const ContractClass = this.constructor as new (options?: BaseContractOptions) => this;
+    const instance = new ContractClass({ imports: this.instanceImports });
     instance.lre = this.lre;
     instance.signer = signer;
     return instance;
@@ -886,6 +915,10 @@ export abstract class BaseContract {
       if (env?.["LIONDEN_PROVE"] === "true") {
         effectiveOptions.prove = true;
       }
+    }
+    const mergedImports = [...this.instanceImports, ...(options.imports ?? [])];
+    if (mergedImports.length > 0) {
+      effectiveOptions.imports = mergedImports;
     }
     return network.execute(this.programId, transitionName, args, effectiveOptions);
   }

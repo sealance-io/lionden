@@ -15,7 +15,7 @@ import {
   type RuntimeKeyCacheDiagnostics,
   type RuntimeKeyIdentity,
 } from "@lionden/core";
-import type { AleoNetwork } from "@lionden/config";
+import type { AleoNetwork, RuntimeImportRef } from "@lionden/config";
 
 export interface ProgramExecutionArtifacts {
   readonly source: string;
@@ -46,6 +46,12 @@ export async function resolveProgramExecutionArtifacts(
     programId: string;
     networkClient: { getProgram(id: string): Promise<string> };
     includeSidecar?: boolean;
+    /**
+     * Pre-normalized runtime-import refs. Seeded into the import resolution
+     * graph before the static-import walk, so dynamic-dispatch targets and
+     * their transitive deps are bundled into the resulting `imports` map.
+     */
+    runtimeImports?: readonly RuntimeImportRef[];
   },
 ): Promise<ProgramExecutionArtifacts> {
   const local = readLocalProgramSource(options.artifactsDir, options.programId);
@@ -55,6 +61,7 @@ export async function resolveProgramExecutionArtifacts(
     artifactsDir: options.artifactsDir,
     programSource: source,
     networkClient: options.networkClient,
+    runtimeImports: options.runtimeImports,
   });
   const artifactDir = local?.artifactDir;
   const sidecarPath = options.includeSidecar && options.artifactsDir
@@ -198,9 +205,29 @@ async function resolveProgramImports(
     artifactsDir?: string;
     programSource: string;
     networkClient: { getProgram(id: string): Promise<string> };
+    runtimeImports?: readonly RuntimeImportRef[];
   },
 ): Promise<Record<string, string> | undefined> {
   const imports = new Map<string, string>();
+  // Tracks where each import id was first sourced from, for clear conflict
+  // error messages when a duplicate id arrives with different content.
+  const origins = new Map<string, string>();
+
+  const addImport = (id: string, source: string, origin: string): void => {
+    const existing = imports.get(id);
+    if (existing !== undefined) {
+      if (existing === source) return;
+      const existingOrigin = origins.get(id) ?? "<unknown>";
+      throw new Error(
+        `Runtime import conflict for program "${id}": same id resolved to two different sources.\n` +
+          `  - from ${existingOrigin}: sha256=${sha256Text(existing)}\n` +
+          `  - from ${origin}: sha256=${sha256Text(source)}\n` +
+          `Reconcile the runtime-import refs so the same program id points at one source.`,
+      );
+    }
+    imports.set(id, source);
+    origins.set(id, origin);
+  };
 
   const visit = async (programSource: string, ancestry: Set<string>): Promise<void> => {
     for (const importId of parseImportIds(programSource)) {
@@ -208,7 +235,8 @@ async function resolveProgramImports(
 
       const local = readLocalProgramSource(options.artifactsDir, importId);
       const importSource = local?.source ?? await options.networkClient.getProgram(importId);
-      imports.set(importId, importSource);
+      const origin = local ? `static import ← artifacts/${importId}` : `static import ← network`;
+      addImport(importId, importSource, origin);
 
       const nextAncestry = new Set(ancestry);
       nextAncestry.add(importId);
@@ -216,10 +244,55 @@ async function resolveProgramImports(
     }
   };
 
+  // Seed runtime imports first. The static-import walk below picks up
+  // anything they statically import, but we want their own (programId, source)
+  // pairs to win for conflict-detection purposes.
+  for (const ref of options.runtimeImports ?? []) {
+    const seeded = await seedRuntimeImport(ref, options.artifactsDir, options.networkClient);
+    addImport(seeded.programId, seeded.source, seeded.origin);
+    await visit(seeded.source, new Set([seeded.programId]));
+  }
+
   await visit(options.programSource, new Set());
   if (imports.size === 0) return undefined;
 
   return Object.fromEntries([...imports.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+async function seedRuntimeImport(
+  ref: RuntimeImportRef,
+  artifactsDir: string | undefined,
+  networkClient: { getProgram(id: string): Promise<string> },
+): Promise<{ programId: string; source: string; origin: string }> {
+  if (ref.kind === "path") {
+    if (!fs.existsSync(ref.absolutePath)) {
+      throw new Error(
+        `Runtime import path not found at execute time: ${ref.absolutePath}`,
+      );
+    }
+    const source = fs.readFileSync(ref.absolutePath, "utf-8");
+    const programId = parseProgramIdFromSource(source, ref.absolutePath);
+    return { programId, source, origin: `runtime import ← ${ref.absolutePath}` };
+  }
+
+  const local = readLocalProgramSource(artifactsDir, ref.programId);
+  const source = local?.source ?? await networkClient.getProgram(ref.programId);
+  const origin = local
+    ? `runtime import ← artifacts/${ref.programId}`
+    : `runtime import ← network (${ref.programId})`;
+  return { programId: ref.programId, source, origin };
+}
+
+function parseProgramIdFromSource(source: string, sourcePath: string): string {
+  const match = /^\s*program\s+([a-zA-Z_][a-zA-Z0-9_]*\.aleo)\s*;/m.exec(source);
+  if (!match) {
+    const firstNonEmpty = source.split(/\r?\n/).find((line) => line.trim().length > 0) ?? "<empty>";
+    throw new Error(
+      `Cannot infer program id from .aleo source at ${sourcePath} — missing \`program <id>.aleo;\` header.\n` +
+        `First non-empty line: ${JSON.stringify(firstNonEmpty.slice(0, 120))}`,
+    );
+  }
+  return match[1]!;
 }
 
 function parseImportIds(programSource: string): string[] {

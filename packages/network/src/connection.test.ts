@@ -46,6 +46,7 @@ function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeo
     endpoint: "http://127.0.0.1:3030",
     networkId: "testnet",
     privateKey: "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+    projectRoot: "/tmp/test",
     ...overrides,
   });
 }
@@ -57,6 +58,7 @@ function createHttpConnection(overrides?: Partial<ConstructorParameters<typeof A
     endpoint: "https://api.explorer.provable.com/v1",
     networkId: "testnet",
     privateKey: "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+    projectRoot: "/tmp/test",
     ...overrides,
   });
 }
@@ -220,6 +222,7 @@ describe("AleoConnection", () => {
         inputs: ["1u32"],
         priorityFee: 0,
         privateFee: false,
+        program: "program hello.aleo { }",
       });
       expect(mockSubmitTransaction).toHaveBeenCalledWith("mock-tx-bytes");
       expect(result.txId).toBe("at1broadcast");
@@ -240,6 +243,7 @@ describe("AleoConnection", () => {
         inputs: ["1u32"],
         priorityFee: 500,
         privateFee: true,
+        program: "program hello.aleo { }",
       });
     });
 
@@ -257,6 +261,7 @@ describe("AleoConnection", () => {
         inputs: ["1u32"],
         priorityFee: 0,
         privateFee: false,
+        program: "program hello.aleo { }",
       });
       expect(result.txId).toBe("at1executed");
     });
@@ -301,8 +306,116 @@ describe("AleoConnection", () => {
         inputs: ["1u32"],
         priorityFee: 0,
         privateFee: false,
+        program: "program hello.aleo { }",
       });
       expect(result.txId).toBe("at1executed");
+    });
+
+    // -----------------------------------------------------------------------
+    // execute() — runtime imports (dynamic dispatch)
+    // -----------------------------------------------------------------------
+
+    describe("runtime imports", () => {
+      it("threads config-level imports into devnode fast-path", async () => {
+        mockGetProgram.mockImplementation(async (id: string) => {
+          if (id === "governance.aleo") return "program governance.aleo { }";
+          if (id === "voting_power.aleo") return "program voting_power.aleo;";
+          throw new Error(`unexpected ${id}`);
+        });
+
+        const connection = createDevnodeConnection({
+          executionImports: {
+            "governance.aleo": [{ kind: "programId", programId: "voting_power.aleo" }],
+          },
+        });
+
+        await connection.execute("governance.aleo", "main", []);
+
+        expect(mockBuildDevnodeExec).toHaveBeenCalledWith(expect.objectContaining({
+          program: "program governance.aleo { }",
+          imports: { "voting_power.aleo": "program voting_power.aleo;" },
+        }));
+      });
+
+      it("threads per-call options.imports into pm.execute for http", async () => {
+        mockGetProgram.mockImplementation(async (id: string) => {
+          if (id === "governance.aleo") return "program governance.aleo { }";
+          if (id === "voting_power.aleo") return "program voting_power.aleo;";
+          throw new Error(`unexpected ${id}`);
+        });
+
+        const connection = createHttpConnection();
+
+        await connection.execute("governance.aleo", "main", [], {
+          imports: ["voting_power"],
+        });
+
+        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+          program: "program governance.aleo { }",
+          imports: { "voting_power.aleo": "program voting_power.aleo;" },
+        }));
+      });
+
+      it("merges config-level and per-call imports (additive, deduped)", async () => {
+        mockGetProgram.mockImplementation(async (id: string) => {
+          if (id === "governance.aleo") return "program governance.aleo { }";
+          if (id === "voting_power.aleo") return "program voting_power.aleo;";
+          if (id === "quadratic_power.aleo") return "program quadratic_power.aleo;";
+          throw new Error(`unexpected ${id}`);
+        });
+
+        const connection = createHttpConnection({
+          executionImports: {
+            "governance.aleo": [{ kind: "programId", programId: "voting_power.aleo" }],
+          },
+        });
+
+        await connection.execute("governance.aleo", "main", [], {
+          imports: ["voting_power", "quadratic_power.aleo"], // first dups config layer
+        });
+
+        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+          imports: {
+            "quadratic_power.aleo": "program quadratic_power.aleo;",
+            "voting_power.aleo": "program voting_power.aleo;",
+          },
+        }));
+      });
+
+      it("forwards imports to pm.run in local mode", async () => {
+        mockRun.mockResolvedValue({ getOutputs: () => ["100u64"] });
+        mockGetProgram.mockImplementation(async (id: string) => {
+          if (id === "governance.aleo") return "program governance.aleo { }";
+          if (id === "voting_power.aleo") return "program voting_power.aleo;";
+          throw new Error(`unexpected ${id}`);
+        });
+
+        const connection = createDevnodeConnection({
+          executionImports: {
+            "governance.aleo": [{ kind: "programId", programId: "voting_power.aleo" }],
+          },
+        });
+
+        await connection.execute("governance.aleo", "main", [], { mode: "local" });
+
+        expect(mockRun).toHaveBeenCalledWith(
+          "program governance.aleo { }",
+          "main",
+          [],
+          false,
+          { "voting_power.aleo": "program voting_power.aleo;" },
+        );
+      });
+
+      it("raises a clear error when a per-call path ref does not exist", async () => {
+        const connection = createDevnodeConnection();
+
+        await expect(
+          connection.execute("hello.aleo", "main", ["1u32"], {
+            imports: ["./does-not-exist.aleo"],
+          }),
+        ).rejects.toThrow(/Runtime import path not found/);
+      });
     });
 
     it("injects cached filesystem keys and local program source without fetching the program", async () => {

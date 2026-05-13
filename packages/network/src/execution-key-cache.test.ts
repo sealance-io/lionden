@@ -200,3 +200,172 @@ describe("execution key cache", () => {
     }));
   });
 });
+
+describe("execution key cache — runtime imports", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-runtime-imports-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("seeds a programId ref from local artifacts", async () => {
+    const artifactsDir = path.join(tmpDir, "artifacts");
+    const appSource = "program app.aleo;";
+    const targetSource = "program voting_power.aleo;";
+
+    for (const [programId, source] of [
+      ["app.aleo", appSource],
+      ["voting_power.aleo", targetSource],
+    ] as const) {
+      const artifactDir = path.join(artifactsDir, programId);
+      fs.mkdirSync(artifactDir, { recursive: true });
+      fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+    }
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      artifactsDir,
+      programId: "app.aleo",
+      networkClient: {
+        getProgram: async (id) => {
+          throw new Error(`unexpected network fetch for ${id}`);
+        },
+      },
+      runtimeImports: [{ kind: "programId", programId: "voting_power.aleo" }],
+    });
+
+    expect(artifacts.imports).toEqual({ "voting_power.aleo": targetSource });
+  });
+
+  it("seeds a programId ref via network fetch when not local", async () => {
+    const appSource = "program app.aleo;";
+    const targetSource = "program voting_power.aleo;";
+    const fetched: string[] = [];
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      programId: "app.aleo",
+      networkClient: {
+        getProgram: async (id) => {
+          fetched.push(id);
+          if (id === "app.aleo") return appSource;
+          if (id === "voting_power.aleo") return targetSource;
+          throw new Error(`unexpected: ${id}`);
+        },
+      },
+      runtimeImports: [{ kind: "programId", programId: "voting_power.aleo" }],
+    });
+
+    expect(artifacts.imports).toEqual({ "voting_power.aleo": targetSource });
+    expect(fetched).toContain("voting_power.aleo");
+  });
+
+  it("seeds a path ref by reading the file and inferring the program id", async () => {
+    const appSource = "program app.aleo;";
+    const targetPath = path.join(tmpDir, "voting_power.aleo");
+    const targetSource = "program voting_power.aleo;\n// inline bytecode";
+    fs.writeFileSync(targetPath, targetSource);
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      programId: "app.aleo",
+      networkClient: {
+        getProgram: async (id) => {
+          if (id === "app.aleo") return appSource;
+          throw new Error(`unexpected network fetch: ${id}`);
+        },
+      },
+      runtimeImports: [{ kind: "path", absolutePath: targetPath }],
+    });
+
+    expect(artifacts.imports).toEqual({ "voting_power.aleo": targetSource });
+  });
+
+  it("pulls in transitive static imports of runtime targets", async () => {
+    const appSource = "program app.aleo;";
+    const targetSource = "import helper.aleo;\nprogram voting_power.aleo;";
+    const helperSource = "program helper.aleo;";
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      programId: "app.aleo",
+      networkClient: {
+        getProgram: async (id) => {
+          if (id === "app.aleo") return appSource;
+          if (id === "voting_power.aleo") return targetSource;
+          if (id === "helper.aleo") return helperSource;
+          throw new Error(`unexpected: ${id}`);
+        },
+      },
+      runtimeImports: [{ kind: "programId", programId: "voting_power.aleo" }],
+    });
+
+    expect(artifacts.imports).toEqual({
+      "helper.aleo": helperSource,
+      "voting_power.aleo": targetSource,
+    });
+  });
+
+  it("throws on .aleo header parse failure", async () => {
+    const appSource = "program app.aleo;";
+    const badPath = path.join(tmpDir, "malformed.aleo");
+    fs.writeFileSync(badPath, "// no program header\n");
+
+    await expect(
+      resolveProgramExecutionArtifacts({
+        programId: "app.aleo",
+        networkClient: { getProgram: async () => appSource },
+        runtimeImports: [{ kind: "path", absolutePath: badPath }],
+      }),
+    ).rejects.toThrow(/Cannot infer program id/);
+  });
+
+  it("collapses duplicate refs that resolve to identical sources", async () => {
+    const appSource = "program app.aleo;";
+    const targetSource = "program voting_power.aleo;";
+    const targetPath = path.join(tmpDir, "voting_power.aleo");
+    fs.writeFileSync(targetPath, targetSource);
+
+    const artifacts = await resolveProgramExecutionArtifacts({
+      programId: "app.aleo",
+      networkClient: {
+        getProgram: async (id) => {
+          if (id === "app.aleo") return appSource;
+          if (id === "voting_power.aleo") return targetSource;
+          throw new Error(`unexpected: ${id}`);
+        },
+      },
+      runtimeImports: [
+        { kind: "path", absolutePath: targetPath },
+        { kind: "programId", programId: "voting_power.aleo" },
+      ],
+    });
+
+    expect(Object.keys(artifacts.imports ?? {})).toEqual(["voting_power.aleo"]);
+  });
+
+  it("throws when two refs resolve to the same id with different sources", async () => {
+    const appSource = "program app.aleo;";
+    const localSource = "program voting_power.aleo;\n// local";
+    const networkSource = "program voting_power.aleo;\n// upstream";
+    const localPath = path.join(tmpDir, "local-voting_power.aleo");
+    fs.writeFileSync(localPath, localSource);
+
+    await expect(
+      resolveProgramExecutionArtifacts({
+        programId: "app.aleo",
+        networkClient: {
+          getProgram: async (id) => {
+            if (id === "app.aleo") return appSource;
+            if (id === "voting_power.aleo") return networkSource;
+            throw new Error(`unexpected: ${id}`);
+          },
+        },
+        runtimeImports: [
+          { kind: "path", absolutePath: localPath },
+          { kind: "programId", programId: "voting_power.aleo" },
+        ],
+      }),
+    ).rejects.toThrow(/Runtime import conflict for program "voting_power.aleo"/);
+  });
+});

@@ -72,6 +72,7 @@ function makeConfig(): LionDenResolvedConfig {
       autoExport: false,
     },
     sdk: { keyCache: { storage: "memory" } },
+    execution: { imports: {} },
     namedAccounts: {},
   };
 }

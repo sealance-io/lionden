@@ -9,6 +9,8 @@ import type {
   ResolvedTestingConfig,
   ResolvedDeployConfig,
   ResolvedSdkConfig,
+  ResolvedExecutionConfig,
+  RuntimeImportRef,
   ResolvedPaths,
   ResolvedNetworkConfig,
   NetworkUserConfig,
@@ -19,7 +21,16 @@ import type {
   ResolvedNamedAccountEntry,
   ResolvedNamedAccountsConfig,
 } from "@lionden/config";
-import { isConfigVariable, resolveConfigVariable, isValidAleoAddress } from "@lionden/config";
+import {
+  isConfigVariable,
+  resolveConfigVariable,
+  isValidAleoAddress,
+  classifyRuntimeImportRef,
+  normalizeRuntimeImportRef,
+  isValidExecutionImportsMapKey,
+  normalizeProgramId,
+  checkRuntimeImportRefExists,
+} from "@lionden/config";
 import type { LionDenPlugin, ConfigValidationError } from "./types.js";
 
 export class ConfigResolutionError extends Error {
@@ -61,12 +72,15 @@ export async function resolveConfig(
     }
   }
 
-  // 2. Validate user config
-  const userErrors = await collectValidationErrorsFromHandlers(
-    configHandlers,
-    "validateUserConfig",
-    config,
-  );
+  // 2. Validate user config (built-in core passes + plugin handlers)
+  const userErrors = [
+    ...validateExecutionUserConfig(config),
+    ...(await collectValidationErrorsFromHandlers(
+      configHandlers,
+      "validateUserConfig",
+      config,
+    )),
+  ];
   if (userErrors.length > 0) {
     throw new ConfigResolutionError(
       `Config validation failed:\n${formatErrors(userErrors)}`,
@@ -96,12 +110,15 @@ export async function resolveConfig(
     resolved = mergePartial(resolved, partial);
   }
 
-  // 4. Validate resolved config
-  const resolvedErrors = await collectValidationErrorsFromHandlers(
-    configHandlers,
-    "validateResolvedConfig",
-    resolved,
-  );
+  // 4. Validate resolved config (built-in core passes + plugin handlers)
+  const resolvedErrors = [
+    ...validateExecutionResolvedConfig(resolved),
+    ...(await collectValidationErrorsFromHandlers(
+      configHandlers,
+      "validateResolvedConfig",
+      resolved,
+    )),
+  ];
   if (resolvedErrors.length > 0) {
     throw new ConfigResolutionError(
       `Resolved config validation failed:\n${formatErrors(resolvedErrors)}`,
@@ -212,6 +229,8 @@ function buildDefaults(
 
   const sdk: ResolvedSdkConfig = resolveSdkConfig(config, projectRoot, paths.artifacts);
 
+  const execution: ResolvedExecutionConfig = resolveExecutionConfig(config, projectRoot);
+
   // Resolve networks
   const networks: Record<string, ResolvedNetworkConfig> = {};
   const userNetworks = config.networks ?? {};
@@ -251,6 +270,7 @@ function buildDefaults(
     testing,
     deploy,
     sdk,
+    execution,
     namedAccounts,
   };
 }
@@ -518,9 +538,154 @@ function mergePartial(
     testing: { ...base.testing, ...(partial.testing ?? {}) },
     deploy: { ...base.deploy, ...(partial.deploy ?? {}) },
     sdk: mergeSdkConfig(base.sdk, partial.sdk),
+    execution: {
+      imports: {
+        ...base.execution.imports,
+        ...(partial.execution?.imports ?? {}),
+      },
+    },
     networks: { ...base.networks, ...(partial.networks ?? {}) },
     namedAccounts: { ...base.namedAccounts, ...(partial.namedAccounts ?? {}) },
   } as LionDenResolvedConfig;
+}
+
+// ---------------------------------------------------------------------------
+// Execution config (runtime imports for dynamic dispatch)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve `execution.imports` into normalized `RuntimeImportRef[]` keyed by
+ * canonical `.aleo` program id. Invalid refs are skipped here — they would
+ * have surfaced in `validateExecutionUserConfig`. Map keys collide-merge
+ * after normalization (e.g. `governance` + `governance.aleo` → one entry).
+ */
+function resolveExecutionConfig(
+  config: LionDenUserConfig,
+  projectRoot: string,
+): ResolvedExecutionConfig {
+  const raw = config.execution?.imports;
+  if (!raw || typeof raw !== "object") {
+    return { imports: {} };
+  }
+
+  const byKey = new Map<string, RuntimeImportRef[]>();
+  for (const [rawKey, refs] of Object.entries(raw)) {
+    if (!isValidExecutionImportsMapKey(rawKey)) continue;
+    if (!Array.isArray(refs)) continue;
+
+    const canonicalKey = normalizeProgramId(rawKey);
+    const refList = byKey.get(canonicalKey) ?? [];
+    for (const raw of refs) {
+      if (typeof raw !== "string" || raw.length === 0) continue;
+      if (classifyRuntimeImportRef(raw) === "invalid") continue;
+      try {
+        refList.push(normalizeRuntimeImportRef(raw, projectRoot));
+      } catch {
+        // Ignore — already filtered by classify above; defense in depth.
+      }
+    }
+    byKey.set(canonicalKey, refList);
+  }
+
+  // Dedup and sort each list deterministically for cache identity stability.
+  const result: Record<string, readonly RuntimeImportRef[]> = {};
+  for (const [key, refs] of byKey) {
+    result[key] = dedupAndSortRuntimeImports(refs);
+  }
+  return { imports: result };
+}
+
+function dedupAndSortRuntimeImports(
+  refs: readonly RuntimeImportRef[],
+): readonly RuntimeImportRef[] {
+  const seen = new Set<string>();
+  const out: RuntimeImportRef[] = [];
+  for (const ref of refs) {
+    const key = ref.kind === "programId" ? `id:${ref.programId}` : `path:${ref.absolutePath}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  out.sort((a, b) => {
+    const aKey = a.kind === "programId" ? a.programId : a.absolutePath;
+    const bKey = b.kind === "programId" ? b.programId : b.absolutePath;
+    if (aKey === bKey) return 0;
+    return aKey < bKey ? -1 : 1;
+  });
+  return out;
+}
+
+function validateExecutionUserConfig(
+  config: LionDenUserConfig,
+): ConfigValidationError[] {
+  const errors: ConfigValidationError[] = [];
+  const imports = config.execution?.imports;
+  if (imports === undefined) return errors;
+  if (typeof imports !== "object" || imports === null || Array.isArray(imports)) {
+    errors.push({
+      path: "execution.imports",
+      message: "Must be an object mapping program ids to import-ref arrays.",
+    });
+    return errors;
+  }
+
+  for (const [key, refs] of Object.entries(imports)) {
+    if (!isValidExecutionImportsMapKey(key)) {
+      errors.push({
+        path: `execution.imports[${JSON.stringify(key)}]`,
+        message: `Map keys must be Leo program ids (bare or .aleo). Got ${JSON.stringify(key)}.`,
+      });
+      continue;
+    }
+    if (!Array.isArray(refs)) {
+      errors.push({
+        path: `execution.imports[${JSON.stringify(key)}]`,
+        message: "Value must be an array of program-id or path refs.",
+      });
+      continue;
+    }
+    if (refs.length === 0) {
+      errors.push({
+        path: `execution.imports[${JSON.stringify(key)}]`,
+        message: "Array must be non-empty (omit the key instead of providing []).",
+      });
+      continue;
+    }
+    refs.forEach((raw, i) => {
+      if (typeof raw !== "string") {
+        errors.push({
+          path: `execution.imports[${JSON.stringify(key)}][${i}]`,
+          message: `Ref must be a string, got ${typeof raw}.`,
+        });
+        return;
+      }
+      if (classifyRuntimeImportRef(raw) === "invalid") {
+        errors.push({
+          path: `execution.imports[${JSON.stringify(key)}][${i}]`,
+          message: `Ref ${JSON.stringify(raw)} is neither a Leo program id (bare or .aleo) nor a path (contains \`/\`, \`\\\\\`, or starts with \`~\`).`,
+        });
+      }
+    });
+  }
+  return errors;
+}
+
+function validateExecutionResolvedConfig(
+  resolved: LionDenResolvedConfig,
+): ConfigValidationError[] {
+  const errors: ConfigValidationError[] = [];
+  for (const [key, refs] of Object.entries(resolved.execution.imports)) {
+    refs.forEach((ref, i) => {
+      const diagnostic = checkRuntimeImportRefExists(
+        ref,
+        `execution.imports[${JSON.stringify(key)}][${i}]`,
+      );
+      if (diagnostic) {
+        errors.push({ path: diagnostic.path, message: diagnostic.message });
+      }
+    });
+  }
+  return errors;
 }
 
 function mergeSdkConfig(

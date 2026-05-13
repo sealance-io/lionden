@@ -166,6 +166,8 @@ export class NetworkManagerImpl implements NetworkManager {
           privateKey,
           artifactsDir: this.config.paths.artifacts,
           keyCache: this.config.sdk.keyCache,
+          projectRoot: this.config.paths.root,
+          executionImports: this.config.execution.imports,
         });
       }
       case "http": {
@@ -178,6 +180,8 @@ export class NetworkManagerImpl implements NetworkManager {
           apiKey: config.apiKey,
           artifactsDir: this.config.paths.artifacts,
           keyCache: this.config.sdk.keyCache,
+          projectRoot: this.config.paths.root,
+          executionImports: this.config.execution.imports,
         });
       }
     }

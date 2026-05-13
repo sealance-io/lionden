@@ -204,6 +204,9 @@ export interface LionDenUserConfig {
   /** Provable SDK integration settings */
   readonly sdk?: SdkConfig;
 
+  /** Execution settings — runtime imports for dynamic dispatch, etc. */
+  readonly execution?: ExecutionConfig;
+
   /**
    * Named accounts — human-readable roles mapped to per-network account values.
    *
@@ -308,6 +311,43 @@ export interface SdkKeyCacheConfig {
   readonly storage?: "memory" | "filesystem";
   /** Filesystem cache directory. Relative paths resolve from project root. */
   readonly path?: string;
+}
+
+export interface ExecutionConfig {
+  /**
+   * Runtime imports per dispatching program. Map keys are program ids
+   * (bare names or `.aleo`-suffixed; normalized to canonical `.aleo` form).
+   * Array entries are program ids OR paths to local `.aleo` files
+   * (relative paths anchor to project root). Provides programs the VM
+   * needs at execute time but cannot discover from the source's static
+   * imports — e.g. dynamic-dispatch targets selected by a runtime
+   * `identifier` value.
+   *
+   * @example
+   * ```typescript
+   * execution: {
+   *   imports: {
+   *     "governance.aleo": ["voting_power.aleo", "quadratic_power.aleo"],
+   *   },
+   * }
+   * ```
+   */
+  readonly imports?: Record<string, readonly string[]>;
+}
+
+/**
+ * Normalized runtime-import reference produced by config resolution and by
+ * `AleoConnection` when API-level imports arrive. Either points at a known
+ * program id (resolved later via artifacts → network) or at a local `.aleo`
+ * file (already absolutized and existence-checked).
+ */
+export type RuntimeImportRef =
+  | { readonly kind: "programId"; readonly programId: string }
+  | { readonly kind: "path"; readonly absolutePath: string };
+
+export interface ResolvedExecutionConfig {
+  /** Map keys are canonical `.aleo` program ids; refs are normalized + deduped. */
+  readonly imports: Readonly<Record<string, readonly RuntimeImportRef[]>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +464,7 @@ export interface LionDenResolvedConfig {
   readonly testing: ResolvedTestingConfig;
   readonly deploy: ResolvedDeployConfig;
   readonly sdk: ResolvedSdkConfig;
+  readonly execution: ResolvedExecutionConfig;
   /** Resolved named accounts. Empty record when not configured. */
   readonly namedAccounts: ResolvedNamedAccountsConfig;
 }

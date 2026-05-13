@@ -626,3 +626,98 @@ describe("resolveNamedAccountsConfig", () => {
     ).rejects.toThrow(ConfigResolutionError);
   });
 });
+
+// ---------------------------------------------------------------------------
+// execution.imports resolution + validation
+// ---------------------------------------------------------------------------
+
+describe("execution.imports", () => {
+  const projectRoot = "/tmp/test-project";
+
+  it("defaults to an empty map when not configured", async () => {
+    const resolved = await resolve({}, [], projectRoot);
+    expect(resolved.execution).toEqual({ imports: {} });
+  });
+
+  it("normalizes map keys to canonical .aleo program ids", async () => {
+    const resolved = await resolve(
+      { execution: { imports: { governance: ["voting_power"] } } },
+      [],
+      projectRoot,
+    );
+    expect(Object.keys(resolved.execution.imports)).toEqual(["governance.aleo"]);
+  });
+
+  it("merges values for keys that collide after normalization", async () => {
+    const resolved = await resolve(
+      {
+        execution: {
+          imports: {
+            governance: ["voting_power"],
+            "governance.aleo": ["quadratic_power"],
+          },
+        },
+      },
+      [],
+      projectRoot,
+    );
+    const refs = resolved.execution.imports["governance.aleo"];
+    expect(refs).toBeDefined();
+    expect(refs!.map((r) => (r.kind === "programId" ? r.programId : r.absolutePath))).toEqual([
+      "quadratic_power.aleo",
+      "voting_power.aleo",
+    ]);
+  });
+
+  it("normalizes bare entries to .aleo programId refs", async () => {
+    const resolved = await resolve(
+      { execution: { imports: { "governance.aleo": ["voting_power", "quadratic_power.aleo"] } } },
+      [],
+      projectRoot,
+    );
+    expect(resolved.execution.imports["governance.aleo"]).toEqual([
+      { kind: "programId", programId: "quadratic_power.aleo" },
+      { kind: "programId", programId: "voting_power.aleo" },
+    ]);
+  });
+
+  it("rejects map keys that are paths", async () => {
+    await expect(
+      resolve(
+        { execution: { imports: { "./governance.aleo": ["voting_power"] } } },
+        [],
+        projectRoot,
+      ),
+    ).rejects.toThrow(/Map keys must be Leo program ids/);
+  });
+
+  it("rejects entries that are neither program-id nor path-shaped", async () => {
+    await expect(
+      resolve(
+        { execution: { imports: { "governance.aleo": ["foo.bar"] } } },
+        [],
+        projectRoot,
+      ),
+    ).rejects.toThrow(/is neither a Leo program id/);
+  });
+
+  it("rejects empty arrays", async () => {
+    await expect(
+      resolve({ execution: { imports: { "governance.aleo": [] } } }, [], projectRoot),
+    ).rejects.toThrow(/Array must be non-empty/);
+  });
+
+  it("rejects missing path refs at resolved-config validation time", async () => {
+    await expect(
+      resolve(
+        {
+          execution: {
+            imports: { "governance.aleo": ["./missing-runtime-import.aleo"] },
+          },
+        },
+        [],
+        projectRoot,
+      ),
+    ).rejects.toThrow(/runtime import path not found/);
+  });
+});

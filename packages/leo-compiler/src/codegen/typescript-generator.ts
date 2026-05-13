@@ -78,11 +78,11 @@ export function generateBindings(
   lines.push("");
   if (helpers.length > 0) {
     lines.push(
-      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   } else {
     lines.push(
-      'import { BaseContract, type AcceptedTransition, type AddressInput, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   }
   lines.push(...generateExternalImports(ctx));
@@ -560,8 +560,8 @@ function generateContractClass(
   const lines: string[] = [];
 
   lines.push(`export class ${className} extends BaseContract {`);
-  lines.push("  constructor() {");
-  lines.push(`    super("${abi.program}");`);
+  lines.push("  constructor(options?: BaseContractOptions) {");
+  lines.push(`    super("${abi.program}", options);`);
   lines.push("  }");
 
   for (const transition of abi.transitions) {
@@ -576,8 +576,8 @@ function generateContractClass(
 
   lines.push("}");
   lines.push("");
-  lines.push(`export function create${className}(): ${className} {`);
-  lines.push(`  return new ${className}();`);
+  lines.push(`export function create${className}(options?: BaseContractOptions): ${className} {`);
+  lines.push(`  return new ${className}(options);`);
   lines.push("}");
 
   return lines;
