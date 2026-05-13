@@ -106,6 +106,29 @@ const governance = createGovernance({
 
 `imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` as a per-call additive layer, and `withSigner()` clones preserve the instance-level list. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
 
+`codegen.dynamicRecords` can emit conversion helpers for Leo v4 `dyn record` interface inputs when the concrete source record ABI is known:
+
+```ts
+export default defineConfig({
+  codegen: {
+    dynamicRecords: {
+      asGoldToken: {
+        sourceProgram: "gold_token.aleo",
+        sourceRecord: "Token",
+        schema: {
+          owner: "address.private",
+          amount: "u64.private",
+          purity: "u64.private",
+          _nonce: "group.public",
+        },
+      },
+    },
+  },
+});
+```
+
+The helper is emitted from the source program's generated module and wraps `Leo.dynamicRecord(...)` with the configured schema. Use this when a generated concrete record, such as `gold_token.aleo::Token`, must be passed to a shared `dyn record` interface. See [`json-abi.md` § Interface Conversion Helpers](json-abi.md#interface-conversion-helpers-codegendynamicrecords) and `examples/aleo-ports/dynamic_records`.
+
 `@lionden/plugin-leo` then generates TypeScript output when codegen is enabled:
 
 - `BaseContract.ts`
