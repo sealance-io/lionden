@@ -8,7 +8,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import { task } from "@lionden/core";
 import type { LionDenRuntimeEnvironment, LionDenPlugin } from "@lionden/core";
@@ -23,26 +23,16 @@ import type { CompleteDeploymentRecord } from "./deployment-types.js";
 const DEVNODE_ACCOUNT_0 =
   "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
 
+const mockCreateSdkObjects = vi.hoisted(() => vi.fn());
+const mockBuildDevnodeUpgradeTransaction = vi.hoisted(() => vi.fn());
+const mockBuildUpgradeTransaction = vi.hoisted(() => vi.fn());
+
 // Mock @lionden/network's SDK layer — upgrade-specific builders
 vi.mock("@lionden/network", async (importOriginal) => {
   const original = await importOriginal<typeof import("@lionden/network")>();
   return {
     ...original,
-    createSdkObjects: vi.fn().mockResolvedValue({
-      programManager: {
-        buildDevnodeUpgradeTransaction: vi
-          .fn()
-          .mockResolvedValue("mock-upgrade-tx-bytes"),
-        buildUpgradeTransaction: vi
-          .fn()
-          .mockResolvedValue("mock-upgrade-tx-bytes"),
-      },
-      account: {
-        address: () => ({
-          to_string: () => DEVNODE_ACCOUNT_0,
-        }),
-      },
-    }),
+    createSdkObjects: mockCreateSdkObjects,
     checkDevnodeSdkSupport: vi.fn().mockResolvedValue(undefined),
     initConsensusHeights: vi.fn().mockResolvedValue(undefined),
     DEVNODE_ACCOUNTS: [{ address: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px", privateKey: "test-key" }],
@@ -104,8 +94,31 @@ function makeRecord(opts?: {
 describe("upgrade orchestration contract", () => {
   let fixture: ContractLreResult;
 
+  beforeEach(() => {
+    delete process.env["LIONDEN_PROVE"];
+    mockCreateSdkObjects.mockReset();
+    mockBuildDevnodeUpgradeTransaction.mockReset();
+    mockBuildUpgradeTransaction.mockReset();
+
+    mockBuildDevnodeUpgradeTransaction.mockResolvedValue("devnode-upgrade-tx-bytes");
+    mockBuildUpgradeTransaction.mockResolvedValue("standard-upgrade-tx-bytes");
+    mockCreateSdkObjects.mockResolvedValue({
+      programManager: {
+        buildDevnodeUpgradeTransaction: mockBuildDevnodeUpgradeTransaction,
+        buildUpgradeTransaction: mockBuildUpgradeTransaction,
+      },
+      account: {
+        address: () => ({
+          to_string: () => DEVNODE_ACCOUNT_0,
+        }),
+      },
+    });
+  });
+
   afterEach(() => {
     fixture?.cleanup();
+    delete process.env["LIONDEN_PROVE"];
+    vi.restoreAllMocks();
   });
 
   /**
@@ -257,10 +270,17 @@ describe("upgrade orchestration contract", () => {
     expect(getCompileCalled()).toBe(true);
     expect(getCompileArgs()!["program"]).toBe("hello");
 
-    // broadcastTransaction received the mock upgrade tx bytes
+    expect(mockBuildDevnodeUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(mockBuildUpgradeTransaction).not.toHaveBeenCalled();
+
+    // broadcastTransaction received the devnode fast-path upgrade tx bytes
     const broadcastCalls = fakeNetwork.getCallsTo("broadcastTransaction");
     expect(broadcastCalls).toHaveLength(1);
-    expect(broadcastCalls[0]!.args[0]).toBe("mock-upgrade-tx-bytes");
+    expect(broadcastCalls[0]!.args[0]).toBe("devnode-upgrade-tx-bytes");
 
     // Confirmation was awaited
     const confirmCalls = fakeNetwork.getCallsTo("waitForConfirmation");
@@ -274,6 +294,58 @@ describe("upgrade orchestration contract", () => {
     if (updatedRecord?.status === "complete") {
       expect(updatedRecord.txId).toBe(result.txId);
     }
+  });
+
+  it("uses the standard upgrade builder on devnode when prove is requested", async () => {
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await upgradeAction({ program: "hello", prove: true }, lre);
+
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-upgrade-tx-bytes",
+    );
+  });
+
+  it("uses LIONDEN_PROVE to select the standard upgrade builder", async () => {
+    process.env["LIONDEN_PROVE"] = "true";
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-upgrade-tx-bytes",
+    );
+  });
+
+  it("throws when proving is requested but the standard upgrade builder is unavailable", async () => {
+    mockCreateSdkObjects.mockResolvedValue({
+      programManager: {
+        buildDevnodeUpgradeTransaction: mockBuildDevnodeUpgradeTransaction,
+      },
+      account: {
+        address: () => ({
+          to_string: () => DEVNODE_ACCOUNT_0,
+        }),
+      },
+    });
+    const { lre } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await expect(
+      upgradeAction({ program: "hello", prove: true }, lre),
+    ).rejects.toThrow(/buildUpgradeTransaction/);
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
   });
 
   it("rejects upgrade of @noupgrade program", async () => {

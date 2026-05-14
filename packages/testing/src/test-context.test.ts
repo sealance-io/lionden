@@ -418,6 +418,42 @@ describe("test-context", () => {
       });
     });
 
+    it("passes prove=true to deploy when LIONDEN_PROVE is set", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.deploy("token");
+
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "token",
+        network: "devnode",
+        priorityFee: undefined,
+        skipConfirm: undefined,
+        noCompile: undefined,
+        noSkipDeployed: undefined,
+        prove: true,
+      });
+    });
+
+    it("allows ctx.deploy prove=false to override LIONDEN_PROVE", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.deploy("token", { prove: false });
+
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "token",
+        network: "devnode",
+        priorityFee: undefined,
+        skipConfirm: undefined,
+        noCompile: undefined,
+        noSkipDeployed: undefined,
+        prove: false,
+      });
+    });
+
     it("returns a cached complete deployment without calling deploy", async () => {
       const lre = mockLre();
       const getCached = vi

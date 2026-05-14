@@ -12,6 +12,8 @@ const CORE_EXAMPLES = [
   "async-escrow",
 ];
 
+const PROVE_TEST_TIMEOUT_MS = 900_000;
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 
@@ -105,7 +107,7 @@ for (const config of configs) {
     "--config",
     config,
     "test",
-    ...(prove ? ["--prove"] : []),
+    ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
   ]);
 }
 

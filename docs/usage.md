@@ -246,7 +246,7 @@ lionden test                              # compile then run vitest under test/*
 lionden test --no-compile                 # skip recompile (artifacts must already exist)
 lionden test --grep "transfer_public"     # filter by test name
 lionden test --timeout 240000             # override per-test timeout (ms)
-lionden test --prove                      # force proof generation (sets LIONDEN_PROVE=true)
+lionden test --prove                      # force proof generation, including devnode deploy/upgrade builders
 ```
 
 Tests use Vitest plus `@lionden/testing`. The canonical pattern (see `examples/hello-world/test/hello.test.ts`):
