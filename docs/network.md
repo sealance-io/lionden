@@ -171,9 +171,9 @@ The SDK exposes two families of transaction builders: standard methods for real 
 
 | Operation | HTTP network | Devnode |
 | --- | --- | --- |
-| Deploy | `pm.deploy()` - atomic build + broadcast | `pm.buildDevnodeDeploymentTransaction()` + `broadcastTransaction()` |
-| Execute | `pm.execute()` - atomic build + broadcast | `pm.buildDevnodeExecutionTransaction()` + `broadcastTransaction()` |
-| Upgrade | `pm.buildUpgradeTransaction()` + `broadcastTransaction()` | `pm.buildDevnodeUpgradeTransaction()` + `broadcastTransaction()` |
+| Deploy | `pm.deploy()` - atomic build + broadcast | `pm.buildDevnodeDeploymentTransaction()` + `broadcastTransaction()`; with `prove: true`, `pm.buildDeploymentTransaction()` + `broadcastTransaction()` |
+| Execute | `pm.execute()` - atomic build + broadcast | `pm.buildDevnodeExecutionTransaction()` + `broadcastTransaction()`; with `prove: true`, `pm.execute()` |
+| Upgrade | `pm.buildUpgradeTransaction()` + `broadcastTransaction()` | `pm.buildDevnodeUpgradeTransaction()` + `broadcastTransaction()`; with `prove: true`, `pm.buildUpgradeTransaction()` + `broadcastTransaction()` |
 
 `pm.deploy()` and `pm.execute()` are atomic on HTTP networks: they build and submit the transaction internally with no separate broadcast step. Upgrade uses build-then-broadcast on both network types.
 
@@ -181,10 +181,10 @@ The SDK exposes two families of transaction builders: standard methods for real 
 
 ### Devnode Guards
 
-Before any devnode transaction is built, two SDK checks run:
+Before devnode fast-path transactions are built, two SDK checks run:
 
 - `checkDevnodeSdkSupport()` verifies that the loaded SDK exposes `buildDevnodeDeploymentTransaction`, `buildDevnodeExecutionTransaction`, and `buildDevnodeUpgradeTransaction`.
-- `initConsensusHeights()` calls `sdk.getOrInitConsensusVersionTestHeights()` to prime the SDK's internal consensus version state. This is required for devnode transaction builders and is non-fatal if the method is absent in older SDK versions.
+- `initConsensusHeights()` calls `sdk.getOrInitConsensusVersionTestHeights()` to prime the SDK's internal consensus version state. This is required for devnode transaction builders and is non-fatal if the method is absent in older SDK versions. Devnode `prove: true` deploy/upgrade skips `checkDevnodeSdkSupport()` because it does not call the `buildDevnode*` methods, but still initializes consensus heights.
 
 ### Transaction Confirmation
 

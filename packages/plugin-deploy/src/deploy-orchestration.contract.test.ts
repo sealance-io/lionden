@@ -5,9 +5,14 @@
  * and resolveDependencies() from leo-compiler, resolves deploy targets, parses
  * constructors from Leo source, and broadcasts through a mocked NetworkConnection.
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import { deployAction, DeployError, type DeployTaskResult } from "./deploy-task.js";
+
+const mockCreateSdkObjects = vi.hoisted(() => vi.fn());
+const mockBuildDevnodeDeploymentTransaction = vi.hoisted(() => vi.fn());
+const mockBuildDeploymentTransaction = vi.hoisted(() => vi.fn());
+const mockDeploy = vi.hoisted(() => vi.fn());
 
 // Mock @lionden/network's SDK layer to avoid real SDK instantiation.
 // deployAction → deployToNetwork → import("@lionden/network")
@@ -15,15 +20,7 @@ vi.mock("@lionden/network", async (importOriginal) => {
   const original = await importOriginal<typeof import("@lionden/network")>();
   return {
     ...original,
-    createSdkObjects: vi.fn().mockResolvedValue({
-      programManager: {
-        buildDevnodeDeploymentTransaction: vi.fn().mockResolvedValue("mock-tx-bytes"),
-        deploy: vi.fn().mockResolvedValue("at1deploy"),
-      },
-      account: {
-        address: () => ({ to_string: () => "aleo1testdeployer" }),
-      },
-    }),
+    createSdkObjects: mockCreateSdkObjects,
     checkDevnodeSdkSupport: vi.fn().mockResolvedValue(undefined),
     initConsensusHeights: vi.fn().mockResolvedValue(undefined),
   };
@@ -40,8 +37,32 @@ function unwrapDeploy(result: DeployTaskResult) {
 describe("deploy orchestration contract", () => {
   let fixture: ContractLreResult;
 
+  beforeEach(() => {
+    delete process.env["LIONDEN_PROVE"];
+    mockCreateSdkObjects.mockReset();
+    mockBuildDevnodeDeploymentTransaction.mockReset();
+    mockBuildDeploymentTransaction.mockReset();
+    mockDeploy.mockReset();
+
+    mockBuildDevnodeDeploymentTransaction.mockResolvedValue("mock-tx-bytes");
+    mockBuildDeploymentTransaction.mockResolvedValue("standard-deploy-tx-bytes");
+    mockDeploy.mockResolvedValue("at1deploy");
+    mockCreateSdkObjects.mockResolvedValue({
+      programManager: {
+        buildDevnodeDeploymentTransaction: mockBuildDevnodeDeploymentTransaction,
+        buildDeploymentTransaction: mockBuildDeploymentTransaction,
+        deploy: mockDeploy,
+      },
+      account: {
+        address: () => ({ to_string: () => "aleo1testdeployer" }),
+      },
+    });
+  });
+
   afterEach(() => {
     fixture?.cleanup();
+    delete process.env["LIONDEN_PROVE"];
+    vi.restoreAllMocks();
   });
 
   /**
@@ -102,6 +123,106 @@ describe("deploy orchestration contract", () => {
 
     // Constructor type recorded
     expect(results[0]!.constructorType).toBe("noupgrade");
+  });
+
+  it("uses the devnode fast-path when prove is not requested", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(mockBuildDeploymentTransaction).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "mock-tx-bytes",
+    );
+  });
+
+  it("uses the standard deployment builder on devnode when prove is requested", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    await deployAction({ program: "hello", noCompile: true, prove: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
+      expect.stringContaining("program hello.aleo"),
+      0,
+      false,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-deploy-tx-bytes",
+    );
+  });
+
+  it("uses LIONDEN_PROVE to select the standard deployment builder", async () => {
+    process.env["LIONDEN_PROVE"] = "true";
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
+      expect.stringContaining("program hello.aleo"),
+      0,
+      false,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-deploy-tx-bytes",
+    );
+  });
+
+  it("throws when proving is requested but the standard deployment builder is unavailable", async () => {
+    mockCreateSdkObjects.mockResolvedValue({
+      programManager: {
+        buildDevnodeDeploymentTransaction: mockBuildDevnodeDeploymentTransaction,
+      },
+      account: {
+        address: () => ({ to_string: () => "aleo1testdeployer" }),
+      },
+    });
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    await expect(
+      deployAction({ program: "hello", noCompile: true, prove: true }, lre),
+    ).rejects.toThrow(/buildDeploymentTransaction/);
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+  });
+
+  it("uses the standard deployment builder for proving dry-run transactions", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    const result = await deployAction(
+      { program: "hello", noCompile: true, dryRun: true, prove: true },
+      lre,
+    );
+
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
+      expect.stringContaining("program hello.aleo"),
+      0,
+      false,
+    );
+    expect(result).toEqual({
+      mode: "dry-run",
+      results: [{
+        programId: "hello.aleo",
+        transaction: "standard-deploy-tx-bytes",
+        estimatedFee: 0n,
+      }],
+    });
   });
 
   it("deploys multi-program projects in dependency order", async () => {

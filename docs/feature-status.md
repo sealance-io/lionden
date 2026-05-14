@@ -58,7 +58,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Managed devnode lifecycle: spawn `leo devnode start`, health-poll REST, graceful shutdown | `packages/network/src/devnode-manager.ts` |
 | `NetworkManager` resolves named accounts per network, caches per-network state, transactional `connect()` | `packages/network/src/network-manager.ts` |
 | SDK adapter loads `@provablehq/sdk` dynamically; once-per-process WASM init; runtime checks for devnode builder methods | `packages/network/src/sdk-adapter.ts` |
-| Devnode fast-path: `buildDevnodeDeploymentTransaction`/`buildDevnodeExecutionTransaction`/`buildDevnodeUpgradeTransaction` skip proofs | `packages/network/src/connection.ts` |
+| Devnode fast-path: `buildDevnodeDeploymentTransaction`/`buildDevnodeExecutionTransaction`/`buildDevnodeUpgradeTransaction` skip proofs unless `prove` is requested | `packages/network/src/connection.ts`, `packages/plugin-deploy/src/deploy-task.ts`, `packages/plugin-deploy/src/upgrade-task.ts` |
 | HTTP path: `pm.deploy()`, `pm.execute()`, `pm.buildUpgradeTransaction()` + broadcast | same |
 | Transaction confirmation polling: `GET /{network}/transaction/confirmed/{txId}`, block-height resolution via `GET /{network}/find/blockHash/{txId}` + `GET /{network}/block/{blockHash}` | same |
 | Mapping reads: `connection.getMappingValue(programId, mapping, key)` | same |

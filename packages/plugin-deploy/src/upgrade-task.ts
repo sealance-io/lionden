@@ -46,6 +46,8 @@ export interface UpgradeOptions {
   skipConfirm?: boolean;
   /** Target network (overrides defaultNetwork) */
   network?: string;
+  /** Build a standard/proven transaction even on devnode. */
+  prove?: boolean;
 }
 
 export interface UpgradeResult {
@@ -76,6 +78,7 @@ export async function upgradeAction(
     priorityFee: args["priorityFee"] as number | undefined,
     skipConfirm: args["skipConfirm"] as boolean | undefined,
     network: args["network"] as string | undefined,
+    prove: resolveProveOption(args, lre),
   };
 
   const config = lre.config;
@@ -293,6 +296,7 @@ export async function upgradeAction(
     privateFee: config.deploy.privateFee,
     edition: newEdition,
     signerPrivateKey: adminSignerKey,
+    prove: options.prove,
   });
 
   // 13. Wait for confirmation
@@ -445,6 +449,8 @@ interface BuildUpgradeOptions {
   edition: number;
   /** Override signing key. When set, overrides connection.privateKey. */
   signerPrivateKey?: string;
+  /** Use the standard SDK upgrade builder instead of the devnode fast-path. */
+  prove?: boolean;
 }
 
 async function buildAndBroadcastUpgrade(
@@ -456,8 +462,10 @@ async function buildAndBroadcastUpgrade(
     await import("@lionden/network");
 
   if (connection.type === "devnode") {
-    await checkDevnodeSdkSupport();
     await initConsensusHeights();
+    if (!opts.prove) {
+      await checkDevnodeSdkSupport();
+    }
   }
 
   const sdk = await createSdkObjects({
@@ -467,7 +475,7 @@ async function buildAndBroadcastUpgrade(
     apiKey: connection.apiKey,
   });
 
-  if (connection.type === "devnode") {
+  if (connection.type === "devnode" && !opts.prove) {
     const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
       program: aleoSource,
       priorityFee: fee,
@@ -488,6 +496,13 @@ async function buildAndBroadcastUpgrade(
     return connection.broadcastTransaction(tx);
   }
 
+  if (connection.type === "devnode" && opts.prove) {
+    throw new DeployError(
+      `Unable to upgrade "${programId}" with proving enabled: ` +
+        `the installed @provablehq/sdk does not expose buildUpgradeTransaction().`,
+    );
+  }
+
   // Fallback: try legacy upgrade() if available on older SDK versions
   if (typeof pm.upgrade === "function") {
     return pm.upgrade(aleoSource, fee, edition);
@@ -502,6 +517,18 @@ async function buildAndBroadcastUpgrade(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function resolveProveOption(
+  args: Record<string, unknown>,
+  lre: LionDenRuntimeEnvironment,
+): boolean {
+  const explicit = args["prove"];
+  if (typeof explicit === "boolean") return explicit;
+
+  if (lre.globalOptions["prove"] === true) return true;
+
+  return process.env["LIONDEN_PROVE"] === "true";
+}
 
 function readAbiFromArtifacts(
   artifactsDir: string,

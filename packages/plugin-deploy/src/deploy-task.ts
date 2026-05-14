@@ -58,6 +58,8 @@ export interface DeployOptions {
   noSkipDeployed?: boolean;
   /** Export deployment bundle after deploying */
   export?: boolean;
+  /** Build a standard/proven transaction even on devnode. */
+  prove?: boolean;
 }
 
 export interface DeployResult {
@@ -96,6 +98,7 @@ export async function deployAction(
     dryRun: args["dryRun"] as boolean | undefined,
     noSkipDeployed: args["noSkipDeployed"] as boolean | undefined,
     export: args["export"] as boolean | undefined,
+    prove: resolveProveOption(args, lre),
   };
 
   const config = lre.config;
@@ -264,10 +267,10 @@ export async function deployAction(
         programId,
         aleoSource,
         connection,
-        networkConfig,
         fee: options.priorityFee ?? config.deploy.defaultPriorityFee,
         privateFee: config.deploy.privateFee,
         signerPrivateKey: deployerSignerKey,
+        prove: options.prove,
       });
 
       dryRunResults.push({
@@ -369,10 +372,10 @@ export async function deployAction(
       programId,
       aleoSource,
       connection,
-      networkConfig,
       fee,
       privateFee,
       signerPrivateKey: deployerSignerKey,
+      prove: options.prove,
     });
 
     // Wait for confirmation
@@ -614,11 +617,12 @@ interface BuildDeployOptions {
   programId: string;
   aleoSource: string;
   connection: NetworkConnection;
-  networkConfig: ResolvedNetworkConfig;
   fee: number;
   privateFee: boolean;
   /** Override the signing key. When set, overrides connection.privateKey. */
   signerPrivateKey?: string;
+  /** Use the standard SDK deployment builder instead of the devnode fast-path. */
+  prove?: boolean;
 }
 
 /**
@@ -638,8 +642,10 @@ export async function buildDeployTransaction(
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
-  await checkDevnodeSdkSupport();
   await initConsensusHeights();
+  if (!opts.prove) {
+    await checkDevnodeSdkSupport();
+  }
 
   const sdk = await createSdkObjects({
     network: opts.connection.networkId,
@@ -648,7 +654,41 @@ export async function buildDeployTransaction(
     apiKey: opts.connection.apiKey,
   });
 
-  return sdk.programManager.buildDevnodeDeploymentTransaction({
+  return buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts);
+}
+
+type DeploymentProgramManager = {
+  buildDevnodeDeploymentTransaction(options: {
+    program: string;
+    priorityFee: number;
+    privateFee: boolean;
+  }): Promise<unknown>;
+  buildDeploymentTransaction?: (
+    program: string,
+    priorityFee: number,
+    privateFee: boolean,
+  ) => Promise<unknown>;
+};
+
+async function buildDevnodeDeploymentTransactionForMode(
+  programManager: DeploymentProgramManager,
+  opts: BuildDeployOptions,
+): Promise<unknown> {
+  if (opts.prove) {
+    if (typeof programManager.buildDeploymentTransaction !== "function") {
+      throw new DeployError(
+        `Unable to deploy "${opts.programId}" with proving enabled: ` +
+          `the installed @provablehq/sdk does not expose buildDeploymentTransaction().`,
+      );
+    }
+    return programManager.buildDeploymentTransaction(
+      opts.aleoSource,
+      opts.fee,
+      opts.privateFee,
+    );
+  }
+
+  return programManager.buildDevnodeDeploymentTransaction({
     program: opts.aleoSource,
     priorityFee: opts.fee,
     privateFee: opts.privateFee,
@@ -659,7 +699,7 @@ export async function buildDeployTransaction(
  * Full deploy: build and broadcast. Returns transaction ID.
  */
 async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
-  const { aleoSource, connection, networkConfig, fee, privateFee } = opts;
+  const { aleoSource, connection, fee, privateFee } = opts;
 
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
@@ -667,8 +707,10 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const signerKey = opts.signerPrivateKey ?? connection.privateKey;
 
   if (connection.type === "devnode") {
-    await checkDevnodeSdkSupport();
     await initConsensusHeights();
+    if (!opts.prove) {
+      await checkDevnodeSdkSupport();
+    }
 
     const sdk = await createSdkObjects({
       network: connection.networkId,
@@ -677,11 +719,10 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
       apiKey: connection.apiKey,
     });
 
-    const tx = await sdk.programManager.buildDevnodeDeploymentTransaction({
-      program: aleoSource,
-      priorityFee: fee,
-      privateFee,
-    });
+    const tx = await buildDevnodeDeploymentTransactionForMode(
+      sdk.programManager,
+      opts,
+    );
 
     return connection.broadcastTransaction(tx);
   }
@@ -716,6 +757,18 @@ export function computeAbiHash(abi: ProgramABI): string {
     .createHash("sha256")
     .update(JSON.stringify(abi))
     .digest("hex");
+}
+
+function resolveProveOption(
+  args: Record<string, unknown>,
+  lre: LionDenRuntimeEnvironment,
+): boolean {
+  const explicit = args["prove"];
+  if (typeof explicit === "boolean") return explicit;
+
+  if (lre.globalOptions["prove"] === true) return true;
+
+  return process.env["LIONDEN_PROVE"] === "true";
 }
 
 /**

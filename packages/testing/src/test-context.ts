@@ -96,6 +96,8 @@ export interface DeployOptions {
   noCompile?: boolean;
   /** Fail instead of reusing or skipping already-deployed programs. */
   noSkipDeployed?: boolean;
+  /** Override proof generation for this deploy. Defaults to LIONDEN_PROVE. */
+  prove?: boolean;
 }
 
 export interface DeployResult {
@@ -164,7 +166,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   let managedDevnode: ManagedDevnode | undefined;
 
   // When LIONDEN_PROVE is set (by the test runner's --prove flag),
-  // force real proof generation on devnode execute calls.
+  // force real proof generation on devnode deploy and execute calls.
   const prove = process.env["LIONDEN_PROVE"] === "true";
 
   // 1. Optionally start a devnode
@@ -248,6 +250,9 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         skipConfirm: deployOpts?.skipConfirm,
         noCompile: deployOpts?.noCompile,
         noSkipDeployed: deployOpts?.noSkipDeployed,
+        ...(deployOpts?.prove !== undefined || prove
+          ? { prove: deployOpts?.prove ?? prove }
+          : {}),
       });
 
       // Unwrap DeployTaskResult discriminated union

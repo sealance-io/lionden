@@ -93,7 +93,7 @@ Current task options:
 - `--prove`
 - `--parallel`
 
-`--prove` is forwarded through `LIONDEN_PROVE=true` so test execution can force proof generation.
+`--prove` is forwarded through `LIONDEN_PROVE=true` so tests force proof generation. On managed devnode this also makes `ctx.deploy()` and direct `upgrade` task calls use the standard ProgramManager builders instead of the devnode fast-path builders.
 
 Use `lionden test [files...]` to run a managed Vitest subset while keeping LionDen's compile step, suite hooks, and managed devnode lifecycle:
 
