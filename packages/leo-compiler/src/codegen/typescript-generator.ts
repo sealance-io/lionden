@@ -78,11 +78,11 @@ export function generateBindings(
   lines.push("");
   if (helpers.length > 0) {
     lines.push(
-      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type BaseContractOptions, type ConfirmedTransitionRecord, type DecryptionKey, type DynamicRecordInput, type DynamicRecordOutputProjector, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type IdOnlyDynamicRecordHandle, type IdOnlyExternalRecordHandle, type IdOnlyRecordSource, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   } else {
     lines.push(
-      'import { BaseContract, type AcceptedTransition, type AddressInput, type BaseContractOptions, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, type AcceptedTransition, type AddressInput, type BaseContractOptions, type ConfirmedTransitionRecord, type DecryptionKey, type DynamicRecordInput, type DynamicRecordOutputProjector, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type IdOnlyDynamicRecordHandle, type IdOnlyExternalRecordHandle, type IdOnlyRecordSource, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   }
   lines.push(...generateExternalImports(ctx));
@@ -447,13 +447,24 @@ function generateDynamicRecordHelper(
   }
 
   const lines: string[] = [];
-  lines.push(`export function ${helper.helperName}(value: ${helper.sourceRecord}): LeoDynamicRecord {`);
+  const fnName = `_${helper.helperName}Impl`;
+  lines.push(`function ${fnName}(value: ${helper.sourceRecord}): LeoDynamicRecord {`);
   lines.push("  return Leo.dynamicRecord(value, {");
   for (const [key, entry] of Object.entries(helper.schema)) {
     lines.push(`    ${key}: ${JSON.stringify(entry)} as const,`);
   }
   lines.push("  } as const);");
   lines.push("}");
+  // Callable + namespace pattern: the helper is also a namespace carrying
+  // `asOutput`, the output-side projector. Used by callers refining external
+  // record decryption via `IdOnlyExternalRecordHandle.decryptFrom`.
+  lines.push(`export const ${helper.helperName} = Object.assign(${fnName}, {`);
+  lines.push(`  asOutput: {`);
+  lines.push(`    program: "${abi.program}",`);
+  lines.push(`    recordName: "${helper.sourceRecord}",`);
+  lines.push(`    deserialize: deserialize${helper.sourceRecord},`);
+  lines.push(`  } as const satisfies DynamicRecordOutputProjector<${helper.sourceRecord}>,`);
+  lines.push("});");
   return lines;
   void ctx; // ctx reserved for future ABI-aware diagnostics.
 }
@@ -1060,21 +1071,46 @@ function generateExternalImports(ctx: GenerationContext): string[] {
     importsByProgram.set(info.programId, imports);
   }
 
+  // External record types: alias the imported type under a private `_`-prefixed
+  // name so we can re-export the public name as both a type alias and a value
+  // binding (carrying `.asOutput`). See C2a in the plan.
+  const externalRecords: ExternalRefInfo[] = [];
   for (const ref of ctx.externalRecordRefs.values()) {
     const info = externalRecordInfo(ref, ctx);
     if (!info) continue;
+    externalRecords.push(info);
     const imports = importsByProgram.get(info.programId) ?? new Set<string>();
-    imports.add(`type ${info.baseName} as ${info.typeName}`);
+    imports.add(`type ${info.baseName} as _${info.typeName}`);
     imports.add(`serialize${info.baseName} as ${info.serializerName}`);
     imports.add(`deserialize${info.baseName} as ${info.deserializerName}`);
     importsByProgram.set(info.programId, imports);
   }
 
-  return [...importsByProgram.entries()]
+  const importLines = [...importsByProgram.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([programId, imports]) =>
       `import { ${[...imports].sort().join(", ")} } from "./${programIdToClassName(programId)}.js";`,
     );
+
+  if (externalRecords.length === 0) return importLines;
+
+  // Re-export each external record's type alias publicly, and emit a same-named
+  // value binding carrying the `.asOutput` projector. The merged type + value
+  // pair lets callers write both `IdOnlyExternalRecordHandle<GoldToken_Token>`
+  // (type position) and `GoldToken_Token.asOutput` (value position).
+  const valueLines: string[] = [];
+  for (const info of externalRecords.sort((a, b) => a.typeName.localeCompare(b.typeName))) {
+    valueLines.push(`export type ${info.typeName} = _${info.typeName};`);
+    valueLines.push(`export const ${info.typeName} = {`);
+    valueLines.push(`  asOutput: {`);
+    valueLines.push(`    program: "${info.programId}",`);
+    valueLines.push(`    recordName: "${info.baseName}",`);
+    valueLines.push(`    deserialize: ${info.deserializerName},`);
+    valueLines.push(`  } as const satisfies DynamicRecordOutputProjector<_${info.typeName}>,`);
+    valueLines.push("};");
+  }
+
+  return [...importLines, "", ...valueLines];
 }
 
 function isLocalStructRef(ref: StructRef, ctx: GenerationContext): boolean {
@@ -1184,15 +1220,15 @@ function isPrivatePlaintextOutput(output: AbiOutput): boolean {
 
 function typedOutputElementType(output: AbiOutput, ctx: GenerationContext): string {
   const ty = output.ty;
-  if (ty === "DynamicRecord") return "EncryptedRecord<LeoDynamicRecord>";
+  if (ty === "DynamicRecord") return "IdOnlyDynamicRecordHandle";
   if (typeof ty === "object" && ty !== null && "Record" in ty) {
     if (isLocalRecordRef(ty.Record, ctx)) {
       return `EncryptedRecord<${recordRefName(ty.Record)}>`;
     }
     const external = externalRecordInfo(ty.Record, ctx);
     return external
-      ? `EncryptedRecord<${external.typeName}>`
-      : "EncryptedRecord<LeoDynamicRecord>";
+      ? `IdOnlyExternalRecordHandle<${external.typeName}>`
+      : "IdOnlyExternalRecordHandle<LeoDynamicRecord>";
   }
   if (typeof ty === "object" && ty !== null && "Plaintext" in ty) {
     const decoded = plaintextToOutputBindingTs(ty.Plaintext, ctx);
@@ -1224,10 +1260,12 @@ function formatProjectorExpr(
   const transitionName = transition.name;
   const hasPrivatePlaintext = transition.outputs.some(isPrivatePlaintextOutput);
   const tpkParam = hasPrivatePlaintext ? "tpk" : "_tpk";
+  const usesTransitions = transition.outputs.some((o) => projectorElementUsesTransitions(o, ctx));
+  const transitionsParam = usesTransitions ? "transitions" : "_transitions";
   const inputCount = transition.inputs.length;
 
   if (visibleIndices.length === 0) {
-    return `(_rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string) => undefined as void`;
+    return `(_rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string, ${transitionsParam}: readonly ConfirmedTransitionRecord[]) => undefined as void`;
   }
 
   const rawAccess = (abiIndex: number): string =>
@@ -1241,12 +1279,27 @@ function formatProjectorExpr(
 
   if (visibleIndices.length === 1) {
     const abiIndex = visibleIndices[0]!;
-    return `(rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string) => ${decodeForIndex(abiIndex)}`;
+    return `(rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string, ${transitionsParam}: readonly ConfirmedTransitionRecord[]) => ${decodeForIndex(abiIndex)}`;
   }
 
   const tupleType = formatTypedOutputType(transition.outputs, ctx);
   const elems = visibleIndices.map(decodeForIndex);
-  return `(rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string) => ([${elems.join(", ")}] as ${tupleType})`;
+  return `(rawOutputs: readonly RawTransitionOutput[], ${tpkParam}: string, ${transitionsParam}: readonly ConfirmedTransitionRecord[]) => ([${elems.join(", ")}] as ${tupleType})`;
+}
+
+/**
+ * Whether the projector element for this output references the `transitions`
+ * parameter — true for `dyn record` and any external `Record` (both id-only
+ * constructors close over `transitions`). Local concrete records and
+ * plaintext outputs don't reference `transitions`.
+ */
+function projectorElementUsesTransitions(output: AbiOutput, ctx: GenerationContext): boolean {
+  const ty = output.ty;
+  if (ty === "DynamicRecord") return true;
+  if (typeof ty === "object" && ty !== null && "Record" in ty) {
+    return !isLocalRecordRef(ty.Record, ctx);
+  }
+  return false;
 }
 
 function projectorElementExpr(
@@ -1259,17 +1312,17 @@ function projectorElementExpr(
   ctx: GenerationContext,
 ): string {
   const ty = output.ty;
+  const idOnlyAccess = `BaseContract.idOnlyRecordOutputAt(rawOutputs, "${programId}", "${transitionName}", ${abiIndex})`;
   if (ty === "DynamicRecord") {
-    return `BaseContract.makeEncryptedRecord(${rawExpr}, BaseContract.parseDynamicRecord)`;
+    return `BaseContract.makeIdOnlyDynamicRecordHandle(${idOnlyAccess}, transitions)`;
   }
   if (typeof ty === "object" && ty !== null && "Record" in ty) {
     if (isLocalRecordRef(ty.Record, ctx)) {
       return `BaseContract.makeEncryptedRecord(${rawExpr}, deserialize${recordRefName(ty.Record)})`;
     }
     const external = externalRecordInfo(ty.Record, ctx);
-    return external
-      ? `BaseContract.makeEncryptedRecord(${rawExpr}, ${external.deserializerName})`
-      : `BaseContract.makeEncryptedRecord(${rawExpr}, BaseContract.parseDynamicRecord)`;
+    const typeArg = external?.typeName ?? "LeoDynamicRecord";
+    return `BaseContract.makeIdOnlyExternalRecordHandle<${typeArg}>(${idOnlyAccess}, transitions)`;
   }
   if (typeof ty === "object" && ty !== null && "Plaintext" in ty) {
     if (isPrivatePlaintextOutput(output)) {

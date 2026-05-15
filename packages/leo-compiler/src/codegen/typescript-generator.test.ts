@@ -1431,13 +1431,17 @@ describe("interface conversion helper emission", () => {
         },
       ],
     });
-    expect(output).toContain("export function asPoolToken(value: Token): LeoDynamicRecord");
+    // Helper is emitted as a callable+namespace: an internal `_asPoolTokenImpl`
+    // does the actual `Leo.dynamicRecord(...)` conversion, then `Object.assign`
+    // attaches `.asOutput` so callers can use it as an output-side projector.
+    expect(output).toContain("function _asPoolTokenImpl(value: Token): LeoDynamicRecord");
+    expect(output).toContain("export const asPoolToken = Object.assign(_asPoolTokenImpl, {");
     expect(output).toContain("Leo.dynamicRecord(value, {");
     expect(output).toContain('"address.private"');
     expect(output).toContain('"u8.public"');
     expect(output).toContain('"group.public"');
     // `Leo` should be a value-import on this program only (helpers emitted).
-    expect(output).toContain("import { BaseContract, Leo, type");
+    expect(output).toMatch(/import \{ BaseContract, Leo, .*type DynamicRecordOutputProjector/);
   });
 
   it("does not import Leo as a value when no helpers are configured", () => {
@@ -1637,7 +1641,7 @@ describe("typed-output projector Future index contract", () => {
     const abi = abiWithOutputs([{ ty: { Future: "demo.aleo" } }]);
     const output = generateBindings(abi);
     expect(output).toContain("Promise<AcceptedTransition<void>>");
-    expect(output).toContain("(_rawOutputs: readonly RawTransitionOutput[], _tpk: string) => undefined as void");
+    expect(output).toContain("(_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void");
     expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo"');
   });
 });
@@ -1693,7 +1697,7 @@ describe("mode-gated plaintext output emission", () => {
     expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
     expect(out).toContain('BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)');
     // Projector binds `tpk` (no underscore) since at least one private plaintext.
-    expect(out).toMatch(/\(rawOutputs: readonly RawTransitionOutput\[\], tpk: string\) =>/);
+    expect(out).toMatch(/\(rawOutputs: readonly RawTransitionOutput\[\], tpk: string, _transitions: readonly ConfirmedTransitionRecord\[\]\) =>/);
   });
 
   it('explicit "Private" mode behaves the same as "None"', () => {

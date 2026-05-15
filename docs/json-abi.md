@@ -216,11 +216,11 @@ export default defineConfig({
 });
 ```
 
-The emitted free function lives alongside `decrypt<Name>` in the source program's generated module:
+The emitted helper lives alongside `decrypt<Name>` in the source program's generated module, using a callable+namespace pattern (`Object.assign`) so the helper is both a function and a namespace carrying the output-side `.asOutput` projector:
 
 ```ts
 // typechain/StableToken.ts (generated)
-export function asPoolToken(value: Token): LeoDynamicRecord {
+function _asPoolTokenImpl(value: Token): LeoDynamicRecord {
   return Leo.dynamicRecord(value, {
     owner: "address.private" as const,
     amount: "u128.private" as const,
@@ -228,9 +228,20 @@ export function asPoolToken(value: Token): LeoDynamicRecord {
     _nonce: "group.public" as const,
   } as const);
 }
+export const asPoolToken = Object.assign(_asPoolTokenImpl, {
+  asOutput: {
+    program: "stable_token.aleo",
+    recordName: "Token",
+    deserialize: deserializeToken,
+  } as const satisfies DynamicRecordOutputProjector<Token>,
+});
 ```
 
 Callers import `asPoolToken` directly: `await amm.add_liquidity.locally({ token: asPoolToken(tok), ... })`.
+
+**`.asOutput`** is the output-side dual: a `DynamicRecordOutputProjector<T>` carrying the program id, source record name, and the matching deserializer. It's the input to `IdOnlyExternalRecordHandle<T>.decryptFrom(projector, key, source)` — used when an importing program's transition returns a record from this program as an external `Record` output. See `docs/network.md` § Id-only record outputs for the full flow.
+
+**Cross-program external records** also emit a sibling `<ExternalRecord>.asOutput` value binding alongside the imported type. For example, a `probe_records.aleo` typechain that imports `gold_token.aleo::Token` produces both the type alias `GoldToken_Token` and a value `GoldToken_Token.asOutput: DynamicRecordOutputProjector<GoldToken_Token>` — no `codegen.dynamicRecords` entry required for cross-program record decryption.
 
 **Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`. Set `sourceProgram` when more than one compiled program declares the same generated record name; `examples/aleo-ports/dynamic_records` uses this for `gold_token.aleo::Token` and `silver_token.aleo::Token`.
 

@@ -343,6 +343,9 @@ describe("BaseContract runtime", () => {
         status: "accepted",
         rawOutputs: [],
         transitionPublicKey: "tpk_test_main",
+        transitions: [
+          { programId: "hello.aleo", transitionName: "main", rawOutputs: [], transitionPublicKey: "tpk_test_main" },
+        ],
       });
     });
 
@@ -1280,6 +1283,254 @@ describe("BaseContract runtime", () => {
       );
       const result = await handle.decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: "{ amount: 100u128, _from: record1xyz }" });
+    });
+  });
+
+  describe("idOnlyRecordOutputAt", () => {
+    const entry = { kind: "idOnly", type: "external_record", id: "ext-id" } as const;
+
+    it("returns the id-only entry at the requested ABI index", () => {
+      const result = BaseContract.idOnlyRecordOutputAt([entry], "p.aleo", "t", 0);
+      expect(result).toBe(entry);
+    });
+
+    it("throws TransactionShapeError when the entry is a ciphertext string", () => {
+      try {
+        BaseContract.idOnlyRecordOutputAt(["record1abc"], "p.aleo", "t", 0);
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.outputIndex).toBe(0);
+        expect(err.message).toContain("ciphertext string");
+      }
+    });
+
+    it("throws TransactionShapeError when the entry is missing", () => {
+      try {
+        BaseContract.idOnlyRecordOutputAt([], "p.aleo", "t", 0);
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("TransactionShapeError");
+        expect(err.outputIndex).toBe(0);
+        expect(err.message).toContain("undefined");
+      }
+    });
+  });
+
+  describe("makeIdOnlyDynamicRecordHandle", () => {
+    it("constructs an inert handle with id + transitions and no decrypt", () => {
+      const entry = { kind: "idOnly", type: "record_dynamic", id: "dyn-id" } as const;
+      const transitions = [
+        { programId: "p.aleo", transitionName: "t", rawOutputs: [], transitionPublicKey: "tpk" },
+      ];
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      expect(handle.kind).toBe("idOnlyDynamicRecord");
+      expect(handle.type).toBe("record_dynamic");
+      expect(handle.id).toBe("dyn-id");
+      expect(handle.transitions).toBe(transitions);
+      expect((handle as any).decryptFrom).toBeUndefined();
+    });
+  });
+
+  describe("makeIdOnlyExternalRecordHandle", () => {
+    const CALLEE_CIPHERTEXT = "record1callee";
+    const entry = { kind: "idOnly", type: "external_record", id: "ext-id" } as const;
+    const projector = {
+      program: "callee.aleo",
+      recordName: "Foo",
+      deserialize: (plaintext: string) => ({ decoded: plaintext }),
+    };
+    const transitions = [
+      {
+        programId: "caller.aleo",
+        transitionName: "wrap",
+        rawOutputs: [entry],
+        transitionPublicKey: "tpk_caller",
+      },
+      {
+        programId: "callee.aleo",
+        transitionName: "mint",
+        rawOutputs: [CALLEE_CIPHERTEXT],
+        transitionPublicKey: "tpk_callee",
+      },
+    ];
+
+    it("constructs the handle with kind + type + id + transitions", () => {
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      expect(handle.kind).toBe("idOnlyExternalRecord");
+      expect(handle.type).toBe("external_record");
+      expect(handle.id).toBe("ext-id");
+      expect(handle.transitions).toBe(transitions);
+    });
+
+    it("named selector resolves to callee transition + decrypts via projector", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
+        programId: "callee.aleo",
+        transitionName: "mint",
+        outputIndex: 0,
+      });
+      expect(result).toEqual({ decoded: `[plain ${CALLEE_CIPHERTEXT}]` });
+    });
+
+    it("positional selector resolves by transitionIndex + outputIndex", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
+        transitionIndex: 1,
+        outputIndex: 0,
+      });
+      expect(result).toEqual({ decoded: `[plain ${CALLEE_CIPHERTEXT}]` });
+    });
+
+    it("throws IdOnlyRecordResolutionError { transition-not-found }", async () => {
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          programId: "missing.aleo",
+          transitionName: "nope",
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("transition-not-found");
+        expect(err.message).toContain("missing.aleo/nope");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { transition-not-unique } when multiple matches and no transitionMatchIndex", async () => {
+      const dupTransitions = [
+        ...transitions,
+        {
+          programId: "callee.aleo",
+          transitionName: "mint",
+          rawOutputs: ["record1other"],
+          transitionPublicKey: "tpk_callee2",
+        },
+      ];
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, dupTransitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          programId: "callee.aleo",
+          transitionName: "mint",
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("transition-not-unique");
+      }
+    });
+
+    it("transitionMatchIndex resolves the n-th match", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const dupTransitions = [
+        ...transitions,
+        {
+          programId: "callee.aleo",
+          transitionName: "mint",
+          rawOutputs: ["record1other"],
+          transitionPublicKey: "tpk_callee2",
+        },
+      ];
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, dupTransitions);
+      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
+        programId: "callee.aleo",
+        transitionName: "mint",
+        outputIndex: 0,
+        transitionMatchIndex: 1,
+      });
+      expect(result).toEqual({ decoded: "[plain record1other]" });
+    });
+
+    it("throws IdOnlyRecordResolutionError { transition-index-out-of-range }", async () => {
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          transitionIndex: 99,
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("transition-index-out-of-range");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { transition-match-index-out-of-range }", async () => {
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          programId: "callee.aleo",
+          transitionName: "mint",
+          outputIndex: 0,
+          transitionMatchIndex: 5,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("transition-match-index-out-of-range");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { program-mismatch } with expected/actual populated", async () => {
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          transitionIndex: 0,
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("program-mismatch");
+        expect(err.expectedProgram).toBe("callee.aleo");
+        expect(err.actualProgram).toBe("caller.aleo");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { not-a-ciphertext } when the slot is an id-only entry", async () => {
+      const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          transitionIndex: 0,    // caller's own transition
+          outputIndex: 0,
+        }).catch((err: any) => {
+          // program-mismatch fires first when projector.program != caller's program;
+          // use a projector that matches the caller's program so we hit the
+          // not-a-ciphertext arm instead.
+          throw err;
+        });
+        throw new Error("expected throw");
+      } catch {
+        // The previous call throws program-mismatch first; swallow and retry
+        // with a projector pointed at the caller's own program to surface
+        // not-a-ciphertext.
+      }
+      const callerProjector = {
+        program: "caller.aleo",
+        recordName: "Wrap",
+        deserialize: (s: string) => s,
+      };
+      try {
+        await handle.decryptFrom(callerProjector, "AViewKey1abc", {
+          transitionIndex: 0,
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("not-a-ciphertext");
+        expect(err.message).toContain("id-only output ext-id");
+      }
     });
   });
 
