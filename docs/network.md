@@ -118,6 +118,27 @@ Runtime imports contribute to `importsHash` in the proving-key cache identity, s
 
 Runtime imports are **execution-time** dependencies only, not deploy-time deps. The compiler's static-import-based dependency resolver does not follow them, so a dispatch hub's strategy programs must be deployed explicitly (or pulled in via the normal `import` graph elsewhere). See `examples/aleo-ports/dynamic_dispatch` for config-level defaults and `examples/aleo-ports/dynamic_records` for wrapper instance imports plus per-call imports.
 
+### Id-only record outputs (`dyn record` and external `Record`)
+
+Two output shapes the Aleo REST layer exposes id-only on the surfacing transition — the typechain surfaces them as honest, distinct handle types rather than a `EncryptedRecord<T>` that would crash on access:
+
+- **`dyn record` outputs** → `IdOnlyDynamicRecordHandle`. Inert by design: id + `transitions` callgraph for inspection, **no decrypt method**. The chain genuinely doesn't expose a record ciphertext for `record_dynamic` outputs — not on the caller's transition, not on the producing transition. If you need a spendable record after dispatched dispatch, wrap the call in a callee that emits a concrete record (the `probe_records.dispatch_and_receipt` pattern: dyn-record inputs, concrete `Receipt` output — the receipt IS decryptable).
+- **External `Record` outputs** → `IdOnlyExternalRecordHandle<T>` with `.decryptFrom(projector, key, source)`. The ciphertext lives on the **callee** transition (the imported program's transition that actually emitted the record), so the caller picks the source explicitly:
+  - Named selector: `{ programId, transitionName, outputIndex, transitionMatchIndex? }` (`transitionMatchIndex` required when match count > 1).
+  - Positional selector: `{ transitionIndex, outputIndex }` — DokoJS-style direct index into `transitions[i].rawOutputs[j]`.
+
+The typechain does **not** attempt id-based auto-resolution. The on-chain `id` field is an identifier, not a unique-producer pointer — in nested call graphs the same id can appear in multiple places. Callers are responsible for selecting the source transition.
+
+Selector failures produce `IdOnlyRecordResolutionError` with a narrow `reason` discriminator: `"transition-not-found" | "transition-not-unique" | "transition-index-out-of-range" | "transition-match-index-out-of-range" | "program-mismatch" | "not-a-ciphertext"`. The `program-mismatch` arm populates `expectedProgram` and `actualProgram` so the diagnostic is precise.
+
+Projectors come from two sources:
+- **Dynamic-record helpers** (`asGoldToken`, `asSilverToken`, …) emit a `.asOutput` property carrying a `DynamicRecordOutputProjector<T>` tied to the helper's `sourceRecord`. Useful for callers passing dyn-record arguments who then want to refine an external-record result against the same record type.
+- **Imported external records** emit a sibling `<ExternalRecord>.asOutput` value binding (e.g. `GoldToken_Token.asOutput`) alongside the imported type, so cross-program callers can decrypt without re-stating the deserializer.
+
+For programs with unresolved external types (no ABI available at codegen time), the codegen falls back to `IdOnlyExternalRecordHandle<LeoDynamicRecord>` — callers supply their own `DynamicRecordOutputProjector<TOut>` at the call site with a custom deserializer.
+
+`examples/aleo-ports/dynamic_records/programs/probe_records/main.leo` is the canonical example: `wrap_mint_gold` returns `gold_token.aleo::Token` (external `Record`, decryptable); `issue_receipt` and `dispatch_and_receipt` accept `dyn record` inputs and emit a concrete local `Receipt` (decryptable); the router program's `route_transfer` / `demo_transfer` return `dyn record` (inert handle).
+
 ## Provable SDK Integration
 
 `packages/network/src/sdk-adapter.ts` is the single point of contact with `@provablehq/sdk`. It loads the SDK module dynamically on first use and initializes the WASM thread pool once per process. Other network and deploy code imports helpers from that module rather than touching the SDK directly.

@@ -115,6 +115,20 @@ export interface IdOnlyRawOutput {
 export type RawTransitionOutput = string | IdOnlyRawOutput;
 
 /**
+ * Per-transition record in a confirmed transaction's callgraph. Mirrors the
+ * network-layer ConfirmedTransitionRecord with the same field shape — kept in
+ * sync with packages/network/src/types.ts:39-62. The template stays self-
+ * contained (no @lionden/network type imports), so this is a parallel
+ * declaration that the codegen pipeline asserts is structurally compatible.
+ */
+export interface ConfirmedTransitionRecord {
+  readonly programId: string;
+  readonly transitionName: string;
+  readonly rawOutputs: readonly RawTransitionOutput[];
+  readonly transitionPublicKey: string;
+}
+
+/**
  * Settled transition with status pinned to "accepted" but without typed
  * outputs. Used by \`expectAccepted\` and as the structural base for
  * AcceptedTransition<TOutputs>.
@@ -143,6 +157,17 @@ export interface AcceptedTransitionBase extends SubmittedTransition {
    * Required input to value-ciphertext decryption (\`EncryptedValue<T>.decrypt\`).
    */
   readonly transitionPublicKey: string;
+  /**
+   * Full callgraph snapshot of the confirmed transaction. Each entry is one
+   * transition in the call chain, in execution order, including callee
+   * transitions from cross-program dispatch.
+   *
+   * Used by \`IdOnlyExternalRecordHandle.decryptFrom\` to select the callee
+   * transition that actually emitted the record ciphertext. Also useful for
+   * raw inspection — e.g. correlating dispatched-call commitments back to
+   * their producing transitions.
+   */
+  readonly transitions: readonly ConfirmedTransitionRecord[];
 }
 
 /**
@@ -189,6 +214,93 @@ export interface EncryptedRecord<T> {
 }
 
 /**
+ * Fields shared by both id-only record handle variants. The chain exposes
+ * \`record_dynamic\` and \`external_record\` outputs without a ciphertext on
+ * the surfacing transition; this base captures the inspection-only fields.
+ *
+ * \`id\` is an IDENTIFIER, not a dereferenceable pointer — in nested call
+ * graphs the same id can appear in multiple places and the typechain does
+ * NOT auto-resolve it.
+ *
+ * \`transitions\` is the full callgraph snapshot from the confirmed
+ * transaction. For \`IdOnlyExternalRecordHandle<T>\` it's the input to
+ * \`decryptFrom\`'s explicit selector; for \`IdOnlyDynamicRecordHandle\` it's
+ * inspection only.
+ */
+export interface IdOnlyRecordHandleBase {
+  readonly id: string;
+  readonly transitions: readonly ConfirmedTransitionRecord[];
+}
+
+/**
+ * Output-side dual of \`DynamicRecordSchema<T>\`. Used by
+ * \`IdOnlyExternalRecordHandle<T>.decryptFrom\` to deserialize the selected
+ * ciphertext into a typed value.
+ */
+export interface DynamicRecordOutputProjector<T> {
+  readonly program: string;
+  readonly recordName: string;
+  readonly deserialize: (plaintext: string) => T;
+}
+
+/**
+ * Handle for a \`dyn record\` output. The chain never exposes a ciphertext
+ * for these — not on the producing transition, not on the caller. The
+ * handle is therefore intentionally inert: \`id\` and \`transitions\` for
+ * inspection, no decrypt method. Users who need a spendable record after
+ * dispatched dispatch must wrap the call in a callee that emits a concrete
+ * record type (see \`docs/network.md\` § Runtime Imports For Dynamic Dispatch).
+ */
+export interface IdOnlyDynamicRecordHandle extends IdOnlyRecordHandleBase {
+  readonly kind: "idOnlyDynamicRecord";
+  readonly type: "record_dynamic";
+}
+
+/**
+ * Selector for picking the source transition + output that holds the
+ * ciphertext referenced by an external record id-only handle.
+ *
+ * Two forms:
+ *  - Positional: \`{ transitionIndex, outputIndex }\` — DokoJS-style direct
+ *    index into \`transitions[i].rawOutputs[j]\`.
+ *  - Named: \`{ programId, transitionName, outputIndex, transitionMatchIndex? }\`
+ *    — match by program+transition name. \`transitionMatchIndex\` is required
+ *    when more than one transition matches (otherwise \`transition-not-unique\`
+ *    is thrown).
+ */
+export type IdOnlyRecordSource =
+  | {
+      readonly transitionIndex: number;
+      readonly outputIndex: number;
+    }
+  | {
+      readonly programId: string;
+      readonly transitionName: string;
+      readonly outputIndex: number;
+      readonly transitionMatchIndex?: number;
+    };
+
+/**
+ * Handle for an external \`Record\` output where the ciphertext lives on the
+ * callee transition (the imported program's transition that actually emitted
+ * the record). \`decryptFrom\` selects the callee transition+output and
+ * deserializes via the supplied projector.
+ *
+ * The \`T\` type parameter is the resolved external record type when the
+ * imported program's ABI is available at codegen time (C2a), or
+ * \`LeoDynamicRecord\` as fallback (C2b — caller supplies their own projector).
+ */
+export interface IdOnlyExternalRecordHandle<T> extends IdOnlyRecordHandleBase {
+  readonly kind: "idOnlyExternalRecord";
+  readonly type: "external_record";
+  decryptFrom<TOut = T>(
+    projector: DynamicRecordOutputProjector<TOut>,
+    key: DecryptionKey,
+    source: IdOnlyRecordSource,
+  ): Promise<TOut>;
+}
+
+/**
  * Typed handle for an on-chain private plaintext output (Aleo value
  * ciphertext, \`ciphertext1...\`). Wraps the ciphertext so the caller can
  * defer decryption to whichever account holds the view key.
@@ -232,6 +344,14 @@ export type DynamicRecordSchema<T> = {
   readonly [K in keyof T]: LeoFieldSchemaEntry;
 };
 
+export type IdOnlyRecordResolutionReason =
+  | "transition-not-found"
+  | "transition-not-unique"
+  | "transition-index-out-of-range"
+  | "transition-match-index-out-of-range"
+  | "program-mismatch"
+  | "not-a-ciphertext";
+
 export type TypechainErrorKind =
   | "TransitionInputError"
   | "LocalTransitionError"
@@ -243,7 +363,8 @@ export type TypechainErrorKind =
   | "TransactionShapeError"
   | "RecordDecryptionKeyError"
   | "LocalRecordDecryptionError"
-  | "LocalValueDecryptionError";
+  | "LocalValueDecryptionError"
+  | "IdOnlyRecordResolutionError";
 
 export type TypechainErrorPhase =
   | "input"
@@ -345,6 +466,39 @@ export class LocalRecordDecryptionError extends LionDenTypechainError {
 export class LocalValueDecryptionError extends LionDenTypechainError {
   constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
     super("LocalValueDecryptionError", message, { ...context, phase: "local" });
+  }
+}
+
+/**
+ * Thrown by \`IdOnlyExternalRecordHandle.decryptFrom\` when the selector
+ * fails to resolve to a decryptable ciphertext. The \`reason\` field
+ * discriminates each failure mode so callers can narrow at the call site
+ * without parsing the message.
+ *
+ *  - \`transition-not-found\`: named form, no matching (programId, transitionName).
+ *  - \`transition-not-unique\`: named form without \`transitionMatchIndex\`, but >1 match.
+ *  - \`transition-index-out-of-range\`: positional form, \`transitionIndex\` outside \`transitions\`.
+ *  - \`transition-match-index-out-of-range\`: named form, \`transitionMatchIndex\` outside the match set.
+ *  - \`program-mismatch\`: selected transition's \`programId\` ≠ \`projector.program\`.
+ *  - \`not-a-ciphertext\`: selected output slot exists but is not a record ciphertext string.
+ */
+export class IdOnlyRecordResolutionError extends LionDenTypechainError {
+  readonly reason: IdOnlyRecordResolutionReason;
+  readonly expectedProgram?: string;
+  readonly actualProgram?: string;
+
+  constructor(
+    reason: IdOnlyRecordResolutionReason,
+    message: string,
+    context: Omit<TypechainErrorContext, "phase"> & {
+      readonly expectedProgram?: string;
+      readonly actualProgram?: string;
+    } = {},
+  ) {
+    super("IdOnlyRecordResolutionError", message, { ...context, phase: "shape" });
+    this.reason = reason;
+    this.expectedProgram = context.expectedProgram;
+    this.actualProgram = context.actualProgram;
   }
 }
 
@@ -657,6 +811,7 @@ export abstract class BaseContract {
           status: "accepted",
           rawOutputs,
           transitionPublicKey,
+          transitions: confirmed.transitions ?? [],
         };
       }
       const rawOutputs = this.selectRejectedTransitionOutputs(
@@ -746,17 +901,28 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions,
-    project: (rawOutputs: readonly RawTransitionOutput[], tpk: string) => TOutputs,
+    project: (
+      rawOutputs: readonly RawTransitionOutput[],
+      tpk: string,
+      transitions: readonly ConfirmedTransitionRecord[],
+    ) => TOutputs,
   ): Promise<AcceptedTransition<TOutputs> | RejectedTransition> {
     const settled = await this.settleTransition(transitionName, args, options);
     if (settled.status === "accepted") {
-      const outputs = this.runProjector(transitionName, settled.rawOutputs, settled.transitionPublicKey, project);
+      const outputs = this.runProjector(
+        transitionName,
+        settled.rawOutputs,
+        settled.transitionPublicKey,
+        settled.transitions,
+        project,
+      );
       return {
         txId: settled.txId,
         blockHeight: settled.blockHeight,
         status: "accepted",
         rawOutputs: settled.rawOutputs,
         transitionPublicKey: settled.transitionPublicKey,
+        transitions: settled.transitions,
         outputs,
       };
     }
@@ -777,16 +943,27 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions,
-    project: (rawOutputs: readonly RawTransitionOutput[], tpk: string) => TOutputs,
+    project: (
+      rawOutputs: readonly RawTransitionOutput[],
+      tpk: string,
+      transitions: readonly ConfirmedTransitionRecord[],
+    ) => TOutputs,
   ): Promise<AcceptedTransition<TOutputs>> {
     const accepted = await this.expectAccepted(transitionName, args, options);
-    const outputs = this.runProjector(transitionName, accepted.rawOutputs, accepted.transitionPublicKey, project);
+    const outputs = this.runProjector(
+      transitionName,
+      accepted.rawOutputs,
+      accepted.transitionPublicKey,
+      accepted.transitions,
+      project,
+    );
     return {
       txId: accepted.txId,
       blockHeight: accepted.blockHeight,
       status: "accepted",
       rawOutputs: accepted.rawOutputs,
       transitionPublicKey: accepted.transitionPublicKey,
+      transitions: accepted.transitions,
       outputs,
     };
   }
@@ -795,10 +972,15 @@ export abstract class BaseContract {
     transitionName: string,
     rawOutputs: readonly RawTransitionOutput[],
     tpk: string,
-    project: (rawOutputs: readonly RawTransitionOutput[], tpk: string) => TOutputs,
+    transitions: readonly ConfirmedTransitionRecord[],
+    project: (
+      rawOutputs: readonly RawTransitionOutput[],
+      tpk: string,
+      transitions: readonly ConfirmedTransitionRecord[],
+    ) => TOutputs,
   ): TOutputs {
     try {
-      return project(rawOutputs, tpk);
+      return project(rawOutputs, tpk, transitions);
     } catch (cause: unknown) {
       if (cause instanceof TransactionShapeError) throw cause;
       throw new TransactionShapeError(
@@ -855,6 +1037,196 @@ export abstract class BaseContract {
         return BaseContract.decryptRecord(ciphertext, key, deserialize);
       },
     };
+  }
+
+  /**
+   * Fail-fast indexed access for id-only record output slots. Parallel to
+   * \`rawOutputAt\`, but expects the entry at \`abiIndex\` to be an
+   * \`IdOnlyRawOutput\` (not a ciphertext string). Throws
+   * \`TransactionShapeError\` with \`outputIndex\` populated on every other
+   * shape.
+   *
+   * Used by generated projectors for \`dyn record\` and external \`Record\`
+   * output positions, both of which the chain surfaces as id-only on the
+   * caller's transition.
+   */
+  static idOnlyRecordOutputAt(
+    rawOutputs: readonly RawTransitionOutput[],
+    programId: string,
+    transitionName: string,
+    abiIndex: number,
+  ): IdOnlyRawOutput {
+    const value = rawOutputs[abiIndex];
+    if (
+      value !== null &&
+      typeof value === "object" &&
+      "kind" in value &&
+      (value as { kind?: unknown }).kind === "idOnly"
+    ) {
+      return value as IdOnlyRawOutput;
+    }
+    const kind = value === undefined
+      ? "undefined"
+      : value === null
+        ? "null"
+        : typeof value === "string"
+          ? "ciphertext string"
+          : typeof value;
+    throw new TransactionShapeError(
+      "Expected " + programId + "/" + transitionName + " to have an id-only record output at ABI index " + abiIndex + ", got " + kind + ".",
+      { programId, transition: transitionName, outputIndex: abiIndex },
+    );
+  }
+
+  /**
+   * Build an \`IdOnlyDynamicRecordHandle\` for a \`dyn record\` output. The
+   * handle is inert by design — no decrypt method, because the chain does
+   * not expose a ciphertext anywhere in the confirmed transaction for
+   * \`record_dynamic\` outputs (Phase A empirical verification).
+   */
+  static makeIdOnlyDynamicRecordHandle(
+    entry: IdOnlyRawOutput,
+    transitions: readonly ConfirmedTransitionRecord[],
+  ): IdOnlyDynamicRecordHandle {
+    return {
+      kind: "idOnlyDynamicRecord",
+      type: "record_dynamic",
+      id: entry.id,
+      transitions,
+    };
+  }
+
+  /**
+   * Build an \`IdOnlyExternalRecordHandle<T>\` for an external \`Record\`
+   * output. The handle's \`decryptFrom\` selects the callee transition that
+   * actually emitted the ciphertext and deserializes via the supplied
+   * projector.
+   *
+   * \`decryptFrom\` does NOT auto-resolve the id — selection is explicit
+   * (named or positional). See \`IdOnlyRecordResolutionError.reason\` for the
+   * specific failure modes.
+   */
+  static makeIdOnlyExternalRecordHandle<T>(
+    entry: IdOnlyRawOutput,
+    transitions: readonly ConfirmedTransitionRecord[],
+  ): IdOnlyExternalRecordHandle<T> {
+    return {
+      kind: "idOnlyExternalRecord",
+      type: "external_record",
+      id: entry.id,
+      transitions,
+      async decryptFrom<TOut = T>(
+        projector: DynamicRecordOutputProjector<TOut>,
+        key: DecryptionKey,
+        source: IdOnlyRecordSource,
+      ): Promise<TOut> {
+        const selected = BaseContract.resolveIdOnlySource(transitions, source);
+        if (selected.transition.programId !== projector.program) {
+          throw new IdOnlyRecordResolutionError(
+            "program-mismatch",
+            "Selected transition " + selected.transition.programId + "/" + selected.transition.transitionName + " does not match projector program " + projector.program + ". Pass the projector for the program that emitted the record, or correct the selector.",
+            {
+              expectedProgram: projector.program,
+              actualProgram: selected.transition.programId,
+              programId: selected.transition.programId,
+              transition: selected.transition.transitionName,
+              outputIndex: source.outputIndex,
+            },
+          );
+        }
+        const ciphertext = selected.transition.rawOutputs[source.outputIndex];
+        if (typeof ciphertext !== "string") {
+          const kind = ciphertext === undefined
+            ? "undefined"
+            : ciphertext === null
+              ? "null"
+              : typeof ciphertext === "object" && "kind" in ciphertext && (ciphertext as { kind?: unknown }).kind === "idOnly"
+                ? "id-only output " + (ciphertext as IdOnlyRawOutput).id
+                : typeof ciphertext;
+          throw new IdOnlyRecordResolutionError(
+            "not-a-ciphertext",
+            "Selected output at " + projector.program + "/" + selected.transition.transitionName + " index " + source.outputIndex + " is not a record ciphertext (got " + kind + "). The callee transition you selected may not actually hold the source ciphertext for this id-only record.",
+            {
+              programId: selected.transition.programId,
+              transition: selected.transition.transitionName,
+              outputIndex: source.outputIndex,
+            },
+          );
+        }
+        return BaseContract.decryptRecord(ciphertext, key, projector.deserialize);
+      },
+    };
+  }
+
+  /**
+   * Resolve an \`IdOnlyRecordSource\` to a specific transition in the
+   * callgraph. Throws the appropriate \`IdOnlyRecordResolutionError\` reason
+   * when the selector is ambiguous, out of range, or has no match. Internal
+   * helper for \`makeIdOnlyExternalRecordHandle\`.
+   */
+  private static resolveIdOnlySource(
+    transitions: readonly ConfirmedTransitionRecord[],
+    source: IdOnlyRecordSource,
+  ): { readonly transition: ConfirmedTransitionRecord; readonly transitionIndex: number } {
+    if ("transitionIndex" in source) {
+      const idx = source.transitionIndex;
+      const t = transitions[idx];
+      if (!t) {
+        throw new IdOnlyRecordResolutionError(
+          "transition-index-out-of-range",
+          "transitionIndex " + idx + " is out of range; transactions has " + transitions.length + " transition(s).",
+          { outputIndex: source.outputIndex },
+        );
+      }
+      return { transition: t, transitionIndex: idx };
+    }
+    const matchesWithIndex: { transition: ConfirmedTransitionRecord; index: number }[] = [];
+    for (let i = 0; i < transitions.length; i++) {
+      const t = transitions[i]!;
+      if (t.programId === source.programId && t.transitionName === source.transitionName) {
+        matchesWithIndex.push({ transition: t, index: i });
+      }
+    }
+    if (matchesWithIndex.length === 0) {
+      const available = transitions.map((t) => t.programId + "/" + t.transitionName).join(", ");
+      throw new IdOnlyRecordResolutionError(
+        "transition-not-found",
+        "No transition matching " + source.programId + "/" + source.transitionName + " in confirmed transaction. Available: " + (available || "(none)") + ".",
+        {
+          programId: source.programId,
+          transition: source.transitionName,
+          outputIndex: source.outputIndex,
+        },
+      );
+    }
+    if (source.transitionMatchIndex === undefined) {
+      if (matchesWithIndex.length > 1) {
+        throw new IdOnlyRecordResolutionError(
+          "transition-not-unique",
+          matchesWithIndex.length + " transitions match " + source.programId + "/" + source.transitionName + "; pass transitionMatchIndex to disambiguate (0-based within matches) or use the positional form { transitionIndex, outputIndex }.",
+          {
+            programId: source.programId,
+            transition: source.transitionName,
+            outputIndex: source.outputIndex,
+          },
+        );
+      }
+      const only = matchesWithIndex[0]!;
+      return { transition: only.transition, transitionIndex: only.index };
+    }
+    const m = matchesWithIndex[source.transitionMatchIndex];
+    if (!m) {
+      throw new IdOnlyRecordResolutionError(
+        "transition-match-index-out-of-range",
+        "transitionMatchIndex " + source.transitionMatchIndex + " is out of range; " + matchesWithIndex.length + " transition(s) match " + source.programId + "/" + source.transitionName + ".",
+        {
+          programId: source.programId,
+          transition: source.transitionName,
+          outputIndex: source.outputIndex,
+        },
+      );
+    }
+    return { transition: m.transition, transitionIndex: m.index };
   }
 
   /**
@@ -1215,7 +1587,7 @@ export abstract class BaseContract {
    */
   protected selectAcceptedTransition(
     transitionName: string,
-    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly RawTransitionOutput[]; readonly transitionPublicKey: string }[] | undefined,
+    transitions: readonly ConfirmedTransitionRecord[] | undefined,
   ): { readonly rawOutputs: readonly RawTransitionOutput[]; readonly transitionPublicKey: string } {
     const list = transitions ?? [];
     const matches = list.filter(
@@ -1246,7 +1618,7 @@ export abstract class BaseContract {
    */
   protected selectRejectedTransitionOutputs(
     transitionName: string,
-    transitions: readonly { readonly programId: string; readonly transitionName: string; readonly rawOutputs: readonly RawTransitionOutput[] }[] | undefined,
+    transitions: readonly ConfirmedTransitionRecord[] | undefined,
   ): readonly RawTransitionOutput[] {
     const list = transitions ?? [];
     const matches = list.filter(
