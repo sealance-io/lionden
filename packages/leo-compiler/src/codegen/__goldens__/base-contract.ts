@@ -158,10 +158,10 @@ export interface AcceptedTransitionBase extends SubmittedTransition {
    * transition in the call chain, in execution order, including callee
    * transitions from cross-program dispatch.
    *
-   * Used by \`IdOnlyExternalRecordHandle.decryptFrom\` to select the callee
-   * transition that actually emitted the record ciphertext. Also useful for
-   * raw inspection — e.g. correlating dispatched-call commitments back to
-   * their producing transitions.
+   * Used by \`IdOnlyExternalRecordHandle.match(matcher).decrypt(...)\` to
+   * select the callee transition that actually emitted the record
+   * ciphertext. Also useful for raw inspection — e.g. correlating
+   * dispatched-call commitments back to their producing transitions.
    */
   readonly transitions: readonly ConfirmedTransitionRecord[];
 }
@@ -203,10 +203,27 @@ export type SettledTransition = AcceptedTransitionBase | RejectedTransition;
 /**
  * Typed handle for an on-chain record output. Wraps the ciphertext so the
  * caller can defer decryption to whichever account holds the view key.
+ *
+ * Carries \`program\` and \`recordName\` so \`.match(matcher)\` can verify the
+ * matcher's identity against the ciphertext's actual type at decrypt time —
+ * this blocks accidentally deserializing a GoldToken ciphertext as a
+ * SilverToken record.
  */
 export interface EncryptedRecord<T> {
+  readonly program: string;
+  readonly recordName: string;
   readonly ciphertext: string;
   decrypt(key: DecryptionKey): Promise<T>;
+  /**
+   * Capture the matcher and defer all validation + decryption to
+   * \`CapturedRecord.decrypt(key)\`. The matcher's \`source\` is ignored on this
+   * arm (the ciphertext lives on the handle itself); the matcher's
+   * \`program\` / \`recordName\` MUST equal this handle's fields or
+   * \`CapturedRecord.decrypt\` async-throws \`TransactionShapeError\`.
+   */
+  match<TOut = T>(
+    matcher: RecordOutputMatcher<TOut, "unbound"> | RecordOutputMatcher<TOut, "bound">,
+  ): CapturedRecord<TOut>;
 }
 
 /**
@@ -219,9 +236,8 @@ export interface EncryptedRecord<T> {
  * NOT auto-resolve it.
  *
  * \`transitions\` is the full callgraph snapshot from the confirmed
- * transaction. For \`IdOnlyExternalRecordHandle<T>\` it's the input to
- * \`decryptFrom\`'s explicit selector; for \`IdOnlyDynamicRecordHandle\` it's
- * inspection only.
+ * transaction. Used by \`.match(matcher.from(...)|matcher.at(...))\` to select
+ * the source transition that holds the ciphertext.
  */
 export interface IdOnlyRecordHandleBase {
   readonly id: string;
@@ -229,45 +245,81 @@ export interface IdOnlyRecordHandleBase {
 }
 
 /**
- * Output-side dual of \`DynamicRecordSchema<T>\`. Used by
- * \`IdOnlyExternalRecordHandle<T>.decryptFrom\` to deserialize the selected
- * ciphertext into a typed value.
+ * Output-side matcher: identity (program + recordName + deserializer) plus
+ * a phantom "bound" / "unbound" flag tracking whether a transition source
+ * has been chosen via \`.from(...)\` or \`.at(...)\`. Id-only arms only accept
+ * \`"bound"\` matchers — passing an unbound matcher is a compile error, not
+ * a runtime throw.
+ *
+ * Construct via the typed helper's \`output\` field (e.g. \`asGoldToken.output\`)
+ * or via the public \`createRecordOutputMatcher\` factory for unresolved
+ * external records (where no ABI-backed helper is generated).
  */
-export interface DynamicRecordOutputProjector<T> {
+export interface RecordOutputMatcher<T, S extends "unbound" | "bound" = "unbound"> {
   readonly program: string;
   readonly recordName: string;
   readonly deserialize: (plaintext: string) => T;
+  readonly source: S extends "bound" ? IdOnlyRecordSource : undefined;
+  /**
+   * Name-based source binding. The matcher's \`program\` is inherited as the
+   * source \`programId\`, so the caller cannot accidentally point at a
+   * different program. \`opts.match\` disambiguates when more than one
+   * matching transition exists (0-based, within matches).
+   */
+  from(
+    transitionName: string,
+    outputIndex: number,
+    opts?: { readonly match?: number },
+  ): RecordOutputMatcher<T, "bound">;
+  /**
+   * Positional source binding. Indexes directly into the callgraph's
+   * \`transitions[transitionIndex].rawOutputs[outputIndex]\`. Use this when
+   * a name-based binding is too coarse — e.g. multiple matches at the same
+   * \`(program, transitionName)\` that \`.from(..., { match: n })\` could
+   * handle but you'd rather index directly — or when authoring an
+   * intentional cross-program mismatch test. Successful decryption still
+   * requires \`selected.transition.programId === matcher.program\`;
+   * any mismatch surfaces as \`program-mismatch\` from \`.decrypt(key)\`.
+   */
+  at(transitionIndex: number, outputIndex: number): RecordOutputMatcher<T, "bound">;
+}
+
+/**
+ * Result of \`.match(matcher)\`. All validation, source resolution, and
+ * decryption is deferred to \`.decrypt(key)\`. Calling \`.match\` itself is a
+ * pure builder and never throws.
+ */
+export interface CapturedRecord<T> {
+  decrypt(key: DecryptionKey): Promise<T>;
 }
 
 /**
  * Handle for a \`dyn record\` output. The chain never exposes a ciphertext
  * for the dynamic-record id itself — not on the producing transition, not
- * on the caller. \`decryptFrom\` therefore does NOT dereference the
- * \`record_dynamic\` id; it selects an explicit sibling concrete output in
- * the same callgraph (typically the materialized static record that a
- * V15-compliant callee emitted alongside the dynamic handle, per
- * snarkVM's \`ensure_records_exist\` rule) and decrypts that ciphertext
- * via the supplied projector. See
+ * on the caller. \`.match(matcher.from(...)|.at(...)).decrypt(key)\` therefore
+ * does NOT dereference the \`record_dynamic\` id; it selects an explicit
+ * sibling concrete output in the same callgraph (typically the materialized
+ * static record that a V15-compliant callee emitted alongside the dynamic
+ * handle, per snarkVM's \`ensure_records_exist\` rule) and decrypts that
+ * ciphertext via the matcher's deserializer. See
  * \`docs/research/snarkvm-record-existence.md\` for the upstream rule and
  * \`docs/network.md\` § Id-only record outputs for the recovery flow.
  */
 export interface IdOnlyDynamicRecordHandle extends IdOnlyRecordHandleBase {
   readonly kind: "idOnlyDynamicRecord";
   readonly type: "record_dynamic";
-  decryptFrom<TOut>(
-    projector: DynamicRecordOutputProjector<TOut>,
-    key: DecryptionKey,
-    source: IdOnlyRecordSource,
-  ): Promise<TOut>;
+  match<TOut>(matcher: RecordOutputMatcher<TOut, "bound">): CapturedRecord<TOut>;
 }
 
 /**
  * Selector for picking the source transition + output that holds the
- * ciphertext referenced by an external record id-only handle.
+ * ciphertext referenced by an id-only record handle. Produced by
+ * \`RecordOutputMatcher.from(...)\` (named form) or \`.at(...)\` (positional
+ * form); user code does not construct these directly.
  *
  * Two forms:
- *  - Positional: \`{ transitionIndex, outputIndex }\` — DokoJS-style direct
- *    index into \`transitions[i].rawOutputs[j]\`.
+ *  - Positional: \`{ transitionIndex, outputIndex }\` — direct index into
+ *    \`transitions[i].rawOutputs[j]\`.
  *  - Named: \`{ programId, transitionName, outputIndex, transitionMatchIndex? }\`
  *    — match by program+transition name. \`transitionMatchIndex\` is required
  *    when more than one transition matches (otherwise \`transition-not-unique\`
@@ -288,21 +340,69 @@ export type IdOnlyRecordSource =
 /**
  * Handle for an external \`Record\` output where the ciphertext lives on the
  * callee transition (the imported program's transition that actually emitted
- * the record). \`decryptFrom\` selects the callee transition+output and
- * deserializes via the supplied projector.
+ * the record). \`.match(matcher.from(...)|.at(...)).decrypt(key)\` selects the
+ * callee transition+output and deserializes via the matcher.
  *
  * The \`T\` type parameter is the resolved external record type when the
- * imported program's ABI is available at codegen time (C2a), or
- * \`LeoDynamicRecord\` as fallback (C2b — caller supplies their own projector).
+ * imported program's ABI is available at codegen time, or
+ * \`LeoDynamicRecord\` as fallback (caller constructs their own matcher via
+ * \`createRecordOutputMatcher\`).
  */
 export interface IdOnlyExternalRecordHandle<T> extends IdOnlyRecordHandleBase {
   readonly kind: "idOnlyExternalRecord";
   readonly type: "external_record";
-  decryptFrom<TOut = T>(
-    projector: DynamicRecordOutputProjector<TOut>,
-    key: DecryptionKey,
-    source: IdOnlyRecordSource,
-  ): Promise<TOut>;
+  match<TOut = T>(matcher: RecordOutputMatcher<TOut, "bound">): CapturedRecord<TOut>;
+}
+
+/**
+ * Construct a \`RecordOutputMatcher\` for a record shape. Codegen calls this
+ * for every typed helper (\`asGoldToken.output\`, \`GoldToken_Token.output\`,
+ * etc.); user code calls it directly when working with an unresolved
+ * external-record output — i.e. an \`IdOnlyExternalRecordHandle<LeoDynamicRecord>\`
+ * whose record type has no ABI-backed typed helper.
+ *
+ * Returns an "unbound" matcher; chain \`.from(transition, index)\` or
+ * \`.at(transitionIndex, outputIndex)\` before passing to an id-only handle's
+ * \`.match\`. The encrypted-record arm accepts unbound or bound matchers.
+ */
+export function createRecordOutputMatcher<T>(base: {
+  readonly program: string;
+  readonly recordName: string;
+  readonly deserialize: (plaintext: string) => T;
+}): RecordOutputMatcher<T, "unbound"> {
+  return buildRecordOutputMatcher(base, undefined) as RecordOutputMatcher<T, "unbound">;
+}
+
+function buildRecordOutputMatcher<T>(
+  base: {
+    readonly program: string;
+    readonly recordName: string;
+    readonly deserialize: (plaintext: string) => T;
+  },
+  source: IdOnlyRecordSource | undefined,
+): RecordOutputMatcher<T, "unbound"> | RecordOutputMatcher<T, "bound"> {
+  const matcher = {
+    program: base.program,
+    recordName: base.recordName,
+    deserialize: base.deserialize,
+    source: source as IdOnlyRecordSource,
+    from(
+      transitionName: string,
+      outputIndex: number,
+      opts?: { readonly match?: number },
+    ): RecordOutputMatcher<T, "bound"> {
+      return buildRecordOutputMatcher(base, {
+        programId: base.program,
+        transitionName,
+        outputIndex,
+        transitionMatchIndex: opts?.match,
+      }) as RecordOutputMatcher<T, "bound">;
+    },
+    at(transitionIndex: number, outputIndex: number): RecordOutputMatcher<T, "bound"> {
+      return buildRecordOutputMatcher(base, { transitionIndex, outputIndex }) as RecordOutputMatcher<T, "bound">;
+    },
+  };
+  return matcher as RecordOutputMatcher<T, "unbound"> | RecordOutputMatcher<T, "bound">;
 }
 
 /**
@@ -475,16 +575,16 @@ export class LocalValueDecryptionError extends LionDenTypechainError {
 }
 
 /**
- * Thrown by \`IdOnlyExternalRecordHandle.decryptFrom\` when the selector
- * fails to resolve to a decryptable ciphertext. The \`reason\` field
- * discriminates each failure mode so callers can narrow at the call site
- * without parsing the message.
+ * Thrown by an id-only handle's \`.match(matcher).decrypt(key)\` when the
+ * matcher's source fails to resolve to a decryptable ciphertext. The
+ * \`reason\` field discriminates each failure mode so callers can narrow at
+ * the call site without parsing the message.
  *
- *  - \`transition-not-found\`: named form, no matching (programId, transitionName).
- *  - \`transition-not-unique\`: named form without \`transitionMatchIndex\`, but >1 match.
- *  - \`transition-index-out-of-range\`: positional form, \`transitionIndex\` outside \`transitions\`.
- *  - \`transition-match-index-out-of-range\`: named form, \`transitionMatchIndex\` outside the match set.
- *  - \`program-mismatch\`: selected transition's \`programId\` ≠ \`projector.program\`.
+ *  - \`transition-not-found\`: \`.from(name, idx)\` — no matching (program, transitionName).
+ *  - \`transition-not-unique\`: \`.from(name, idx)\` with no \`{ match: n }\` but >1 match.
+ *  - \`transition-index-out-of-range\`: \`.at(transitionIndex, idx)\` — index outside \`transitions\`.
+ *  - \`transition-match-index-out-of-range\`: \`.from(..., { match })\` — \`match\` outside the match set.
+ *  - \`program-mismatch\`: selected transition's \`programId\` ≠ \`matcher.program\`.
  *  - \`not-a-ciphertext\`: selected output slot exists but is not a record ciphertext string.
  */
 export class IdOnlyRecordResolutionError extends LionDenTypechainError {
@@ -1031,15 +1131,37 @@ export abstract class BaseContract {
    * Build a typed EncryptedRecord<T> handle from a ciphertext. The handle's
    * \`.decrypt(key)\` routes through \`BaseContract.decryptRecord\` with the
    * supplied deserializer so it works equally for local and imported records.
+   *
+   * \`program\` and \`recordName\` are stored on the handle so
+   * \`.match(matcher)\` can verify the matcher's identity at decrypt time.
    */
   static makeEncryptedRecord<T>(
+    program: string,
+    recordName: string,
     ciphertext: string,
     deserialize: (plaintext: string) => T,
   ): EncryptedRecord<T> {
     return {
+      program,
+      recordName,
       ciphertext,
       decrypt(key: DecryptionKey): Promise<T> {
         return BaseContract.decryptRecord(ciphertext, key, deserialize);
+      },
+      match<TOut = T>(
+        matcher: RecordOutputMatcher<TOut, "unbound"> | RecordOutputMatcher<TOut, "bound">,
+      ): CapturedRecord<TOut> {
+        return {
+          async decrypt(key: DecryptionKey): Promise<TOut> {
+            if (matcher.program !== program || matcher.recordName !== recordName) {
+              throw new TransactionShapeError(
+                "Matcher identity " + matcher.program + "/" + matcher.recordName + " does not match the encrypted record's identity " + program + "/" + recordName + ". Pass the matcher whose helper corresponds to this record's type.",
+                { programId: program, transition: recordName },
+              );
+            }
+            return BaseContract.decryptRecord(ciphertext, key, matcher.deserialize);
+          },
+        };
       },
     };
   }
@@ -1084,13 +1206,67 @@ export abstract class BaseContract {
   }
 
   /**
+   * Resolve a bound matcher's source against the callgraph and decrypt the
+   * referenced record ciphertext. Shared by \`makeIdOnlyDynamicRecordHandle\`
+   * and \`makeIdOnlyExternalRecordHandle\`; both arms use the same selector
+   * + program-mismatch + ciphertext-presence checks.
+   *
+   * \`notACiphertextHint\` is the arm-specific tail of the not-a-ciphertext
+   * error message — the dyn handle hints at V15 sibling-record materialization,
+   * the external handle hints at callee-transition selection.
+   */
+  static async resolveAndDecryptIdOnly<TOut>(
+    transitions: readonly ConfirmedTransitionRecord[],
+    matcher: RecordOutputMatcher<TOut, "bound">,
+    key: DecryptionKey,
+    notACiphertextHint: string,
+  ): Promise<TOut> {
+    const source = matcher.source;
+    const selected = BaseContract.resolveIdOnlySource(transitions, source);
+    if (selected.transition.programId !== matcher.program) {
+      throw new IdOnlyRecordResolutionError(
+        "program-mismatch",
+        "Selected transition " + selected.transition.programId + "/" + selected.transition.transitionName + " does not match matcher program " + matcher.program + ". Pass \`<helper>.output.from(...)\` for the program that emitted the record, or use \`.at(transitionIndex, outputIndex)\` to point at the correct callee transition.",
+        {
+          expectedProgram: matcher.program,
+          actualProgram: selected.transition.programId,
+          programId: selected.transition.programId,
+          transition: selected.transition.transitionName,
+          outputIndex: source.outputIndex,
+        },
+      );
+    }
+    const ciphertext = selected.transition.rawOutputs[source.outputIndex];
+    if (typeof ciphertext !== "string") {
+      const kind = ciphertext === undefined
+        ? "undefined"
+        : ciphertext === null
+          ? "null"
+          : typeof ciphertext === "object" && "kind" in ciphertext && (ciphertext as { kind?: unknown }).kind === "idOnly"
+            ? "id-only output " + (ciphertext as IdOnlyRawOutput).id
+            : typeof ciphertext;
+      throw new IdOnlyRecordResolutionError(
+        "not-a-ciphertext",
+        "Selected output at " + matcher.program + "/" + selected.transition.transitionName + " index " + source.outputIndex + " is not a record ciphertext (got " + kind + "). " + notACiphertextHint,
+        {
+          programId: selected.transition.programId,
+          transition: selected.transition.transitionName,
+          outputIndex: source.outputIndex,
+        },
+      );
+    }
+    return BaseContract.decryptRecord(ciphertext, key, matcher.deserialize);
+  }
+
+  /**
    * Build an \`IdOnlyDynamicRecordHandle\` for a \`dyn record\` output. The
    * chain never exposes a ciphertext for the dynamic-record id itself, so
-   * \`decryptFrom\` does NOT dereference the id — it selects an explicit
-   * sibling concrete output in the same callgraph and decrypts that. See
-   * the type's docstring and \`docs/research/snarkvm-record-existence.md\`
-   * for the V15 \`ensure_records_exist\` rule that makes a sibling concrete
-   * output guaranteed to exist in compliant programs.
+   * \`.match(matcher.from(...)|.at(...)).decrypt(key)\` does NOT dereference
+   * the id — it selects an explicit sibling concrete output in the same
+   * callgraph and decrypts that. See the type's docstring and
+   * \`docs/research/snarkvm-record-existence.md\` for the V15
+   * \`ensure_records_exist\` rule that makes a sibling concrete output
+   * guaranteed to exist in compliant programs.
    */
   static makeIdOnlyDynamicRecordHandle(
     entry: IdOnlyRawOutput,
@@ -1101,58 +1277,30 @@ export abstract class BaseContract {
       type: "record_dynamic",
       id: entry.id,
       transitions,
-      async decryptFrom<TOut>(
-        projector: DynamicRecordOutputProjector<TOut>,
-        key: DecryptionKey,
-        source: IdOnlyRecordSource,
-      ): Promise<TOut> {
-        const selected = BaseContract.resolveIdOnlySource(transitions, source);
-        if (selected.transition.programId !== projector.program) {
-          throw new IdOnlyRecordResolutionError(
-            "program-mismatch",
-            "Selected transition " + selected.transition.programId + "/" + selected.transition.transitionName + " does not match projector program " + projector.program + ". Pass the projector for the program that emitted the sibling concrete record, or correct the selector.",
-            {
-              expectedProgram: projector.program,
-              actualProgram: selected.transition.programId,
-              programId: selected.transition.programId,
-              transition: selected.transition.transitionName,
-              outputIndex: source.outputIndex,
-            },
-          );
-        }
-        const ciphertext = selected.transition.rawOutputs[source.outputIndex];
-        if (typeof ciphertext !== "string") {
-          const kind = ciphertext === undefined
-            ? "undefined"
-            : ciphertext === null
-              ? "null"
-              : typeof ciphertext === "object" && "kind" in ciphertext && (ciphertext as { kind?: unknown }).kind === "idOnly"
-                ? "id-only output " + (ciphertext as IdOnlyRawOutput).id
-                : typeof ciphertext;
-          throw new IdOnlyRecordResolutionError(
-            "not-a-ciphertext",
-            "Selected output at " + projector.program + "/" + selected.transition.transitionName + " index " + source.outputIndex + " is not a record ciphertext (got " + kind + "). Note: the dyn-handle's decryptFrom does not dereference the dynamic-record id — it expects an explicit selector pointing at a sibling concrete record output materialized by a V15-compliant callee.",
-            {
-              programId: selected.transition.programId,
-              transition: selected.transition.transitionName,
-              outputIndex: source.outputIndex,
-            },
-          );
-        }
-        return BaseContract.decryptRecord(ciphertext, key, projector.deserialize);
+      match<TOut>(matcher: RecordOutputMatcher<TOut, "bound">): CapturedRecord<TOut> {
+        return {
+          decrypt(key: DecryptionKey): Promise<TOut> {
+            return BaseContract.resolveAndDecryptIdOnly(
+              transitions,
+              matcher,
+              key,
+              "The dyn-handle's \`.match(...).decrypt(...)\` does not dereference the dynamic-record id — it expects \`.from(transition, outputIndex)\` or \`.at(...)\` pointing at a sibling concrete record output materialized by a V15-compliant callee.",
+            );
+          },
+        };
       },
     };
   }
 
   /**
    * Build an \`IdOnlyExternalRecordHandle<T>\` for an external \`Record\`
-   * output. The handle's \`decryptFrom\` selects the callee transition that
-   * actually emitted the ciphertext and deserializes via the supplied
-   * projector.
+   * output. The handle's \`.match(matcher.from(...)|.at(...)).decrypt(key)\`
+   * selects the callee transition that actually emitted the ciphertext and
+   * deserializes via the matcher.
    *
-   * \`decryptFrom\` does NOT auto-resolve the id — selection is explicit
-   * (named or positional). See \`IdOnlyRecordResolutionError.reason\` for the
-   * specific failure modes.
+   * Source selection is explicit (named via \`.from\` or positional via
+   * \`.at\`). See \`IdOnlyRecordResolutionError.reason\` for the specific
+   * failure modes.
    */
   static makeIdOnlyExternalRecordHandle<T>(
     entry: IdOnlyRawOutput,
@@ -1163,45 +1311,17 @@ export abstract class BaseContract {
       type: "external_record",
       id: entry.id,
       transitions,
-      async decryptFrom<TOut = T>(
-        projector: DynamicRecordOutputProjector<TOut>,
-        key: DecryptionKey,
-        source: IdOnlyRecordSource,
-      ): Promise<TOut> {
-        const selected = BaseContract.resolveIdOnlySource(transitions, source);
-        if (selected.transition.programId !== projector.program) {
-          throw new IdOnlyRecordResolutionError(
-            "program-mismatch",
-            "Selected transition " + selected.transition.programId + "/" + selected.transition.transitionName + " does not match projector program " + projector.program + ". Pass the projector for the program that emitted the record, or correct the selector.",
-            {
-              expectedProgram: projector.program,
-              actualProgram: selected.transition.programId,
-              programId: selected.transition.programId,
-              transition: selected.transition.transitionName,
-              outputIndex: source.outputIndex,
-            },
-          );
-        }
-        const ciphertext = selected.transition.rawOutputs[source.outputIndex];
-        if (typeof ciphertext !== "string") {
-          const kind = ciphertext === undefined
-            ? "undefined"
-            : ciphertext === null
-              ? "null"
-              : typeof ciphertext === "object" && "kind" in ciphertext && (ciphertext as { kind?: unknown }).kind === "idOnly"
-                ? "id-only output " + (ciphertext as IdOnlyRawOutput).id
-                : typeof ciphertext;
-          throw new IdOnlyRecordResolutionError(
-            "not-a-ciphertext",
-            "Selected output at " + projector.program + "/" + selected.transition.transitionName + " index " + source.outputIndex + " is not a record ciphertext (got " + kind + "). The callee transition you selected may not actually hold the source ciphertext for this id-only record.",
-            {
-              programId: selected.transition.programId,
-              transition: selected.transition.transitionName,
-              outputIndex: source.outputIndex,
-            },
-          );
-        }
-        return BaseContract.decryptRecord(ciphertext, key, projector.deserialize);
+      match<TOut = T>(matcher: RecordOutputMatcher<TOut, "bound">): CapturedRecord<TOut> {
+        return {
+          decrypt(key: DecryptionKey): Promise<TOut> {
+            return BaseContract.resolveAndDecryptIdOnly(
+              transitions,
+              matcher,
+              key,
+              "The callee transition you selected may not actually hold the source ciphertext for this id-only record.",
+            );
+          },
+        };
       },
     };
   }
@@ -1251,7 +1371,7 @@ export abstract class BaseContract {
       if (matchesWithIndex.length > 1) {
         throw new IdOnlyRecordResolutionError(
           "transition-not-unique",
-          matchesWithIndex.length + " transitions match " + source.programId + "/" + source.transitionName + "; pass transitionMatchIndex to disambiguate (0-based within matches) or use the positional form { transitionIndex, outputIndex }.",
+          matchesWithIndex.length + " transitions match " + source.programId + "/" + source.transitionName + "; pass \`.from(name, outputIndex, { match: n })\` to disambiguate (0-based within matches) or use \`.at(transitionIndex, outputIndex)\` to index positionally.",
           {
             programId: source.programId,
             transition: source.transitionName,
@@ -1266,7 +1386,7 @@ export abstract class BaseContract {
     if (!m) {
       throw new IdOnlyRecordResolutionError(
         "transition-match-index-out-of-range",
-        "transitionMatchIndex " + source.transitionMatchIndex + " is out of range; " + matchesWithIndex.length + " transition(s) match " + source.programId + "/" + source.transitionName + ".",
+        "match index " + source.transitionMatchIndex + " (from \`.from(..., { match })\`) is out of range; " + matchesWithIndex.length + " transition(s) match " + source.programId + "/" + source.transitionName + ".",
         {
           programId: source.programId,
           transition: source.transitionName,

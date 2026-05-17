@@ -216,7 +216,7 @@ export default defineConfig({
 });
 ```
 
-The emitted helper lives alongside `decrypt<Name>` in the source program's generated module, using a callable+namespace pattern (`Object.assign`) so the helper is both a function and a namespace carrying the output-side `.asOutput` projector:
+The emitted helper lives alongside `decrypt<Name>` in the source program's generated module, using a callable+namespace pattern (`Object.assign`) so the helper is both a function and a namespace carrying the output-side `.output` matcher:
 
 ```ts
 // typechain/StableToken.ts (generated)
@@ -229,24 +229,44 @@ function _asPoolTokenImpl(value: Token): LeoDynamicRecord {
   } as const);
 }
 export const asPoolToken = Object.assign(_asPoolTokenImpl, {
-  asOutput: {
+  output: createRecordOutputMatcher<Token>({
     program: "stable_token.aleo",
     recordName: "Token",
     deserialize: deserializeToken,
-  } as const satisfies DynamicRecordOutputProjector<Token>,
+  }),
 });
 ```
 
-Callers import `asPoolToken` directly: `await amm.add_liquidity.locally({ token: asPoolToken(tok), ... })`.
+Callers import `asPoolToken` directly for input conversion:
 
-**`.asOutput`** is the output-side dual: a `DynamicRecordOutputProjector<T>` carrying the program id, source record name, and the matching deserializer. It feeds both id-only handle types' `decryptFrom`:
+```ts
+await amm.add_liquidity.locally({ token: asPoolToken(tok), ... });
+```
 
-- `IdOnlyExternalRecordHandle<T>.decryptFrom(projector, key, source)` — selects the callee transition that emitted the external `Record` and decrypts via the projector.
-- `IdOnlyDynamicRecordHandle.decryptFrom(projector, key, source)` — selects an explicit sibling concrete output materialized by a V15-compliant callee (does **not** dereference the dynamic-record id). The dyn handle requires the projector's `program` field to match the selected transition's program; otherwise `program-mismatch` is thrown.
+The same helper is the preferred output-side matcher when the dispatched call returns a `dyn record` handle:
 
-See `docs/network.md` § Id-only record outputs for the client-side flow and `docs/research/snarkvm-record-existence.md` for the upstream `ensure_records_exist` rule that makes the sibling output guaranteed to exist in V15-compliant programs.
+```ts
+const accepted = await amm.route_transfer.accepted({
+  token: asPoolToken(tok),
+  to,
+});
 
-**Cross-program external records** also emit a sibling `<ExternalRecord>.asOutput` value binding alongside the imported type. For example, an `external_token_demo.aleo` typechain that imports `gold_token.aleo::Token` produces both the type alias `GoldToken_Token` and a value `GoldToken_Token.asOutput: DynamicRecordOutputProjector<GoldToken_Token>` — no `codegen.dynamicRecords` entry required for cross-program record decryption.
+const recovered = await accepted.outputs
+  .match(asPoolToken.output.from("transfer", 0))
+  .decrypt(to);
+```
+
+**`.output`** is a `RecordOutputMatcher<T>` carrying the program id, source record name, the matching deserializer, and `.from(...)` / `.at(...)` builders that bind a transition source. It feeds every record-output arm:
+
+- `IdOnlyExternalRecordHandle<T>.match(matcher.from(name, idx)).decrypt(key)` — selects the callee transition that emitted the external `Record` and decrypts via the matcher.
+- `IdOnlyDynamicRecordHandle.match(matcher.from(name, idx)).decrypt(key)` — selects an explicit sibling concrete output materialized by a V15-compliant callee (does **not** dereference the dynamic-record id).
+- `EncryptedRecord<T>.match(matcher).decrypt(key)` — re-routes decryption through the matcher's deserializer, with an identity guard requiring `matcher.program` / `matcher.recordName` to equal the ciphertext's metadata.
+
+Prefer named `.from(...)` in application code because the matcher's `program` is inherited as the source `programId`; use `.from(..., { match: n })` when the same transition appears multiple times. `.at(...)` is the positional escape hatch for awkward callgraphs and tests. `.match` is a pure builder; all resolution + identity checks + decryption are deferred to `.decrypt(key)`. See `docs/network.md` § Id-only record outputs for the client-side flow and `docs/research/snarkvm-record-existence.md` for the upstream `ensure_records_exist` rule that makes the sibling output guaranteed to exist in V15-compliant programs.
+
+**Cross-program external records** also emit a sibling `<ExternalRecord>.output` value binding alongside the imported type. For example, an `external_token_demo.aleo` typechain that imports `gold_token.aleo::Token` produces both the type alias `GoldToken_Token` and a value `GoldToken_Token.output: RecordOutputMatcher<GoldToken_Token>` — no `codegen.dynamicRecords` entry required for cross-program record decryption.
+
+For programs with **unresolved external types** (the referenced ABI isn't available at codegen time), the typechain falls back to `IdOnlyExternalRecordHandle<LeoDynamicRecord>` and emits no typed helper. Callers construct a matcher inline via the public `createRecordOutputMatcher<MyShape>({ program, recordName, deserialize })` factory and chain `.from` or `.at` as usual.
 
 **Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`. Set `sourceProgram` when more than one compiled program declares the same generated record name; `examples/aleo-ports/dynamic_records` uses this for `gold_token.aleo::Token` and `silver_token.aleo::Token`.
 

@@ -70,9 +70,9 @@ A plain `record_dynamic` output is id-only on every transition (caller and calle
 
 The recoverable path is the sibling concrete output that a V15-compliant callee materialized:
 
-- LionDen's `IdOnlyDynamicRecordHandle.decryptFrom(projector, key, source)` selects an explicit sibling concrete output in the same callgraph. It does **not** dereference the dynamic-record id.
-- LionDen's `IdOnlyExternalRecordHandle<T>.decryptFrom(projector, key, source)` selects the callee transition that emitted an external `Record` value.
-- Selection is always explicit (named `{ programId, transitionName, outputIndex, transitionMatchIndex? }` or positional `{ transitionIndex, outputIndex }`). There is no id-based auto-resolution by design.
+- LionDen's `IdOnlyDynamicRecordHandle.match(matcher.from(name, idx)).decrypt(key)` selects an explicit sibling concrete output in the same callgraph. It does **not** dereference the dynamic-record id.
+- LionDen's `IdOnlyExternalRecordHandle<T>.match(matcher.from(name, idx)).decrypt(key)` selects the callee transition that emitted an external `Record` value.
+- Selection is always explicit (named via `.from(transitionName, outputIndex, { match: n? })` or positional via `.at(transitionIndex, outputIndex)`). There is no id-based auto-resolution by design.
 
 See [`../network.md`](../network.md) § Id-only record outputs for the full client-side flow.
 
@@ -97,7 +97,7 @@ When writing a new Leo program that involves `dyn record`:
 2. Prefer tuple returns `(T, dyn record)` over `dyn record` alone. The tuple shape composes cleanly with V15 and with LionDen's typechain emission (`[EncryptedRecord<T>, IdOnlyDynamicRecordHandle]`).
 3. Avoid closures with `Record` / `ExternalRecord` / `DynamicRecord` outputs — V15 rejects them at deploy time.
 4. Read every `confirmed.transitions[*].rawOutputs` entry before concluding a record is recoverable. An id-only entry on the surfacing transition does **not** imply the same id is decryptable elsewhere in the callgraph — empirically the chain never exposes a ciphertext for the `record_dynamic` variant itself.
-5. If you must consume the dynamic value alone (e.g. routing through a generic interface), recover the spendable record from the callee's sibling concrete output via explicit `decryptFrom(...)` selection, not from the dynamic ID.
+5. If you must consume the dynamic value alone (e.g. routing through a generic interface), recover the spendable record from the callee's sibling concrete output via explicit `.match(matcher.from(...)|.at(...)).decrypt(key)` selection, not from the dynamic ID.
 
 ## Migration outcome for `examples/aleo-ports/dynamic_records`
 

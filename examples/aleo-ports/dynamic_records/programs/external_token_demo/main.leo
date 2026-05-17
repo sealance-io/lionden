@@ -57,7 +57,8 @@ program external_token_demo.aleo {
     // we forward the dynamic member to `balance_of`, and emit a concrete
     // final Receipt. Intermediate dyn-record dispatch doesn't poison the
     // concrete output, and the callee's materialized Token is recoverable
-    // from `confirmed.transitions` via decryptFrom.
+    // from `confirmed.transitions` via the matcher API
+    // (`.match(matcher.from(...)|.at(...)).decrypt(key)`).
     fn dispatch_and_receipt(
         token_program: identifier,
         token: dyn record,

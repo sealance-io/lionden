@@ -78,11 +78,11 @@ export function generateBindings(
   lines.push("");
   if (helpers.length > 0) {
     lines.push(
-      'import { BaseContract, Leo, type AcceptedTransition, type AddressInput, type BaseContractOptions, type ConfirmedTransitionRecord, type DecryptionKey, type DynamicRecordInput, type DynamicRecordOutputProjector, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type IdOnlyDynamicRecordHandle, type IdOnlyExternalRecordHandle, type IdOnlyRecordSource, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, Leo, createRecordOutputMatcher, type AcceptedTransition, type AddressInput, type BaseContractOptions, type CapturedRecord, type ConfirmedTransitionRecord, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type IdOnlyDynamicRecordHandle, type IdOnlyExternalRecordHandle, type IdOnlyRecordSource, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RecordOutputMatcher, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   } else {
     lines.push(
-      'import { BaseContract, type AcceptedTransition, type AddressInput, type BaseContractOptions, type ConfirmedTransitionRecord, type DecryptionKey, type DynamicRecordInput, type DynamicRecordOutputProjector, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type IdOnlyDynamicRecordHandle, type IdOnlyExternalRecordHandle, type IdOnlyRecordSource, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
+      'import { BaseContract, createRecordOutputMatcher, type AcceptedTransition, type AddressInput, type BaseContractOptions, type CapturedRecord, type ConfirmedTransitionRecord, type DecryptionKey, type DynamicRecordInput, type EncryptedRecord, type EncryptedValue, type FieldInput, type GroupInput, type IdentifierInput, type IdOnlyDynamicRecordHandle, type IdOnlyExternalRecordHandle, type IdOnlyRecordSource, type LeoAddress, type LeoDynamicRecord, type LeoField, type LeoGroup, type LeoIdentifier, type LeoPlaintext, type LeoScalar, type LocalExecutionOptions, type LocalTransitionError, type OnChainExecutionOptions, type PlaintextInput, type RawTransitionOutput, type RecordDecryptionKey, type RecordOutputMatcher, type RejectedTransition, type ScalarInput, type SettledTransition, type SubmittedTransition, type TransitionInputContext } from "./BaseContract.js";',
     );
   }
   lines.push(...generateExternalImports(ctx));
@@ -456,14 +456,15 @@ function generateDynamicRecordHelper(
   lines.push("  } as const);");
   lines.push("}");
   // Callable + namespace pattern: the helper is also a namespace carrying
-  // `asOutput`, the output-side projector. Used by callers refining external
-  // record decryption via `IdOnlyExternalRecordHandle.decryptFrom`.
+  // `output`, the output-side matcher. Used by callers refining record
+  // decryption via an id-only handle's `.match(matcher.from(...)|.at(...))`
+  // or the encrypted-record arm's `.match(matcher)`.
   lines.push(`export const ${helper.helperName} = Object.assign(${fnName}, {`);
-  lines.push(`  asOutput: {`);
+  lines.push(`  output: createRecordOutputMatcher<${helper.sourceRecord}>({`);
   lines.push(`    program: "${abi.program}",`);
   lines.push(`    recordName: "${helper.sourceRecord}",`);
   lines.push(`    deserialize: deserialize${helper.sourceRecord},`);
-  lines.push(`  } as const satisfies DynamicRecordOutputProjector<${helper.sourceRecord}>,`);
+  lines.push(`  }),`);
   lines.push("});");
   return lines;
   void ctx; // ctx reserved for future ABI-aware diagnostics.
@@ -1073,7 +1074,7 @@ function generateExternalImports(ctx: GenerationContext): string[] {
 
   // External record types: alias the imported type under a private `_`-prefixed
   // name so we can re-export the public name as both a type alias and a value
-  // binding (carrying `.asOutput`). See C2a in the plan.
+  // binding (carrying `.output`).
   const externalRecords: ExternalRefInfo[] = [];
   for (const ref of ctx.externalRecordRefs.values()) {
     const info = externalRecordInfo(ref, ctx);
@@ -1095,18 +1096,18 @@ function generateExternalImports(ctx: GenerationContext): string[] {
   if (externalRecords.length === 0) return importLines;
 
   // Re-export each external record's type alias publicly, and emit a same-named
-  // value binding carrying the `.asOutput` projector. The merged type + value
+  // value binding carrying the `.output` matcher. The merged type + value
   // pair lets callers write both `IdOnlyExternalRecordHandle<GoldToken_Token>`
-  // (type position) and `GoldToken_Token.asOutput` (value position).
+  // (type position) and `GoldToken_Token.output` (value position).
   const valueLines: string[] = [];
   for (const info of externalRecords.sort((a, b) => a.typeName.localeCompare(b.typeName))) {
     valueLines.push(`export type ${info.typeName} = _${info.typeName};`);
     valueLines.push(`export const ${info.typeName} = {`);
-    valueLines.push(`  asOutput: {`);
+    valueLines.push(`  output: createRecordOutputMatcher<_${info.typeName}>({`);
     valueLines.push(`    program: "${info.programId}",`);
     valueLines.push(`    recordName: "${info.baseName}",`);
     valueLines.push(`    deserialize: ${info.deserializerName},`);
-    valueLines.push(`  } as const satisfies DynamicRecordOutputProjector<_${info.typeName}>,`);
+    valueLines.push(`  }),`);
     valueLines.push("};");
   }
 
@@ -1318,7 +1319,7 @@ function projectorElementExpr(
   }
   if (typeof ty === "object" && ty !== null && "Record" in ty) {
     if (isLocalRecordRef(ty.Record, ctx)) {
-      return `BaseContract.makeEncryptedRecord(${rawExpr}, deserialize${recordRefName(ty.Record)})`;
+      return `BaseContract.makeEncryptedRecord("${programId}", "${recordRefName(ty.Record)}", ${rawExpr}, deserialize${recordRefName(ty.Record)})`;
     }
     const external = externalRecordInfo(ty.Record, ctx);
     const typeArg = external?.typeName ?? "LeoDynamicRecord";

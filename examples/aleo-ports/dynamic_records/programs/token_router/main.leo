@@ -63,6 +63,22 @@ program token_router.aleo {
         return bal_a > bal_b;
     }
 
+    // Mints once and transfers twice, producing two `<token>.aleo/transfer`
+    // transitions in the same callgraph. Used by the ambiguity test to
+    // exercise `.from(name, idx, { match: 0 | 1 })` selection.
+    fn demo_double_transfer(
+        token_program: identifier,
+        owner: address,
+        amount: u64,
+        to_a: address,
+        to_b: address,
+    ) -> dyn record {
+        let t1: dyn record = TokenStandard@(token_program)::mint(owner, amount);
+        let r1: (dyn record, dyn record) = TokenStandard@(token_program)::transfer(t1, to_a);
+        let r2: (dyn record, dyn record) = TokenStandard@(token_program)::transfer(r1.1, to_b);
+        return r2.1;
+    }
+
     @noupgrade
     constructor() {}
 }

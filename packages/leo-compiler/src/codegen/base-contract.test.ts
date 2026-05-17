@@ -19,6 +19,7 @@ let LocalRecordDecryptionError: any;
 let LocalValueDecryptionError: any;
 let RecordDecryptionKeyError: any;
 let TransitionInputError: any;
+let createRecordOutputMatcher: any;
 let networkStub: any;
 let tmpDir: string;
 
@@ -82,6 +83,7 @@ beforeAll(async () => {
   LocalValueDecryptionError = mod.LocalValueDecryptionError;
   RecordDecryptionKeyError = mod.RecordDecryptionKeyError;
   TransitionInputError = mod.TransitionInputError;
+  createRecordOutputMatcher = mod.createRecordOutputMatcher;
 
   // Import the stub module separately so tests can swap the decryption
   // helper implementations via __setDecryptStubs (ESM live bindings).
@@ -1267,10 +1269,18 @@ describe("BaseContract runtime", () => {
   });
 
   describe("makeEncryptedRecord", () => {
-    it("creates a handle wrapping ciphertext + decrypt closure", () => {
-      const handle = BaseContract.makeEncryptedRecord("record1abc", (plaintext: string) => ({ raw: plaintext }));
+    it("creates a handle exposing program, recordName, ciphertext, decrypt, and match", () => {
+      const handle = BaseContract.makeEncryptedRecord(
+        "p.aleo",
+        "Tok",
+        "record1abc",
+        (plaintext: string) => ({ raw: plaintext }),
+      );
+      expect(handle.program).toBe("p.aleo");
+      expect(handle.recordName).toBe("Tok");
       expect(handle.ciphertext).toBe("record1abc");
       expect(typeof handle.decrypt).toBe("function");
+      expect(typeof handle.match).toBe("function");
     });
 
     it("routes decrypt through BaseContract.decryptRecord with the supplied deserializer", async () => {
@@ -1278,11 +1288,49 @@ describe("BaseContract runtime", () => {
         decryptRecordCiphertext: async (ct: string) => `{ amount: 100u128, _from: ${ct} }`,
       });
       const handle = BaseContract.makeEncryptedRecord(
+        "p.aleo",
+        "Tok",
         "record1xyz",
         (plaintext: string) => ({ decoded: plaintext }),
       );
       const result = await handle.decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: "{ amount: 100u128, _from: record1xyz }" });
+    });
+
+    it("match(matcher).decrypt(key) re-routes through the matcher's deserializer when identity matches", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeEncryptedRecord(
+        "p.aleo",
+        "Tok",
+        "record1xyz",
+        (plaintext: string) => ({ original: plaintext }),
+      );
+      const matcher = createRecordOutputMatcher({
+        program: "p.aleo",
+        recordName: "Tok",
+        deserialize: (plaintext: string) => ({ viaMatcher: plaintext }),
+      });
+      const result = await handle.match(matcher).decrypt("AViewKey1abc");
+      expect(result).toEqual({ viaMatcher: "[plain record1xyz]" });
+    });
+
+    it("match(matcher).decrypt(key) rejects with TransactionShapeError when matcher program/recordName differ", async () => {
+      const handle = BaseContract.makeEncryptedRecord(
+        "p.aleo",
+        "Tok",
+        "record1xyz",
+        (plaintext: string) => ({ original: plaintext }),
+      );
+      const mismatchedMatcher = createRecordOutputMatcher({
+        program: "other.aleo",
+        recordName: "Tok",
+        deserialize: (s: string) => s,
+      });
+      await expect(handle.match(mismatchedMatcher).decrypt("AViewKey1abc")).rejects.toMatchObject({
+        kind: "TransactionShapeError",
+      });
     });
   });
 
@@ -1320,11 +1368,11 @@ describe("BaseContract runtime", () => {
   describe("makeIdOnlyDynamicRecordHandle", () => {
     const SIBLING_CIPHERTEXT = "record1sibling";
     const entry = { kind: "idOnly", type: "record_dynamic", id: "dyn-id" } as const;
-    const projector = {
+    const calleeMatcher = () => createRecordOutputMatcher({
       program: "callee.aleo",
       recordName: "Tok",
       deserialize: (plaintext: string) => ({ decoded: plaintext }),
-    };
+    });
     const transitions = [
       {
         programId: "router.aleo",
@@ -1340,113 +1388,94 @@ describe("BaseContract runtime", () => {
       },
     ];
 
-    it("constructs a handle with kind + type + id + transitions and a decryptFrom method", () => {
+    it("constructs a handle with kind + type + id + transitions and a match method", () => {
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
       expect(handle.kind).toBe("idOnlyDynamicRecord");
       expect(handle.type).toBe("record_dynamic");
       expect(handle.id).toBe("dyn-id");
       expect(handle.transitions).toBe(transitions);
-      expect(typeof handle.decryptFrom).toBe("function");
+      expect(typeof handle.match).toBe("function");
     });
 
-    it("named selector resolves to sibling concrete output + decrypts via projector", async () => {
+    it("match(matcher.from(...)).decrypt(key) resolves the sibling concrete output via the matcher's deserializer", async () => {
       networkStub.__setDecryptStubs({
         decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
       });
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
-        programId: "callee.aleo",
-        transitionName: "transfer",
-        outputIndex: 0,
-      });
+      const result = await handle.match(calleeMatcher().from("transfer", 0)).decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
     });
 
-    it("positional selector resolves by transitionIndex + outputIndex", async () => {
+    it("match(matcher.at(transitionIndex, outputIndex)).decrypt(key) resolves positionally", async () => {
       networkStub.__setDecryptStubs({
         decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
       });
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
-        transitionIndex: 1,
-        outputIndex: 0,
-      });
+      const result = await handle.match(calleeMatcher().at(1, 0)).decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
     });
 
     it("throws IdOnlyRecordResolutionError { transition-not-found }", async () => {
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          programId: "missing.aleo",
-          transitionName: "nope",
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("transition-not-found");
-      }
+      const missingMatcher = createRecordOutputMatcher({
+        program: "missing.aleo",
+        recordName: "Tok",
+        deserialize: (s: string) => s,
+      });
+      await expect(
+        handle.match(missingMatcher.from("nope", 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-not-found",
+      });
     });
 
     it("throws IdOnlyRecordResolutionError { transition-index-out-of-range }", async () => {
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          transitionIndex: 99,
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("transition-index-out-of-range");
-      }
+      await expect(
+        handle.match(calleeMatcher().at(99, 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-index-out-of-range",
+      });
     });
 
     it("throws IdOnlyRecordResolutionError { program-mismatch } with expected/actual populated", async () => {
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          transitionIndex: 0, // router transition, but projector is callee.aleo
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("program-mismatch");
-        expect(err.expectedProgram).toBe("callee.aleo");
-        expect(err.actualProgram).toBe("router.aleo");
-      }
+      // .at(0, 0) targets the router transition, but the matcher's program is
+      // callee.aleo, so program-mismatch fires.
+      await expect(
+        handle.match(calleeMatcher().at(0, 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "program-mismatch",
+        expectedProgram: "callee.aleo",
+        actualProgram: "router.aleo",
+      });
     });
 
     it("throws IdOnlyRecordResolutionError { not-a-ciphertext } when the slot is an id-only entry", async () => {
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      // Selector targets the callee transition's output index 1 (the id-only
-      // dyn-record entry sitting alongside the sibling concrete output at
-      // index 0). The projector's program matches the callee, so program-
-      // mismatch doesn't fire first.
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          transitionIndex: 1,
-          outputIndex: 1,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("not-a-ciphertext");
-        expect(err.message).toContain("id-only output dyn-id");
-      }
+      // .at(1, 1) points at the callee transition's id-only dyn-record entry
+      // sitting alongside the sibling concrete output at index 0. The matcher's
+      // program matches the callee so program-mismatch doesn't fire first.
+      await expect(
+        handle.match(calleeMatcher().at(1, 1)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "not-a-ciphertext",
+      });
     });
   });
 
   describe("makeIdOnlyExternalRecordHandle", () => {
     const CALLEE_CIPHERTEXT = "record1callee";
     const entry = { kind: "idOnly", type: "external_record", id: "ext-id" } as const;
-    const projector = {
+    const calleeMatcher = () => createRecordOutputMatcher({
       program: "callee.aleo",
       recordName: "Foo",
       deserialize: (plaintext: string) => ({ decoded: plaintext }),
-    };
+    });
     const transitions = [
       {
         programId: "caller.aleo",
@@ -1462,56 +1491,49 @@ describe("BaseContract runtime", () => {
       },
     ];
 
-    it("constructs the handle with kind + type + id + transitions", () => {
+    it("constructs the handle with kind + type + id + transitions and a match method", () => {
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
       expect(handle.kind).toBe("idOnlyExternalRecord");
       expect(handle.type).toBe("external_record");
       expect(handle.id).toBe("ext-id");
       expect(handle.transitions).toBe(transitions);
+      expect(typeof handle.match).toBe("function");
     });
 
-    it("named selector resolves to callee transition + decrypts via projector", async () => {
+    it("match(matcher.from(...)).decrypt(key) resolves the callee transition via the matcher", async () => {
       networkStub.__setDecryptStubs({
         decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
       });
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
-        programId: "callee.aleo",
-        transitionName: "mint",
-        outputIndex: 0,
-      });
+      const result = await handle.match(calleeMatcher().from("mint", 0)).decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: `[plain ${CALLEE_CIPHERTEXT}]` });
     });
 
-    it("positional selector resolves by transitionIndex + outputIndex", async () => {
+    it("match(matcher.at(transitionIndex, outputIndex)).decrypt(key) resolves positionally", async () => {
       networkStub.__setDecryptStubs({
         decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
       });
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
-        transitionIndex: 1,
-        outputIndex: 0,
-      });
+      const result = await handle.match(calleeMatcher().at(1, 0)).decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: `[plain ${CALLEE_CIPHERTEXT}]` });
     });
 
     it("throws IdOnlyRecordResolutionError { transition-not-found }", async () => {
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          programId: "missing.aleo",
-          transitionName: "nope",
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("transition-not-found");
-        expect(err.message).toContain("missing.aleo/nope");
-      }
+      const missingMatcher = createRecordOutputMatcher({
+        program: "missing.aleo",
+        recordName: "Foo",
+        deserialize: (s: string) => s,
+      });
+      await expect(
+        handle.match(missingMatcher.from("nope", 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-not-found",
+      });
     });
 
-    it("throws IdOnlyRecordResolutionError { transition-not-unique } when multiple matches and no transitionMatchIndex", async () => {
+    it("throws IdOnlyRecordResolutionError { transition-not-unique } when multiple matches and no { match } option", async () => {
       const dupTransitions = [
         ...transitions,
         {
@@ -1522,20 +1544,15 @@ describe("BaseContract runtime", () => {
         },
       ];
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, dupTransitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          programId: "callee.aleo",
-          transitionName: "mint",
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("transition-not-unique");
-      }
+      await expect(
+        handle.match(calleeMatcher().from("mint", 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-not-unique",
+      });
     });
 
-    it("transitionMatchIndex resolves the n-th match", async () => {
+    it("from(name, idx, { match: n }) resolves the n-th match", async () => {
       networkStub.__setDecryptStubs({
         decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
       });
@@ -1549,95 +1566,57 @@ describe("BaseContract runtime", () => {
         },
       ];
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, dupTransitions);
-      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
-        programId: "callee.aleo",
-        transitionName: "mint",
-        outputIndex: 0,
-        transitionMatchIndex: 1,
-      });
+      const result = await handle.match(calleeMatcher().from("mint", 0, { match: 1 })).decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: "[plain record1other]" });
     });
 
     it("throws IdOnlyRecordResolutionError { transition-index-out-of-range }", async () => {
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          transitionIndex: 99,
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("transition-index-out-of-range");
-      }
+      await expect(
+        handle.match(calleeMatcher().at(99, 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-index-out-of-range",
+      });
     });
 
     it("throws IdOnlyRecordResolutionError { transition-match-index-out-of-range }", async () => {
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          programId: "callee.aleo",
-          transitionName: "mint",
-          outputIndex: 0,
-          transitionMatchIndex: 5,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("transition-match-index-out-of-range");
-      }
+      await expect(
+        handle.match(calleeMatcher().from("mint", 0, { match: 5 })).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-match-index-out-of-range",
+      });
     });
 
     it("throws IdOnlyRecordResolutionError { program-mismatch } with expected/actual populated", async () => {
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          transitionIndex: 0,
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("program-mismatch");
-        expect(err.expectedProgram).toBe("callee.aleo");
-        expect(err.actualProgram).toBe("caller.aleo");
-      }
+      await expect(
+        handle.match(calleeMatcher().at(0, 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "program-mismatch",
+        expectedProgram: "callee.aleo",
+        actualProgram: "caller.aleo",
+      });
     });
 
     it("throws IdOnlyRecordResolutionError { not-a-ciphertext } when the slot is an id-only entry", async () => {
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, transitions);
-      try {
-        await handle.decryptFrom(projector, "AViewKey1abc", {
-          transitionIndex: 0,    // caller's own transition
-          outputIndex: 0,
-        }).catch((err: any) => {
-          // program-mismatch fires first when projector.program != caller's program;
-          // use a projector that matches the caller's program so we hit the
-          // not-a-ciphertext arm instead.
-          throw err;
-        });
-        throw new Error("expected throw");
-      } catch {
-        // The previous call throws program-mismatch first; swallow and retry
-        // with a projector pointed at the caller's own program to surface
-        // not-a-ciphertext.
-      }
-      const callerProjector = {
+      // Use a matcher pointed at the caller's own program so program-mismatch
+      // doesn't fire first; the output at (0, 0) is the id-only entry itself.
+      const callerMatcher = createRecordOutputMatcher({
         program: "caller.aleo",
         recordName: "Wrap",
         deserialize: (s: string) => s,
-      };
-      try {
-        await handle.decryptFrom(callerProjector, "AViewKey1abc", {
-          transitionIndex: 0,
-          outputIndex: 0,
-        });
-        throw new Error("expected throw");
-      } catch (err: any) {
-        expect(err.kind).toBe("IdOnlyRecordResolutionError");
-        expect(err.reason).toBe("not-a-ciphertext");
-        expect(err.message).toContain("id-only output ext-id");
-      }
+      });
+      await expect(
+        handle.match(callerMatcher.at(0, 0)).decrypt("AViewKey1abc"),
+      ).rejects.toMatchObject({
+        kind: "IdOnlyRecordResolutionError",
+        reason: "not-a-ciphertext",
+      });
     });
   });
 

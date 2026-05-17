@@ -10,17 +10,25 @@
 // recoverable from the callee transition.
 //
 // Output-side typing:
+//   - Idiomatic call sites use generated helpers for both directions:
+//     `asGoldToken(token)` builds a `dyn record` input, and
+//     `asGoldToken.output.from("transfer", 0)` names the concrete sibling
+//     output to decrypt.
 //   - Direct `gold_token.transfer.accepted` / `silver_token.transfer.accepted`
 //     emit `[EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]` (tuple).
 //   - Router `route_transfer` / `demo_transfer` still return a single
 //     `IdOnlyDynamicRecordHandle` (their public return is `dyn record`).
-//     `decryptFrom(projector, key, source)` recovers the materialized sibling
-//     concrete `Token` from the callee transition — it does NOT dereference
-//     the dynamic-record id.
+//     `.match(asXxx.output.from(transition, idx)).decrypt(key)` recovers the
+//     materialized sibling concrete `Token` from the callee transition — it
+//     does NOT dereference the dynamic-record id.
 //   - External `Record` outputs surface as `IdOnlyExternalRecordHandle<T>`;
-//     the ciphertext lives on the callee transition.
+//     the ciphertext lives on the callee transition, recovered via the
+//     matcher API.
 //   - Local concrete records (including from dyn-input transitions) keep
-//     emitting `EncryptedRecord<T>` and decrypt the existing way.
+//     emitting `EncryptedRecord<T>` and can decrypt directly; `.match`
+//     gives the same uniform API with a program/recordName identity guard.
+//   - `.at(...)` and `createRecordOutputMatcher(...)` are escape hatches for
+//     positional selection, negative tests, or unresolved external ABIs.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   setup,
@@ -28,7 +36,7 @@ import {
   clearFixtures,
   type TestContext,
 } from "@lionden/testing";
-import { Leo } from "../typechain/BaseContract.js";
+import { Leo, createRecordOutputMatcher } from "../typechain/BaseContract.js";
 import { asGoldToken, createGoldToken } from "../typechain/GoldToken.js";
 import { asSilverToken, createSilverToken } from "../typechain/SilverToken.js";
 import { createTokenRouter } from "../typechain/TokenRouter.js";
@@ -75,13 +83,13 @@ describe("dynamic_records direct token parity", () => {
     silver.connect(ctx!.lre);
   });
 
-  it("gold_token.mint_custom.accepted returns owner, amount, and purity", async () => {
+  it("gold_token.mint_custom.accepted supports the uniform .match(...).decrypt API", async () => {
     const confirmed = await gold.mint_custom.accepted({
       owner: owner(),
       amount: 1000n,
       purity: 24n,
     });
-    const token = await confirmed.outputs.decrypt(owner());
+    const token = await confirmed.outputs.match(asGoldToken.output).decrypt(owner());
 
     expect(token.owner).toBe(owner().address);
     expect(token.amount).toBe(1000n);
@@ -172,7 +180,7 @@ describe("dynamic_records runtime dispatch", () => {
     perCallRouter.connect(ctx!.lre);
   });
 
-  it("demo_transfer surfaces IdOnlyDynamicRecordHandle and decryptFrom recovers the gold sibling", async () => {
+  it("demo_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the gold sibling", async () => {
     const accepted = await router.demo_transfer.accepted({
       token_program: Leo.identifier("gold_token"),
       owner: alice(),
@@ -185,16 +193,14 @@ describe("dynamic_records runtime dispatch", () => {
     expect(accepted.outputs.id).toMatch(/^[0-9]+field$/);
     expect(accepted.outputs.transitions.length).toBeGreaterThan(0);
 
-    const transferred = await accepted.outputs.decryptFrom(
-      asGoldToken.asOutput,
-      alice(),
-      { programId: "gold_token.aleo", transitionName: "transfer", outputIndex: 0 },
-    );
+    const transferred = await accepted.outputs
+      .match(asGoldToken.output.from("transfer", 0))
+      .decrypt(alice());
     expect(transferred.owner).toBe(alice().address);
     expect(transferred.amount).toBe(1000n);
   });
 
-  it("demo_transfer surfaces IdOnlyDynamicRecordHandle and decryptFrom recovers the silver sibling", async () => {
+  it("demo_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling", async () => {
     const accepted = await router.demo_transfer.accepted({
       token_program: Leo.identifier("silver_token"),
       owner: alice(),
@@ -205,11 +211,9 @@ describe("dynamic_records runtime dispatch", () => {
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
     expect(accepted.outputs.type).toBe("record_dynamic");
 
-    const transferred = await accepted.outputs.decryptFrom(
-      asSilverToken.asOutput,
-      alice(),
-      { programId: "silver_token.aleo", transitionName: "transfer", outputIndex: 0 },
-    );
+    const transferred = await accepted.outputs
+      .match(asSilverToken.output.from("transfer", 0))
+      .decrypt(alice());
     expect(transferred.owner).toBe(alice().address);
     expect(transferred.amount).toBe(2000n);
   });
@@ -229,7 +233,7 @@ describe("dynamic_records runtime dispatch", () => {
     expect(await result.outputs.decrypt(alice())).toBe(777n);
   });
 
-  it("route_transfer surfaces IdOnlyDynamicRecordHandle and decryptFrom recovers the silver sibling", async () => {
+  it("route_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling", async () => {
     const minted = await silver.withSigner(alice()).mint_custom.accepted({
       owner: alice(),
       amount: 1200n,
@@ -245,11 +249,9 @@ describe("dynamic_records runtime dispatch", () => {
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
     expect(accepted.outputs.type).toBe("record_dynamic");
 
-    const transferred = await accepted.outputs.decryptFrom(
-      asSilverToken.asOutput,
-      bob(),
-      { programId: "silver_token.aleo", transitionName: "transfer", outputIndex: 0 },
-    );
+    const transferred = await accepted.outputs
+      .match(asSilverToken.output.from("transfer", 0))
+      .decrypt(bob());
     expect(transferred.owner).toBe(bob().address);
     expect(transferred.amount).toBe(1200n);
     expect(transferred.grade).toBe(2n);
@@ -299,6 +301,42 @@ describe("dynamic_records runtime dispatch", () => {
 
     expect(await result.outputs.decrypt(alice())).toBe(false);
   });
+
+  it("demo_double_transfer disambiguates two transfer transitions via .from(name, idx, { match })", async () => {
+    const accepted = await router.demo_double_transfer.accepted({
+      token_program: Leo.identifier("gold_token"),
+      owner: alice(),
+      amount: 1000n,
+      to_a: bob(),
+      to_b: alice(),
+    });
+
+    expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
+
+    // Two `gold_token.aleo/transfer` transitions appear in the callgraph;
+    // calling `.from("transfer", 0)` without `{ match }` is ambiguous and
+    // must throw `transition-not-unique`.
+    await expect(
+      accepted.outputs.match(asGoldToken.output.from("transfer", 0)).decrypt(bob()),
+    ).rejects.toMatchObject({
+      kind: "IdOnlyRecordResolutionError",
+      reason: "transition-not-unique",
+    });
+
+    // First transfer materialized a Token for bob.
+    const recoveredFirst = await accepted.outputs
+      .match(asGoldToken.output.from("transfer", 0, { match: 0 }))
+      .decrypt(bob());
+    expect(recoveredFirst.owner).toBe(bob().address);
+    expect(recoveredFirst.amount).toBe(1000n);
+
+    // Second transfer materialized a Token for alice (passed as to_b).
+    const recoveredSecond = await accepted.outputs
+      .match(asGoldToken.output.from("transfer", 0, { match: 1 }))
+      .decrypt(alice());
+    expect(recoveredSecond.owner).toBe(alice().address);
+    expect(recoveredSecond.amount).toBe(1000n);
+  });
 });
 
 describe("external_token_demo external + nested record outputs", () => {
@@ -313,7 +351,7 @@ describe("external_token_demo external + nested record outputs", () => {
     demo.connect(ctx!.lre);
   });
 
-  it("wrap_mint_gold returns IdOnlyExternalRecordHandle<GoldToken_Token>; decryptFrom recovers the token from the callee transition (named selector)", async () => {
+  it("wrap_mint_gold returns IdOnlyExternalRecordHandle<GoldToken_Token>; idiomatic .from(...) recovers the callee token", async () => {
     const accepted = await demo.withSigner(alice()).wrap_mint_gold.accepted({
       to: bob(),
       amount: 100n,
@@ -322,17 +360,15 @@ describe("external_token_demo external + nested record outputs", () => {
     expect(accepted.outputs.kind).toBe("idOnlyExternalRecord");
     expect(accepted.outputs.type).toBe("external_record");
 
-    const token = await accepted.outputs.decryptFrom(
-      GoldToken_Token.asOutput,
-      bob(),
-      { programId: "gold_token.aleo", transitionName: "mint", outputIndex: 0 },
-    );
+    const token = await accepted.outputs
+      .match(GoldToken_Token.output.from("mint", 0))
+      .decrypt(bob());
 
     expect(token.owner).toBe(bob().address);
     expect(token.amount).toBe(100n);
   });
 
-  it("wrap_mint_gold also resolves via positional selector { transitionIndex, outputIndex }", async () => {
+  it("wrap_mint_gold can use the positional .at(...) escape hatch", async () => {
     const accepted = await demo.withSigner(alice()).wrap_mint_gold.accepted({
       to: bob(),
       amount: 50n,
@@ -346,11 +382,9 @@ describe("external_token_demo external + nested record outputs", () => {
     );
     expect(calleeIndex).toBeGreaterThanOrEqual(0);
 
-    const token = await accepted.outputs.decryptFrom(
-      GoldToken_Token.asOutput,
-      bob(),
-      { transitionIndex: calleeIndex, outputIndex: 0 },
-    );
+    const token = await accepted.outputs
+      .match(GoldToken_Token.output.at(calleeIndex, 0))
+      .decrypt(bob());
     expect(token.owner).toBe(bob().address);
     expect(token.amount).toBe(50n);
   });
@@ -404,7 +438,7 @@ describe("external_token_demo external + nested record outputs", () => {
   });
 });
 
-describe("IdOnlyExternalRecordHandle.decryptFrom negative cases", () => {
+describe("IdOnlyExternalRecordHandle .match negative cases", () => {
   const demo = createExternalTokenDemo({ imports: ["gold_token.aleo", "silver_token.aleo"] });
   const alice = () => ctx!.accounts[0]!;
   const bob = () => ctx!.accounts[1]!;
@@ -424,32 +458,33 @@ describe("IdOnlyExternalRecordHandle.decryptFrom negative cases", () => {
 
   it("transition-not-found when the named transition isn't in the callgraph", async () => {
     const handle = await getHandle();
+    // Construct an ad-hoc matcher pointed at a non-existent program so .from(...)
+    // inherits that programId — exercises the unresolved-external-record matcher
+    // construction path even though we already have a typed helper.
+    const missingMatcher = createRecordOutputMatcher<unknown>({
+      program: "missing.aleo",
+      recordName: "Foo",
+      deserialize: (s: string) => s,
+    });
     await expect(
-      handle.decryptFrom(GoldToken_Token.asOutput, bob(), {
-        programId: "missing.aleo",
-        transitionName: "nope",
-        outputIndex: 0,
-      }),
+      handle.match(missingMatcher.from("nope", 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "transition-not-found",
     });
   });
 
-  it("transition-index-out-of-range for positional selectors past the callgraph", async () => {
+  it("transition-index-out-of-range for .at(...) past the callgraph", async () => {
     const handle = await getHandle();
     await expect(
-      handle.decryptFrom(GoldToken_Token.asOutput, bob(), {
-        transitionIndex: 999,
-        outputIndex: 0,
-      }),
+      handle.match(GoldToken_Token.output.at(999, 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "transition-index-out-of-range",
     });
   });
 
-  it("program-mismatch when projector points at a different program than the selected transition", async () => {
+  it("program-mismatch when matcher points at a different program than the selected transition", async () => {
     const handle = await getHandle();
     const callerIndex = handle.transitions.findIndex(
       (t: { readonly programId: string; readonly transitionName: string }) =>
@@ -458,10 +493,7 @@ describe("IdOnlyExternalRecordHandle.decryptFrom negative cases", () => {
     expect(callerIndex).toBeGreaterThanOrEqual(0);
 
     await expect(
-      handle.decryptFrom(GoldToken_Token.asOutput, bob(), {
-        transitionIndex: callerIndex,
-        outputIndex: 0,
-      }),
+      handle.match(GoldToken_Token.output.at(callerIndex, 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "program-mismatch",
@@ -478,20 +510,17 @@ describe("IdOnlyExternalRecordHandle.decryptFrom negative cases", () => {
     );
     expect(callerIndex).toBeGreaterThanOrEqual(0);
 
-    // Projector matches the caller's program so we pass the program-mismatch
-    // guard; the output at index 0 is the id-only entry itself, surfacing
-    // not-a-ciphertext.
-    const callerSelfProjector = {
+    // Matcher points at the caller's own program so we pass the
+    // program-mismatch guard; the output at index 0 is the id-only entry
+    // itself, surfacing not-a-ciphertext.
+    const callerSelfMatcher = createRecordOutputMatcher<unknown>({
       program: "external_token_demo.aleo",
       recordName: "WrappedToken",
       deserialize: (s: string) => s,
-    };
+    });
 
     await expect(
-      handle.decryptFrom(callerSelfProjector, bob(), {
-        transitionIndex: callerIndex,
-        outputIndex: 0,
-      }),
+      handle.match(callerSelfMatcher.at(callerIndex, 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "not-a-ciphertext",
@@ -499,7 +528,7 @@ describe("IdOnlyExternalRecordHandle.decryptFrom negative cases", () => {
   });
 });
 
-describe("IdOnlyDynamicRecordHandle.decryptFrom negative cases", () => {
+describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
   const gold = createGoldToken();
   const silver = createSilverToken();
   const router = createTokenRouter({ imports: RUNTIME_IMPORTS });
@@ -529,28 +558,34 @@ describe("IdOnlyDynamicRecordHandle.decryptFrom negative cases", () => {
 
   it("transition-not-found when the named callee isn't in the dyn handle's callgraph", async () => {
     const handle = await routeGold();
+    // Build a matcher pointed at a missing program; .from inherits that program id.
+    const missingMatcher = createRecordOutputMatcher<unknown>({
+      program: "missing.aleo",
+      recordName: "Token",
+      deserialize: (s: string) => s,
+    });
     await expect(
-      handle.decryptFrom(asGoldToken.asOutput, bob(), {
-        programId: "missing.aleo",
-        transitionName: "transfer",
-        outputIndex: 0,
-      }),
+      handle.match(missingMatcher.from("transfer", 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "transition-not-found",
     });
   });
 
-  it("program-mismatch when the projector points at a different program than the selected transition", async () => {
+  it("program-mismatch when the matcher points at a different program than the selected transition", async () => {
     const handle = await routeGold();
-    // Use asSilverToken's projector (program: silver_token.aleo) against the
-    // gold callee transition we'll pick by name.
+    // Named .from(...) on the silver matcher targets silver_token.aleo/transfer,
+    // which doesn't exist in the callgraph — that would surface
+    // transition-not-found, not program-mismatch. To exercise program-mismatch
+    // we must select positionally via .at(...) so the matcher's program can
+    // differ from the selected transition's program.
+    const calleeIndex = handle.transitions.findIndex(
+      (t: { readonly programId: string; readonly transitionName: string }) =>
+        t.programId === "gold_token.aleo" && t.transitionName === "transfer",
+    );
+    expect(calleeIndex).toBeGreaterThanOrEqual(0);
     await expect(
-      handle.decryptFrom(asSilverToken.asOutput, bob(), {
-        programId: "gold_token.aleo",
-        transitionName: "transfer",
-        outputIndex: 0,
-      }),
+      handle.match(asSilverToken.output.at(calleeIndex, 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "program-mismatch",
@@ -562,21 +597,43 @@ describe("IdOnlyDynamicRecordHandle.decryptFrom negative cases", () => {
   it("not-a-ciphertext when the selector points at the router's own id-only output slot", async () => {
     const handle = await routeGold();
     // The router's own transition at output index 0 is the dyn-record id-only
-    // entry. Pass a router-program projector to bypass program-mismatch.
-    const routerSelfProjector = {
+    // entry. Use a router-program matcher to bypass program-mismatch.
+    const routerSelfMatcher = createRecordOutputMatcher<unknown>({
       program: "token_router.aleo",
       recordName: "Routed",
       deserialize: (s: string) => s,
-    };
+    });
     await expect(
-      handle.decryptFrom(routerSelfProjector, bob(), {
-        programId: "token_router.aleo",
-        transitionName: "route_transfer",
-        outputIndex: 0,
-      }),
+      handle.match(routerSelfMatcher.from("route_transfer", 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "not-a-ciphertext",
+    });
+  });
+});
+
+describe("EncryptedRecord .match identity guard", () => {
+  const gold = createGoldToken();
+  const alice = () => ctx!.accounts[0]!;
+
+  beforeAll(() => {
+    gold.connect(ctx!.lre);
+  });
+
+  it("rejects with TransactionShapeError when matcher program/recordName differ from the ciphertext's identity", async () => {
+    const minted = await gold.mint_custom.accepted({
+      owner: alice(),
+      amount: 42n,
+      purity: 10n,
+    });
+
+    // The minted output is an EncryptedRecord<Token> for gold_token.aleo/Token.
+    // Passing the silver matcher must reject — the deserializer assumes the
+    // wrong record layout and the program identity does not match.
+    await expect(
+      minted.outputs.match(asSilverToken.output).decrypt(alice()),
+    ).rejects.toMatchObject({
+      kind: "TransactionShapeError",
     });
   });
 });
