@@ -590,7 +590,12 @@ Use per-call imports for one focused call:
 
 ```ts
 await router.demo_transfer.accepted(
-  { target: Leo.identifier("gold_token"), token: asGoldToken(token) },
+  {
+    token_program: Leo.identifier("gold_token"),
+    owner,
+    amount: 100n,
+    to,
+  },
   { imports: ["gold_token.aleo", "silver_token.aleo"] },
 );
 ```
@@ -599,7 +604,7 @@ Each entry can be a bare program name, a `.aleo` program id, or a local `.aleo` 
 
 Runtime imports are execution-time dependencies only. They do not affect compile or deploy ordering, so deploy strategy/target programs explicitly before deploying or executing the dispatch hub. See `examples/aleo-ports/dynamic_dispatch` for config defaults, `examples/aleo-ports/dynamic_records` for wrapper/per-call imports, and [`network.md`](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
 
-### Dynamic record inputs
+### Dynamic record inputs and outputs
 
 Leo v4 `dyn record` inputs need a typed dynamic-record literal on the TypeScript side. For one-off calls, build it directly with `Leo.dynamicRecord(value, schema)`:
 
@@ -640,13 +645,32 @@ Then call the dispatching wrapper with the generated helper:
 ```ts
 import { asGoldToken } from "../typechain/GoldToken.js";
 
-await router.demo_transfer.accepted({
-  target: Leo.identifier("gold_token"),
+await router.route_transfer.accepted({
+  token_program: Leo.identifier("gold_token"),
   token: asGoldToken(token),
+  to: bob,
 });
 ```
 
-Use `sourceProgram` when more than one compiled program declares the same record name. See `examples/aleo-ports/dynamic_records` and [`json-abi.md`](json-abi.md#interface-conversion-helpers-codegendynamicrecords) for the exact helper rules.
+The same helper is also the idiomatic output matcher. Use the generated `.output.from(...)` form first: it reads as "decrypt this id-only output as the record emitted by this transition".
+
+```ts
+const accepted = await router.route_transfer.accepted({
+  token_program: Leo.identifier("gold_token"),
+  token: asGoldToken(token),
+  to: bob,
+});
+
+const transferred = await accepted.outputs
+  .match(asGoldToken.output.from("transfer", 0))
+  .decrypt(bob);
+```
+
+Use `.from(name, outputIndex, { match: n })` when the same `(program, transition)` appears more than once in the callgraph. Use `.at(transitionIndex, outputIndex)` only when positional indexing is clearer than naming the source transition, or for intentional mismatch tests. If an external record's ABI is unavailable at codegen time, construct a matcher with `createRecordOutputMatcher(...)`; otherwise prefer the generated helper (`asGoldToken.output` or `GoldToken_Token.output`).
+
+Direct record ciphertexts can still call `.decrypt(key)` directly. When you want one uniform style across direct records, `dyn record` outputs, and external `Record` outputs, call `.match(helper.output).decrypt(key)` on direct ciphertexts too.
+
+Use `sourceProgram` when more than one compiled program declares the same record name. See `examples/aleo-ports/dynamic_records`, [`json-abi.md`](json-abi.md#interface-conversion-helpers-codegendynamicrecords), and [`network.md`](network.md#id-only-record-outputs-dyn-record-and-external-record) for the exact helper rules and id-only output error taxonomy.
 
 ### Upgradeable program with admin
 

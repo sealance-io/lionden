@@ -192,7 +192,7 @@ For workflows that need to defer decryption — pass the ciphertext between proc
 
 For `EncryptedValue<T>.decrypt(key)` specifically: only `RecordDecryptionKeyError` (caller-input shape) passes through unwrapped. SDK failures, malformed-ciphertext rejections from the SDK, and deserializer failures (even other `LionDenTypechainError` subclasses) wrap as `LocalValueDecryptionError` with `outputIndex` populated. This narrow pass-through makes "wrong account" / "malformed plaintext" failures surface under a single phase-aligned error name.
 
-## Building Dynamic Records (Leo v4 `dyn record` Inputs)
+## Building And Recovering Dynamic Records (Leo v4 `dyn record`)
 
 For transitions whose Leo signature accepts `dyn record`, build the input with `Leo.dynamicRecord(value, schema)`. The schema is compile-time-validated via a `${LeoPrimitiveType}.${LeoVisibility}` template-literal union:
 
@@ -212,6 +212,25 @@ await amm.add_liquidity.locally({ token: tokenInput, ... });
 Values are range-checked at runtime (integer bit-widths, address prefix, etc.). Missing or extra keys vs. the schema throw `TransitionInputError` with the offending key listed. The raw string escape hatch `Leo.unsafe.dynamicRecord("{ owner: ... }")` remains available for pre-built literals.
 
 For repeated conversions from a generated concrete record type, prefer a `codegen.dynamicRecords` helper such as `asGoldToken(token)` over retyping the schema at every call site. See [`json-abi.md` § Interface Conversion Helpers](json-abi.md#interface-conversion-helpers-codegendynamicrecords) and `examples/aleo-ports/dynamic_records`.
+
+On the output side, the same helper exposes a `.output` matcher (a `RecordOutputMatcher<T>`). Prefer generated matchers (`asGoldToken.output`, `GoldToken_Token.output`) over inline matcher construction; pass them to `accepted.outputs.match(matcher).decrypt(key)` to recover a record from any of the three handle types:
+
+```ts
+// Direct ciphertext: identity guard checks program/recordName.
+const tok = await mint.outputs.match(asGoldToken.output).decrypt(alice());
+
+// Dyn-record handle: bind the callee transition.
+const transferred = await routed.outputs
+  .match(asGoldToken.output.from("transfer", 0))
+  .decrypt(alice());
+
+// External-record handle: bind the callee transition by name.
+const wrapped = await accepted.outputs
+  .match(GoldToken_Token.output.from("mint", 0))
+  .decrypt(bob());
+```
+
+`.from(name, idx)` is the clean default because the matcher's program supplies the source program id. `.from(name, idx, { match: n })` disambiguates when the same `(program, transitionName)` appears more than once in the callgraph. `.at(transitionIndex, outputIndex)` is the positional escape hatch, and `createRecordOutputMatcher` is reserved for unresolved external records whose ABI was unavailable at codegen time. `.match()` itself is a pure builder — all validation, source resolution, and decryption is deferred to `CapturedRecord.decrypt(key)`. See [`network.md` § Id-only record outputs](network.md) for the full error taxonomy.
 
 ## Strategy And Design Direction
 

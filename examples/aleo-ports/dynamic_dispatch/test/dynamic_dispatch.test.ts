@@ -8,11 +8,9 @@
 //                                           VotingStrategy@(strategy)::compute_power(...)
 //
 // Direct-strategy calls run in mode: "local" — pure compute.
-// Dispatch-through-governance calls run onchain via accepted(), making
-// confirmation status explicit. The investigative .skip'd block
-// at the bottom is a runnable probe for whether local mode resolves
-// dispatch through static imports — un-skip locally to populate the
-// journey-doc insight.
+// Dispatch-through-governance is covered in both local mode, proving
+// `execution.imports["governance.aleo"]` is threaded into pm.run, and
+// onchain via accepted(), making confirmation status explicit.
 //
 // Identifier-arg encoding: Leo's wire format for an `identifier` is
 // `'name'` (literal single quotes). Leo.identifier("voting_power") gives
@@ -88,6 +86,23 @@ describe("dynamic_dispatch — direct strategy parity (local)", () => {
   });
 });
 
+describe("dynamic_dispatch — runtime dispatch through governance (local)", () => {
+  const governance = createGovernance();
+
+  beforeAll(() => {
+    governance.connect(ctx!.lre);
+  });
+
+  it("get_voting_power('voting_power', 10000) resolves through config execution.imports", async () => {
+    await expect(
+      governance.get_voting_power.locally({
+        strategy: Leo.identifier("voting_power"),
+        balance: 10000n,
+      }),
+    ).resolves.toBe(10000n);
+  });
+});
+
 describe("dynamic_dispatch — runtime dispatch through governance (onchain)", () => {
   const governance = createGovernance();
 
@@ -153,20 +168,5 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
     const [linear, quadratic] = result.outputs;
     expect(await linear.decrypt(signer())).toBe(10000n);
     expect(await quadratic.decrypt(signer())).toBe(100n);
-  });
-});
-
-// Investigative spike — NOT a parity assertion. Un-skip locally to learn
-// whether `pm.run` (local mode) resolves runtime dynamic dispatch through
-// the static import list. Outcome lands as a journey-doc insight, not a
-// regression check.
-describe.skip("[spike] governance dispatch in local mode (informational only)", () => {
-  it("local-mode get_voting_power resolves through static imports?", async () => {
-    const governance = createGovernance().connect(ctx!.lre);
-    const result = await governance.get_voting_power.locally({
-      strategy: Leo.identifier("voting_power"),
-      balance: 10000n,
-    });
-    expect(result).toBeDefined();
   });
 });

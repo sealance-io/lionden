@@ -694,7 +694,13 @@ describe("external references", () => {
     expect(output).toContain("readonly record: Credits_Credit");
     expect(output).toContain("Promise<Credits_Credit>");
     expect(output).toContain('serializeCredits_Credit(args.record as Credits_Credit, this.inputContext("forward", "record"))');
-    expect(output).toContain('deserializeCredits_Credit(this.outputAt(_result, "forward", 0))');
+    // Resolved external record bindings carry an `.output` matcher value so
+    // callers can write `accepted.outputs.match(Credits_Credit.output.from(...)).decrypt(key)`.
+    expect(output).toContain("export const Credits_Credit = {");
+    expect(output).toContain("output: createRecordOutputMatcher<_Credits_Credit>({");
+    expect(output).toContain('program: "credits.aleo"');
+    expect(output).toContain('recordName: "Credit"');
+    expect(output).toContain("deserialize: deserializeCredits_Credit");
   });
 });
 
@@ -1433,21 +1439,30 @@ describe("interface conversion helper emission", () => {
     });
     // Helper is emitted as a callable+namespace: an internal `_asPoolTokenImpl`
     // does the actual `Leo.dynamicRecord(...)` conversion, then `Object.assign`
-    // attaches `.asOutput` so callers can use it as an output-side projector.
+    // attaches `.output` (a RecordOutputMatcher) so callers can feed it to
+    // `.match(matcher.from(...))` or `.match(matcher.at(...))`.
     expect(output).toContain("function _asPoolTokenImpl(value: Token): LeoDynamicRecord");
     expect(output).toContain("export const asPoolToken = Object.assign(_asPoolTokenImpl, {");
+    expect(output).toContain("output: createRecordOutputMatcher<Token>({");
+    expect(output).toContain('program: "stable_token.aleo"');
+    expect(output).toContain('recordName: "Token"');
+    expect(output).toContain("deserialize: deserializeToken");
     expect(output).toContain("Leo.dynamicRecord(value, {");
     expect(output).toContain('"address.private"');
     expect(output).toContain('"u8.public"');
     expect(output).toContain('"group.public"');
-    // `Leo` should be a value-import on this program only (helpers emitted).
-    expect(output).toMatch(/import \{ BaseContract, Leo, .*type DynamicRecordOutputProjector/);
+    // `Leo` and `createRecordOutputMatcher` are value-imports on this program
+    // (helpers emitted); the matcher type is a type-only import.
+    expect(output).toMatch(/import \{ BaseContract, Leo, createRecordOutputMatcher, .*type RecordOutputMatcher/);
   });
 
   it("does not import Leo as a value when no helpers are configured", () => {
     const output = generateBindings(TOKEN_ABI);
     expect(output).not.toContain("import { BaseContract, Leo,");
-    expect(output).toContain("import { BaseContract, type");
+    // Value imports always include `createRecordOutputMatcher` for the
+    // record-output matcher API; `Leo` is value-imported only when a
+    // dynamic-record helper is emitted in this module.
+    expect(output).toContain("import { BaseContract, createRecordOutputMatcher,");
   });
 
   it("throws CodegenError when schema is missing a field", () => {
