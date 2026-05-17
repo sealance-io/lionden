@@ -1,6 +1,6 @@
 # LionDen Feature Status
 
-**Last verified:** 2026-05-13
+**Last verified:** 2026-05-17
 
 A snapshot of what currently works in LionDen, what's still missing for a 1.0, and what's deferred past V1. This doc is anchored to **shipped behavior** in the codebase, the working examples under `examples/`, and the bug-hunt probes that have been run against the deploy/upgrade subsystem during development.
 
@@ -44,8 +44,10 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Mapping getters: `get<Mapping>(key)`, returning `null` for unset | same |
 | Record helpers: `serialize<Name>`, `deserialize<Name>`, `decrypt<Name>` | `packages/leo-compiler/src/codegen/` |
 | Encrypted output types: `EncryptedRecord<T>.decrypt(key)`, `EncryptedValue<T>.decrypt(key)` | `packages/testing/...` + base contract code |
+| Id-only record output handles: `IdOnlyDynamicRecordHandle` (Leo v4 `dyn record`) and `IdOnlyExternalRecordHandle<T>` (cross-program `Record` outputs) — both carry `id` + `transitions` callgraph for inspection | `packages/leo-compiler/src/codegen/contract-wrapper.ts` |
+| Matcher-based record output API: direct ciphertext records can use `EncryptedRecord<T>.match(helper.output).decrypt(key)` for a uniform style with a program/recordName identity guard; id-only dynamic/external handles require a bound matcher via `helper.output.from(transition, idx)` or `.at(transitionIndex, idx)` before `.decrypt(key)`. `.match` is a pure builder; all validation + resolution + decryption is deferred to `CapturedRecord.decrypt(key)` | `packages/leo-compiler/src/codegen/contract-wrapper.ts` (`RecordOutputMatcher`, `CapturedRecord`, `createRecordOutputMatcher`, `BaseContract.resolveAndDecryptIdOnly`) |
 | Leo primitive helpers: `Leo.address/.field/.group/.scalar/.identifier/.dynamicRecord` | base contract template |
-| `codegen.dynamicRecords` config: per-program `Leo.dynamicRecord` conversion helpers | `packages/leo-compiler/src/codegen/contract-wrapper.ts` |
+| `codegen.dynamicRecords` config: per-program helpers that double as input converters (`asGoldToken(token)`) and output matchers (`asGoldToken.output.from(...)` / `.at(...)`). Imported external records emit a sibling `<ExternalRecord>.output` matcher value binding alongside the type alias; unresolved external records fall through to the public `createRecordOutputMatcher` factory at the call site | `packages/leo-compiler/src/codegen/contract-wrapper.ts`, `packages/leo-compiler/src/codegen/typescript-generator.ts` |
 | `withSigner(signer)` chained API + per-call `options.signer` | base contract template |
 | `compile` flags: `--force`, `--no-typechain`, `--program` | `packages/plugin-leo/src/index.ts` |
 | `clean` task removes `artifacts/` and `typechain/` (preserves `deployments/`) | `packages/plugin-leo/src/index.ts` |
@@ -155,7 +157,7 @@ Five disposable agent-driven probes have been run against the deploy/upgrade sub
 
 ### `examples/aleo-ports/` — 22 compatibility ports
 
-Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `dynamic_records`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)` and declares its runtime dispatch targets in `execution.imports["governance.aleo"]` rather than as static `import` statements (see [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch)); `dynamic_records` combines runtime dispatch with Leo v4 `dyn record` inputs and outputs, generated `codegen.dynamicRecords` helpers, wrapper instance imports, per-call imports, and snarkVM V15-compliant `(Token, dyn record)` tuple materialization (see [`research/snarkvm-record-existence.md`](research/snarkvm-record-existence.md)); `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
+Confirmed at this snapshot: `admin`, `auction`, `basic_bank`, `battleship`, `bubblesort`, `dynamic_dispatch`, `dynamic_records`, `example_with_test`, `fibonacci`, `groups`, `helloworld`, `interest`, `lottery`, `message`, `noupgrade`, `simple_token`, `tictactoe`, `timelock`, `token`, `twoadicity`, `upgrades-vote`, `vote`. Notably `dynamic_dispatch` exercises Leo v4 interface dispatch via `Leo.identifier(...)` and declares its runtime dispatch targets in `execution.imports["governance.aleo"]` rather than as static `import` statements (see [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch)); `dynamic_records` combines runtime dispatch with Leo v4 `dyn record` inputs and outputs, generated `codegen.dynamicRecords` helpers (input + `.output` matcher), wrapper instance imports, per-call imports, snarkVM V15-compliant `(Token, dyn record)` tuple materialization (see [`research/snarkvm-record-existence.md`](research/snarkvm-record-existence.md)), and the matcher-based output API including `demo_double_transfer` for `.from(..., { match: n })` ambiguity disambiguation and a negative identity-guard case on the encrypted-record arm; `noupgrade` exercises rejected `@noupgrade` upgrade; `timelock` exercises a positive `@custom` upgrade after block advancement; `upgrades-vote` deploys `@checksum` syntax but does not exercise the full voting/checksum authorization flow.
 
 ---
 
