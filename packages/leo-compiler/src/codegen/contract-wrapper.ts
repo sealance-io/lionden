@@ -245,15 +245,24 @@ export interface DynamicRecordOutputProjector<T> {
 
 /**
  * Handle for a \`dyn record\` output. The chain never exposes a ciphertext
- * for these — not on the producing transition, not on the caller. The
- * handle is therefore intentionally inert: \`id\` and \`transitions\` for
- * inspection, no decrypt method. Users who need a spendable record after
- * dispatched dispatch must wrap the call in a callee that emits a concrete
- * record type (see \`docs/network.md\` § Runtime Imports For Dynamic Dispatch).
+ * for the dynamic-record id itself — not on the producing transition, not
+ * on the caller. \`decryptFrom\` therefore does NOT dereference the
+ * \`record_dynamic\` id; it selects an explicit sibling concrete output in
+ * the same callgraph (typically the materialized static record that a
+ * V15-compliant callee emitted alongside the dynamic handle, per
+ * snarkVM's \`ensure_records_exist\` rule) and decrypts that ciphertext
+ * via the supplied projector. See
+ * \`docs/research/snarkvm-record-existence.md\` for the upstream rule and
+ * \`docs/network.md\` § Id-only record outputs for the recovery flow.
  */
 export interface IdOnlyDynamicRecordHandle extends IdOnlyRecordHandleBase {
   readonly kind: "idOnlyDynamicRecord";
   readonly type: "record_dynamic";
+  decryptFrom<TOut>(
+    projector: DynamicRecordOutputProjector<TOut>,
+    key: DecryptionKey,
+    source: IdOnlyRecordSource,
+  ): Promise<TOut>;
 }
 
 /**
@@ -1080,9 +1089,12 @@ export abstract class BaseContract {
 
   /**
    * Build an \`IdOnlyDynamicRecordHandle\` for a \`dyn record\` output. The
-   * handle is inert by design — no decrypt method, because the chain does
-   * not expose a ciphertext anywhere in the confirmed transaction for
-   * \`record_dynamic\` outputs (Phase A empirical verification).
+   * chain never exposes a ciphertext for the dynamic-record id itself, so
+   * \`decryptFrom\` does NOT dereference the id — it selects an explicit
+   * sibling concrete output in the same callgraph and decrypts that. See
+   * the type's docstring and \`docs/research/snarkvm-record-existence.md\`
+   * for the V15 \`ensure_records_exist\` rule that makes a sibling concrete
+   * output guaranteed to exist in compliant programs.
    */
   static makeIdOnlyDynamicRecordHandle(
     entry: IdOnlyRawOutput,
@@ -1093,6 +1105,46 @@ export abstract class BaseContract {
       type: "record_dynamic",
       id: entry.id,
       transitions,
+      async decryptFrom<TOut>(
+        projector: DynamicRecordOutputProjector<TOut>,
+        key: DecryptionKey,
+        source: IdOnlyRecordSource,
+      ): Promise<TOut> {
+        const selected = BaseContract.resolveIdOnlySource(transitions, source);
+        if (selected.transition.programId !== projector.program) {
+          throw new IdOnlyRecordResolutionError(
+            "program-mismatch",
+            "Selected transition " + selected.transition.programId + "/" + selected.transition.transitionName + " does not match projector program " + projector.program + ". Pass the projector for the program that emitted the sibling concrete record, or correct the selector.",
+            {
+              expectedProgram: projector.program,
+              actualProgram: selected.transition.programId,
+              programId: selected.transition.programId,
+              transition: selected.transition.transitionName,
+              outputIndex: source.outputIndex,
+            },
+          );
+        }
+        const ciphertext = selected.transition.rawOutputs[source.outputIndex];
+        if (typeof ciphertext !== "string") {
+          const kind = ciphertext === undefined
+            ? "undefined"
+            : ciphertext === null
+              ? "null"
+              : typeof ciphertext === "object" && "kind" in ciphertext && (ciphertext as { kind?: unknown }).kind === "idOnly"
+                ? "id-only output " + (ciphertext as IdOnlyRawOutput).id
+                : typeof ciphertext;
+          throw new IdOnlyRecordResolutionError(
+            "not-a-ciphertext",
+            "Selected output at " + projector.program + "/" + selected.transition.transitionName + " index " + source.outputIndex + " is not a record ciphertext (got " + kind + "). Note: the dyn-handle's decryptFrom does not dereference the dynamic-record id — it expects an explicit selector pointing at a sibling concrete record output materialized by a V15-compliant callee.",
+            {
+              programId: selected.transition.programId,
+              transition: selected.transition.transitionName,
+              outputIndex: source.outputIndex,
+            },
+          );
+        }
+        return BaseContract.decryptRecord(ciphertext, key, projector.deserialize);
+      },
     };
   }
 

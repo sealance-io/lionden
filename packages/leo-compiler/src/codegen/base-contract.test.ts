@@ -1318,17 +1318,124 @@ describe("BaseContract runtime", () => {
   });
 
   describe("makeIdOnlyDynamicRecordHandle", () => {
-    it("constructs an inert handle with id + transitions and no decrypt", () => {
-      const entry = { kind: "idOnly", type: "record_dynamic", id: "dyn-id" } as const;
-      const transitions = [
-        { programId: "p.aleo", transitionName: "t", rawOutputs: [], transitionPublicKey: "tpk" },
-      ];
+    const SIBLING_CIPHERTEXT = "record1sibling";
+    const entry = { kind: "idOnly", type: "record_dynamic", id: "dyn-id" } as const;
+    const projector = {
+      program: "callee.aleo",
+      recordName: "Tok",
+      deserialize: (plaintext: string) => ({ decoded: plaintext }),
+    };
+    const transitions = [
+      {
+        programId: "router.aleo",
+        transitionName: "route_transfer",
+        rawOutputs: [entry],
+        transitionPublicKey: "tpk_router",
+      },
+      {
+        programId: "callee.aleo",
+        transitionName: "transfer",
+        rawOutputs: [SIBLING_CIPHERTEXT, entry],
+        transitionPublicKey: "tpk_callee",
+      },
+    ];
+
+    it("constructs a handle with kind + type + id + transitions and a decryptFrom method", () => {
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
       expect(handle.kind).toBe("idOnlyDynamicRecord");
       expect(handle.type).toBe("record_dynamic");
       expect(handle.id).toBe("dyn-id");
       expect(handle.transitions).toBe(transitions);
-      expect((handle as any).decryptFrom).toBeUndefined();
+      expect(typeof handle.decryptFrom).toBe("function");
+    });
+
+    it("named selector resolves to sibling concrete output + decrypts via projector", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
+        programId: "callee.aleo",
+        transitionName: "transfer",
+        outputIndex: 0,
+      });
+      expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
+    });
+
+    it("positional selector resolves by transitionIndex + outputIndex", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      const result = await handle.decryptFrom(projector, "AViewKey1abc", {
+        transitionIndex: 1,
+        outputIndex: 0,
+      });
+      expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
+    });
+
+    it("throws IdOnlyRecordResolutionError { transition-not-found }", async () => {
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          programId: "missing.aleo",
+          transitionName: "nope",
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("transition-not-found");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { transition-index-out-of-range }", async () => {
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          transitionIndex: 99,
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("transition-index-out-of-range");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { program-mismatch } with expected/actual populated", async () => {
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          transitionIndex: 0, // router transition, but projector is callee.aleo
+          outputIndex: 0,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("program-mismatch");
+        expect(err.expectedProgram).toBe("callee.aleo");
+        expect(err.actualProgram).toBe("router.aleo");
+      }
+    });
+
+    it("throws IdOnlyRecordResolutionError { not-a-ciphertext } when the slot is an id-only entry", async () => {
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
+      // Selector targets the callee transition's output index 1 (the id-only
+      // dyn-record entry sitting alongside the sibling concrete output at
+      // index 0). The projector's program matches the callee, so program-
+      // mismatch doesn't fire first.
+      try {
+        await handle.decryptFrom(projector, "AViewKey1abc", {
+          transitionIndex: 1,
+          outputIndex: 1,
+        });
+        throw new Error("expected throw");
+      } catch (err: any) {
+        expect(err.kind).toBe("IdOnlyRecordResolutionError");
+        expect(err.reason).toBe("not-a-ciphertext");
+        expect(err.message).toContain("id-only output dyn-id");
+      }
     });
   });
 

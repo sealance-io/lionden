@@ -14,7 +14,7 @@ interface TokenStandard {
         ..
     }
     fn mint(owner: address, amount: u64) -> Token;
-    fn transfer(token: dyn record, to: address) -> dyn record;
+    fn transfer(token: dyn record, to: address) -> (Token, dyn record);
     fn balance_of(token: dyn record) -> u64;
 }
 
@@ -24,7 +24,8 @@ program token_router.aleo {
         token: dyn record,
         to: address,
     ) -> dyn record {
-        return TokenStandard@(token_program)::transfer(token, to);
+        let result: (dyn record, dyn record) = TokenStandard@(token_program)::transfer(token, to);
+        return result.1;
     }
 
     fn read_balance(token_program: identifier, token: dyn record) -> u64 {
@@ -38,7 +39,8 @@ program token_router.aleo {
         to: address,
     ) -> dyn record {
         let token: dyn record = TokenStandard@(token_program)::mint(owner, amount);
-        return TokenStandard@(token_program)::transfer(token, to);
+        let result: (dyn record, dyn record) = TokenStandard@(token_program)::transfer(token, to);
+        return result.1;
     }
 
     fn gold_beats_silver(
