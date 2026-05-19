@@ -211,6 +211,56 @@ describe("NetworkManagerImpl", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Egress policy resolution
+// ---------------------------------------------------------------------------
+
+describe("NetworkManagerImpl — egress policy defaults", () => {
+  it("devnode connections scope allowedNetworkHosts to the devnode socket and default to block on violation", async () => {
+    const mgr = new NetworkManagerImpl(mockConfig);
+    const conn = await mgr.connect("devnode");
+    expect(conn.egressPolicy.violation).toBe("block");
+    expect([...conn.egressPolicy.allowedNetworkHosts]).toEqual(["127.0.0.1:3030"]);
+  });
+
+  it("http connections scope allowedNetworkHosts to the configured endpoint", async () => {
+    const mgr = new NetworkManagerImpl(mockConfig);
+    const conn = await mgr.connect("testnet");
+    expect(conn.egressPolicy.violation).toBe("block");
+    expect([...conn.egressPolicy.allowedNetworkHosts]).toEqual([
+      "api.explorer.provable.com",
+    ]);
+  });
+
+  it("sdk.egress.networkHosts override EXTENDS the per-connection network host list", async () => {
+    const config: LionDenResolvedConfig = {
+      ...mockConfig,
+      sdk: {
+        keyCache: { storage: "memory" },
+        egress: { networkHosts: ["telemetry.example"] },
+      },
+    };
+    const mgr = new NetworkManagerImpl(config);
+    const devConn = await mgr.connect("devnode");
+    expect(new Set(devConn.egressPolicy.allowedNetworkHosts)).toEqual(
+      new Set(["127.0.0.1:3030", "telemetry.example"]),
+    );
+  });
+
+  it("sdk.egress.violation override propagates to the resolved policy", async () => {
+    const config: LionDenResolvedConfig = {
+      ...mockConfig,
+      sdk: {
+        keyCache: { storage: "memory" },
+        egress: { violation: "warn" },
+      },
+    };
+    const mgr = new NetworkManagerImpl(config);
+    const conn = await mgr.connect("devnode");
+    expect(conn.egressPolicy.violation).toBe("warn");
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Named account lifecycle integration tests
 // ---------------------------------------------------------------------------
 

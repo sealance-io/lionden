@@ -32,6 +32,10 @@ function makeOpts(networkName = "devnode", networkType: "devnode" | "http" = "de
     networkType,
     networkId: "testnet" as const,
     endpoint: "http://127.0.0.1:3030",
+    egressPolicy: {
+      allowedNetworkHosts: new Set(["127.0.0.1:3030"]),
+      violation: "block" as const,
+    },
   };
 }
 

@@ -164,16 +164,19 @@ Projects that need process-local SDK caching only can opt out with `sdk.keyCache
 
 The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention.
 
-Filesystem key persistence covers LionDen-managed proven execution transition keys and the supported SDK fee keys (`credits.aleo/fee_public`, `credits.aleo/fee_private`):
+Filesystem key persistence covers LionDen-managed proven execution transition keys and every named entry in the SDK's `CREDITS_PROGRAM_KEYS` map:
 
 | Path | Filesystem key cache behavior |
 | --- | --- |
 | On-chain execute with proof generation | cached and injected |
 | Devnode execute without `prove: true` | not used; devnode fast path skips proofs |
 | Local `mode: "local"` execution | not used |
-| SDK fee keys such as `credits.aleo/fee_public` | persisted under `lionden-credits/<wasmHash>/<network>/<encoded-locator>.prover`; warmup-on-init populates the SDK key provider cache, write-back-after-fetch persists proving-key bytes on first use |
+| `credits.aleo` named keys (`fee_public`, `fee_private`, `inclusion`, `join`, `split`, `bond_public`, `bond_validator`, `unbond_public`, `claim_unbond_public`, `set_validator_state`, `transfer_*`) | persisted under `lionden-credits/<wasmHash>/<network>/<encoded-locator>.prover`; warmup-on-init populates the SDK key provider cache, write-back-after-fetch persists proving-key bytes on first use. `set_validator_state` is reached only via `functionKeys()` in the SDK; LionDen identifies it by `name`, `cacheKey: "credits.aleo/<entry>"`, or matching `proverUri` against `CREDITS_PROGRAM_KEYS` |
+| `credits.aleo/functionKeys(search)` for non-credits locators (arbitrary user program keys) | not persisted by LionDen; the SDK handles its own in-memory caching |
 | Deploy / upgrade program keys | not persisted by LionDen v1 |
 | Translation keys | not persisted by LionDen v1 |
+
+This expansion is a **performance** improvement: it keeps repeated prove runs from re-fetching every credits.aleo proving key the SDK touches. The egress policy below does not gate parameter downloads — those go through the SDK's known parameter hosts. For hermetic / offline operation, pre-warm the filesystem key cache and then enforce no-network at the container / CI / firewall level; LionDen does not promise an in-process offline mode.
 
 Runtime execution key identity is circuit-based: network, program id, transition, edition when available, local or fetched program source hash, import source hash, and the actual `@provablehq/wasm` artifact SHA-256. Execution inputs are intentionally excluded. SDK and WASM package versions are stored as diagnostics only.
 
@@ -183,11 +186,43 @@ Lookup order for proven executions is:
 2. LionDen's runtime synthesis cache under the configured key-cache path
 3. LionDen synthesis through the SDK-resolved WASM `ProgramManagerBase` on miss, followed by an atomic runtime-cache write and execution with injected proving/verifying keys
 
-LionDen resolves program source and imports from local artifacts first, falling back to the connected network, and passes the resolved import graph to both synthesis and execution. SDK-controlled paths outside the transition-key cache that LionDen does *not* persist — deploy/upgrade transaction building, translation keys, and non-fee credits.aleo functions such as transfers and bonds — still use the SDK's own fetch/cache behavior.
+LionDen resolves program source and imports from local artifacts first, falling back to the connected network, and passes the resolved import graph to both synthesis and execution. SDK-controlled paths outside the transition-key cache that LionDen does *not* persist — deploy/upgrade transaction building and translation keys — still use the SDK's own fetch/cache behavior.
 
-Fee-key persistence (`credits.aleo/fee_public`, `credits.aleo/fee_private`) is keyed by the SDK locator, the runtime `@provablehq/wasm` SHA-256, and the network. On startup, LionDen reads any on-disk proving-key bytes that match the fingerprint in the sibling `.metadata.json`, deserializes them through `sdk.ProvingKey.fromBytes`, and pre-populates the SDK's `AleoKeyProvider` cache via the public `cacheKeys()` API — so the SDK's own fee-key code path returns from cache without a network fetch. The first time the SDK does fetch (cold cache, or stale wasmHash), `PersistentFunctionKeyProvider.feePublicKeys/feePrivateKeys` writes the bytes back to disk for the next process. Verifying keys are never persisted; they come from the WASM-bundled credits.aleo metadata and are reconstructed for free on each warmup.
+Credits-key persistence is keyed by the SDK locator, the runtime `@provablehq/wasm` SHA-256, and the network. On startup, LionDen reads any on-disk proving-key bytes that match the fingerprint in the sibling `.metadata.json`, deserializes them through `sdk.ProvingKey.fromBytes`, and pre-populates the SDK's `AleoKeyProvider` cache via the public `cacheKeys()` API — so the SDK's own credits-key code path returns from cache without a network fetch. The first time the SDK does fetch (cold cache, or stale wasmHash), `PersistentFunctionKeyProvider` writes the bytes back to disk for the next process. Verifying keys are never persisted; they come from the WASM-bundled credits.aleo metadata and are reconstructed for free on each warmup. The `transferKeys(visibility)` accessor maps every documented visibility string (`"private"`, `"transferPrivate"`, `"public"`, `"public_as_signer"`, `"transferPublicAsSigner"`, etc.) to its `transfer_*` credits entry before persisting; unknown visibility strings are passed through to the SDK and not persisted. `set_validator_state` is not exposed as a dedicated key-provider method by the SDK and is reached only through the generic `functionKeys()` path; the persistent wrapper identifies it (and any other credits entry routed the same way) by `name`, by `cacheKey: "credits.aleo/<entry>"`, or by matching `proverUri` against `CREDITS_PROGRAM_KEYS`, and persists by entry name. Non-credits `functionKeys()` calls (arbitrary user-program locators) are left untouched.
 
 Translation keys are not persisted yet because the current SDK exposes metadata but no public execution injection hook.
+
+### Egress Policy
+
+LionDen installs a guarded `transport` on every `AleoNetworkClient` it constructs (standalone, `ProgramManager`-internal, per-signer copies). The transport restricts SDK chain-state and transaction-submission egress to an explicit per-connection allowlist, and — independently of egress filtering — flips the SDK's `hasCustomTransport` flag to `true`. That flag is load-bearing: with it set, the prove path routes `stateRoot` / `statePaths` / `latestHeight` lookups through a JS `CallbackQuery` whose host comes from the connection. Without it, WASM falls back to an internal SnapshotQuery bound to the WASM-baked `https://api.provable.com/v2` constant and leaks state queries to the public host. The egress policy closes that leak by construction.
+
+**Scope.** The policy governs **network-host** fetches only — chain-state reads, transaction submission, anything `AleoNetworkClient` does. Parameter downloads (credits proving/verifying keys, KZG SRS) are governed by the SDK key cache and an **internal** known-host list (`parameters.provable.com`, `s3.us-west-1.amazonaws.com`, `parameters.aleo.org`); they are not user-configurable. An unknown parameter host means LionDen's allowlist is stale relative to the installed SDK and surfaces as an actionable error.
+
+**Defaults.** Same shape for every connection type — only the endpoint host varies:
+
+| `type` | `allowedNetworkHosts` | `violation` |
+| --- | --- | --- |
+| `"devnode"` (managed) | `{ hostOf(socketAddr) }` | `"block"` |
+| `"http"` (public testnet/mainnet or user-operated snarkOS) | `{ hostOf(endpoint) }` | `"block"` |
+
+**`sdk.egress` override:**
+
+```ts
+sdk: {
+  egress: {
+    // Add hosts beyond the connection endpoint to the network allowlist
+    // (telemetry, indexer sidecars, etc.).
+    networkHosts: ["telemetry.example"],
+    // "block" rejects disallowed network fetches with a hard error; "warn"
+    // logs and forwards (useful for staged rollouts / debugging).
+    violation: "warn",
+  },
+},
+```
+
+A blocked network fetch surfaces `LionDen blocked SDK network fetch to host "<host>". Allowed hosts: <list>. Extend sdk.egress.networkHosts or change sdk.egress.violation.` An unknown parameter host surfaces `LionDen does not recognize SDK parameter host "<host>". Known hosts: <list>. This may indicate a stale LionDen allowlist; please report.`
+
+**Parameter downloads as a performance / cache concern.** See § SDK Objects for how the filesystem key cache covers credits-key downloads. For hermetic / offline operation, pre-warm the filesystem cache and then enforce no-network at the container / CI / firewall level — LionDen does not provide an in-process offline mode for parameter egress.
 
 ### Transaction Building And Broadcasting
 

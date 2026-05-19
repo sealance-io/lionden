@@ -6,6 +6,7 @@ import type {
   ConfirmedTransitionRecord,
   ExecuteOptions,
   DevnodeAccount,
+  SdkEgressPolicy,
 } from "@lionden/network";
 import type { AleoNetwork, NamedAccounts } from "@lionden/config";
 import {
@@ -13,6 +14,7 @@ import {
   TransitionRejectedError,
   selectMatchingTransition,
 } from "@lionden/network";
+import { TEST_DEVNODE_EGRESS_POLICY } from "../test-egress-policy.js";
 
 // ---------------------------------------------------------------------------
 // Call recording
@@ -43,6 +45,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   readonly endpoint: string;
   readonly networkId: AleoNetwork;
   readonly privateKey?: string;
+  readonly egressPolicy: SdkEgressPolicy = TEST_DEVNODE_EGRESS_POLICY;
   closed = false;
 
   /** Recorded method calls for assertions. */

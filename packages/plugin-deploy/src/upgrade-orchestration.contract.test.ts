@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
 import { task } from "@lionden/core";
 import type { LionDenRuntimeEnvironment, LionDenPlugin } from "@lionden/core";
+import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkManager } from "@lionden/network";
 import { upgradeAction, UpgradeCompatibilityError } from "./upgrade-task.js";
 import { DeployError } from "./errors.js";
@@ -40,7 +41,10 @@ vi.mock("@lionden/network", async (importOriginal) => {
 });
 
 /** Minimal ABI with one mapping and one transition. */
-function makeAbi(opts?: { mappings?: string[] }) {
+function makeAbi(opts?: {
+  mappings?: string[];
+  records?: ProgramABI["records"];
+}): ProgramABI {
   const mappings = (opts?.mappings ?? ["counters"]).map((name) => ({
     name,
     key: { Primitive: "Address" } as const,
@@ -53,7 +57,7 @@ function makeAbi(opts?: { mappings?: string[] }) {
       { name: "increment", inputs: [], outputs: [], is_async: false },
     ],
     structs: [],
-    records: [],
+    records: opts?.records ?? [],
     mappings,
     storage_variables: [],
   };
@@ -134,6 +138,8 @@ describe("upgrade orchestration contract", () => {
     oldMappings?: string[];
     /** New ABI mappings that compile produces */
     newMappings?: string[];
+    /** New ABI records that compile produces */
+    newRecords?: ProgramABI["records"];
     /** Skip writing old ABI snapshot */
     skipOldAbi?: boolean;
     /** Skip writing deployment record */
@@ -163,7 +169,7 @@ describe("upgrade orchestration contract", () => {
             : "@custom\n    constructor() {}");
 
     const oldAbi = makeAbi({ mappings: oldMappings });
-    const newAbi = makeAbi({ mappings: newMappings });
+    const newAbi = makeAbi({ mappings: newMappings, records: opts?.newRecords });
     const defaultAleoSource =
       `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
     const aleoSource = opts?.newAleoSource ?? defaultAleoSource;
@@ -304,6 +310,33 @@ describe("upgrade orchestration contract", () => {
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
     expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
       program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-upgrade-tx-bytes",
+    );
+  });
+
+  it("uses the standard upgrade builder for record programs on devnode", async () => {
+    const recordAleoSource =
+      `program hello.aleo;\n` +
+      `record Bid:\n` +
+      `  owner as address.private;\n` +
+      `function increment:\n` +
+      `  input r0 as u32.private;\n` +
+      `  output r0 as u32.private;\n`;
+    const { lre, fakeNetwork } = await createUpgradeFixture({
+      constructorType: "admin",
+      newAleoSource: recordAleoSource,
+      newRecords: [{ path: ["Bid"], fields: [] }],
+    });
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("record Bid:"),
       priorityFee: 0,
       privateFee: false,
     });
@@ -599,5 +632,62 @@ describe("upgrade orchestration contract", () => {
     // History is only available in non-ephemeral mode (devnode defaults to ephemeral)
     const history = await manager.getHistory("hello.aleo", "devnode");
     expect(history).toEqual([]);
+  });
+
+  // -------------------------------------------------------------------------
+  // SDK plumbing — every createSdkObjects() inside the upgrade flow must
+  // carry the resolved keyCache from config and the egressPolicy from the
+  // active connection. Mirrors the deploy-side assertion: keyCache
+  // propagation amortizes credits-key persistence across throwaway SDK
+  // objects, and egressPolicy installs the guarded network transport that
+  // forces `hasCustomTransport=true` and scopes chain-state/submission
+  // egress to the connection endpoint. A regression on any upgrade call
+  // site (buildAndBroadcastUpgrade, resolveDeployerAddress, admin signer
+  // validation) is caught here.
+  // -------------------------------------------------------------------------
+  describe("createSdkObjects plumbing", () => {
+    it("passes keyCache and egressPolicy to every createSdkObjects call on devnode upgrade", async () => {
+      const { lre, fakeNetwork } = await createUpgradeFixture({
+        constructorType: "admin",
+      });
+
+      await upgradeAction({ program: "hello" }, lre);
+
+      expect(mockCreateSdkObjects.mock.calls.length).toBeGreaterThanOrEqual(1);
+      for (const call of mockCreateSdkObjects.mock.calls) {
+        expect(call[0]).toMatchObject({
+          network: fakeNetwork.networkId,
+          endpoint: fakeNetwork.endpoint,
+          egressPolicy: fakeNetwork.egressPolicy,
+        });
+      }
+      // buildAndBroadcastUpgrade is the helper that should carry keyCache.
+      // It's the call with apiKey present; admin-signer / resolveDeployerAddress
+      // skip apiKey/keyCache.
+      const helperCalls = mockCreateSdkObjects.mock.calls.filter(
+        (c) => "apiKey" in (c[0] ?? {}) && "keyCache" in (c[0] ?? {}),
+      );
+      expect(helperCalls.length).toBeGreaterThanOrEqual(1);
+      for (const call of helperCalls) {
+        expect(call[0]).toMatchObject({
+          keyCache: lre.config.sdk.keyCache,
+        });
+      }
+    });
+
+    it("propagates the egressPolicy when LIONDEN_PROVE forces the standard upgrade builder", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+      const { lre, fakeNetwork } = await createUpgradeFixture({
+        constructorType: "admin",
+      });
+
+      await upgradeAction({ program: "hello" }, lre);
+
+      for (const call of mockCreateSdkObjects.mock.calls) {
+        expect(call[0]).toMatchObject({
+          egressPolicy: fakeNetwork.egressPolicy,
+        });
+      }
+    });
   });
 });

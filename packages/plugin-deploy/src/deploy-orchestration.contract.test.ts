@@ -70,7 +70,13 @@ describe("deploy orchestration contract", () => {
    * then build an LRE wired with a fake network.
    */
   function createDeployFixture(
-    programs: { name: string; imports?: string[]; annotation?: string }[],
+    programs: {
+      name: string;
+      imports?: string[];
+      annotation?: string;
+      aleoSource?: string;
+      records?: Array<{ path: string[]; fields: unknown[] }>;
+    }[],
   ) {
     fixture = createContractLre({
       programs,
@@ -81,12 +87,13 @@ describe("deploy orchestration contract", () => {
         abi: {
           program: `${prog.name}.aleo`,
           structs: [],
-          records: [],
+          records: prog.records ?? [],
           mappings: [],
           storage_variables: [],
           transitions: [],
         },
-        aleoSource: `program ${prog.name}.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
+        aleoSource: prog.aleoSource ??
+          `program ${prog.name}.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
       })),
     });
 
@@ -153,6 +160,35 @@ describe("deploy orchestration contract", () => {
     expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
     expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
       expect.stringContaining("program hello.aleo"),
+      0,
+      false,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-deploy-tx-bytes",
+    );
+  });
+
+  it("uses the standard deployment builder for record programs on devnode", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      {
+        name: "hello",
+        annotation: "@noupgrade\n    constructor() {}",
+        records: [{ path: ["Bid"], fields: [] }],
+        aleoSource:
+          `program hello.aleo;\n` +
+          `record Bid:\n` +
+          `  owner as address.private;\n` +
+          `function main:\n` +
+          `  input r0 as u32.private;\n` +
+          `  output r0 as u32.private;\n`,
+      },
+    ]);
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
+      expect.stringContaining("record Bid:"),
       0,
       false,
     );
@@ -374,5 +410,66 @@ describe("deploy orchestration contract", () => {
     );
     const results = unwrapDeploy(taskResult);
     expect(results).toHaveLength(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // SDK plumbing — every createSdkObjects() inside the deploy flow must
+  // carry the resolved keyCache from config and the egressPolicy from the
+  // active connection. Load-bearing for two reasons: keyCache propagation
+  // amortizes credits-key persistence across throwaway SDK objects, and
+  // egressPolicy is what installs the guarded network transport that
+  // forces `hasCustomTransport=true` and scopes chain-state/submission
+  // egress to the connection endpoint. A regression dropping either field
+  // on any of the four call sites is caught here.
+  // -------------------------------------------------------------------------
+  describe("createSdkObjects plumbing", () => {
+    it("passes keyCache and egressPolicy to every createSdkObjects call on devnode deploy", async () => {
+      const { lre, fakeNetwork } = createDeployFixture([
+        { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+      ]);
+
+      await deployAction({ program: "hello", noCompile: true }, lre);
+
+      // resolveDeployerAddress + deployToNetwork → at least two construction sites
+      expect(mockCreateSdkObjects.mock.calls.length).toBeGreaterThanOrEqual(1);
+      for (const call of mockCreateSdkObjects.mock.calls) {
+        const opts = call[0];
+        expect(opts).toMatchObject({
+          network: fakeNetwork.networkId,
+          endpoint: fakeNetwork.endpoint,
+          egressPolicy: fakeNetwork.egressPolicy,
+        });
+      }
+      // deployToNetwork should also carry the resolved keyCache. Filter to
+      // the calls that came through the helper (signerKey present + apiKey
+      // forwarded) — resolveDeployerAddress doesn't pass keyCache.
+      const helperCalls = mockCreateSdkObjects.mock.calls.filter(
+        (c) => "apiKey" in (c[0] ?? {}),
+      );
+      expect(helperCalls.length).toBeGreaterThanOrEqual(1);
+      for (const call of helperCalls) {
+        expect(call[0]).toMatchObject({
+          keyCache: lre.config.sdk.keyCache,
+        });
+      }
+    });
+
+    it("propagates the egressPolicy when LIONDEN_PROVE forces the standard deployment builder", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+      const { lre, fakeNetwork } = createDeployFixture([
+        { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+      ]);
+
+      await deployAction({ program: "hello", noCompile: true }, lre);
+
+      // Even on the prove branch, every SDK construction must carry the
+      // connection's egress policy. This is exactly the case that would
+      // reintroduce the leak if a future call site dropped the field.
+      for (const call of mockCreateSdkObjects.mock.calls) {
+        expect(call[0]).toMatchObject({
+          egressPolicy: fakeNetwork.egressPolicy,
+        });
+      }
+    });
   });
 });

@@ -1,7 +1,10 @@
 /**
- * Fee-key cache tests — warmup-on-init reads disk and populates the SDK's
- * cache; the write-back hook in PersistentFunctionKeyProvider serializes
- * proving keys to disk after the SDK fetches them.
+ * Credits-key cache tests — warmup-on-init reads disk and populates the
+ * SDK's cache; the write-back hooks in PersistentFunctionKeyProvider
+ * serialize proving keys to disk after the SDK fetches them. Phase C
+ * expanded coverage from fee_public/fee_private to every named entry of
+ * CREDITS_PROGRAM_KEYS (inclusion, join, split, transfer_*, bond_*,
+ * etc.); this file exercises the broader contract.
  *
  * These tests mock the SDK module so they can drive the fingerprint and
  * filesystem-failure branches deterministically without a real WASM load.
@@ -17,7 +20,7 @@ import {
 } from "@lionden/core";
 import {
   PersistentFunctionKeyProvider,
-  warmupFeeKeys,
+  warmupCreditsKeys,
 } from "./sdk-adapter.js";
 
 const WASM_HASH_A = "a".repeat(64);
@@ -26,6 +29,19 @@ const NETWORK = "testnet" as const;
 
 const FEE_PUBLIC_LOCATOR = "credits.aleo/fee_public:1";
 const FEE_PRIVATE_LOCATOR = "credits.aleo/fee_private:1";
+const INCLUSION_LOCATOR = "credits.aleo/inclusion:1";
+const JOIN_LOCATOR = "credits.aleo/join:1";
+const SPLIT_LOCATOR = "credits.aleo/split:1";
+const BOND_PUBLIC_LOCATOR = "credits.aleo/bond_public:1";
+const BOND_VALIDATOR_LOCATOR = "credits.aleo/bond_validator:1";
+const CLAIM_UNBOND_PUBLIC_LOCATOR = "credits.aleo/claim_unbond_public:1";
+const UNBOND_PUBLIC_LOCATOR = "credits.aleo/unbond_public:1";
+const SET_VALIDATOR_STATE_LOCATOR = "credits.aleo/set_validator_state:1";
+const TRANSFER_PUBLIC_LOCATOR = "credits.aleo/transfer_public:1";
+const TRANSFER_PRIVATE_LOCATOR = "credits.aleo/transfer_private:1";
+const TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR = "credits.aleo/transfer_public_to_private:1";
+const TRANSFER_PRIVATE_TO_PUBLIC_LOCATOR = "credits.aleo/transfer_private_to_public:1";
+const TRANSFER_PUBLIC_AS_SIGNER_LOCATOR = "credits.aleo/transfer_public_as_signer:1";
 
 function encodeLocator(locator: string): string {
   return Buffer.from(locator, "utf-8").toString("base64url");
@@ -47,12 +63,34 @@ function makeMockSdk() {
     toBytes: () => bytes,
   }));
   const verifyingKey = () => ({ kind: "verifying", toBytes: () => new Uint8Array([0xaa]) });
+  const entry = (locator: string) => ({
+    locator,
+    prover: `https://parameters.example/${locator}.prover`,
+    verifier: `https://parameters.example/${locator}.verifier`,
+    verifyingKey,
+  });
   return {
     sdk: {
       ProvingKey: { fromBytes },
       CREDITS_PROGRAM_KEYS: {
-        fee_public: { locator: FEE_PUBLIC_LOCATOR, verifyingKey },
-        fee_private: { locator: FEE_PRIVATE_LOCATOR, verifyingKey },
+        fee_public: entry(FEE_PUBLIC_LOCATOR),
+        fee_private: entry(FEE_PRIVATE_LOCATOR),
+        inclusion: entry(INCLUSION_LOCATOR),
+        join: entry(JOIN_LOCATOR),
+        split: entry(SPLIT_LOCATOR),
+        bond_public: entry(BOND_PUBLIC_LOCATOR),
+        bond_validator: entry(BOND_VALIDATOR_LOCATOR),
+        claim_unbond_public: entry(CLAIM_UNBOND_PUBLIC_LOCATOR),
+        unbond_public: entry(UNBOND_PUBLIC_LOCATOR),
+        set_validator_state: entry(SET_VALIDATOR_STATE_LOCATOR),
+        transfer_public: entry(TRANSFER_PUBLIC_LOCATOR),
+        transfer_private: entry(TRANSFER_PRIVATE_LOCATOR),
+        transfer_public_to_private: entry(TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR),
+        transfer_private_to_public: entry(TRANSFER_PRIVATE_TO_PUBLIC_LOCATOR),
+        transfer_public_as_signer: entry(TRANSFER_PUBLIC_AS_SIGNER_LOCATOR),
+        // Helper-style entries that are NOT a warmable key. Mirrors the
+        // real SDK's `getKey` accessor — warmupCreditsKeys must skip these.
+        getKey: function (k: string) { return (this as any)[k]; },
       },
     },
     fromBytes,
@@ -76,11 +114,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("warmupFeeKeys", () => {
+describe("warmupCreditsKeys", () => {
   it("does not call cacheKeys when no files exist on disk", async () => {
     const { sdk } = makeMockSdk();
     const kp = makeMockKeyProvider();
-    await warmupFeeKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
+    await warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
     expect(kp.cacheKeys).not.toHaveBeenCalled();
   });
 
@@ -99,7 +137,7 @@ describe("warmupFeeKeys", () => {
 
     const { sdk, fromBytes } = makeMockSdk();
     const kp = makeMockKeyProvider();
-    await warmupFeeKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
+    await warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
 
     expect(fromBytes).toHaveBeenCalledOnce();
     expect(kp.cacheKeys).toHaveBeenCalledOnce();
@@ -122,7 +160,7 @@ describe("warmupFeeKeys", () => {
 
     const { sdk } = makeMockSdk();
     const kp = makeMockKeyProvider();
-    await warmupFeeKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
+    await warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
 
     expect(kp.cacheKeys).not.toHaveBeenCalled();
   });
@@ -142,7 +180,7 @@ describe("warmupFeeKeys", () => {
 
     const { sdk } = makeMockSdk();
     const kp = makeMockKeyProvider();
-    await warmupFeeKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
+    await warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
 
     expect(kp.cacheKeys).not.toHaveBeenCalled();
   });
@@ -163,8 +201,54 @@ describe("warmupFeeKeys", () => {
     const { sdk } = makeMockSdk();
     const kp = makeMockKeyProvider();
     // Running with a different wasmHash looks at a different directory → cold cache.
-    await warmupFeeKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_B);
+    await warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_B);
     expect(kp.cacheKeys).not.toHaveBeenCalled();
+  });
+
+  it("warms every named credits entry that has a complete on-disk cache, not only fee_*", async () => {
+    // Plant on-disk entries for inclusion, join, split, and one transfer
+    // variant — the Phase C scope is the full CREDITS_PROGRAM_KEYS map,
+    // so warmup must hit every one of these locators, not stop at fees.
+    const proverBytes = new Uint8Array([1, 2, 3]);
+    const locators = [
+      INCLUSION_LOCATOR,
+      JOIN_LOCATOR,
+      SPLIT_LOCATOR,
+      TRANSFER_PUBLIC_LOCATOR,
+    ];
+    for (const locator of locators) {
+      const p = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
+      fs.mkdirSync(p.dir, { recursive: true });
+      fs.writeFileSync(p.prover, proverBytes);
+      writeCreditsKeyCacheMetadata(p.metadata, {
+        format: CREDITS_KEY_CACHE_FORMAT,
+        locator,
+        network: NETWORK,
+        wasmHash: WASM_HASH_A,
+        prover: fingerprintBytes(proverBytes),
+      });
+    }
+
+    const { sdk } = makeMockSdk();
+    const kp = makeMockKeyProvider();
+    await warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A);
+
+    expect(kp.cacheKeys).toHaveBeenCalledTimes(locators.length);
+    const cachedLocators = kp.cacheKeys.mock.calls.map((c) => c[0]).sort();
+    expect(cachedLocators).toEqual([...locators].sort());
+  });
+
+  it("ignores non-entry keys on CREDITS_PROGRAM_KEYS (e.g. the `getKey` helper)", async () => {
+    // The real SDK exposes `getKey` as a function on CREDITS_PROGRAM_KEYS.
+    // warmupCreditsKeys must filter to entries that look like a credits
+    // key (locator string + verifyingKey function) and not crash on the
+    // helper.
+    const { sdk } = makeMockSdk();
+    const kp = makeMockKeyProvider();
+    await expect(
+      warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A),
+    ).resolves.toBeUndefined();
+    expect(kp.cacheKeys).not.toHaveBeenCalled(); // no on-disk entries yet
   });
 
   it("never throws when individual entries fail; surfaces nothing to the caller", async () => {
@@ -187,7 +271,7 @@ describe("warmupFeeKeys", () => {
     const { sdk } = makeMockSdk();
     const kp = makeMockKeyProvider();
     await expect(
-      warmupFeeKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A),
+      warmupCreditsKeys(kp as any, sdk as any, tmpDir, NETWORK, WASM_HASH_A),
     ).resolves.toBeUndefined();
     // The valid fee_public entry should still load.
     expect(kp.cacheKeys).toHaveBeenCalledOnce();
@@ -199,21 +283,22 @@ describe("PersistentFunctionKeyProvider write-back", () => {
   function makeDelegate() {
     const provingKey = { kind: "proving", toBytes: () => new Uint8Array([7, 7, 7]) };
     const verifyingKey = { kind: "verifying", toBytes: () => new Uint8Array([8]) };
+    const pair = [provingKey, verifyingKey];
     return {
       delegate: {
-        bondPublicKeys: vi.fn(),
-        bondValidatorKeys: vi.fn(),
+        bondPublicKeys: vi.fn().mockResolvedValue(pair),
+        bondValidatorKeys: vi.fn().mockResolvedValue(pair),
         cacheKeys: vi.fn(),
-        claimUnbondPublicKeys: vi.fn(),
-        functionKeys: vi.fn(),
-        feePrivateKeys: vi.fn().mockResolvedValue([provingKey, verifyingKey]),
-        feePublicKeys: vi.fn().mockResolvedValue([provingKey, verifyingKey]),
-        inclusionKeys: vi.fn(),
-        joinKeys: vi.fn(),
+        claimUnbondPublicKeys: vi.fn().mockResolvedValue(pair),
+        functionKeys: vi.fn().mockResolvedValue(pair),
+        feePrivateKeys: vi.fn().mockResolvedValue(pair),
+        feePublicKeys: vi.fn().mockResolvedValue(pair),
+        inclusionKeys: vi.fn().mockResolvedValue(pair),
+        joinKeys: vi.fn().mockResolvedValue(pair),
         keyStore: vi.fn().mockResolvedValue(undefined),
-        splitKeys: vi.fn(),
-        transferKeys: vi.fn(),
-        unBondPublicKeys: vi.fn(),
+        splitKeys: vi.fn().mockResolvedValue(pair),
+        transferKeys: vi.fn().mockResolvedValue(pair),
+        unBondPublicKeys: vi.fn().mockResolvedValue(pair),
       },
       provingKey,
     };
@@ -371,7 +456,7 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     expect(result).toBeDefined();
   });
 
-  it("does not persist when feePersistence config is omitted", async () => {
+  it("does not persist when creditsPersistence config is omitted", async () => {
     const { delegate } = makeDelegate();
     const provider = new PersistentFunctionKeyProvider(
       delegate as any,
@@ -391,6 +476,130 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     for (const name of entries) {
       // Filename must not contain raw locator separators.
       expect(name).not.toMatch(/[\/:]/);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Phase C — write-back must cover every credits.aleo key the SDK can
+  // request, not just fee_public / fee_private. These tests lock in the
+  // expanded contract so a regression that drops a delegate wrapper is
+  // caught immediately.
+  // -------------------------------------------------------------------------
+  it.each([
+    ["inclusionKeys", INCLUSION_LOCATOR],
+    ["joinKeys", JOIN_LOCATOR],
+    ["splitKeys", SPLIT_LOCATOR],
+    ["bondPublicKeys", BOND_PUBLIC_LOCATOR],
+    ["bondValidatorKeys", BOND_VALIDATOR_LOCATOR],
+    ["claimUnbondPublicKeys", CLAIM_UNBOND_PUBLIC_LOCATOR],
+    ["unBondPublicKeys", UNBOND_PUBLIC_LOCATOR],
+  ] as const)(
+    "writes the on-disk entry after %s() is called",
+    async (method, locator) => {
+      const { provider } = makePersistent();
+      await (provider as any)[method]();
+
+      const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
+      expect(fs.existsSync(paths.prover)).toBe(true);
+      expect(fs.existsSync(paths.metadata)).toBe(true);
+      expect([...fs.readFileSync(paths.prover)]).toEqual([7, 7, 7]);
+    },
+  );
+
+  it.each([
+    ["private", TRANSFER_PRIVATE_LOCATOR],
+    ["transfer_private", TRANSFER_PRIVATE_LOCATOR],
+    ["transferPrivate", TRANSFER_PRIVATE_LOCATOR],
+    ["public", TRANSFER_PUBLIC_LOCATOR],
+    ["transfer_public", TRANSFER_PUBLIC_LOCATOR],
+    ["transferPublic", TRANSFER_PUBLIC_LOCATOR],
+    ["public_as_signer", TRANSFER_PUBLIC_AS_SIGNER_LOCATOR],
+    ["transferPublicAsSigner", TRANSFER_PUBLIC_AS_SIGNER_LOCATOR],
+    ["private_to_public", TRANSFER_PRIVATE_TO_PUBLIC_LOCATOR],
+    ["transferPrivateToPublic", TRANSFER_PRIVATE_TO_PUBLIC_LOCATOR],
+    ["public_to_private", TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR],
+    ["transferPublicToPrivate", TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR],
+  ] as const)(
+    "maps transferKeys(%s) to the correct credits entry and writes it back",
+    async (visibility, locator) => {
+      const { provider } = makePersistent();
+      await provider.transferKeys(visibility);
+
+      const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
+      expect(fs.existsSync(paths.prover)).toBe(true);
+      expect(fs.existsSync(paths.metadata)).toBe(true);
+    },
+  );
+
+  it("skips persistence for transferKeys with an unknown visibility but still returns the delegate result", async () => {
+    const { provider, delegate } = makePersistent();
+    const result = await provider.transferKeys("nonsense-visibility");
+    expect(result).toBeDefined();
+    expect(delegate.transferKeys).toHaveBeenCalledOnce();
+
+    // No file should be on disk for an unmapped visibility.
+    const dir = path.join(tmpDir, "lionden-credits", WASM_HASH_A, NETWORK);
+    if (fs.existsSync(dir)) {
+      expect(fs.readdirSync(dir)).toEqual([]);
+    }
+  });
+
+  it("persists set_validator_state when functionKeys is called with the credits cacheKey", async () => {
+    const { provider } = makePersistent();
+    await provider.functionKeys({
+      proverUri: `https://parameters.example/${SET_VALIDATOR_STATE_LOCATOR}.prover`,
+      verifierUri: `https://parameters.example/${SET_VALIDATOR_STATE_LOCATOR}.verifier`,
+      cacheKey: "credits.aleo/set_validator_state",
+    });
+
+    const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, SET_VALIDATOR_STATE_LOCATOR);
+    expect(fs.existsSync(paths.prover)).toBe(true);
+    expect(fs.existsSync(paths.metadata)).toBe(true);
+  });
+
+  it("persists credits entries identified by functionKeys({ name })", async () => {
+    const { provider } = makePersistent();
+    await provider.functionKeys({ name: "set_validator_state" });
+
+    const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, SET_VALIDATOR_STATE_LOCATOR);
+    expect(fs.existsSync(paths.prover)).toBe(true);
+  });
+
+  it("persists credits entries identified by functionKeys proverUri/verifierUri (no cacheKey)", async () => {
+    const { provider } = makePersistent();
+    await provider.functionKeys({
+      proverUri: `https://parameters.example/${SET_VALIDATOR_STATE_LOCATOR}.prover`,
+      verifierUri: `https://parameters.example/${SET_VALIDATOR_STATE_LOCATOR}.verifier`,
+    });
+
+    const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, SET_VALIDATOR_STATE_LOCATOR);
+    expect(fs.existsSync(paths.prover)).toBe(true);
+  });
+
+  it("does not persist for functionKeys with arbitrary (non-credits) locators", async () => {
+    const { provider, delegate } = makePersistent();
+    await provider.functionKeys({
+      proverUri: "https://example.invalid/user/myProgram.aleo/myFn.prover",
+      verifierUri: "https://example.invalid/user/myProgram.aleo/myFn.verifier",
+      cacheKey: "myProgram.aleo/myFn",
+    });
+    expect(delegate.functionKeys).toHaveBeenCalledOnce();
+
+    // No credits locator identified — disk should stay empty.
+    const dir = path.join(tmpDir, "lionden-credits", WASM_HASH_A, NETWORK);
+    if (fs.existsSync(dir)) {
+      expect(fs.readdirSync(dir)).toEqual([]);
+    }
+  });
+
+  it("does not persist for functionKeys with an unknown name", async () => {
+    const { provider, delegate } = makePersistent();
+    await provider.functionKeys({ name: "anything" });
+    expect(delegate.functionKeys).toHaveBeenCalledOnce();
+
+    const dir = path.join(tmpDir, "lionden-credits", WASM_HASH_A, NETWORK);
+    if (fs.existsSync(dir)) {
+      expect(fs.readdirSync(dir)).toEqual([]);
     }
   });
 });

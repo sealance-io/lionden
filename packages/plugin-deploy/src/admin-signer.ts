@@ -24,6 +24,7 @@ export async function deriveAddressFromKey(
       endpoint: connection.endpoint,
       privateKey,
       apiKey: connection.apiKey,
+      egressPolicy: connection.egressPolicy,
     });
     return sdk.account.address().to_string();
   } catch (err) {

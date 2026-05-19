@@ -9,6 +9,7 @@ import type {
   ResolvedTestingConfig,
   ResolvedDeployConfig,
   ResolvedSdkConfig,
+  ResolvedSdkEgressConfig,
   ResolvedExecutionConfig,
   RuntimeImportRef,
   ResolvedPaths,
@@ -282,9 +283,12 @@ function resolveSdkConfig(
 ): ResolvedSdkConfig {
   const keyCache = config.sdk?.keyCache;
   const storage = keyCache?.storage ?? "filesystem";
+  const egress = resolveSdkEgressConfig(config);
 
   if (storage === "memory") {
-    return { keyCache: { storage } };
+    return egress === undefined
+      ? { keyCache: { storage } }
+      : { keyCache: { storage }, egress };
   }
 
   const rawPath = keyCache?.path ?? path.join(artifactsPath, ".cache", "provable-keys");
@@ -293,12 +297,34 @@ function resolveSdkConfig(
     ? expandedPath
     : path.resolve(projectRoot, expandedPath);
 
-  return {
-    keyCache: {
-      storage,
-      path: normalizeAleoKeyCachePath(absolutePath),
-    },
-  };
+  return egress === undefined
+    ? {
+        keyCache: {
+          storage,
+          path: normalizeAleoKeyCachePath(absolutePath),
+        },
+      }
+    : {
+        keyCache: {
+          storage,
+          path: normalizeAleoKeyCachePath(absolutePath),
+        },
+        egress,
+      };
+}
+
+function resolveSdkEgressConfig(
+  config: LionDenUserConfig,
+): ResolvedSdkEgressConfig | undefined {
+  const egress = config.sdk?.egress;
+  if (!egress) return undefined;
+  const resolved: {
+    networkHosts?: readonly string[];
+    violation?: "block" | "warn";
+  } = {};
+  if (egress.networkHosts) resolved.networkHosts = [...egress.networkHosts];
+  if (egress.violation) resolved.violation = egress.violation;
+  return resolved;
 }
 
 function normalizeAleoKeyCachePath(p: string): string {
