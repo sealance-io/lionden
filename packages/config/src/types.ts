@@ -304,6 +304,16 @@ export interface DeployConfig {
 export interface SdkConfig {
   /** Proving/verifying key cache settings. Defaults to filesystem-backed caching. */
   readonly keyCache?: SdkKeyCacheConfig;
+  /**
+   * Overrides for the per-connection SDK network-host egress policy. By
+   * default, `allowedNetworkHosts` is scoped to the configured endpoint
+   * (devnode socket or http endpoint). Use `networkHosts` to extend with
+   * sidecar / telemetry hosts and `violation` to switch between hard-block
+   * and warn-only for rollout / debugging. Parameter-host (credits keys,
+   * SRS) egress is governed by the SDK key cache and an internal known-host
+   * list; see `network.md` § SDK Objects.
+   */
+  readonly egress?: SdkEgressConfig;
 }
 
 export interface SdkKeyCacheConfig {
@@ -311,6 +321,19 @@ export interface SdkKeyCacheConfig {
   readonly storage?: "memory" | "filesystem";
   /** Filesystem cache directory. Relative paths resolve from project root. */
   readonly path?: string;
+}
+
+/**
+ * Optional overrides for the SDK network-host egress policy. Host lists
+ * are literal hostnames (no `https://` prefix, no shorthand strings). When
+ * a field is omitted, the per-connection default applies (`networkHosts`:
+ * the configured endpoint host only; `violation`: `"block"`).
+ */
+export interface SdkEgressConfig {
+  /** Hosts the SDK may call for chain state / submission, in addition to the connection endpoint. */
+  readonly networkHosts?: readonly string[];
+  /** What to do on a disallowed network-host fetch. Default: "block". */
+  readonly violation?: "block" | "warn";
 }
 
 export interface ExecutionConfig {
@@ -414,12 +437,25 @@ export interface ResolvedDeployConfig {
 
 export interface ResolvedSdkConfig {
   readonly keyCache: ResolvedSdkKeyCacheConfig;
+  /**
+   * User-supplied network-host egress overrides. `undefined` means
+   * "use the per-connection default `allowedNetworkHosts = { endpoint host }`
+   * with `violation = "block"`". The runtime `SdkEgressPolicy` is built
+   * per-connection by `NetworkManager` from the connection endpoint plus
+   * these overrides; it does not vary by network `type`.
+   */
+  readonly egress?: ResolvedSdkEgressConfig;
 }
 
 export interface ResolvedSdkKeyCacheConfig {
   readonly storage: "memory" | "filesystem";
   /** Absolute effective filesystem path when storage is "filesystem". */
   readonly path?: string;
+}
+
+export interface ResolvedSdkEgressConfig {
+  readonly networkHosts?: readonly string[];
+  readonly violation?: "block" | "warn";
 }
 
 /** Resolved network config — discriminated by type, all fields populated */

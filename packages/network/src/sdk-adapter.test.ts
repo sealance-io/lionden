@@ -21,7 +21,13 @@ import {
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
   type SdkObjects,
+  type SdkEgressPolicy,
 } from "./sdk-adapter.js";
+
+const TEST_EGRESS_POLICY: SdkEgressPolicy = {
+  allowedNetworkHosts: new Set(["127.0.0.1:3030"]),
+  violation: "block",
+};
 
 // Well-known devnode account-0
 const DEVNODE_KEY =
@@ -49,6 +55,7 @@ describe("createSdkObjects()", () => {
       network: "testnet",
       endpoint: "http://127.0.0.1:3030",
       privateKey: DEVNODE_KEY,
+      egressPolicy: TEST_EGRESS_POLICY,
     });
 
     const addr = typeof (defaultSdk.account as any).address === "function"
@@ -64,6 +71,7 @@ describe("createSdkObjects()", () => {
       endpoint: "http://127.0.0.1:3030",
       privateKey: DEVNODE_KEY,
       apiKey: "test-api-key",
+      egressPolicy: TEST_EGRESS_POLICY,
     });
 
     // Verify the PM's internal network client received the API key header
@@ -74,6 +82,85 @@ describe("createSdkObjects()", () => {
     try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
   });
 
+  it("flips hasCustomTransport on the standalone and PM-internal network clients when an egress policy is set", async () => {
+    const sdk = await createSdkObjects({
+      network: "testnet",
+      endpoint: "http://127.0.0.1:3030",
+      privateKey: DEVNODE_KEY,
+      egressPolicy: TEST_EGRESS_POLICY,
+    });
+
+    // Standalone networkClient — used by getMappingValue/getProgram/etc.
+    expect((sdk.networkClient as any).hasCustomTransport).toBe(true);
+    // ProgramManager's *internal* networkClient — this is the one the
+    // prove path reads at browser.js:5796 to decide whether to use
+    // CallbackQuery vs WASM's internal SnapshotQuery. The leak we're
+    // closing requires both to carry the transport.
+    expect(((sdk.programManager as any).networkClient).hasCustomTransport).toBe(true);
+
+    try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+
+  it("installs the parameter transport on AleoKeyProvider with the internal known-host allowlist", async () => {
+    const sdk = await createSdkObjects({
+      network: "testnet",
+      endpoint: "http://127.0.0.1:3030",
+      privateKey: DEVNODE_KEY,
+      egressPolicy: TEST_EGRESS_POLICY,
+    });
+
+    // Without keyCache, keyProvider is the raw AleoKeyProvider — its
+    // `transport` field is the guarded transport we built (a function
+    // distinct from defaultTransport).
+    const transport = (sdk.keyProvider as any).transport;
+    expect(typeof transport).toBe("function");
+    expect(transport.length).toBeGreaterThanOrEqual(0); // typeof fetch
+
+    // Unknown host must be rejected with the stale-allowlist wording —
+    // and never call fetch.
+    const originalFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("ok", { status: 200 }),
+    );
+    try {
+      await expect(transport("https://blocked.example/x")).rejects.toThrow(
+        /LionDen does not recognize SDK parameter host "blocked\.example"/,
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // A known parameter host is forwarded (fetch stubbed so no real call).
+      const res = await transport(
+        "https://parameters.provable.com/testnet/fee_public.prover",
+      );
+      expect(res.ok).toBe(true);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    } finally {
+      fetchSpy.mockRestore();
+      globalThis.fetch = originalFetch;
+    }
+
+    try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+
+  it("rejects empty or invalid endpoints fast (defensive guard)", async () => {
+    await expect(
+      createSdkObjects({
+        network: "testnet",
+        endpoint: "",
+        privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
+      }),
+    ).rejects.toThrow(/non-empty endpoint string/);
+    await expect(
+      createSdkObjects({
+        network: "testnet",
+        endpoint: "not a url",
+        privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
+      }),
+    ).rejects.toThrow(/invalid endpoint URL/);
+  });
+
   it("wraps the SDK key provider once for filesystem key cache mode", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-sdk-keys-"));
     try {
@@ -82,6 +169,7 @@ describe("createSdkObjects()", () => {
         endpoint: "http://127.0.0.1:3030",
         privateKey: DEVNODE_KEY,
         keyCache: { storage: "filesystem", path: path.join(tmpDir, ".aleo") },
+        egressPolicy: TEST_EGRESS_POLICY,
       });
 
       expect(sdk.keyProvider).toBeInstanceOf(PersistentFunctionKeyProvider);
@@ -102,6 +190,7 @@ describe("createSignerSdkObjects()", () => {
         network: "testnet",
         endpoint: "http://127.0.0.1:3030",
         privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
       });
     }
 
@@ -110,6 +199,7 @@ describe("createSignerSdkObjects()", () => {
       endpoint: "http://127.0.0.1:3030",
       network: "testnet",
       keyProvider: defaultSdk.keyProvider,
+      egressPolicy: TEST_EGRESS_POLICY,
     });
 
     const signerAddr = typeof (signerSdk.account as any).address === "function"
@@ -133,6 +223,7 @@ describe("createSignerSdkObjects()", () => {
         network: "testnet",
         endpoint: "http://127.0.0.1:3030",
         privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
       });
     }
 
@@ -141,6 +232,7 @@ describe("createSignerSdkObjects()", () => {
       endpoint: "http://127.0.0.1:3030",
       network: "testnet",
       keyProvider: defaultSdk.keyProvider,
+      egressPolicy: TEST_EGRESS_POLICY,
     });
 
     // The PM's account must be the signer's, not the default
@@ -162,6 +254,7 @@ describe("createSignerSdkObjects()", () => {
         network: "testnet",
         endpoint: "http://127.0.0.1:3030",
         privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
       });
     }
 
@@ -170,6 +263,7 @@ describe("createSignerSdkObjects()", () => {
       endpoint: "http://127.0.0.1:3030",
       network: "testnet",
       keyProvider: defaultSdk.keyProvider,
+      egressPolicy: TEST_EGRESS_POLICY,
     });
 
     // The PM's keyProvider must be the exact same instance as the default SDK's
@@ -177,6 +271,55 @@ describe("createSignerSdkObjects()", () => {
     expect(pm.keyProvider).toBe(defaultSdk.keyProvider);
 
     try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+
+  it("propagates hasCustomTransport to the signer's standalone and PM-internal network clients", async () => {
+    if (!defaultSdk) {
+      defaultSdk = await createSdkObjects({
+        network: "testnet",
+        endpoint: "http://127.0.0.1:3030",
+        privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
+      });
+    }
+
+    const signerSdk = await createSignerSdkObjects({
+      privateKey: SIGNER_KEY,
+      endpoint: "http://127.0.0.1:3030",
+      network: "testnet",
+      keyProvider: defaultSdk.keyProvider,
+      egressPolicy: TEST_EGRESS_POLICY,
+    });
+
+    // The per-signer prove path uses the per-signer PM's internal
+    // network client. Both layers must carry the transport for
+    // CallbackQuery routing to kick in: the standalone one wrapped by
+    // the RecordProvider AND the one ProgramManager built internally.
+    const pm = signerSdk.programManager as any;
+    expect(pm.networkClient.hasCustomTransport).toBe(true);
+    expect((signerSdk.recordProvider as any).networkClient.hasCustomTransport).toBe(true);
+
+    try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+  });
+
+  it("rejects empty or invalid endpoints fast in the signer factory too", async () => {
+    if (!defaultSdk) {
+      defaultSdk = await createSdkObjects({
+        network: "testnet",
+        endpoint: "http://127.0.0.1:3030",
+        privateKey: DEVNODE_KEY,
+        egressPolicy: TEST_EGRESS_POLICY,
+      });
+    }
+    await expect(
+      createSignerSdkObjects({
+        privateKey: SIGNER_KEY,
+        endpoint: "",
+        network: "testnet",
+        keyProvider: defaultSdk.keyProvider,
+        egressPolicy: TEST_EGRESS_POLICY,
+      }),
+    ).rejects.toThrow(/non-empty endpoint string/);
   });
 
   it("reuses the persistent key provider for signer ProgramManagers", async () => {
@@ -187,12 +330,14 @@ describe("createSignerSdkObjects()", () => {
         endpoint: "http://127.0.0.1:3030",
         privateKey: DEVNODE_KEY,
         keyCache: { storage: "filesystem", path: path.join(tmpDir, ".aleo") },
+        egressPolicy: TEST_EGRESS_POLICY,
       });
       const signerSdk = await createSignerSdkObjects({
         privateKey: SIGNER_KEY,
         endpoint: "http://127.0.0.1:3030",
         network: "testnet",
         keyProvider: sdk.keyProvider,
+        egressPolicy: TEST_EGRESS_POLICY,
       });
 
       expect(sdk.keyProvider).toBeInstanceOf(PersistentFunctionKeyProvider);

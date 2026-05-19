@@ -70,6 +70,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | `node` task: `--port` (default 3030), `--manual-blocks`, `--network` (testnet/mainnet/canary) | `packages/plugin-network/src/index.ts` |
 | `run` task: positional script path, optional `--network`; imports the script and calls `default` or `main` | same |
 | `--consensus-heights` opt-in field for devnode (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts`, config types |
+| SDK egress policy (network-host scope): per-connection guarded `transport` on `AleoNetworkClient` and per-signer clones. Default `allowedNetworkHosts = { connection endpoint }` with `violation: "block"`; users extend via `sdk.egress.networkHosts` (telemetry, sidecars) and switch to `violation: "warn"` for rollout / debugging. Installing any transport flips `hasCustomTransport=true`, forcing state queries through `CallbackQuery` instead of WASM's `https://api.provable.com/v2`-baked SnapshotQuery — the load-bearing leak closure. Parameter downloads (credits keys, SRS) use an internal known-host list; not user-configurable. See [`network.md` § Egress Policy](network.md#egress-policy) | `packages/network/src/sdk-adapter.ts` (`makeNetworkTransport`, `makeParameterTransport`, `SdkEgressPolicy`), `packages/network/src/network-manager.ts` (`resolveEgressPolicy`), `packages/core/src/config-resolution.ts` (`resolveSdkEgressConfig`) |
 
 ### Deploy + Upgrade + Export + Recipes
 
@@ -201,7 +202,7 @@ These gaps are relative to the five bug-hunt probes, not the full example suite.
 
 ### Performance / DX gaps
 
-- **Proof-key disk caching**: shipped and enabled by default. Runtime per-transition execution keys, compile-time sidecar refs, and `credits.aleo` fee keys persist under the filesystem SDK key cache unless projects opt out with `sdk.keyCache.storage = "memory"`. See [`research/key-caching.md`](research/key-caching.md).
+- **Proof-key disk caching**: shipped and enabled by default. Runtime per-transition execution keys, compile-time sidecar refs, and every entry in `credits.aleo`'s `CREDITS_PROGRAM_KEYS` (fee, inclusion, join, split, bond_*, unbond_*, claim_unbond_public, transfer_*, set_validator_state, bond_validator) persist under the filesystem SDK key cache unless projects opt out with `sdk.keyCache.storage = "memory"`. Persistence is a performance layer; hermeticity is enforced separately by the egress policy. See [`research/key-caching.md`](research/key-caching.md) and [`network.md` § SDK Objects](network.md#sdk-objects).
 - **Compile-time proving-key pre-warm**: deferred. The runtime cache amortizes synthesis cost to a single first-call write-back per identity; a compile-time pre-warm is blocked on an upstream SDK API change (real inputs required for `synthesizeKeyPair`). See [`research/key-caching.md`](research/key-caching.md).
 - **Block-advancement throughput**: ~1s per block on devnode (Insight 18 in the same doc). Block-height-gated tests with thresholds > ~30 risk timeouts.
 

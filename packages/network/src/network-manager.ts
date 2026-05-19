@@ -8,6 +8,7 @@
 import type {
   LionDenResolvedConfig,
   ResolvedNetworkConfig,
+  ResolvedSdkEgressConfig,
   NamedAccounts,
 } from "@lionden/config";
 import type {
@@ -20,6 +21,26 @@ import type {
 import { AleoConnection } from "./connection.js";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
 import { NamedAccountManager } from "./named-account-manager.js";
+import type { SdkEgressPolicy } from "./sdk-adapter.js";
+
+function resolveEgressPolicy(
+  endpoint: string,
+  override?: ResolvedSdkEgressConfig,
+): SdkEgressPolicy {
+  const endpointHost = (() => {
+    try { return new URL(endpoint).host; }
+    catch { return ""; }
+  })();
+
+  const networkHosts = new Set<string>(endpointHost ? [endpointHost] : []);
+  if (override?.networkHosts) {
+    for (const h of override.networkHosts) networkHosts.add(h);
+  }
+  return {
+    allowedNetworkHosts: networkHosts,
+    violation: override?.violation ?? "block",
+  };
+}
 
 export class NetworkManagerImpl implements NetworkManager {
   private readonly config: LionDenResolvedConfig;
@@ -74,6 +95,7 @@ export class NetworkManagerImpl implements NetworkManager {
         networkId: networkConfig.network,
         endpoint: connection.endpoint,
         apiKey: networkConfig.type === "http" ? networkConfig.apiKey : undefined,
+        egressPolicy: connection.egressPolicy,
       });
     } catch (err) {
       await connection.close().catch(() => {});
@@ -160,6 +182,7 @@ export class NetworkManagerImpl implements NetworkManager {
     name: string,
     config: ResolvedNetworkConfig,
   ): NetworkConnection {
+    const egressOverride = this.config.sdk.egress;
     switch (config.type) {
       case "devnode": {
         const endpoint = `http://${config.socketAddr}`;
@@ -176,6 +199,7 @@ export class NetworkManagerImpl implements NetworkManager {
           privateKey,
           artifactsDir: this.config.paths.artifacts,
           keyCache: this.config.sdk.keyCache,
+          egressPolicy: resolveEgressPolicy(endpoint, egressOverride),
           projectRoot: this.config.paths.root,
           executionImports: this.config.execution.imports,
         });
@@ -190,6 +214,7 @@ export class NetworkManagerImpl implements NetworkManager {
           apiKey: config.apiKey,
           artifactsDir: this.config.paths.artifacts,
           keyCache: this.config.sdk.keyCache,
+          egressPolicy: resolveEgressPolicy(config.endpoint, egressOverride),
           projectRoot: this.config.paths.root,
           executionImports: this.config.execution.imports,
         });

@@ -1,4 +1,5 @@
 import type { AleoNetwork, NamedAccounts } from "@lionden/config";
+import type { SdkEgressPolicy } from "./sdk-adapter.js";
 
 // ---------------------------------------------------------------------------
 // Transaction types
@@ -249,6 +250,12 @@ export interface NetworkConnection {
   readonly privateKey?: string;
   /** API key for explorer/node authentication. */
   readonly apiKey?: string;
+  /**
+   * SDK egress policy resolved for this connection. Plugins that build
+   * their own SDK objects (deploy / upgrade / preflight) must forward
+   * this into `createSdkObjects` so the same transports are installed.
+   */
+  readonly egressPolicy: SdkEgressPolicy;
 
   /** Get account balance in microcredits. Uses configured default account if none specified. */
   getBalance(address?: string): Promise<bigint>;

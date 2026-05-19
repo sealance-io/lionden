@@ -26,6 +26,7 @@ import {
 } from "@lionden/core";
 import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
+import type { TransportFunction } from "@provablehq/sdk/testnet.js";
 
 // ---------------------------------------------------------------------------
 // SDK types
@@ -137,6 +138,188 @@ export async function initSdk(): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Egress policy
+// ---------------------------------------------------------------------------
+
+/**
+ * Hosts the bundled @provablehq/sdk + WASM can fetch proving parameters and
+ * SRS files from. Hardcoded because (a) the SDK's URLs are baked into the
+ * WASM, (b) the artifact set is static, and (c) per-network user
+ * configuration of this list never delivered a meaningful hermeticity
+ * guarantee — true offline / hermetic operation requires a warmed cache
+ * plus external network isolation (CI / container / firewall). If a future
+ * SDK version adds a new host, update this list.
+ */
+const KNOWN_SDK_PARAMETER_HOSTS: ReadonlySet<string> = new Set([
+  "parameters.provable.com",
+  "s3.us-west-1.amazonaws.com",
+  "parameters.aleo.org",
+]);
+
+/**
+ * Runtime SDK egress policy. Governs **network-host** fetches only
+ * (chain state, transaction submission). Resolved per-connection in
+ * `NetworkManager` and threaded through `createSdkObjects` /
+ * `createSignerSdkObjects` so the guarded transport is installed on
+ * `AleoNetworkClient`, the `ProgramManager`'s internal client, and every
+ * per-signer copy.
+ *
+ * Beyond filtering egress, installing ANY transport on `AleoNetworkClient`
+ * also flips the SDK's `hasCustomTransport` to true, forcing the prove
+ * path to use `CallbackQuery` instead of WASM's internal SnapshotQuery —
+ * closing the `statePaths` leak where WASM bypasses the JS-configured host.
+ *
+ * Parameter-host fetches (`AleoKeyProvider`) are guarded against the
+ * internal `KNOWN_SDK_PARAMETER_HOSTS` allowlist and are not configurable
+ * via this policy.
+ */
+export interface SdkEgressPolicy {
+  /** Hosts the SDK is allowed to call for chain state / submission. */
+  readonly allowedNetworkHosts: ReadonlySet<string>;
+  /** What to do when a network-host fetch targets a host that's not allowed. */
+  readonly violation: "block" | "warn";
+}
+
+function urlOf(input: Parameters<TransportFunction>[0]): URL {
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    return new URL(input.url);
+  }
+  if (input instanceof URL) return input;
+  return new URL(String(input));
+}
+
+const GUARDED_TRANSPORT_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const GUARDED_TRANSPORT_MAX_REDIRECTS = 20;
+
+type EgressUrlValidator = (url: URL) => void;
+
+function redirectAwareInit(init: Parameters<TransportFunction>[1]): RequestInit {
+  // Force manual redirects so the guard can validate every Location before fetch follows it.
+  return { ...init, redirect: "manual" };
+}
+
+function nextRedirectInit(
+  init: Parameters<TransportFunction>[1],
+  status: number,
+): Parameters<TransportFunction>[1] {
+  const method = init?.method?.toUpperCase();
+  const shouldSwitchToGet =
+    (status === 303 && method !== "GET" && method !== "HEAD") ||
+    ((status === 301 || status === 302) && method === "POST");
+  if (shouldSwitchToGet) {
+    const next: RequestInit = { ...init, method: "GET" };
+    delete next.body;
+    if (next.headers) {
+      const headers = new Headers(next.headers);
+      headers.delete("content-encoding");
+      headers.delete("content-length");
+      headers.delete("content-type");
+      next.headers = headers;
+    }
+    return next;
+  }
+  return init;
+}
+
+async function fetchWithEgressGuardedRedirects(
+  input: Parameters<TransportFunction>[0],
+  init: Parameters<TransportFunction>[1],
+  validateUrl: EgressUrlValidator,
+): Promise<Response> {
+  let currentUrl: URL;
+  try {
+    currentUrl = urlOf(input);
+  } catch {
+    return fetch(input as Parameters<typeof fetch>[0], redirectAwareInit(init));
+  }
+
+  let currentInput = input as Parameters<typeof fetch>[0];
+  let currentInit = init;
+  let redirectCount = 0;
+  const visited = new Set<string>();
+
+  for (;;) {
+    validateUrl(currentUrl);
+    if (visited.has(currentUrl.href)) {
+      throw new Error(`LionDen SDK transport detected redirect loop to "${currentUrl.href}".`);
+    }
+    visited.add(currentUrl.href);
+
+    const response = await fetch(currentInput, redirectAwareInit(currentInit));
+    if (!GUARDED_TRANSPORT_REDIRECT_STATUSES.has(response.status)) {
+      return response;
+    }
+
+    const location = response.headers.get("location");
+    if (!location) {
+      return response;
+    }
+    if (redirectCount >= GUARDED_TRANSPORT_MAX_REDIRECTS) {
+      throw new Error(
+        `LionDen SDK transport exceeded ${GUARDED_TRANSPORT_MAX_REDIRECTS} redirects.`,
+      );
+    }
+
+    const nextUrl = new URL(location, currentUrl);
+    redirectCount += 1;
+    currentUrl = nextUrl;
+    currentInput = nextUrl;
+    currentInit = nextRedirectInit(currentInit, response.status);
+  }
+}
+
+/**
+ * Build a `fetch`-shaped transport for SDK **network-host** calls
+ * (chain state, transaction submission). On a host outside `allowed`,
+ * rejects when `violation === "block"` and logs-then-forwards when
+ * `violation === "warn"`. Warn mode forwards the SDK request unchanged,
+ * including headers, so use it only when intentionally observing egress
+ * instead of enforcing it. Exported for unit testing.
+ */
+export function makeNetworkTransport(
+  allowed: ReadonlySet<string>,
+  violation: "block" | "warn",
+): TransportFunction {
+  return (input, init) => {
+    return fetchWithEgressGuardedRedirects(input, init, (url) => {
+      if (!allowed.has(url.host)) {
+        const msg =
+          `LionDen blocked SDK network fetch to host "${url.host}". ` +
+          `Allowed hosts: ${
+            allowed.size === 0 ? "(none)" : Array.from(allowed).join(", ")
+          }. Extend sdk.egress.networkHosts or change sdk.egress.violation.`;
+        if (violation === "block") {
+          throw new Error(msg);
+        }
+        console.warn(msg);
+      }
+    });
+  };
+}
+
+/**
+ * Build a `fetch`-shaped transport for SDK **parameter-host** calls
+ * (credits proving/verifying keys, SRS files). Allowlist is the
+ * module-private `KNOWN_SDK_PARAMETER_HOSTS`; violation is always block.
+ * An unknown host means LionDen's allowlist is stale relative to the
+ * installed SDK, surfaced as a clear actionable error. Exported for
+ * unit testing.
+ */
+export function makeParameterTransport(): TransportFunction {
+  return (input, init) => {
+    return fetchWithEgressGuardedRedirects(input, init, (url) => {
+      if (!KNOWN_SDK_PARAMETER_HOSTS.has(url.host)) {
+        const msg =
+          `LionDen does not recognize SDK parameter host "${url.host}". ` +
+          `Known hosts: ${Array.from(KNOWN_SDK_PARAMETER_HOSTS).join(", ")}. ` +
+          `This may indicate a stale LionDen allowlist; please report.`;
+        throw new Error(msg);
+      }
+    });
+  };
+}
+
 export interface CreateSdkObjectsOptions {
   network: AleoNetwork;
   endpoint: string;
@@ -144,6 +327,17 @@ export interface CreateSdkObjectsOptions {
   /** API key passed as Authorization header to AleoNetworkClient. */
   apiKey?: string;
   keyCache?: ResolvedSdkKeyCacheConfig;
+  /**
+   * Egress policy for SDK network-host fetches. Required — installing the
+   * guarded transport is what flips `hasCustomTransport=true` and forces
+   * the prove path to use `CallbackQuery` instead of WASM's internal
+   * SnapshotQuery (which is baked to `https://api.provable.com/v2`). Every
+   * production caller threads a per-connection policy through
+   * `NetworkManager`. Parameter-host fetches are guarded against an
+   * internal known-host list (`KNOWN_SDK_PARAMETER_HOSTS`) and are not
+   * configurable via this policy.
+   */
+  egressPolicy: SdkEgressPolicy;
 }
 
 /**
@@ -151,15 +345,9 @@ export interface CreateSdkObjectsOptions {
  * Validates that required devnode methods exist (version guard).
  */
 export async function createSdkObjects(
-  networkOrOpts: AleoNetwork | CreateSdkObjectsOptions,
-  endpoint?: string,
-  privateKey?: string,
+  opts: CreateSdkObjectsOptions,
 ): Promise<SdkObjects> {
-  // Support both positional args and options object
-  const opts: CreateSdkObjectsOptions =
-    typeof networkOrOpts === "object"
-      ? networkOrOpts
-      : { network: networkOrOpts, endpoint: endpoint!, privateKey };
+  assertValidEndpoint(opts.endpoint, "createSdkObjects");
 
   await initSdk();
 
@@ -179,21 +367,36 @@ export async function createSdkObjects(
     // Create account
     const account = opts.privateKey ? new Account({ privateKey: opts.privateKey }) : new Account();
 
-    // Create network client — pass apiKey as Authorization header if provided
-    const networkClientOptions = opts.apiKey
-      ? { headers: { Authorization: `Bearer ${opts.apiKey}` } }
-      : undefined;
+    // Network transport (chain state, transaction submission). Installing
+    // the transport on AleoNetworkClient flips hasCustomTransport=true in
+    // the SDK, forcing the prove path to use CallbackQuery instead of
+    // WASM's internal SnapshotQuery (closes the statePaths leak).
+    // networkClientOptions is also passed to ProgramManager below so its
+    // internal AleoNetworkClient inherits the same transport.
+    const networkTransport = makeNetworkTransport(
+      opts.egressPolicy.allowedNetworkHosts,
+      opts.egressPolicy.violation,
+    );
+
+    const networkClientOptions: { headers?: Record<string, string>; transport: TransportFunction } = {
+      transport: networkTransport,
+    };
+    if (opts.apiKey) {
+      networkClientOptions.headers = { Authorization: `Bearer ${opts.apiKey}` };
+    }
     const networkClient = new AleoNetworkClient(opts.endpoint, networkClientOptions);
 
-    // Create key and record providers
-    const keyProvider = new AleoKeyProvider();
+    // Parameter transport (credits proving/verifying keys, SRS files).
+    // Always installed — allowlist is an internal LionDen invariant
+    // (KNOWN_SDK_PARAMETER_HOSTS) independent of egressPolicy.
+    const keyProvider = new AleoKeyProvider({ transport: makeParameterTransport() });
     keyProvider.useCache(true);
 
     let effectiveKeyProvider: SdkFunctionKeyProvider = keyProvider;
     if (opts.keyCache?.storage === "filesystem" && opts.keyCache.path) {
       const cachePath = opts.keyCache.path;
       const { wasmHash } = getSdkRuntimeMetadata(opts.network);
-      await warmupFeeKeys(keyProvider, sdk, cachePath, opts.network, wasmHash);
+      await warmupCreditsKeys(keyProvider, sdk, cachePath, opts.network, wasmHash);
       effectiveKeyProvider = new PersistentFunctionKeyProvider(
         keyProvider,
         new LocalFileKeyStore(cachePath),
@@ -251,82 +454,226 @@ export interface CreateSignerSdkObjectsOptions {
   network: AleoNetwork;
   keyProvider: SdkObjects["keyProvider"];
   apiKey?: string;
+  /** Required — same rationale as on `CreateSdkObjectsOptions`. */
+  egressPolicy: SdkEgressPolicy;
 }
 
-export interface FeeKeyPersistenceConfig {
+export interface CreditsKeyPersistenceConfig {
   readonly sdk: SdkModule;
   readonly cachePath: string;
   readonly network: AleoNetwork;
   readonly wasmHash: string;
 }
 
-type FeeKeyName = "fee_public" | "fee_private";
+/**
+ * Names of credits.aleo keys we can persist by-name. These are the
+ * function-key-provider methods that map 1:1 to a single entry in the
+ * SDK's CREDITS_PROGRAM_KEYS map. `transferKeys(visibility)` is handled
+ * separately because its credits-key target depends on the visibility
+ * argument.
+ */
+type CreditsKeyName =
+  | "bond_public"
+  | "bond_validator"
+  | "claim_unbond_public"
+  | "fee_private"
+  | "fee_public"
+  | "inclusion"
+  | "join"
+  | "split"
+  | "unbond_public";
+
+/**
+ * Resolve which credits.aleo entry (if any) a `functionKeys()` call
+ * refers to. The SDK reaches some entries — notably `set_validator_state`
+ * — only through the generic `functionKeys()` path with one of:
+ *   - `{ name: "<credits_entry>" }`
+ *   - `{ cacheKey: "credits.aleo/<credits_entry>" }`
+ *   - `{ proverUri, verifierUri, cacheKey? }` where the URIs match an
+ *     entry's prover/verifier in `CREDITS_PROGRAM_KEYS`.
+ * Returns the matching entry name, or `undefined` if the params do not
+ * identify a known credits entry. Non-credits user keys are intentionally
+ * left unpersisted (LionDen does not own arbitrary-locator persistence).
+ */
+function creditsEntryFromFunctionKeysParams(
+  sdk: SdkModule,
+  params: SdkKeySearchParams | undefined,
+): string | undefined {
+  if (!params || typeof params !== "object") return undefined;
+  const credits = (sdk as unknown as {
+    CREDITS_PROGRAM_KEYS: Record<string, { locator: string; prover: string; verifier: string }>;
+  }).CREDITS_PROGRAM_KEYS;
+  const p = params as Record<string, unknown>;
+
+  const name = typeof p.name === "string" ? p.name : undefined;
+  if (name && Object.prototype.hasOwnProperty.call(credits, name) && name !== "getKey") {
+    return name;
+  }
+
+  const cacheKey = typeof p.cacheKey === "string" ? p.cacheKey : undefined;
+  if (cacheKey) {
+    const prefix = "credits.aleo/";
+    if (cacheKey.startsWith(prefix)) {
+      const entry = cacheKey.slice(prefix.length);
+      if (Object.prototype.hasOwnProperty.call(credits, entry) && entry !== "getKey") {
+        return entry;
+      }
+    }
+  }
+
+  const proverUri = typeof p.proverUri === "string" ? p.proverUri : undefined;
+  if (proverUri) {
+    for (const [entry, value] of Object.entries(credits)) {
+      if (entry === "getKey") continue;
+      if (value && typeof value === "object" && value.prover === proverUri) {
+        return entry;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Map a `transferKeys(visibility)` argument to the corresponding entry
+ * in CREDITS_PROGRAM_KEYS. Mirrors the SDK's visibility sets at
+ * `node_modules/@provablehq/sdk/dist/testnet/browser.js:2913-2929`.
+ * Unknown visibility strings fall through (returns `undefined`) so the
+ * delegate result is still returned to the caller; only persistence is
+ * skipped.
+ */
+function transferKeyNameForVisibility(visibility: string): string | undefined {
+  switch (visibility) {
+    case "private":
+    case "transfer_private":
+    case "transferPrivate":
+      return "transfer_private";
+    case "private_to_public":
+    case "privateToPublic":
+    case "transfer_private_to_public":
+    case "transferPrivateToPublic":
+      return "transfer_private_to_public";
+    case "public":
+    case "transfer_public":
+    case "transferPublic":
+      return "transfer_public";
+    case "public_as_signer":
+    case "transfer_public_as_signer":
+    case "transferPublicAsSigner":
+      return "transfer_public_as_signer";
+    case "public_to_private":
+    case "publicToPrivate":
+    case "transfer_public_to_private":
+    case "transferPublicToPrivate":
+      return "transfer_public_to_private";
+    default:
+      return undefined;
+  }
+}
 
 export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
   constructor(
     private readonly delegate: SdkFunctionKeyProvider,
     private readonly fileStore: NonNullable<SdkKeyStore>,
-    private readonly feePersistence?: FeeKeyPersistenceConfig,
+    private readonly creditsPersistence?: CreditsKeyPersistenceConfig,
   ) {}
 
   async keyStore(): Promise<SdkKeyStore> {
     return this.fileStore;
   }
 
-  bondPublicKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.bondPublicKeys();
+  async bondPublicKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.bondPublicKeys();
+    this.persistCreditsIfMissing("bond_public", keys[0]);
+    return keys;
   }
 
-  bondValidatorKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.bondValidatorKeys();
+  async bondValidatorKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.bondValidatorKeys();
+    this.persistCreditsIfMissing("bond_validator", keys[0]);
+    return keys;
   }
 
   cacheKeys(keyId: string, keys: SdkFunctionKeyPair): void {
     this.delegate.cacheKeys(keyId, keys);
   }
 
-  claimUnbondPublicKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.claimUnbondPublicKeys();
+  async claimUnbondPublicKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.claimUnbondPublicKeys();
+    this.persistCreditsIfMissing("claim_unbond_public", keys[0]);
+    return keys;
   }
 
-  functionKeys(params?: SdkKeySearchParams): Promise<SdkFunctionKeyPair> {
-    return this.delegate.functionKeys(params);
+  async functionKeys(params?: SdkKeySearchParams): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.functionKeys(params);
+    // The SDK reaches some credits.aleo entries (notably `set_validator_state`)
+    // only through this generic path. Persist them by name when the params
+    // identify a known entry; non-credits user keys are left to the
+    // delegate's own in-memory cache.
+    const config = this.creditsPersistence;
+    if (config) {
+      const entry = creditsEntryFromFunctionKeysParams(config.sdk, params);
+      if (entry) this.persistCreditsIfMissing(entry, keys[0]);
+    }
+    return keys;
   }
 
   async feePrivateKeys(): Promise<SdkFunctionKeyPair> {
     const keys = await this.delegate.feePrivateKeys();
-    this.persistFeeIfMissing("fee_private", keys[0]);
+    this.persistCreditsIfMissing("fee_private", keys[0]);
     return keys;
   }
 
   async feePublicKeys(): Promise<SdkFunctionKeyPair> {
     const keys = await this.delegate.feePublicKeys();
-    this.persistFeeIfMissing("fee_public", keys[0]);
+    this.persistCreditsIfMissing("fee_public", keys[0]);
     return keys;
   }
 
-  inclusionKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.inclusionKeys();
+  async inclusionKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.inclusionKeys();
+    this.persistCreditsIfMissing("inclusion", keys[0]);
+    return keys;
   }
 
-  joinKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.joinKeys();
+  async joinKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.joinKeys();
+    this.persistCreditsIfMissing("join", keys[0]);
+    return keys;
   }
 
-  splitKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.splitKeys();
+  async splitKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.splitKeys();
+    this.persistCreditsIfMissing("split", keys[0]);
+    return keys;
   }
 
-  transferKeys(visibility: string): Promise<SdkFunctionKeyPair> {
-    return this.delegate.transferKeys(visibility);
+  async transferKeys(visibility: string): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.transferKeys(visibility);
+    const name = transferKeyNameForVisibility(visibility);
+    if (name !== undefined) {
+      this.persistCreditsIfMissing(name, keys[0]);
+    }
+    return keys;
   }
 
-  unBondPublicKeys(): Promise<SdkFunctionKeyPair> {
-    return this.delegate.unBondPublicKeys();
+  async unBondPublicKeys(): Promise<SdkFunctionKeyPair> {
+    const keys = await this.delegate.unBondPublicKeys();
+    this.persistCreditsIfMissing("unbond_public", keys[0]);
+    return keys;
   }
 
-  private persistFeeIfMissing(name: FeeKeyName, provingKey: unknown): void {
-    const config = this.feePersistence;
+  /**
+   * Persist a credits.aleo proving key to disk so the next process can
+   * warm its in-memory cache without re-fetching from the public
+   * parameters host. Performance-only — hermeticity comes from the
+   * SDK egress policy, not from caching.
+   */
+  private persistCreditsIfMissing(
+    name: CreditsKeyName | string,
+    provingKey: unknown,
+  ): void {
+    const config = this.creditsPersistence;
     if (!config) return;
     try {
       const credits = (config.sdk as unknown as { CREDITS_PROGRAM_KEYS: Record<string, { locator: string }> }).CREDITS_PROGRAM_KEYS;
@@ -359,8 +706,18 @@ export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
   }
 }
 
-/** @internal — exported for testing. */
-export async function warmupFeeKeys(
+/**
+ * Warm the SDK's in-memory key cache from disk for every credits.aleo
+ * key that has a complete on-disk entry. Frame as performance only —
+ * hermeticity is enforced by the SDK egress policy, not the cache.
+ *
+ * Iterates every named entry of `CREDITS_PROGRAM_KEYS` (skipping the
+ * helper functions like `getKey`). Entries without a complete and
+ * fingerprint-matching cache entry are skipped silently.
+ *
+ * @internal — exported for testing.
+ */
+export async function warmupCreditsKeys(
   keyProvider: InstanceType<SdkModule["AleoKeyProvider"]>,
   sdk: SdkModule,
   cachePath: string,
@@ -368,11 +725,12 @@ export async function warmupFeeKeys(
   wasmHash: string,
 ): Promise<void> {
   const credits = (sdk as unknown as {
-    CREDITS_PROGRAM_KEYS: Record<string, { locator: string; verifyingKey: () => unknown }>;
+    CREDITS_PROGRAM_KEYS: Record<string, unknown>;
   }).CREDITS_PROGRAM_KEYS;
-  for (const name of ["fee_public", "fee_private"] as const) {
-    const key = credits[name];
-    if (!key) continue;
+
+  for (const [name, value] of Object.entries(credits)) {
+    if (!isWarmableCreditsEntry(value)) continue;
+    const key = value;
     try {
       const paths = creditsCachePaths(cachePath, wasmHash, network, key.locator);
       if (!fs.existsSync(paths.prover) || !fs.existsSync(paths.metadata)) continue;
@@ -402,10 +760,21 @@ export async function warmupFeeKeys(
   }
 }
 
+function isWarmableCreditsEntry(
+  value: unknown,
+): value is { locator: string; verifyingKey: () => unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { locator?: unknown }).locator === "string" &&
+    typeof (value as { verifyingKey?: unknown }).verifyingKey === "function"
+  );
+}
+
 function isCreditsEntryCurrent(
   paths: { prover: string; metadata: string },
   locator: string,
-  config: FeeKeyPersistenceConfig,
+  config: CreditsKeyPersistenceConfig,
   fingerprint: ReturnType<typeof fingerprintBytes>,
 ): boolean {
   if (!fs.existsSync(paths.prover) || !fs.existsSync(paths.metadata)) return false;
@@ -508,6 +877,7 @@ export function getSdkRuntimeMetadata(network: AleoNetwork): SdkRuntimeMetadata 
 export async function createSignerSdkObjects(
   opts: CreateSignerSdkObjectsOptions,
 ): Promise<SignerSdkObjects> {
+  assertValidEndpoint(opts.endpoint, "createSignerSdkObjects");
   await initSdk();
 
   const sdk = await loadSdkModule(opts.network);
@@ -521,10 +891,20 @@ export async function createSignerSdkObjects(
 
   const account = new Account({ privateKey: opts.privateKey });
 
-  // Dedicated NetworkClient with API key for record lookups
-  const ncOptions = opts.apiKey
-    ? { headers: { Authorization: `Bearer ${opts.apiKey}` } }
-    : undefined;
+  // Dedicated NetworkClient with API key for record lookups. Install the
+  // same guarded network transport that createSdkObjects uses so the
+  // per-signer PM's internal AleoNetworkClient also reports
+  // hasCustomTransport=true and routes prove-time state queries through
+  // JS. The signer path reuses the default connection's keyProvider, so
+  // no parameter transport is installed here.
+  const networkTransport = makeNetworkTransport(
+    opts.egressPolicy.allowedNetworkHosts,
+    opts.egressPolicy.violation,
+  );
+  const ncOptions: { headers?: Record<string, string>; transport: TransportFunction } = {
+    transport: networkTransport,
+  };
+  if (opts.apiKey) ncOptions.headers = { Authorization: `Bearer ${opts.apiKey}` };
   const networkClient = new AleoNetworkClient(opts.endpoint, ncOptions);
 
   const recordProvider = new NetworkRecordProvider(account, networkClient);
@@ -537,6 +917,17 @@ export async function createSignerSdkObjects(
   programManager.setAccount(account);
 
   return { account, recordProvider, programManager, programManagerBase: ProgramManagerBase };
+}
+
+function assertValidEndpoint(endpoint: unknown, context: string): asserts endpoint is string {
+  if (typeof endpoint !== "string" || endpoint.length === 0) {
+    throw new Error(`${context} requires a non-empty endpoint string.`);
+  }
+  try {
+    new URL(endpoint);
+  } catch {
+    throw new Error(`${context}: invalid endpoint URL "${endpoint}".`);
+  }
 }
 
 /**

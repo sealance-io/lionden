@@ -15,6 +15,7 @@ import type {
 } from "@lionden/config";
 import type { AleoNetwork } from "@lionden/config";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
+import type { SdkEgressPolicy } from "./sdk-adapter.js";
 
 export interface ResolveForNetworkOptions {
   networkName: string;
@@ -22,6 +23,13 @@ export interface ResolveForNetworkOptions {
   networkId: AleoNetwork;
   endpoint: string;
   apiKey?: string;
+  /**
+   * Egress policy from the connection. Forwarded to SDK address-derivation
+   * so the bare AleoNetworkClient still flips `hasCustomTransport=true`
+   * even on a fixture path that never proves. Address derivation itself
+   * is local-only, but consistency keeps the policy enforced repo-wide.
+   */
+  egressPolicy: SdkEgressPolicy;
 }
 
 export class NamedAccountManager {
@@ -135,6 +143,7 @@ export class NamedAccountManager {
           opts.networkId,
           opts.endpoint,
           opts.apiKey,
+          opts.egressPolicy,
         );
         const signable: SignableNamedAccount = {
           type: "signable",
@@ -160,10 +169,17 @@ async function deriveAddressFromPrivateKey(
   privateKey: string,
   network: AleoNetwork,
   endpoint: string,
-  apiKey?: string,
+  apiKey: string | undefined,
+  egressPolicy: SdkEgressPolicy,
 ): Promise<string> {
   const { createSdkObjects } = await import("./sdk-adapter.js");
-  const sdk = await createSdkObjects({ network, endpoint, privateKey, apiKey });
+  const sdk = await createSdkObjects({
+    network,
+    endpoint,
+    privateKey,
+    apiKey,
+    egressPolicy,
+  });
   const account = sdk.account as unknown as { address(): { to_string(): string } };
   return account.address().to_string();
 }

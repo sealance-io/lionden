@@ -43,6 +43,13 @@ import {
   TransitionSelectionError,
 } from "./types.js";
 
+// Mirrors `TEST_DEVNODE_EGRESS_POLICY` in `@lionden/test-internals`; kept
+// local because that package depends on `@lionden/network` (cycle).
+const TEST_EGRESS_POLICY = {
+  allowedNetworkHosts: new Set(["127.0.0.1:3030"]),
+  violation: "block" as const,
+};
+
 function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>) {
   return new AleoConnection({
     type: "devnode",
@@ -50,6 +57,7 @@ function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeo
     endpoint: "http://127.0.0.1:3030",
     networkId: "testnet",
     privateKey: "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+    egressPolicy: TEST_EGRESS_POLICY,
     projectRoot: "/tmp/test",
     ...overrides,
   });
@@ -62,6 +70,7 @@ function createHttpConnection(overrides?: Partial<ConstructorParameters<typeof A
     endpoint: "https://api.explorer.provable.com/v1",
     networkId: "testnet",
     privateKey: "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+    egressPolicy: TEST_EGRESS_POLICY,
     projectRoot: "/tmp/test",
     ...overrides,
   });
@@ -2123,6 +2132,7 @@ describe("AleoConnection", () => {
         network: "testnet",
         keyProvider: {},
         apiKey: "my-api-key",
+        egressPolicy: TEST_EGRESS_POLICY,
       });
     });
 

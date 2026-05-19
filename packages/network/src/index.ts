@@ -41,6 +41,8 @@ export {
   deriveViewKey,
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
+  makeNetworkTransport,
+  makeParameterTransport,
   type CreateSdkObjectsOptions,
   type SdkObjects,
   type SdkExecutionKeys,
@@ -48,5 +50,6 @@ export {
   type SignerSdkObjects,
   type CreateSignerSdkObjectsOptions,
   type DecryptOptions,
+  type SdkEgressPolicy,
 } from "./sdk-adapter.js";
 export { NamedAccountManager } from "./named-account-manager.js";

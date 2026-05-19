@@ -11,6 +11,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import type { ResolvedSdkKeyCacheConfig } from "@lionden/config";
 import { isSignable } from "@lionden/config";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import {
@@ -18,7 +19,11 @@ import {
   parseAbi,
   type DiscoveredProgram,
 } from "@lionden/leo-compiler";
-import type { NetworkManager, NetworkConnection } from "@lionden/network";
+import type {
+  NetworkManager,
+  NetworkConnection,
+  SdkEgressPolicy,
+} from "@lionden/network";
 import type { CompleteDeploymentRecord, DeploymentRecord, PendingDeployment } from "./deployment-types.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import { readAbiSnapshot } from "./deployment-state.js";
@@ -32,6 +37,7 @@ import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir } from "./leo-sources.js";
 import { runUpgradePreflight } from "./preflight.js";
 import { validateAdminSigner } from "./admin-signer.js";
+import { declaresStaticRecords } from "./aleo-source.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -297,6 +303,8 @@ export async function upgradeAction(
     edition: newEdition,
     signerPrivateKey: adminSignerKey,
     prove: options.prove,
+    keyCache: config.sdk.keyCache,
+    egressPolicy: connection.egressPolicy,
   });
 
   // 13. Wait for confirmation
@@ -451,6 +459,10 @@ interface BuildUpgradeOptions {
   signerPrivateKey?: string;
   /** Use the standard SDK upgrade builder instead of the devnode fast-path. */
   prove?: boolean;
+  /** Resolved SDK key-cache config from `lre.config.sdk.keyCache`. */
+  keyCache?: ResolvedSdkKeyCacheConfig;
+  /** Egress policy from `connection.egressPolicy`. */
+  egressPolicy: SdkEgressPolicy;
 }
 
 async function buildAndBroadcastUpgrade(
@@ -461,9 +473,11 @@ async function buildAndBroadcastUpgrade(
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
+  const needsStandardBuilder = needsStandardUpgradeBuilder(opts);
+
   if (connection.type === "devnode") {
     await initConsensusHeights();
-    if (!opts.prove) {
+    if (!needsStandardBuilder) {
       await checkDevnodeSdkSupport();
     }
   }
@@ -473,9 +487,11 @@ async function buildAndBroadcastUpgrade(
     endpoint: connection.endpoint,
     privateKey: signerPrivateKey ?? connection.privateKey,
     apiKey: connection.apiKey,
+    keyCache: opts.keyCache,
+    egressPolicy: opts.egressPolicy,
   });
 
-  if (connection.type === "devnode" && !opts.prove) {
+  if (connection.type === "devnode" && !needsStandardBuilder) {
     const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
       program: aleoSource,
       priorityFee: fee,
@@ -496,9 +512,9 @@ async function buildAndBroadcastUpgrade(
     return connection.broadcastTransaction(tx);
   }
 
-  if (connection.type === "devnode" && opts.prove) {
+  if (connection.type === "devnode" && needsStandardBuilder) {
     throw new DeployError(
-      `Unable to upgrade "${programId}" with proving enabled: ` +
+      `Unable to upgrade "${programId}" with the standard upgrade builder: ` +
         `the installed @provablehq/sdk does not expose buildUpgradeTransaction().`,
     );
   }
@@ -512,6 +528,10 @@ async function buildAndBroadcastUpgrade(
     `Unable to upgrade "${programId}": no suitable upgrade method found on ProgramManager. ` +
       `Ensure @provablehq/sdk@^0.10.5 is installed.`,
   );
+}
+
+function needsStandardUpgradeBuilder(opts: BuildUpgradeOptions): boolean {
+  return opts.prove === true || declaresStaticRecords(opts.aleoSource);
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +588,7 @@ async function resolveDeployerAddress(
       network: connection.networkId,
       endpoint: connection.endpoint,
       privateKey,
+      egressPolicy: connection.egressPolicy,
     });
     const account = sdk.account as any;
     return typeof account.address === "function"

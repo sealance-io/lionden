@@ -1,5 +1,6 @@
 export { createMockConfig } from "./mock-config.js";
 export { createMockConnection } from "./mock-connection.js";
+export { TEST_DEVNODE_EGRESS_POLICY } from "./test-egress-policy.js";
 
 // Fakes
 export { FakeNetworkConnection, FakeNetworkManager } from "./fakes/fake-network.js";

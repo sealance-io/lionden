@@ -6,7 +6,11 @@
  * upgrade.
  */
 
-import type { LionDenResolvedConfig, ResolvedNetworkConfig } from "@lionden/config";
+import type {
+  LionDenResolvedConfig,
+  ResolvedNetworkConfig,
+  ResolvedSdkKeyCacheConfig,
+} from "@lionden/config";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
 import type { DependencyGraph } from "@lionden/leo-compiler";
@@ -230,6 +234,7 @@ export async function checkFeeEstimate(
   aleoSource: string,
   importSources: Map<string, string>,
   signerPrivateKey?: string,
+  keyCache?: ResolvedSdkKeyCacheConfig,
 ): Promise<{ estimate: bigint | undefined; warning: PreflightWarning | null }> {
   try {
     const { createSdkObjects } = await import("@lionden/network");
@@ -238,6 +243,8 @@ export async function checkFeeEstimate(
       endpoint: connection.endpoint,
       privateKey: signerPrivateKey ?? connection.privateKey,
       apiKey: connection.apiKey,
+      egressPolicy: connection.egressPolicy,
+      keyCache,
     });
     const pm = sdk.programManager as any;
 
@@ -663,6 +670,7 @@ export async function runDeployPreflight(
           aleoSource,
           importSourcesForFee,
           signerPrivateKey,
+          opts.config.sdk.keyCache,
         );
         if (feeWarning) warnings.push(feeWarning);
 
@@ -691,6 +699,7 @@ export async function runDeployPreflight(
           endpoint: connection.endpoint,
           privateKey: signerPrivateKey,
           apiKey: connection.apiKey,
+          egressPolicy: connection.egressPolicy,
         });
         const account = sdk.account as any;
         signerAddress =

@@ -13,6 +13,7 @@ import type {
 import { normalizeRuntimeImportRef } from "@lionden/config";
 import * as fs from "node:fs";
 import type {
+  SdkEgressPolicy,
   SdkObjects,
   SdkProgramManagerBase,
   SignerSdkObjects,
@@ -48,6 +49,8 @@ export interface ConnectionOptions {
   artifactsDir?: string;
   /** Resolved Provable SDK key-cache config. */
   keyCache?: ResolvedSdkKeyCacheConfig;
+  /** SDK egress policy for this connection. Required; default resolved per connection by NetworkManager (network-host scope only — parameter downloads use an internal SDK host list). */
+  egressPolicy: SdkEgressPolicy;
   /**
    * Absolute project root, used to anchor relative path refs that arrive
    * via per-call `ExecuteOptions.imports`. Config-level execution imports
@@ -89,6 +92,7 @@ export class AleoConnection implements NetworkConnection {
   readonly networkId: AleoNetwork;
   readonly privateKey?: string;
   readonly apiKey?: string;
+  readonly egressPolicy: SdkEgressPolicy;
   private readonly artifactsDir?: string;
   private readonly keyCache?: ResolvedSdkKeyCacheConfig;
   private readonly projectRoot: string;
@@ -121,6 +125,7 @@ export class AleoConnection implements NetworkConnection {
     this.networkId = options.networkId;
     this.privateKey = options.privateKey;
     this.apiKey = options.apiKey;
+    this.egressPolicy = options.egressPolicy;
     this.artifactsDir = options.artifactsDir;
     this.keyCache = options.keyCache;
     this.projectRoot = options.projectRoot;
@@ -163,6 +168,7 @@ export class AleoConnection implements NetworkConnection {
           privateKey: this.privateKey,
           apiKey: this.apiKey,
           keyCache: this.keyCache,
+          egressPolicy: this.egressPolicy,
         });
         // Guard: if close() was called while we were initializing,
         // destroy the account and bail out.
@@ -217,6 +223,7 @@ export class AleoConnection implements NetworkConnection {
           network: this.networkId,
           keyProvider: defaultSdk.keyProvider,
           apiKey: this.apiKey,
+          egressPolicy: this.egressPolicy,
         });
 
         // If close() was called while creating, destroy and bail

@@ -12,9 +12,13 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { ResolvedNetworkConfig } from "@lionden/config";
+import type { ResolvedNetworkConfig, ResolvedSdkKeyCacheConfig } from "@lionden/config";
 import { isSignable } from "@lionden/config";
-import type { NetworkManager, NetworkConnection } from "@lionden/network";
+import type {
+  NetworkManager,
+  NetworkConnection,
+  SdkEgressPolicy,
+} from "@lionden/network";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import {
   discoverUnits,
@@ -34,6 +38,7 @@ import { runDeployPreflight, type DeployPreflightResult } from "./preflight.js";
 import { createDegradedRecord } from "./on-chain-check.js";
 import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
+import { declaresStaticRecords } from "./aleo-source.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -271,6 +276,8 @@ export async function deployAction(
         privateFee: config.deploy.privateFee,
         signerPrivateKey: deployerSignerKey,
         prove: options.prove,
+        keyCache: config.sdk.keyCache,
+        egressPolicy: connection.egressPolicy,
       });
 
       dryRunResults.push({
@@ -376,6 +383,8 @@ export async function deployAction(
       privateFee,
       signerPrivateKey: deployerSignerKey,
       prove: options.prove,
+      keyCache: config.sdk.keyCache,
+      egressPolicy: connection.egressPolicy,
     });
 
     // Wait for confirmation
@@ -623,6 +632,10 @@ interface BuildDeployOptions {
   signerPrivateKey?: string;
   /** Use the standard SDK deployment builder instead of the devnode fast-path. */
   prove?: boolean;
+  /** Resolved SDK key-cache config from `lre.config.sdk.keyCache`. */
+  keyCache?: ResolvedSdkKeyCacheConfig;
+  /** Egress policy from `connection.egressPolicy`. */
+  egressPolicy: SdkEgressPolicy;
 }
 
 /**
@@ -642,8 +655,10 @@ export async function buildDeployTransaction(
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
+  const needsStandardBuilder = needsStandardDeploymentBuilder(opts);
+
   await initConsensusHeights();
-  if (!opts.prove) {
+  if (!needsStandardBuilder) {
     await checkDevnodeSdkSupport();
   }
 
@@ -652,6 +667,8 @@ export async function buildDeployTransaction(
     endpoint: opts.connection.endpoint,
     privateKey: opts.signerPrivateKey ?? opts.connection.privateKey,
     apiKey: opts.connection.apiKey,
+    keyCache: opts.keyCache,
+    egressPolicy: opts.egressPolicy,
   });
 
   return buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts);
@@ -674,10 +691,11 @@ async function buildDevnodeDeploymentTransactionForMode(
   programManager: DeploymentProgramManager,
   opts: BuildDeployOptions,
 ): Promise<unknown> {
-  if (opts.prove) {
+  const declaresRecords = declaresStaticRecords(opts.aleoSource);
+  if (opts.prove === true || declaresRecords) {
     if (typeof programManager.buildDeploymentTransaction !== "function") {
       throw new DeployError(
-        `Unable to deploy "${opts.programId}" with proving enabled: ` +
+        `Unable to deploy "${opts.programId}" with the standard deployment builder: ` +
           `the installed @provablehq/sdk does not expose buildDeploymentTransaction().`,
       );
     }
@@ -707,8 +725,10 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const signerKey = opts.signerPrivateKey ?? connection.privateKey;
 
   if (connection.type === "devnode") {
+    const needsStandardBuilder = needsStandardDeploymentBuilder(opts);
+
     await initConsensusHeights();
-    if (!opts.prove) {
+    if (!needsStandardBuilder) {
       await checkDevnodeSdkSupport();
     }
 
@@ -717,6 +737,8 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
       endpoint: connection.endpoint,
       privateKey: signerKey,
       apiKey: connection.apiKey,
+      keyCache: opts.keyCache,
+      egressPolicy: opts.egressPolicy,
     });
 
     const tx = await buildDevnodeDeploymentTransactionForMode(
@@ -733,9 +755,15 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
     endpoint: connection.endpoint,
     privateKey: signerKey,
     apiKey: connection.apiKey,
+    keyCache: opts.keyCache,
+    egressPolicy: opts.egressPolicy,
   });
 
   return sdk.programManager.deploy(aleoSource, fee, privateFee);
+}
+
+function needsStandardDeploymentBuilder(opts: BuildDeployOptions): boolean {
+  return opts.prove === true || declaresStaticRecords(opts.aleoSource);
 }
 
 // ---------------------------------------------------------------------------
@@ -795,6 +823,7 @@ async function resolveDeployerAddress(
       network: connection.networkId,
       endpoint: connection.endpoint,
       privateKey,
+      egressPolicy: connection.egressPolicy,
     });
     const account = sdk.account as any;
     return typeof account.address === "function"

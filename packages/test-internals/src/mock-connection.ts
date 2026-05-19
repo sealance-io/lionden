@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type { NetworkConnection } from "@lionden/network";
+import { TEST_DEVNODE_EGRESS_POLICY } from "./test-egress-policy.js";
 
 /**
  * Create a mock NetworkConnection with vi.fn() stubs for all methods.
@@ -26,6 +27,7 @@ export function createMockConnection(
     name: "devnode",
     endpoint: "http://127.0.0.1:3030",
     networkId: "testnet",
+    egressPolicy: TEST_DEVNODE_EGRESS_POLICY,
     getBalance: vi.fn().mockResolvedValue(1000n),
     getMappingValue: vi.fn().mockResolvedValue(null),
     execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1mock" }),
