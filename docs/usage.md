@@ -243,11 +243,16 @@ await ctx.raw.execute("counter.aleo", "decrement", []);
 
 ```bash
 lionden test                              # compile then run vitest under test/**/*.test.ts
+lionden test test/counter.test.ts          # run one test file
+lionden test "test/**/*.integration.test.ts" # run a glob subset
 lionden test --no-compile                 # skip recompile (artifacts must already exist)
 lionden test --grep "transfer_public"     # filter by test name
+lionden test test/counter.test.ts --grep "increment" # combine file and test-name filters
 lionden test --timeout 240000             # override per-test timeout (ms)
 lionden test --prove                      # force proof generation, including devnode deploy/upgrade builders
 ```
+
+File and glob arguments are interpreted from the LionDen project root and still run through LionDen's compile step, testing hooks, and managed devnode lifecycle. `--grep` applies Vitest's test-name pattern inside the selected files.
 
 Tests use Vitest plus `@lionden/testing`. The canonical pattern (see `examples/hello-world/test/hello.test.ts`):
 
@@ -526,6 +531,7 @@ The deploy task auto-wires `namedAccounts.deployer` as the transaction signer wh
 ```bash
 lionden compile        # iteratively while editing programs/
 lionden test           # full test suite (compiles first by default)
+lionden test test/counter.test.ts         # focus on one file
 lionden test --grep "transfer_public"   # focus on one suite
 ```
 
