@@ -22,6 +22,7 @@ import {
   buildRuntimeKeyIdentity,
   findCachedExecutionKeys,
   resolveProgramExecutionArtifacts,
+  transitionHasRecordInput,
   writeCachedExecutionKeys,
   type ProgramExecutionArtifacts,
 } from "./execution-key-cache.js";
@@ -498,15 +499,31 @@ export class AleoConnection implements NetworkConnection {
       identity,
       artifacts,
     });
-    const keyBytes = cached ?? await this.synthesizeAndCacheExecutionKeys({
-      pm,
-      programManagerBase,
-      artifacts,
-      transitionName,
-      args,
-      identity,
-      sdkMetadata,
-    });
+
+    let keyBytes: { provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array } | undefined = cached;
+    if (!keyBytes) {
+      // Cache miss. Eager synthesis runs the WASM `synthesizeKeyPair`, which
+      // takes no query parameter: for a record-consuming transition snarkVM
+      // builds the inclusion proof against the SDK's baked-in SnapshotQuery
+      // (https://api.provable.com/v2) instead of the configured endpoint,
+      // bypassing the egress-guarded transport. Skip it for those transitions
+      // and let `pm.execute` synthesize the keys lazily — that path threads the
+      // CallbackQuery wired to the active endpoint. `undefined` (ABI absent /
+      // unknown transition) is treated as record-consuming: skip rather than
+      // risk the leak. Cache hits above are unaffected.
+      if (transitionHasRecordInput(artifacts, transitionName) !== false) {
+        return edition === undefined ? undefined : { edition };
+      }
+      keyBytes = await this.synthesizeAndCacheExecutionKeys({
+        pm,
+        programManagerBase,
+        artifacts,
+        transitionName,
+        args,
+        identity,
+        sdkMetadata,
+      });
+    }
 
     const keys = await runtime.createExecutionKeysFromBytes(this.networkId, {
       provingKey: keyBytes.provingKeyBytes,

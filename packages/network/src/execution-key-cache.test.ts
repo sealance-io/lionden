@@ -13,6 +13,7 @@ import {
   buildRuntimeKeyIdentity,
   findCachedExecutionKeys,
   resolveProgramExecutionArtifacts,
+  transitionHasRecordInput,
   writeCachedExecutionKeys,
   type ProgramExecutionArtifacts,
 } from "./execution-key-cache.js";
@@ -198,6 +199,117 @@ describe("execution key cache", () => {
         { programId: "foo.aleo", sourceHash: sha256Text(fooSource) },
       ],
     }));
+  });
+});
+
+describe("transitionHasRecordInput", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-abi-record-"));
+  });
+  afterEach(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  function artifactsWithAbi(abi: unknown | undefined): ProgramExecutionArtifacts {
+    if (abi !== undefined) {
+      fs.writeFileSync(path.join(dir, "abi.json"), typeof abi === "string" ? abi : JSON.stringify(abi));
+    }
+    return {
+      source: "program p.aleo;",
+      sourceOrigin: "artifact",
+      sourceHash: "h",
+      importsHash: "i",
+      artifactDir: dir,
+    };
+  }
+
+  it("returns true for a local/external record input", () => {
+    const abi = { functions: [{ name: "spend", inputs: [{ name: "r", ty: { Record: { path: ["Token"], program: "tok.aleo" } } }] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "spend")).toBe(true);
+  });
+
+  it("returns true for a DynamicRecord input", () => {
+    const abi = { functions: [{ name: "fwd", inputs: [{ name: "r", ty: "DynamicRecord" }] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "fwd")).toBe(true);
+  });
+
+  it("returns false when all inputs are plaintext", () => {
+    const abi = { functions: [{ name: "main", inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } }] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "main")).toBe(false);
+  });
+
+  it("returns false for a transition with no inputs", () => {
+    expect(transitionHasRecordInput(artifactsWithAbi({ functions: [{ name: "noop", inputs: [] }] }), "noop")).toBe(false);
+  });
+
+  it("returns false when an input is a Future (record-free)", () => {
+    const abi = { functions: [{ name: "f", inputs: [{ name: "fut", ty: { Future: "p.aleo" } }] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "f")).toBe(false);
+  });
+
+  it("returns undefined when an input entry is missing its ty (structurally incomplete)", () => {
+    const abi = { functions: [{ name: "main", inputs: [{ name: "x" }] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "main")).toBeUndefined();
+  });
+
+  it("returns undefined when an input ty uses an unrecognized shape", () => {
+    const abi = { functions: [{ name: "main", inputs: [{ name: "x", ty: { Mystery: 1 } }] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "main")).toBeUndefined();
+  });
+
+  it("returns undefined when a plaintext input is mixed with a malformed entry", () => {
+    const abi = {
+      functions: [
+        {
+          name: "main",
+          inputs: [
+            { name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } },
+            { name: "y" },
+          ],
+        },
+      ],
+    };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "main")).toBeUndefined();
+  });
+
+  it("returns true when a record input is mixed with a malformed entry (record wins)", () => {
+    const abi = {
+      functions: [
+        {
+          name: "spend",
+          inputs: [
+            { name: "y" },
+            { name: "r", ty: { Record: { path: ["Token"], program: "tok.aleo" } } },
+          ],
+        },
+      ],
+    };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "spend")).toBe(true);
+  });
+
+  it("returns undefined when artifactDir is absent (network-sourced program)", () => {
+    const artifacts: ProgramExecutionArtifacts = {
+      source: "program p.aleo;",
+      sourceOrigin: "network",
+      sourceHash: "h",
+      importsHash: "i",
+    };
+    expect(transitionHasRecordInput(artifacts, "main")).toBeUndefined();
+  });
+
+  it("returns undefined when abi.json is missing", () => {
+    expect(transitionHasRecordInput(artifactsWithAbi(undefined), "main")).toBeUndefined();
+  });
+
+  it("returns undefined when abi.json is malformed", () => {
+    expect(transitionHasRecordInput(artifactsWithAbi("{ not json"), "main")).toBeUndefined();
+  });
+
+  it("returns undefined when the transition is not in the ABI", () => {
+    const abi = { functions: [{ name: "other", inputs: [] }] };
+    expect(transitionHasRecordInput(artifactsWithAbi(abi), "missing")).toBeUndefined();
   });
 });
 
