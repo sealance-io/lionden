@@ -80,6 +80,80 @@ export async function resolveProgramExecutionArtifacts(
   };
 }
 
+/**
+ * Whether `transition` declares any record-typed input — `{ Record: ... }`
+ * (local or external) or the first-class `"DynamicRecord"` — per the program's
+ * `abi.json` (a sibling of `main.aleo` in `artifactDir`).
+ *
+ * Record-consuming transitions need an on-chain inclusion proof. The eager
+ * key-synthesis path (`synthesizeKeyPair`) has no query parameter, so for these
+ * transitions snarkVM builds that inclusion proof against the SDK's baked-in
+ * SnapshotQuery (`https://api.provable.com/v2`) instead of the configured
+ * endpoint, bypassing the egress-guarded transport. Callers use this to skip
+ * eager synthesis for such transitions.
+ *
+ * Returns `undefined` when the ABI can't be located, parsed, or trusted to
+ * prove the transition is record-free: network-sourced program (no
+ * `artifactDir`), missing/garbled `abi.json`, unknown transition, OR any input
+ * whose `ty` shape is unrecognized (e.g. a stale/corrupt entry missing `ty`, or
+ * a future ABI variant). `false` is returned only when EVERY input is a
+ * recognized record-free shape. Callers must treat `undefined` conservatively —
+ * skip eager synthesis rather than risk the leak.
+ */
+export function transitionHasRecordInput(
+  artifacts: ProgramExecutionArtifacts,
+  transition: string,
+): boolean | undefined {
+  if (!artifacts.artifactDir) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(fs.readFileSync(path.join(artifacts.artifactDir, "abi.json"), "utf-8"));
+  } catch {
+    return undefined;
+  }
+
+  const functions = (parsed as { functions?: unknown }).functions;
+  if (!Array.isArray(functions)) return undefined;
+
+  const fn = functions.find(
+    (entry): entry is { name?: unknown; inputs?: unknown } =>
+      typeof entry === "object" && entry !== null && (entry as { name?: unknown }).name === transition,
+  );
+  if (!fn || !Array.isArray(fn.inputs)) return undefined;
+
+  // Classify every input. A single record/DynamicRecord input makes the
+  // transition record-consuming. An unrecognized input shape means the ABI has
+  // NOT proven the transition is record-free, so report `undefined` (caller
+  // skips eager synthesis). `false` requires every input to be record-free.
+  let sawUnknown = false;
+  for (const input of fn.inputs) {
+    switch (classifyInputType((input as { ty?: unknown })?.ty)) {
+      case "record":
+        return true;
+      case "unknown":
+        sawUnknown = true;
+        break;
+    }
+  }
+  return sawUnknown ? undefined : false;
+}
+
+/**
+ * Classify a function-input `ty`. Per the Aleo ABI an input is one of
+ * `{ Plaintext }`, `{ Record }`, `{ Future }`, or the string `"DynamicRecord"`.
+ * `"record"` covers the two record-consuming shapes (which need an inclusion
+ * proof); `"safe"` covers the record-free shapes; anything else — including a
+ * missing or non-object `ty` — is `"unknown"` so callers stay conservative.
+ */
+function classifyInputType(ty: unknown): "record" | "safe" | "unknown" {
+  if (ty === "DynamicRecord") return "record";
+  if (typeof ty !== "object" || ty === null) return "unknown";
+  if ("Record" in ty) return "record";
+  if ("Plaintext" in ty || "Future" in ty) return "safe";
+  return "unknown";
+}
+
 export function findCachedExecutionKeys(
   options: {
     cachePath: string;

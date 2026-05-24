@@ -50,6 +50,28 @@ const TEST_EGRESS_POLICY = {
   violation: "block" as const,
 };
 
+// Minimal program ABI (as written beside main.aleo) whose transition has only
+// a plaintext input — i.e. record-free, so eager key synthesis is safe.
+function recordFreeAbi(transition: string): string {
+  return JSON.stringify({
+    functions: [
+      {
+        name: transition,
+        inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Private" }],
+      },
+    ],
+  });
+}
+
+// ABI whose transition consumes a record (`{ Record }`) or a `"DynamicRecord"`
+// input — eager synthesis must be skipped for these to avoid the query-less
+// `synthesizeKeyPair` inclusion-proof leak to the public SnapshotQuery host.
+function recordInputAbi(transition: string, ty: unknown = { Record: { path: ["Token"], program: "tok.aleo" } }): string {
+  return JSON.stringify({
+    functions: [{ name: transition, inputs: [{ name: "r", ty, mode: "None" }] }],
+  });
+}
+
 function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>) {
   return new AleoConnection({
     type: "devnode",
@@ -490,6 +512,7 @@ describe("AleoConnection", () => {
         const source = "program hello.aleo { }";
         fs.mkdirSync(artifactDir, { recursive: true });
         fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        fs.writeFileSync(path.join(artifactDir, "abi.json"), recordFreeAbi("main"));
 
         const connection = createHttpConnection({
           artifactsDir,
@@ -543,6 +566,10 @@ describe("AleoConnection", () => {
           const artifactDir = path.join(artifactsDir, programId);
           fs.mkdirSync(artifactDir, { recursive: true });
           fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+          fs.writeFileSync(
+            path.join(artifactDir, "abi.json"),
+            recordFreeAbi(programId === "app.aleo" ? "main" : "helper"),
+          );
         }
 
         const connection = createHttpConnection({
@@ -586,6 +613,7 @@ describe("AleoConnection", () => {
         const source = "program hello.aleo { }";
         fs.mkdirSync(artifactDir, { recursive: true });
         fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        fs.writeFileSync(path.join(artifactDir, "abi.json"), recordFreeAbi("main"));
         mockGetLatestProgramEdition.mockRejectedValueOnce(new Error("not deployed"));
 
         const connection = createDevnodeConnection({
@@ -602,6 +630,69 @@ describe("AleoConnection", () => {
         }));
         expect(mockSynthesizeExecutionKeyBytes.mock.calls[0]![0]).not.toHaveProperty("edition");
         expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("edition");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    // Eager key synthesis runs the query-less WASM `synthesizeKeyPair`. For a
+    // record-consuming transition that builds an inclusion proof against the
+    // SDK's baked-in SnapshotQuery (public host), bypassing the egress-guarded
+    // transport. So on a cache miss we must NOT eagerly synthesize — `pm.execute`
+    // synthesizes lazily with the CallbackQuery wired to the active endpoint.
+    it.each([
+      ["record", { Record: { path: ["Token"], program: "tok.aleo" } }],
+      ["dynamic record", "DynamicRecord"],
+    ])("skips eager synthesis on a cache miss for a transition with a %s input", async (_label, ty) => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const artifactDir = path.join(artifactsDir, "hello.aleo");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const source = "program hello.aleo { }";
+        fs.mkdirSync(artifactDir, { recursive: true });
+        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        fs.writeFileSync(path.join(artifactDir, "abi.json"), recordInputAbi("main", ty));
+
+        const connection = createDevnodeConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
+
+        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
+        // Execution still proceeds — keys synthesize lazily inside pm.execute.
+        expect(mockExecute).toHaveBeenCalledOnce();
+        expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("provingKey");
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    // Conservative default: when the ABI can't be located (no abi.json), we
+    // can't prove the transition is record-free, so skip eager synthesis rather
+    // than risk the leak.
+    it("skips eager synthesis on a cache miss when the ABI is unavailable", async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const artifactDir = path.join(artifactsDir, "hello.aleo");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const source = "program hello.aleo { }";
+        fs.mkdirSync(artifactDir, { recursive: true });
+        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        // No abi.json written.
+
+        const connection = createDevnodeConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
+
+        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
+        expect(mockExecute).toHaveBeenCalledOnce();
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }

@@ -37,7 +37,7 @@ Layout on disk:
   metadata.json     # RuntimeKeyCacheMetadata (format: "lionden.runtimeKeyCache.v1")
 ```
 
-Atomic writes (temp+rename), fingerprint verification on read (size + SHA-256), reject-on-mismatch. The cache populates lazily — written after the first successful synthesis through `synthesizeAndCacheExecutionKeys` in `packages/network/src/connection.ts`.
+Atomic writes (temp+rename), fingerprint verification on read (size + SHA-256), reject-on-mismatch. The cache populates lazily after the first successful synthesis through `synthesizeAndCacheExecutionKeys` in `packages/network/src/connection.ts`, but only when the transition's ABI proves it is record-free. Record / `DynamicRecord` transitions, and transitions whose ABI is absent or not trusted, skip eager synthesis on cache miss and synthesize lazily through `pm.execute` so state queries use the guarded `CallbackQuery`.
 
 ### 2. Compile-time sidecar `lionden-key-artifacts.json`
 
@@ -52,18 +52,18 @@ The sidecar is written per program under `artifacts/<programId>/lionden-key-arti
 
 Today Leo v4 does not emit key files alongside `leo build`, so in practice `functions[]` is empty for current Leo versions. The sidecar is still emitted because (a) it pins identity for downstream consumers and (b) the field is forward-compatible: if a future Leo version emits paired key files, they flow into the cache through this channel with no LionDen code change.
 
-The runtime cache consults the sidecar first (`readSidecarKeys` in `packages/network/src/execution-key-cache.ts`), then falls back to its own per-identity directory, then to SDK synthesis.
+The runtime cache consults the sidecar first (`readSidecarKeys` in `packages/network/src/execution-key-cache.ts`), then falls back to its own per-identity directory, then either performs safe SDK synthesis or defers to lazy `pm.execute` synthesis for record-consuming / unknown-ABI misses.
 
-### 3. `credits.aleo` fee-key warmup + write-back
+### 3. Named `credits.aleo` key warmup + write-back
 
-Source: `packages/network/src/sdk-adapter.ts` (`warmupFeeKeys`, `PersistentFunctionKeyProvider`).
+Source: `packages/network/src/sdk-adapter.ts` (`warmupCreditsKeys`, `PersistentFunctionKeyProvider`).
 
 Two paths:
 
-- **Warmup-on-init.** When `keyCache.storage === "filesystem"` and `createSdkObjects` runs, LionDen reads `<keyCache.path>/lionden-credits/<wasmHash>/<network>/<base64url(locator)>.prover` + `.metadata.json` for each of `fee_public` / `fee_private`, verifies the metadata fingerprint, deserializes through `sdk.ProvingKey.fromBytes`, and primes the SDK's `AleoKeyProvider` cache via the public `cacheKeys()` API. The SDK's own fee-key code path then returns from cache without a network fetch.
-- **Write-back-after-fetch.** When the cache is cold (or stale `wasmHash`), the SDK fetches the fee proving key. `PersistentFunctionKeyProvider.feePublicKeys/feePrivateKeys` intercepts the result and persists the bytes to disk for the next process.
+- **Warmup-on-init.** When `keyCache.storage === "filesystem"` and `createSdkObjects` runs, LionDen reads `<keyCache.path>/lionden-credits/<wasmHash>/<network>/<base64url(locator)>.prover` + `.metadata.json` for every warmable entry in the SDK's `CREDITS_PROGRAM_KEYS`, verifies the metadata fingerprint, deserializes through `sdk.ProvingKey.fromBytes`, and primes the SDK's `AleoKeyProvider` cache via the public `cacheKeys()` API. The SDK's own credits-key code paths then return from cache without a network fetch.
+- **Write-back-after-fetch.** When the cache is cold (or stale `wasmHash`), the SDK fetches a covered `credits.aleo` proving key. `PersistentFunctionKeyProvider` intercepts the supported named-key accessors (`fee_*`, `inclusion`, `join`, `split`, bond/unbond/claim, transfer variants, `set_validator_state`) and persists the bytes to disk for the next process.
 
-Identity for fee keys is `(locator, network, wasmHash)`. Verifying keys are never persisted — they're reconstructed for free from WASM-bundled credits metadata on every warmup.
+Identity for covered credits keys is `(locator, network, wasmHash)`. Verifying keys are never persisted — they're reconstructed for free from WASM-bundled credits metadata on every warmup.
 
 ## Lookup order
 
@@ -71,11 +71,11 @@ For a proven execution (`packages/network/src/connection.ts` → `getPersistentE
 
 1. **Sidecar refs** — when the program's `lionden-key-artifacts.json` declares matching `.prover` + `.verifier` files in the artifact directory and both file fingerprints verify, use them.
 2. **Runtime cache** — match on the full circuit identity, verify both file fingerprints, use them.
-3. **SDK synthesis** — call `ProgramManagerBase.synthesizeKeyPair(...)`, then atomically write back to (2). Execute the transition with the freshly synthesized keys injected.
+3. **SDK synthesis on safe misses** — if the transition ABI proves every input is record-free, call `ProgramManagerBase.synthesizeKeyPair(...)`, then atomically write back to (2). Execute the transition with the freshly synthesized keys injected. If the transition has a record / `DynamicRecord` input, or if the ABI is missing, malformed, missing the transition, or has an unrecognized input shape, LionDen skips eager synthesis and lets `pm.execute` synthesize lazily through the SDK's `CallbackQuery`; those keys are not persisted on that call.
 
 Source/imports/wasm hash changes invalidate the cache as expected: a recompiled program with the same id but a changed circuit gets a new identity hash and re-synthesizes on next call.
 
-For a fee transaction (`credits.aleo/fee_public` or `credits.aleo/fee_private`):
+For covered named `credits.aleo` keys:
 
 1. **Warmup-on-init** primes the SDK provider cache from disk.
 2. **SDK** uses its own resolution path (now hot in process memory).
@@ -89,7 +89,7 @@ From [`../network.md`](../network.md)'s filesystem key-cache behavior table and 
 
 - **Deploy / upgrade program keys.** Not persisted by LionDen v1; SDK manages its own.
 - **Translation keys.** SDK exposes metadata but no public execution-injection hook, so LionDen has no path to persist them.
-- **Non-fee `credits.aleo` functions** (transfers, bonds, etc.). SDK's own fetch/cache behavior is in effect; LionDen does not intercept.
+- **Non-covered `credits.aleo/functionKeys(search)` locators.** LionDen persists named entries it can identify from `CREDITS_PROGRAM_KEYS`; arbitrary or future locators still use the SDK's own fetch/cache behavior.
 
 These rows are deliberate boundaries: LionDen persists where it owns the injection point, and stays out of the way where the SDK does. As the SDK grows public injection hooks, the persistence surface can grow with it.
 
@@ -109,14 +109,15 @@ Compile time has none of that:
 
 A "pre-warm at compile" pass would therefore need a generic Leo-ABI fixture fabricator: for each transition, produce a synthetic but well-typed input vector, including records with valid owner addresses and any mapping entries the transition reads. For non-trivial programs that's effectively writing a property-based fuzzer for Leo ABIs — well outside the compile pipeline's scope, and architecturally cross-cutting (compiler would need a runtime/network dependency).
 
-The runtime cache + write-back already amortizes synthesis cost:
+The runtime cache + write-back already amortizes synthesis cost where eager synthesis is safe:
 
-- First call to a given `(network, programId, transition, edition, sourceHash, importsHash, wasmHash)` → synthesize and persist (~one-time cost per identity).
-- Every subsequent call → cache hit, near-zero overhead.
+- First record-free call to a given `(network, programId, transition, edition, sourceHash, importsHash, wasmHash)` → synthesize and persist (~one-time cost per identity).
+- Every subsequent call with a sidecar/runtime cache hit → cache hit, near-zero overhead.
+- Record-consuming or unknown-ABI cache misses deliberately avoid write-back because `synthesizeKeyPair` cannot receive the guarded query object; they synthesize lazily inside `pm.execute`.
 
-Same end state a compile-time pre-warm would produce — except the runtime version is keyed by the real fingerprint of the circuit being proved, which is honest about what was synthesized.
+For record-free transitions, this reaches the same end state a compile-time pre-warm would produce — except the runtime version is keyed by the real fingerprint of the circuit being proved, which is honest about what was synthesized.
 
-The only scenario where a compile-time pre-warm would pay off is **the very first run on a clean checkout**. That's a CI-cache concern, not a framework concern: cache `artifacts/.cache/` between CI runs and the same amortization applies.
+For those record-free identities, the only scenario where a compile-time pre-warm would pay off is **the very first run on a clean checkout**. That's a CI-cache concern, not a framework concern: cache `artifacts/.cache/` between CI runs and the same amortization applies.
 
 ## What would unblock it
 
@@ -128,8 +129,8 @@ The deferred `_docs/research/leo_keys_caching.md` (local-only research notes fro
 
 | Cache | Identity | Where | When written |
 | --- | --- | --- | --- |
-| Runtime execution-key | `(network, programId, transition, edition?, sourceHash, importsHash, wasmHash)` | `<keyCache.path>/lionden-runtime/<sha256(identity)>/` | After first synthesis at proven call time |
+| Runtime execution-key | `(network, programId, transition, edition?, sourceHash, importsHash, wasmHash)` | `<keyCache.path>/lionden-runtime/<sha256(identity)>/` | After first safe eager synthesis at proven call time; skipped on cache miss for record-consuming / unknown-ABI transitions |
 | Compile-time sidecar | `(programId, sourceHash, importsHash)` + paired `.prover` / `.verifier` refs | `artifacts/<programId>/lionden-key-artifacts.json` | Every `leo build` success |
-| `credits.aleo` fee key | `(locator, network, wasmHash)` | `<keyCache.path>/lionden-credits/<wasmHash>/<network>/<base64url(locator)>.prover` | Warmup-on-init read, write-back-after-fetch on cold |
+| Named `credits.aleo` key | `(locator, network, wasmHash)` | `<keyCache.path>/lionden-credits/<wasmHash>/<network>/<base64url(locator)>.prover` | Warmup-on-init read, write-back-after-fetch on cold |
 
 Compile-time pre-warm of user-program proving keys: deferred, blocked on upstream SDK API.
