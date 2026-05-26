@@ -37,7 +37,6 @@ import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir } from "./leo-sources.js";
 import { runUpgradePreflight } from "./preflight.js";
 import { validateAdminSigner } from "./admin-signer.js";
-import { declaresStaticRecords } from "./aleo-source.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -473,11 +472,9 @@ async function buildAndBroadcastUpgrade(
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
-  const needsStandardBuilder = needsStandardUpgradeBuilder(opts);
-
   if (connection.type === "devnode") {
     await initConsensusHeights();
-    if (!needsStandardBuilder) {
+    if (!opts.prove) {
       await checkDevnodeSdkSupport();
     }
   }
@@ -491,7 +488,7 @@ async function buildAndBroadcastUpgrade(
     egressPolicy: opts.egressPolicy,
   });
 
-  if (connection.type === "devnode" && !needsStandardBuilder) {
+  if (connection.type === "devnode" && !opts.prove) {
     const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
       program: aleoSource,
       priorityFee: fee,
@@ -512,7 +509,7 @@ async function buildAndBroadcastUpgrade(
     return connection.broadcastTransaction(tx);
   }
 
-  if (connection.type === "devnode" && needsStandardBuilder) {
+  if (connection.type === "devnode" && opts.prove) {
     throw new DeployError(
       `Unable to upgrade "${programId}" with the standard upgrade builder: ` +
         `the installed @provablehq/sdk does not expose buildUpgradeTransaction().`,
@@ -528,10 +525,6 @@ async function buildAndBroadcastUpgrade(
     `Unable to upgrade "${programId}": no suitable upgrade method found on ProgramManager. ` +
       `Ensure @provablehq/sdk@^0.10.5 is installed.`,
   );
-}
-
-function needsStandardUpgradeBuilder(opts: BuildUpgradeOptions): boolean {
-  return opts.prove === true || declaresStaticRecords(opts.aleoSource);
 }
 
 // ---------------------------------------------------------------------------
