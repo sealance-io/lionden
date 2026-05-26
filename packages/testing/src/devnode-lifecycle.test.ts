@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { LionDenResolvedConfig } from "@lionden/config";
 
 // Mock DevnodeManager before importing the module under test
+const { resolveDevnodeBackend, preflightDevnode } = vi.hoisted(() => ({
+  resolveDevnodeBackend: vi.fn().mockResolvedValue({
+    provider: "leo",
+    command: "leo",
+    capabilities: { snapshot: false },
+  }),
+  preflightDevnode: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@lionden/network", () => {
   const DevnodeManager = vi.fn().mockImplementation(function (this: any) {
     this.start = vi.fn().mockResolvedValue(undefined);
@@ -11,7 +20,7 @@ vi.mock("@lionden/network", () => {
     return this;
   });
 
-  return { DevnodeManager };
+  return { DevnodeManager, resolveDevnodeBackend, preflightDevnode };
 });
 
 import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
@@ -44,6 +53,12 @@ function makeConfig(networks: Record<string, unknown> = {}): LionDenResolvedConf
 describe("devnode-lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resolveDevnodeBackend.mockResolvedValue({
+      provider: "leo",
+      command: "leo",
+      capabilities: { snapshot: false },
+    });
+    preflightDevnode.mockResolvedValue(undefined);
   });
 
   describe("startDevnode", () => {
@@ -127,6 +142,43 @@ describe("devnode-lifecycle", () => {
       expect(result.manager.start).toHaveBeenCalledWith(
         expect.objectContaining({
           consensusHeights: "0,1,2,3",
+        }),
+      );
+    });
+
+    it("resolves backend with requiresPersistence and forwards standalone fields", async () => {
+      resolveDevnodeBackend.mockResolvedValueOnce({
+        provider: "standalone",
+        command: "/opt/aleo-devnode",
+        capabilities: { snapshot: true },
+      });
+      const config = makeConfig({
+        devnode: {
+          type: "devnode",
+          autoBlock: true,
+          network: "testnet",
+          provider: "standalone",
+          binary: "/opt/aleo-devnode",
+          storagePath: "/tmp/ledger",
+          clearStorageOnStart: true,
+        },
+      });
+
+      const result = await startDevnode(config);
+
+      expect(resolveDevnodeBackend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "standalone",
+          binary: "/opt/aleo-devnode",
+          requiresPersistence: true,
+        }),
+      );
+      expect(result.manager.start).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: "standalone",
+          devnodeBinary: "/opt/aleo-devnode",
+          storagePath: "/tmp/ledger",
+          clearStorage: true,
         }),
       );
     });

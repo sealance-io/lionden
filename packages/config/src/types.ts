@@ -67,8 +67,34 @@ export interface DevnodeNetworkConfig {
   /**
    * Consensus heights for devnode startup (e.g., "0,1,2,3,4,5,6,7,8").
    * Required for V9/constructor support on devnode.
+   * Leo backend only — rejected on the standalone backend.
    */
   readonly consensusHeights?: string;
+  /**
+   * Which devnode backend to drive.
+   * - `"leo"`: the devnode bundled in the Leo CLI (`leo devnode start`).
+   * - `"standalone"`: Provable's standalone `aleo-devnode` binary.
+   * When omitted, the backend is auto-detected at start time: `aleo-devnode`
+   * is preferred when present on PATH, otherwise the Leo CLI is used.
+   */
+  readonly provider?: "leo" | "standalone";
+  /**
+   * Path to the standalone `aleo-devnode` binary. The Leo binary comes from
+   * the top-level `leoBinary`. Setting this is standalone-only: it forces the
+   * standalone backend and fails clearly if the binary can't be run.
+   */
+  readonly binary?: string;
+  /**
+   * Directory for the standalone devnode's persistent ledger (`--storage`).
+   * Standalone-only. Enables snapshot/restore. When unset, the devnode runs
+   * in-memory and cannot snapshot.
+   */
+  readonly storagePath?: string;
+  /**
+   * Clear the storage directory before starting (`--clear-storage`).
+   * Standalone-only and requires `storagePath`.
+   */
+  readonly clearStorageOnStart?: boolean;
   /**
    * Skip disk writes/reads for deployment state on this network.
    * When true, deployment records, ABI snapshots, history, and pending
@@ -469,6 +495,14 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly network: AleoNetwork;
   readonly privateKey?: string;
   readonly consensusHeights?: string;
+  /** Devnode backend selection. Undefined ⇒ auto-detect at start time. */
+  readonly provider?: "leo" | "standalone";
+  /** Path to the standalone `aleo-devnode` binary (standalone backend only). */
+  readonly binary?: string;
+  /** Persistent ledger directory for the standalone backend (`--storage`). */
+  readonly storagePath?: string;
+  /** Clear `storagePath` before starting (`--clear-storage`). */
+  readonly clearStorageOnStart?: boolean;
   /** Deployment state ephemeral mode. Default: true (devnode chain dies on exit). */
   readonly ephemeral: boolean;
 }

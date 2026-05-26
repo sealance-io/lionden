@@ -399,6 +399,16 @@ function resolveNetworkConfig(
         network: config.network ?? "testnet",
         privateKey: config.privateKey,
         consensusHeights: config.consensusHeights,
+        // provider/binary stay undefined unless the user set them — auto-detect
+        // (which can fall back to leo) keys off their absence at start time.
+        ...(config.provider !== undefined ? { provider: config.provider } : {}),
+        ...(config.binary !== undefined ? { binary: expandTilde(config.binary) } : {}),
+        ...(config.storagePath !== undefined
+          ? { storagePath: expandTilde(config.storagePath) }
+          : {}),
+        ...(config.clearStorageOnStart !== undefined
+          ? { clearStorageOnStart: config.clearStorageOnStart }
+          : {}),
         ephemeral: config.ephemeral ?? deployEphemeral ?? true,
       };
     case "http":

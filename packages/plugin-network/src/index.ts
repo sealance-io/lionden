@@ -5,11 +5,15 @@ import {
   type ConfigHookHandlers,
   type ConfigValidationError,
   ArgumentType,
-  preflightLeo,
   task,
 } from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
-import { NetworkManagerImpl, DevnodeManager } from "@lionden/network";
+import {
+  NetworkManagerImpl,
+  DevnodeManager,
+  resolveDevnodeBackend,
+  preflightDevnode,
+} from "@lionden/network";
 
 // ---------------------------------------------------------------------------
 // Config hooks
@@ -35,6 +39,31 @@ const configHooks: ConfigHookHandlers = {
             path: `networks.${name}.endpoint`,
             message: `HTTP network "${name}" must specify an endpoint URL`,
           });
+        }
+      }
+      if (net.type === "devnode") {
+        // --clear-storage requires --storage on every backend.
+        if (net.clearStorageOnStart && !net.storagePath) {
+          errors.push({
+            path: `networks.${name}.clearStorageOnStart`,
+            message: `Devnode network "${name}" sets clearStorageOnStart but no storagePath; clearing storage requires a storage directory.`,
+          });
+        }
+        // Standalone is TestnetV0-only and has consensus heights compiled in.
+        // Auto-detected standalone (provider undefined) is checked at start time.
+        if (net.provider === "standalone") {
+          if (net.network !== "testnet") {
+            errors.push({
+              path: `networks.${name}.network`,
+              message: `Devnode network "${name}" uses provider "standalone", which only supports network "testnet" (got "${net.network}").`,
+            });
+          }
+          if (net.consensusHeights !== undefined) {
+            errors.push({
+              path: `networks.${name}.consensusHeights`,
+              message: `Devnode network "${name}" uses provider "standalone", which does not support consensusHeights (they are compiled into aleo-devnode).`,
+            });
+          }
         }
       }
     }
@@ -65,18 +94,56 @@ const nodeTask = task("node", "Start a local Aleo devnode")
   .addOption({
     name: "network",
     type: "string",
-    description: "Aleo network (testnet, mainnet, canary)",
+    description: "Aleo network (testnet, mainnet, canary). Leo backend only.",
     defaultValue: "testnet",
+  })
+  .addOption({
+    name: "persist",
+    type: "string",
+    description: "Persist the ledger to this directory (standalone aleo-devnode only)",
+  })
+  .addFlag({
+    name: "clearStorage",
+    description: "Clear the persist directory before starting (requires --persist)",
   })
   .setAction(async (args, lre) => {
     const port = args["port"] as number;
     const manualBlocks = args["manualBlocks"] as boolean;
     const quiet = args["quiet"] as boolean;
     const network = args["network"] as "testnet" | "mainnet" | "canary";
+    const persist = args["persist"] as string | undefined;
+    const clearStorage = args["clearStorage"] as boolean;
+
+    if (clearStorage && !persist) {
+      throw new Error("--clear-storage requires --persist <dir>.");
+    }
 
     const socketAddr = `127.0.0.1:${port}`;
 
-    await preflightLeo(lre.config);
+    // Resolve the devnode network config: prefer default network if devnode,
+    // else first devnode found.
+    const defaultNet = lre.config.networks[lre.config.defaultNetwork];
+    const devnodeNet =
+      defaultNet?.type === "devnode"
+        ? defaultNet
+        : Object.values(lre.config.networks).find((n) => n.type === "devnode");
+    const consensusHeights =
+      devnodeNet?.type === "devnode" ? devnodeNet.consensusHeights : undefined;
+    const storagePath =
+      persist ?? (devnodeNet?.type === "devnode" ? devnodeNet.storagePath : undefined);
+    const clearStorageOnStart =
+      clearStorage || (devnodeNet?.type === "devnode" ? devnodeNet.clearStorageOnStart : false);
+
+    const backend = await resolveDevnodeBackend({
+      provider: devnodeNet?.type === "devnode" ? devnodeNet.provider : undefined,
+      leoBinary: lre.config.leoBinary,
+      binary: devnodeNet?.type === "devnode" ? devnodeNet.binary : undefined,
+      network,
+      consensusHeights,
+      requiresPersistence: storagePath !== undefined,
+    });
+
+    await preflightDevnode(lre.config, backend);
 
     const devnode = new DevnodeManager();
 
@@ -90,29 +157,31 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     process.on("SIGINT", () => void shutdown());
     process.on("SIGTERM", () => void shutdown());
 
-    console.log(`Starting devnode at http://${socketAddr}...`);
-
-    // Resolve consensusHeights: prefer default network if devnode, else first devnode
-    const defaultNet = lre.config.networks[lre.config.defaultNetwork];
-    const devnodeNet =
-      defaultNet?.type === "devnode"
-        ? defaultNet
-        : Object.values(lre.config.networks).find((n) => n.type === "devnode");
-    const consensusHeights =
-      devnodeNet?.type === "devnode" ? devnodeNet.consensusHeights : undefined;
+    console.log(
+      `Starting ${backend.provider} devnode at http://${socketAddr}...` +
+        (storagePath ? ` (persisting to ${storagePath})` : ""),
+    );
 
     await devnode.start({
       socketAddr,
       autoBlock: !manualBlocks,
       network,
+      provider: backend.provider,
       leoBinary: lre.config.leoBinary,
+      devnodeBinary: backend.command,
+      // consensusHeights is leo-only; resolveDevnodeBackend already rejected it
+      // for standalone, so it's safe to forward unconditionally.
       consensusHeights,
+      ...(storagePath ? { storagePath } : {}),
+      ...(clearStorageOnStart ? { clearStorage: true } : {}),
       logMode: quiet ? "quiet-buffered" : "inherit",
     });
 
     console.log(`Devnode running at ${devnode.endpoint}`);
     if (manualBlocks) {
-      console.log("Manual block mode: use `leo devnode advance` to create blocks");
+      const advanceHint =
+        backend.provider === "standalone" ? "aleo-devnode advance" : "leo devnode advance";
+      console.log(`Manual block mode: use \`${advanceHint}\` to create blocks`);
     }
     console.log("Press Ctrl-C to stop\n");
 

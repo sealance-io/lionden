@@ -43,6 +43,7 @@ The resulting `TestContext` includes:
 - `execute()`
 - `raw.execute()` — explicit string-based escape hatch for dynamic ABI or post-upgrade transition calls
 - `advanceBlocks()`
+- `snapshot()` / `restore()` / `listSnapshots()` — snapshot-based fast reset (see below)
 - `teardown()`
 
 This is the interface used by the example tests in `examples/`.
@@ -72,6 +73,35 @@ Current behavior:
 `setup()` respects `config.testing.autoStartDevnode`.
 
 Managed devnodes default to `logMode: "quiet-buffered"` — output is drained and ring-buffered (last 64 KiB per stream). Set `LIONDEN_DEVNODE_LOGS=inherit` to surface devnode logs to the test runner output without editing test code. See [`network.md`](network.md#devnode-log-mode) for the full log-mode contract and precedence rules.
+
+The devnode backend is resolved per the [backend-selection rules](network.md#devnode-lifecycle): a configured `provider` is honored, otherwise the standalone `aleo-devnode` binary is auto-detected with a fallback to the bundled Leo devnode.
+
+### Snapshot-based fast reset
+
+`setup({ snapshotReset: true })` enables snapshot/restore for the auto-started devnode. It forces the standalone `aleo-devnode` backend (failing with a clear error if the binary is unavailable) and allocates a throwaway storage directory under the OS temp dir; `teardown()` removes it (including the sibling `*-snapshots/` directory the binary writes alongside it). `snapshotReset` requires an auto-started devnode — it cannot combine with `skipDevnode: true` or `autoStartDevnode: false`.
+
+The context then exposes:
+
+- `ctx.snapshot(name?)` — capture the current ledger; returns `{ name, height }`.
+- `ctx.listSnapshots()` — list snapshot names.
+- `ctx.restore(name)` — roll the chain back to a snapshot **and** invalidate the deployment session cache, so a subsequent `ctx.deploy()` re-validates against the restored chain instead of returning a stale cached deployment.
+
+Typical pattern: snapshot once after a baseline deploy in `beforeAll`, then `restore` in `beforeEach` for fast per-test isolation.
+
+```typescript
+let ctx: TestContext;
+beforeAll(async () => {
+  ctx = await setup({ snapshotReset: true });
+  await ctx.deploy("my_program");
+  await ctx.snapshot("baseline");
+});
+beforeEach(async () => {
+  await ctx.restore("baseline");
+});
+afterAll(async () => {
+  await ctx.teardown();
+});
+```
 
 ## Test Runner Task
 

@@ -6,7 +6,10 @@
  * and executing transitions.
  */
 
-import { preflightLeo, type LionDenRuntimeEnvironment } from "@lionden/core";
+import { type LionDenRuntimeEnvironment } from "@lionden/core";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import type {
   NetworkConnection,
   NetworkManager,
@@ -15,6 +18,7 @@ import type {
   RawTransitionOutput,
 } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
+import type { DevnodeStartOptions } from "@lionden/network";
 import {
   createNamedAccountAccessor,
   type NamedAccountAccessor,
@@ -44,6 +48,13 @@ export interface SetupOptions {
   autoBlock?: boolean;
   /** Network name to connect to (default: "devnode"). */
   network?: string;
+  /**
+   * Enable snapshot-based fast reset for the auto-started devnode. Requires the
+   * standalone `aleo-devnode` backend; a temp storage directory is allocated
+   * automatically and removed on teardown. When the backend is unavailable,
+   * `setup()` fails with a clear error. Exposes `ctx.snapshot/restore/listSnapshots`.
+   */
+  snapshotReset?: boolean;
 }
 
 export interface TestContext {
@@ -75,6 +86,19 @@ export interface TestContext {
   ): Promise<ExecuteResult>;
   /** Advance blocks on devnode (no-op on non-devnode networks). */
   advanceBlocks(count: number): Promise<void>;
+  /**
+   * Snapshot the current ledger. Requires `setup({ snapshotReset: true })`.
+   * Returns the snapshot name and the height it captured.
+   */
+  snapshot(name?: string): Promise<{ name: string; height: number }>;
+  /**
+   * Restore the ledger to a snapshot and invalidate the deployment cache so
+   * subsequent `deploy()` calls reflect the rolled-back chain. Requires
+   * `setup({ snapshotReset: true })`.
+   */
+  restore(name: string): Promise<void>;
+  /** List available snapshot names. Requires `setup({ snapshotReset: true })`. */
+  listSnapshots(): Promise<string[]>;
   /** Tear down the test context — stop devnode, disconnect, clear fixtures. */
   teardown(): Promise<void>;
 }
@@ -162,8 +186,12 @@ export interface ExecuteResult {
  */
 export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   const lre = opts.lre ?? (await createTestLre());
-  const { skipDevnode, autoBlock, network: networkName } = opts;
+  const { skipDevnode, autoBlock, network: networkName, snapshotReset } = opts;
   let managedDevnode: ManagedDevnode | undefined;
+  // Temp parent dir for snapshot-reset storage. The ledger lives at
+  // `<parent>/devnode`; the binary writes snapshots to the sibling
+  // `<parent>/devnode-snapshots`, so deleting the parent cleans up both.
+  let snapshotStorageParent: string | undefined;
 
   // When LIONDEN_PROVE is set (by the test runner's --prove flag),
   // force real proof generation on devnode deploy and execute calls.
@@ -171,12 +199,31 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
   // 1. Optionally start a devnode
   if (!skipDevnode && lre.config.testing.autoStartDevnode) {
-    await preflightLeo(lre.config);
-    // Only pass autoBlock override if the caller explicitly set it.
-    // Otherwise, let startDevnode() read the value from config.
-    managedDevnode = await startDevnode(
-      lre.config,
-      autoBlock !== undefined ? { autoBlock } : undefined,
+    const overrides: DevnodeStartOptions = {};
+    if (autoBlock !== undefined) overrides.autoBlock = autoBlock;
+    if (snapshotReset) {
+      snapshotStorageParent = mkdtempSync(path.join(tmpdir(), "lionden-devnode-"));
+      // requiresPersistence is derived from storagePath, forcing the standalone
+      // backend and failing clearly if aleo-devnode is unavailable.
+      overrides.storagePath = path.join(snapshotStorageParent, "devnode");
+    }
+    try {
+      managedDevnode = await startDevnode(
+        lre.config,
+        Object.keys(overrides).length > 0 ? overrides : undefined,
+      );
+    } catch (err) {
+      // Startup failed (e.g. aleo-devnode missing) — no TestContext is returned,
+      // so teardown() can never run. Remove the temp storage dir here.
+      if (snapshotStorageParent) {
+        rmSync(snapshotStorageParent, { recursive: true, force: true });
+      }
+      throw err;
+    }
+  } else if (snapshotReset) {
+    throw new Error(
+      "setup({ snapshotReset: true }) requires an auto-started devnode " +
+        "(skipDevnode must be false and testing.autoStartDevnode must be true).",
     );
   }
 
@@ -299,6 +346,25 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       }
     },
 
+    async snapshot(name?: string): Promise<{ name: string; height: number }> {
+      assertSnapshotReady(managedDevnode);
+      return managedDevnode.manager.snapshot(name);
+    },
+
+    async restore(name: string): Promise<void> {
+      assertSnapshotReady(managedDevnode);
+      await managedDevnode.manager.restore(name);
+      // The chain rolled back; drop the in-memory deployment cache so deploy()
+      // doesn't short-circuit on programs that no longer exist on-chain.
+      const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
+      deploymentCache?.invalidateSession(connectedNetwork);
+    },
+
+    async listSnapshots(): Promise<string[]> {
+      assertSnapshotReady(managedDevnode);
+      return managedDevnode.manager.listSnapshots();
+    },
+
     async teardown(): Promise<void> {
       clearFixtures();
       // Invalidate the deployment cache so the next test starts fresh.
@@ -310,10 +376,30 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       if (managedDevnode) {
         await stopDevnode(managedDevnode);
       }
+      // Remove the snapshot-reset temp storage (ledger + sibling snapshots dir).
+      if (snapshotStorageParent) {
+        rmSync(snapshotStorageParent, { recursive: true, force: true });
+      }
     },
   };
 
   return ctx;
+}
+
+function assertSnapshotReady(
+  managed: ManagedDevnode | undefined,
+): asserts managed is ManagedDevnode {
+  if (!managed) {
+    throw new Error(
+      "Snapshot/restore requires an auto-started devnode. Call setup({ snapshotReset: true }).",
+    );
+  }
+  if (!managed.manager.capabilities?.snapshot) {
+    throw new Error(
+      "Snapshot/restore is unavailable on this devnode. Call setup({ snapshotReset: true }) " +
+        "to start a storage-backed standalone aleo-devnode.",
+    );
+  }
 }
 
 async function assertManualDevnodeReachable(

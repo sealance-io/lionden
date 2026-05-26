@@ -5,7 +5,9 @@
  */
 
 import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
-import type { DevnodeLogMode, DevnodeStartOptions } from "./types.js";
+import type { DevnodeLogMode, DevnodeProvider, DevnodeStartOptions } from "./types.js";
+
+const DEFAULT_STANDALONE_BINARY = "aleo-devnode";
 
 const DEFAULT_SOCKET_ADDR = "127.0.0.1:3030";
 const DEFAULT_PRIVATE_KEY =
@@ -136,10 +138,27 @@ export class DevnodeManager {
   private _startResolved = false;
   private _diagnosticEmitted = false;
   private _spawnErrorMessage?: string;
+  private _provider: DevnodeProvider = "leo";
+  private _network = "testnet";
+  private _storagePath?: string;
+  private _lastStartOptions?: DevnodeStartOptions;
 
   /** REST API endpoint URL (e.g., "http://127.0.0.1:3030") */
   get endpoint(): string {
     return this._endpoint;
+  }
+
+  /** The resolved backend driving this devnode. */
+  get provider(): DevnodeProvider {
+    return this._provider;
+  }
+
+  /**
+   * Whether this devnode can snapshot/restore. Requires the standalone backend
+   * AND a configured `storagePath` (in-memory devnodes cannot snapshot).
+   */
+  get capabilities(): { snapshot: boolean } {
+    return { snapshot: this._provider === "standalone" && this._storagePath !== undefined };
   }
 
   /** Whether the devnode process is currently running. */
@@ -182,15 +201,34 @@ export class DevnodeManager {
     const socketAddr = options.socketAddr ?? DEFAULT_SOCKET_ADDR;
     this._endpoint = `http://${socketAddr}`;
 
-    const args = this.buildArgs(options);
-    const network = options.network ?? "testnet";
-    const leoBinary = options.leoBinary ?? "leo";
+    const provider = options.provider ?? "leo";
+    // Standalone is TestnetV0-only with consensus heights compiled in. Reject
+    // unsupported inputs here too, so a caller using DevnodeManager directly
+    // (bypassing resolveDevnodeBackend) gets a clear error instead of silently
+    // querying a testnet devnode or dropping consensus heights.
+    if (provider === "standalone") {
+      if (options.network !== undefined && options.network !== "testnet") {
+        throw new Error(
+          `The standalone aleo-devnode backend only supports the "testnet" network, but ` +
+            `network "${options.network}" was requested. Use network: "testnet" or provider: "leo".`,
+        );
+      }
+      if (options.consensusHeights !== undefined) {
+        throw new Error(
+          `consensusHeights is not supported on the standalone aleo-devnode backend ` +
+            `(consensus heights are compiled in). Remove consensusHeights or use provider: "leo".`,
+        );
+      }
+    }
+    this._provider = provider;
+    this._storagePath = options.storagePath;
+    this._lastStartOptions = options;
+    const network = provider === "standalone" ? "testnet" : options.network ?? "testnet";
+    this._network = network;
 
-    const proc = spawn(
-      leoBinary,
-      ["--disable-update-check", "devnode", "start", ...args],
-      { stdio: stdioConfigForMode(mode) },
-    );
+    const { command, argv } = this.buildSpawn(provider, options);
+
+    const proc = spawn(command, argv, { stdio: stdioConfigForMode(mode) });
     this.process = proc;
     this._logging = setupChildLogging(proc, mode, callbacks);
 
@@ -198,9 +236,11 @@ export class DevnodeManager {
       this.markTerminal(code ?? null, signal ?? null);
     });
     proc.once("error", (err) => {
-      this._spawnErrorMessage =
-        `Failed to start devnode: ${err.message}. ` +
-        `Ensure the Leo CLI ("${leoBinary}") is installed and accessible.`;
+      const hint =
+        provider === "standalone"
+          ? `Ensure the standalone aleo-devnode binary ("${command}") is installed and accessible.`
+          : `Ensure the Leo CLI ("${command}") is installed and accessible.`;
+      this._spawnErrorMessage = `Failed to start devnode: ${err.message}. ${hint}`;
       if (!this._terminal) this.markTerminal(null, null);
     });
 
@@ -323,8 +363,25 @@ export class DevnodeManager {
       : `Devnode exited (${exitFormatted}).`;
   }
 
+  /** Resolve the binary and argv for the given backend. */
+  private buildSpawn(
+    provider: DevnodeProvider,
+    options: DevnodeStartOptions,
+  ): { command: string; argv: string[] } {
+    if (provider === "standalone") {
+      return {
+        command: options.devnodeBinary ?? DEFAULT_STANDALONE_BINARY,
+        argv: ["start", ...this.buildStandaloneArgs(options)],
+      };
+    }
+    return {
+      command: options.leoBinary ?? "leo",
+      argv: ["--disable-update-check", "devnode", "start", ...this.buildLeoArgs(options)],
+    };
+  }
+
   /** Build CLI arguments for `leo devnode start`. */
-  private buildArgs(options: DevnodeStartOptions): string[] {
+  private buildLeoArgs(options: DevnodeStartOptions): string[] {
     const args: string[] = [];
 
     const socketAddr = options.socketAddr ?? DEFAULT_SOCKET_ADDR;
@@ -355,6 +412,149 @@ export class DevnodeManager {
     }
 
     return args;
+  }
+
+  /**
+   * Build CLI arguments for `aleo-devnode start`. Unlike the Leo backend,
+   * `--verbosity` is always emitted (the standalone CLI defaults to trace=2,
+   * while Lionden's default is 0). `--network` / `--consensus-heights` are
+   * never passed — they are unsupported on standalone and rejected upstream.
+   */
+  private buildStandaloneArgs(options: DevnodeStartOptions): string[] {
+    const args: string[] = [];
+
+    const socketAddr = options.socketAddr ?? DEFAULT_SOCKET_ADDR;
+    if (socketAddr !== DEFAULT_SOCKET_ADDR) {
+      args.push("--socket-addr", socketAddr);
+    }
+
+    if (options.autoBlock === false) {
+      args.push("--manual-block-creation");
+    }
+
+    args.push("--verbosity", String(options.verbosity ?? 0));
+
+    if (options.genesisPath) {
+      args.push("--genesis-path", options.genesisPath);
+    }
+
+    args.push("--private-key", options.privateKey ?? DEFAULT_PRIVATE_KEY);
+
+    if (options.storagePath) {
+      args.push("--storage", options.storagePath);
+    }
+    if (options.clearStorage) {
+      args.push("--clear-storage");
+    }
+
+    return args;
+  }
+
+  private assertSnapshotCapable(op: string): void {
+    if (this._provider !== "standalone") {
+      throw new Error(
+        `${op}() requires the standalone aleo-devnode backend (provider: "standalone").`,
+      );
+    }
+    if (this._storagePath === undefined) {
+      throw new Error(
+        `${op}() requires persistent storage. Set storagePath (devnode --storage) to enable snapshots.`,
+      );
+    }
+  }
+
+  /**
+   * Create a snapshot of the current ledger. Requires the standalone backend
+   * with `storagePath` set. Returns the snapshot name and the height it captured.
+   */
+  async snapshot(name?: string): Promise<{ name: string; height: number }> {
+    this.assertSnapshotCapable("snapshot");
+    const url = `${this._endpoint}/${this._network}/snapshot`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      // Always send a JSON body — the route uses a `Json` extractor, so an
+      // empty/absent body is a deserialization error.
+      body: JSON.stringify(name !== undefined ? { name } : {}),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Snapshot failed (HTTP ${res.status}): ${text}`);
+    }
+    return (await res.json()) as { name: string; height: number };
+  }
+
+  /** List the names of available snapshots. Standalone + storage only. */
+  async listSnapshots(): Promise<string[]> {
+    this.assertSnapshotCapable("listSnapshots");
+    const url = `${this._endpoint}/${this._network}/snapshots`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`listSnapshots failed (HTTP ${res.status}): ${text}`);
+    }
+    return (await res.json()) as string[];
+  }
+
+  /**
+   * Restore the ledger to a previously taken snapshot. This is an offline
+   * operation: the running devnode is stopped, `aleo-devnode restore` rewrites
+   * the storage dir, then the devnode is restarted with the same options.
+   * Restores chain state only — callers managing a deployment cache must
+   * invalidate it separately.
+   */
+  async restore(name: string): Promise<void> {
+    this.assertSnapshotCapable("restore");
+    const options = this._lastStartOptions;
+    if (!options) {
+      throw new Error("Cannot restore: devnode was never started.");
+    }
+    const binary = options.devnodeBinary ?? DEFAULT_STANDALONE_BINARY;
+    const storagePath = this._storagePath!;
+    // Match the key start() used (it defaults to DEFAULT_PRIVATE_KEY) so the
+    // restored devnode restarts with the same validator identity.
+    const privateKey = options.privateKey ?? DEFAULT_PRIVATE_KEY;
+    await this.stop();
+    await this.runRestoreCommand(binary, name, storagePath, privateKey);
+    await this.start(options);
+  }
+
+  private runRestoreCommand(
+    binary: string,
+    name: string,
+    storagePath: string,
+    privateKey?: string,
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const env = { ...process.env };
+      // Forward the key via env, never argv (keeps it off the process list).
+      if (privateKey) env["PRIVATE_KEY"] = privateKey;
+      const proc = spawn(
+        binary,
+        ["restore", "--snapshot", name, "--storage", storagePath],
+        { stdio: ["ignore", "ignore", "pipe"], env },
+      );
+      let stderr = "";
+      proc.stderr?.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
+      proc.once("error", (err) => {
+        reject(new Error(`Failed to run aleo-devnode restore: ${err.message}`));
+      });
+      proc.once("exit", (code, signal) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+        const tail = stderr.slice(-LOG_TAIL_RENDER_BYTES);
+        reject(
+          new Error(
+            `aleo-devnode restore failed (${formatExit(code ?? null, signal ?? null)})` +
+              (tail ? `:\n${tail}` : "."),
+          ),
+        );
+      });
+    });
   }
 
   /** Poll the REST API until it responds or timeout. */

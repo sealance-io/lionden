@@ -692,3 +692,197 @@ describe("DevnodeManager", () => {
     await expect(manager.start()).rejects.toThrow(/fatal: out of memory/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Standalone (aleo-devnode) backend
+// ---------------------------------------------------------------------------
+
+describe("DevnodeManager standalone backend", () => {
+  let manager: DevnodeManager;
+
+  beforeEach(() => {
+    manager = new DevnodeManager();
+    vi.clearAllMocks();
+    delete process.env["LIONDEN_DEVNODE_LOGS"];
+  });
+
+  afterEach(async () => {
+    await manager.stop();
+  });
+
+  it("spawns aleo-devnode with always-present --verbosity 0 and storage", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({
+      provider: "standalone",
+      devnodeBinary: "aleo-devnode",
+      storagePath: "/tmp/ledger",
+    });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "aleo-devnode",
+      [
+        "start",
+        "--verbosity",
+        "0",
+        "--private-key",
+        "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+        "--storage",
+        "/tmp/ledger",
+      ],
+      expect.objectContaining({ stdio: ["ignore", "pipe", "pipe"] }),
+    );
+    expect(manager.provider).toBe("standalone");
+    expect(manager.capabilities.snapshot).toBe(true);
+  });
+
+  it("never passes --network or --consensus-heights on standalone", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({
+      provider: "standalone",
+      autoBlock: false,
+      verbosity: 2,
+      socketAddr: "127.0.0.1:5050",
+      storagePath: "/tmp/l",
+      clearStorage: true,
+    });
+
+    const argv = vi.mocked(spawn).mock.calls[0]![1] as string[];
+    expect(argv).not.toContain("--network");
+    expect(argv).not.toContain("--consensus-heights");
+    expect(argv).toContain("--manual-block-creation");
+    expect(argv).toContain("--clear-storage");
+    expect(argv).toEqual(expect.arrayContaining(["--verbosity", "2"]));
+    expect(argv).toEqual(expect.arrayContaining(["--socket-addr", "127.0.0.1:5050"]));
+  });
+
+  it("capabilities.snapshot is false without storagePath", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ provider: "standalone" });
+    expect(manager.capabilities.snapshot).toBe(false);
+  });
+
+  it("rejects a non-testnet network on standalone (no silent coercion)", async () => {
+    await expect(
+      manager.start({ provider: "standalone", network: "mainnet" }),
+    ).rejects.toThrow(/only supports the "testnet"/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("rejects consensusHeights on standalone (no silent drop)", async () => {
+    await expect(
+      manager.start({ provider: "standalone", consensusHeights: "0,1,2" }),
+    ).rejects.toThrow(/consensusHeights is not supported/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Snapshot / restore
+// ---------------------------------------------------------------------------
+
+describe("DevnodeManager snapshot/restore", () => {
+  let manager: DevnodeManager;
+
+  beforeEach(() => {
+    manager = new DevnodeManager();
+    vi.clearAllMocks();
+    delete process.env["LIONDEN_DEVNODE_LOGS"];
+  });
+
+  afterEach(async () => {
+    await manager.stop();
+  });
+
+  async function startStandalone(storagePath?: string): Promise<void> {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+    await manager.start(
+      storagePath !== undefined
+        ? { provider: "standalone", storagePath }
+        : { provider: "standalone" },
+    );
+    mockFetch.mockReset();
+  }
+
+  it("snapshot() throws on the leo backend", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+    await manager.start();
+    await expect(manager.snapshot()).rejects.toThrow(/standalone/);
+  });
+
+  it("snapshot() throws when standalone has no storagePath", async () => {
+    await startStandalone();
+    await expect(manager.snapshot()).rejects.toThrow(/persistent storage/);
+  });
+
+  it("snapshot() posts {} when unnamed and {name} when named", async () => {
+    await startStandalone("/tmp/l");
+
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ name: "snapshot-3", height: 3 }),
+    });
+    await manager.snapshot();
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "http://127.0.0.1:3030/testnet/snapshot",
+      expect.objectContaining({ method: "POST", body: "{}" }),
+    );
+
+    await manager.snapshot("mine");
+    expect(mockFetch).toHaveBeenLastCalledWith(
+      "http://127.0.0.1:3030/testnet/snapshot",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ name: "mine" }) }),
+    );
+  });
+
+  it("listSnapshots() GETs the snapshots endpoint", async () => {
+    await startStandalone("/tmp/l");
+    mockFetch.mockResolvedValue({ ok: true, json: async () => ["a", "b"] });
+    await expect(manager.listSnapshots()).resolves.toEqual(["a", "b"]);
+    expect(mockFetch).toHaveBeenLastCalledWith("http://127.0.0.1:3030/testnet/snapshots");
+  });
+
+  it("restore() stops, runs `restore`, then restarts", async () => {
+    const order: string[] = [];
+    vi.mocked(spawn).mockImplementation((_cmd: any, argv: any) => {
+      const p = createMockProcess();
+      if (Array.isArray(argv) && argv[0] === "restore") {
+        order.push("restore");
+        setTimeout(() => p.emit("exit", 0), 0);
+      } else {
+        order.push("start");
+      }
+      return p as any;
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ provider: "standalone", storagePath: "/tmp/l" });
+    await manager.restore("snap");
+
+    const restoreCall = vi
+      .mocked(spawn)
+      .mock.calls.find((c) => Array.isArray(c[1]) && (c[1] as string[])[0] === "restore");
+    expect(restoreCall).toBeDefined();
+    expect(restoreCall![0]).toBe("aleo-devnode");
+    expect(restoreCall![1]).toEqual(["restore", "--snapshot", "snap", "--storage", "/tmp/l"]);
+    // The default validator key used at start() must be forwarded via env.
+    const env = (restoreCall![2] as { env: Record<string, string> }).env;
+    expect(env["PRIVATE_KEY"]).toBe(
+      "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+    );
+    expect(order).toEqual(["start", "restore", "start"]);
+    expect(manager.isRunning()).toBe(true);
+  });
+});
