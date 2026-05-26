@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import pluginNetwork from "./index.js";
 import { createLre } from "@lionden/core";
+import type { ConfigValidationError } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
 import type { NetworkManager } from "@lionden/network";
 
@@ -79,6 +80,63 @@ describe("plugin-network", () => {
 
     const optionNames = runTask!.options?.map((o) => o.name) ?? [];
     expect(optionNames).toContain("network");
+  });
+});
+
+describe("validateResolvedConfig — standalone/storage rules", () => {
+  const validate = (network: Record<string, unknown>): ConfigValidationError[] => {
+    const config = {
+      defaultNetwork: "devnode",
+      networks: { devnode: { type: "devnode", ...network } },
+    } as never;
+    const configHook = pluginNetwork.hookHandlers!.config as {
+      validateResolvedConfig: (c: never) => ConfigValidationError[];
+    };
+    return configHook.validateResolvedConfig(config);
+  };
+
+  it("rejects explicit standalone with non-testnet network", () => {
+    const errors = validate({ provider: "standalone", network: "mainnet" });
+    expect(errors.some((e) => e.path === "networks.devnode.network")).toBe(true);
+  });
+
+  it("rejects explicit standalone with consensusHeights", () => {
+    const errors = validate({
+      provider: "standalone",
+      network: "testnet",
+      consensusHeights: "0,1,2",
+    });
+    expect(errors.some((e) => e.path === "networks.devnode.consensusHeights")).toBe(true);
+  });
+
+  it("does not flag auto-detect (provider undefined) with non-testnet here", () => {
+    const errors = validate({ network: "mainnet" });
+    expect(errors.some((e) => e.path === "networks.devnode.network")).toBe(false);
+  });
+
+  it("rejects clearStorageOnStart without storagePath", () => {
+    const errors = validate({ clearStorageOnStart: true });
+    expect(errors.some((e) => e.path === "networks.devnode.clearStorageOnStart")).toBe(true);
+  });
+
+  it("accepts a valid standalone testnet config with storage", () => {
+    const errors = validate({
+      provider: "standalone",
+      network: "testnet",
+      storagePath: "/tmp/l",
+      clearStorageOnStart: true,
+    });
+    expect(errors).toHaveLength(0);
+  });
+});
+
+describe("node task has persist/clearStorage options", () => {
+  it("exposes --persist and --clear-storage", () => {
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const optionNames = nodeTask!.options?.map((o) => o.name) ?? [];
+    const flagNames = nodeTask!.flags?.map((f) => f.name) ?? [];
+    expect(optionNames).toContain("persist");
+    expect(flagNames).toContain("clearStorage");
   });
 });
 

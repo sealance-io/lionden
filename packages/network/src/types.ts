@@ -421,6 +421,9 @@ export interface DevnodeAccount {
  */
 export type DevnodeLogMode = "quiet-buffered" | "inherit" | "forward";
 
+/** Which devnode backend to drive. */
+export type DevnodeProvider = "leo" | "standalone";
+
 export interface DevnodeStartOptions {
   /** REST API socket address. Default: "127.0.0.1:3030" */
   socketAddr?: string;
@@ -441,9 +444,28 @@ export interface DevnodeStartOptions {
   leoBinary?: string;
   /**
    * Consensus heights for devnode startup (e.g., "0,1,2,3,4,5,6,7,8").
-   * Required for V9/constructor support on devnode.
+   * Required for V9/constructor support on the Leo backend. Rejected on the
+   * standalone backend (consensus heights are compiled into `aleo-devnode`).
    */
   consensusHeights?: string;
+  /**
+   * Devnode backend. `"leo"` spawns `leo devnode start`; `"standalone"` spawns
+   * Provable's `aleo-devnode start`. Default: `"leo"` (backward compatible).
+   * Callers typically resolve this via `resolveDevnodeBackend` before start.
+   */
+  provider?: DevnodeProvider;
+  /**
+   * Path to the standalone `aleo-devnode` binary. Default: `"aleo-devnode"`.
+   * Only used when `provider === "standalone"`.
+   */
+  devnodeBinary?: string;
+  /**
+   * Persistent ledger directory for the standalone backend (`--storage`).
+   * Required for snapshot/restore. Standalone-only.
+   */
+  storagePath?: string;
+  /** Clear `storagePath` before starting (`--clear-storage`). Standalone-only. */
+  clearStorage?: boolean;
   /**
    * How to handle the devnode subprocess's stdout/stderr. Default:
    * `"quiet-buffered"`. The `LIONDEN_DEVNODE_LOGS` env var overrides the

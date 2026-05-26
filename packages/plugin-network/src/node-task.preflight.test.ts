@@ -5,15 +5,9 @@ import type { LionDenResolvedConfig } from "@lionden/config";
 const mocks = vi.hoisted(() => ({
   devnodeStart: vi.fn(),
   devnodeStop: vi.fn(),
+  resolveDevnodeBackend: vi.fn(),
+  preflightDevnode: vi.fn(),
 }));
-
-vi.mock("@lionden/core", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@lionden/core")>();
-  return {
-    ...original,
-    preflightLeo: vi.fn().mockResolvedValue(undefined),
-  };
-});
 
 vi.mock("@lionden/network", () => ({
   NetworkManagerImpl: vi.fn(),
@@ -24,9 +18,10 @@ vi.mock("@lionden/network", () => ({
       stop: mocks.devnodeStop,
     };
   }),
+  resolveDevnodeBackend: mocks.resolveDevnodeBackend,
+  preflightDevnode: mocks.preflightDevnode,
 }));
 
-import { preflightLeo } from "@lionden/core";
 import pluginNetwork from "./index.js";
 
 function makeConfig(): LionDenResolvedConfig {
@@ -77,14 +72,18 @@ function makeConfig(): LionDenResolvedConfig {
   };
 }
 
-describe("node task Leo preflight", () => {
+describe("node task devnode preflight", () => {
+  const leoBackend = { provider: "leo" as const, command: "/tmp/leo", capabilities: { snapshot: false } };
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.devnodeStart.mockRejectedValue(new Error("stop after start"));
     mocks.devnodeStop.mockResolvedValue(undefined);
+    mocks.resolveDevnodeBackend.mockResolvedValue(leoBackend);
+    mocks.preflightDevnode.mockResolvedValue(undefined);
   });
 
-  it("preflights the resolved Leo binary before starting the devnode", async () => {
+  it("resolves the backend and preflights before starting the devnode", async () => {
     const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
     const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
     const processOn = vi.spyOn(process, "on").mockReturnValue(process);
@@ -100,15 +99,59 @@ describe("node task Leo preflight", () => {
       processOn.mockRestore();
     }
 
-    expect(preflightLeo).toHaveBeenCalledWith(lre.config);
+    expect(mocks.resolveDevnodeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ leoBinary: "/tmp/leo", network: "testnet" }),
+    );
+    expect(mocks.preflightDevnode).toHaveBeenCalledWith(lre.config, leoBackend);
     expect(mocks.devnodeStart).toHaveBeenCalledWith(
       expect.objectContaining({
         socketAddr: "127.0.0.1:3030",
         autoBlock: true,
         network: "testnet",
+        provider: "leo",
         leoBinary: "/tmp/leo",
       }),
     );
     expect(mocks.devnodeStart.mock.calls[0]![0]).not.toHaveProperty("leoVersion");
+  });
+
+  it("requests persistence when --persist is passed and forwards storagePath", async () => {
+    mocks.resolveDevnodeBackend.mockResolvedValue({
+      provider: "standalone",
+      command: "aleo-devnode",
+      capabilities: { snapshot: true },
+    });
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(
+        nodeTask!.action(
+          { port: 3030, manualBlocks: false, network: "testnet", persist: "/tmp/ledger" },
+          lre,
+        ),
+      ).rejects.toThrow("stop after start");
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.resolveDevnodeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ requiresPersistence: true }),
+    );
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "standalone", storagePath: "/tmp/ledger" }),
+    );
+  });
+
+  it("rejects --clear-storage without --persist", async () => {
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
+    await expect(
+      nodeTask!.action(
+        { port: 3030, manualBlocks: false, network: "testnet", clearStorage: true },
+        lre,
+      ),
+    ).rejects.toThrow(/--clear-storage requires --persist/);
   });
 });

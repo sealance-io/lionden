@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { existsSync } from "node:fs";
+import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { createMockConnection } from "@lionden/test-internals";
@@ -217,7 +219,7 @@ describe("test-context", () => {
       await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
-      expect(preflightLeo).toHaveBeenCalledWith(lre.config);
+      // Preflight now lives inside startDevnode (which resolves the backend).
       expect(startDevnode).toHaveBeenCalledOnce();
     });
 
@@ -711,6 +713,79 @@ describe("test-context", () => {
 
       const { stopDevnode } = await import("./devnode-lifecycle.js");
       expect(stopDevnode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("snapshot reset", () => {
+    it("snapshot/restore throw without snapshotReset", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre });
+      await expect(ctx.snapshot()).rejects.toThrow(/snapshotReset/);
+      await expect(ctx.restore("x")).rejects.toThrow(/snapshotReset/);
+    });
+
+    it("snapshotReset requires an auto-started devnode", async () => {
+      const lre = mockLre();
+      await expect(
+        setup({ lre, skipDevnode: true, snapshotReset: true }),
+      ).rejects.toThrow(/auto-started/);
+    });
+
+    it("ctx.restore invalidates the deployment session cache", async () => {
+      const restore = vi.fn().mockResolvedValue(undefined);
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      vi.mocked(startDevnode).mockResolvedValueOnce({
+        manager: { stop: vi.fn(), restore, capabilities: { snapshot: true } } as never,
+        endpoint: "http://127.0.0.1:3030",
+      });
+      const lre = mockLre();
+      const invalidateSession = vi.fn();
+      Object.defineProperty(lre, "deployments", {
+        value: { getCached: vi.fn(), invalidateSession },
+      });
+
+      const ctx = await setup({ lre, snapshotReset: true });
+      await ctx.restore("snap");
+
+      expect(restore).toHaveBeenCalledWith("snap");
+      expect(invalidateSession).toHaveBeenCalledWith(ctx.network);
+    });
+
+    it("allocates a temp storage dir and removes it on teardown", async () => {
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      let passedStoragePath: string | undefined;
+      vi.mocked(startDevnode).mockImplementationOnce(async (_cfg, overrides) => {
+        passedStoragePath = overrides?.storagePath;
+        return {
+          manager: { stop: vi.fn(), capabilities: { snapshot: true } } as never,
+          endpoint: "http://127.0.0.1:3030",
+        };
+      });
+      const lre = mockLre();
+      const ctx = await setup({ lre, snapshotReset: true });
+
+      expect(passedStoragePath).toBeDefined();
+      const parent = path.dirname(passedStoragePath!);
+      expect(existsSync(parent)).toBe(true);
+
+      await ctx.teardown();
+      expect(existsSync(parent)).toBe(false);
+    });
+
+    it("removes the temp storage dir when startup fails", async () => {
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      let passedStoragePath: string | undefined;
+      vi.mocked(startDevnode).mockImplementationOnce(async (_cfg, overrides) => {
+        passedStoragePath = overrides?.storagePath;
+        throw new Error("aleo-devnode not found");
+      });
+      const lre = mockLre();
+
+      await expect(setup({ lre, snapshotReset: true })).rejects.toThrow(
+        "aleo-devnode not found",
+      );
+      expect(passedStoragePath).toBeDefined();
+      expect(existsSync(path.dirname(passedStoragePath!))).toBe(false);
     });
   });
 });

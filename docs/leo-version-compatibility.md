@@ -58,6 +58,8 @@ networks: {
 
 The value is comma-delimited block heights at which each consensus version activates (length = target version). LionDen does not default this field — it matches the Leo CLI's own default behavior. V4 projects do not need it. V3.5 projects deploying constructor programs must set it explicitly.
 
+`consensusHeights` and `network` selection apply to the **Leo backend only**. The standalone `aleo-devnode` backend (`provider: "standalone"`) is TestnetV0-only with consensus heights compiled in, so it rejects a non-`testnet` `network` and any `consensusHeights`. See the backend-selection section of [`network.md`](network.md#devnode-lifecycle).
+
 ## Compatibility Matrix
 
 | Scenario | Supported |

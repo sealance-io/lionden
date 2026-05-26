@@ -11,6 +11,7 @@ export type {
   ExecuteOptions,
   DevnodeStartOptions,
   DevnodeLogMode,
+  DevnodeProvider,
   ConfirmationTimeoutStage,
   NetworkConfirmationTimeoutContext,
   TransitionRejectedContext,
@@ -26,6 +27,13 @@ export { selectMatchingTransition } from "./transition-selector.js";
 export { AleoConnection, type ConnectionOptions, TransactionShapeParseError } from "./connection.js";
 export { NetworkManagerImpl } from "./network-manager.js";
 export { DevnodeManager } from "./devnode-manager.js";
+export {
+  resolveDevnodeBackend,
+  preflightDevnode,
+  clearDevnodeBackendProbeCacheForTests,
+  type DevnodeBackend,
+  type ResolveDevnodeBackendOptions,
+} from "./devnode-backend.js";
 export { DEVNODE_ACCOUNTS, getDefaultAccount } from "./accounts.js";
 export {
   initSdk,

@@ -59,25 +59,56 @@ User-facing wrappers (`ctx.execute`, `ctx.raw.execute`, the recipe `DeploymentCo
 
 ## Devnode Lifecycle
 
-`packages/network/src/devnode-manager.ts` wraps `leo devnode start`.
+`packages/network/src/devnode-manager.ts` drives a local devnode. It supports two backends:
 
-Current behavior:
+- **`"leo"`** — the devnode bundled in the Leo CLI (`leo --disable-update-check devnode start`).
+- **`"standalone"`** — Provable's standalone `aleo-devnode` binary (`aleo-devnode start`).
 
-- spawns `leo devnode start`, or the binary specified by `leoBinary` in config
-- supports socket address, auto-block, verbosity, genesis path, network selection, private key, and `consensusHeights`
-- polls the REST API until healthy
-- stops the process with graceful shutdown, then force kill on timeout
+### Backend selection
 
-`consensusHeights` is required for Leo v3.5 devnode constructor programs. Leo v4 devnode defaults to V9-active. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
+The backend is chosen by `resolveDevnodeBackend` (`packages/network/src/devnode-backend.ts`):
 
-`@lionden/plugin-network` exposes devnode startup through the `node` task.
+- `networks.<name>.provider: "leo" | "standalone"` pins the backend.
+- When `provider` is omitted, the backend is **auto-detected** at start time: if `aleo-devnode --version` runs, the standalone backend is used; otherwise it falls back to the Leo CLI. (If you have `aleo-devnode` installed but want the bundled devnode, pin `provider: "leo"`.)
+- Standalone-only inputs — an explicit `binary`, `storagePath`, `clearStorageOnStart`, or the `--persist` flag — **force** the standalone backend. If it is unavailable (or `provider: "leo"` is pinned), startup fails with a clear error rather than silently dropping the feature.
 
-Current `node` task flags:
+The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `consensusHeights` is rejected (at config validation for an explicit `provider: "standalone"`, and before spawn for the auto-detected case). `consensusHeights` and `--network` apply to the Leo backend only.
+
+Devnode network config fields:
+
+| Field | Backend | Meaning |
+| --- | --- | --- |
+| `socketAddr`, `autoBlock`, `verbosity`, `genesisPath`, `privateKey` | both | REST bind address, block mode, log level, genesis, validator key |
+| `network`, `consensusHeights` | leo | network selection; consensus heights (Leo v3.5 constructor programs) |
+| `provider` | both | `"leo"` / `"standalone"` / omit for auto-detect |
+| `binary` | standalone | path to the `aleo-devnode` binary (`leoBinary` is the Leo path) |
+| `storagePath` | standalone | persistent RocksDB ledger dir (`--storage`); enables snapshot/restore |
+| `clearStorageOnStart` | standalone | clear `storagePath` before start (`--clear-storage`); requires `storagePath` |
+
+Common behavior: polls the REST API at `/<network>/block/height/latest` until healthy, then stops the process with graceful shutdown (SIGTERM) and a force-kill on timeout.
+
+`consensusHeights` is required for Leo v3.5 devnode constructor programs on the Leo backend. Leo v4 devnode defaults to V9-active. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
+
+### Persistence and snapshots (standalone)
+
+When `storagePath` is set, the standalone devnode persists its ledger and `DevnodeManager` exposes snapshot/restore (capability-gated; throws on the Leo backend or in-memory standalone):
+
+- `snapshot(name?)` → `POST /<network>/snapshot` (always sends a JSON body). Returns `{ name, height }`.
+- `listSnapshots()` → `GET /<network>/snapshots`.
+- `restore(name)` → offline flow: stop the devnode, run `aleo-devnode restore --snapshot <name> --storage <dir>` (the private key is forwarded via the `PRIVATE_KEY` env var, never argv), then restart with the same options. Restores **chain state only** — callers must invalidate their own deployment cache.
+
+For snapshot-based fast reset in tests, see [`testing.md`](testing.md) (`setup({ snapshotReset: true })`).
+
+### The `node` task
+
+`@lionden/plugin-network` exposes devnode startup through the `node` task. Flags:
 
 - `--port`
 - `--manual-blocks`
 - `--quiet`
-- `--network`
+- `--network` (Leo backend only)
+- `--persist <dir>` — persist the ledger (forces the standalone backend)
+- `--clear-storage` — clear the persist dir before start (requires `--persist`)
 
 The task keeps the process alive until either Ctrl-C / SIGTERM (clean exit) or the devnode itself exits unexpectedly (in which case the task exits non-zero so wrapper scripts see the failure).
 
