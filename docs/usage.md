@@ -712,6 +712,17 @@ expect(result.status).toBe("rejected");
 
 **Devnode starts but transactions stall.** — On Leo v3.5 devnodes deploying constructor programs, you must set `consensusHeights` on the devnode network so V9 activates. Leo v4 devnodes default to V9.
 
+**Devnode fails to start: address `127.0.0.1:3030` already in use (macOS).** — An orphaned devnode is still holding the port. LionDen stops its devnode with SIGTERM then SIGKILL, but a hard-killed test runner, a force-quit IDE, or a crashed CI worker can leave the child (`leo … devnode start` or `aleo-devnode start`) reparented to launchd. Find and clear it:
+
+```bash
+lsof -nP -iTCP:3030 -sTCP:LISTEN              # what holds the port (-nP = raw host:port)
+ps -o pid,ppid,etime,command \
+  -p "$(lsof -ti tcp:3030 -sTCP:LISTEN)"      # confirm it's a devnode; ppid 1 = orphaned
+lsof -ti tcp:3030 -sTCP:LISTEN | xargs kill    # graceful SIGTERM; re-run with `kill -9` if it lingers
+```
+
+If you run a non-default `socketAddr`/`--port`, substitute that port for `3030`. Note the same "address already in use" error appears when two devnode-backed test suites run concurrently — devnode binds a fixed port, so those suites must run one at a time; serialize them rather than killing a process.
+
 **`configVariable("X")` throws on a devnode run.** — `configVariable` is resolved eagerly for every network entry. Comment out unused per-network entries that reference env vars you haven't set, or supply a `default` value.
 
 **Tests pass locally but `ctx.raw.execute(...)` is needed for upgraded transitions.** — The typechain class was compiled from the pre-upgrade ABI in this process. Add new transitions through `raw.execute` after the upgrade, or restart the test process so codegen picks up the new ABI.
