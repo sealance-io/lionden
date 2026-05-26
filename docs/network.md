@@ -112,6 +112,8 @@ For snapshot-based fast reset in tests, see [`testing.md`](testing.md) (`setup({
 
 The task keeps the process alive until either Ctrl-C / SIGTERM (clean exit) or the devnode itself exits unexpectedly (in which case the task exits non-zero so wrapper scripts see the failure).
 
+If a devnode child outlives its parent (hard-killed runner, force-quit IDE, crashed CI worker) it keeps holding the socket and the next start fails with `127.0.0.1:3030` already in use. See [`usage.md`](usage.md#troubleshooting) for the macOS `lsof`/`kill` recipe to find and clear the orphan.
+
 ### Devnode log mode
 
 `DevnodeManager.start({ logMode })` selects how the devnode subprocess's stdout/stderr are handled. Both piped streams are always drained — never left attached without a consumer — to avoid a pipe-fill stall under heavy log output.
