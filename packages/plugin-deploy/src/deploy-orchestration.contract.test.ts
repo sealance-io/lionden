@@ -168,7 +168,7 @@ describe("deploy orchestration contract", () => {
     );
   });
 
-  it("uses the standard deployment builder for record programs on devnode", async () => {
+  it("keeps record programs on the devnode fast-path when prove is not requested", async () => {
     const { lre, fakeNetwork } = createDeployFixture([
       {
         name: "hello",
@@ -186,14 +186,14 @@ describe("deploy orchestration contract", () => {
 
     await deployAction({ program: "hello", noCompile: true }, lre);
 
-    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
-    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
-      expect.stringContaining("record Bid:"),
-      0,
-      false,
-    );
+    expect(mockBuildDevnodeDeploymentTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("record Bid:"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(mockBuildDeploymentTransaction).not.toHaveBeenCalled();
     expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
-      "standard-deploy-tx-bytes",
+      "mock-tx-bytes",
     );
   });
 

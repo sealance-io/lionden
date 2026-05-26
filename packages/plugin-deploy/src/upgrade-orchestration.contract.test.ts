@@ -318,7 +318,7 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
-  it("uses the standard upgrade builder for record programs on devnode", async () => {
+  it("keeps record programs on the devnode fast-path when prove is not requested", async () => {
     const recordAleoSource =
       `program hello.aleo;\n` +
       `record Bid:\n` +
@@ -334,14 +334,14 @@ describe("upgrade orchestration contract", () => {
 
     await upgradeAction({ program: "hello" }, lre);
 
-    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
-    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
+    expect(mockBuildDevnodeUpgradeTransaction).toHaveBeenCalledWith({
       program: expect.stringContaining("record Bid:"),
       priorityFee: 0,
       privateFee: false,
     });
+    expect(mockBuildUpgradeTransaction).not.toHaveBeenCalled();
     expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
-      "standard-upgrade-tx-bytes",
+      "devnode-upgrade-tx-bytes",
     );
   });
 

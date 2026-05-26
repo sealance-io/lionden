@@ -38,7 +38,6 @@ import { runDeployPreflight, type DeployPreflightResult } from "./preflight.js";
 import { createDegradedRecord } from "./on-chain-check.js";
 import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
-import { declaresStaticRecords } from "./aleo-source.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -655,10 +654,8 @@ export async function buildDeployTransaction(
   const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
 
-  const needsStandardBuilder = needsStandardDeploymentBuilder(opts);
-
   await initConsensusHeights();
-  if (!needsStandardBuilder) {
+  if (!opts.prove) {
     await checkDevnodeSdkSupport();
   }
 
@@ -691,8 +688,7 @@ async function buildDevnodeDeploymentTransactionForMode(
   programManager: DeploymentProgramManager,
   opts: BuildDeployOptions,
 ): Promise<unknown> {
-  const declaresRecords = declaresStaticRecords(opts.aleoSource);
-  if (opts.prove === true || declaresRecords) {
+  if (opts.prove === true) {
     if (typeof programManager.buildDeploymentTransaction !== "function") {
       throw new DeployError(
         `Unable to deploy "${opts.programId}" with the standard deployment builder: ` +
@@ -725,10 +721,8 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const signerKey = opts.signerPrivateKey ?? connection.privateKey;
 
   if (connection.type === "devnode") {
-    const needsStandardBuilder = needsStandardDeploymentBuilder(opts);
-
     await initConsensusHeights();
-    if (!needsStandardBuilder) {
+    if (!opts.prove) {
       await checkDevnodeSdkSupport();
     }
 
@@ -760,10 +754,6 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   });
 
   return sdk.programManager.deploy(aleoSource, fee, privateFee);
-}
-
-function needsStandardDeploymentBuilder(opts: BuildDeployOptions): boolean {
-  return opts.prove === true || declaresStaticRecords(opts.aleoSource);
 }
 
 // ---------------------------------------------------------------------------
