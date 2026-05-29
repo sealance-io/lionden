@@ -293,7 +293,7 @@ export class AleoConnection implements NetworkConnection {
       return typeof value === "string" ? value : String(value);
     } catch (err: unknown) {
       // SDK throws on 404 / missing key — treat as null
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       if (message.includes("404") || message.includes("not found") || message.includes("Not Found")) {
         return null;
       }
@@ -347,12 +347,14 @@ export class AleoConnection implements NetworkConnection {
 
     if (mode === "local") {
       // Local execution — run without generating proofs.
-      const result = await pm.run(
-        artifacts.source,
-        transitionName,
-        args,
-        false, // proveExecution = false
-        artifacts.imports,
+      const result = await runLocalProgramWithTrapCapture(() =>
+        pm.run(
+          artifacts.source,
+          transitionName,
+          args,
+          false, // proveExecution = false
+          artifacts.imports,
+        ),
       );
       const outputs = extractLocalExecutionOutputs(result);
       return {
@@ -757,7 +759,7 @@ export class AleoConnection implements NetworkConnection {
       if (source === undefined || source === null) return null;
       return typeof source === "string" ? source : String(source);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       if (
         message.includes("404") ||
         message.includes("not found") ||
@@ -825,6 +827,134 @@ export class AleoConnection implements NetworkConnection {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The Provable WASM runtime can report Leo runtime panics as process-level
+// `RuntimeError: unreachable` traps while leaving `pm.run()` pending. Install
+// this only around local execution to convert that specific trap into the
+// rejection callers expect. When LionDen owns the capture point it rethrows
+// unrelated uncaught exceptions; when another capture callback is already
+// installed, it observes traps through `uncaughtExceptionMonitor` because Node
+// suppresses the `uncaughtException` event. The capture point is process-global,
+// so this relies on LionDen's serial local execution model; an unrelated
+// `RuntimeError: unreachable` during the same window would be attributed to
+// this local run.
+//
+// The trap only carries the generic `unreachable` message; the descriptive
+// snarkVM panic text (e.g. "Integer subtraction failed on: ...") is written to
+// stderr by the panic hook and is not available here, so the resulting
+// `LocalExecutionWasmTrapError` cannot surface the underlying failure reason.
+function runLocalProgramWithTrapCapture<T>(operation: () => Promise<T>): Promise<T> {
+  if (typeof process === "undefined") return operation();
+
+  const hasCaptureCallbackSupport =
+    typeof process.setUncaughtExceptionCaptureCallback === "function" &&
+    typeof process.hasUncaughtExceptionCaptureCallback === "function";
+
+  if (hasCaptureCallbackSupport) {
+    if (process.hasUncaughtExceptionCaptureCallback()) {
+      return raceLocalOperationWithTrap(operation, (rejectTrap) => {
+        const handler: NodeJS.UncaughtExceptionListener = (error) => {
+          if (isLocalExecutionWasmTrap(error)) {
+            rejectTrap(error);
+          }
+        };
+
+        process.on("uncaughtExceptionMonitor", handler);
+        return () => {
+          process.removeListener("uncaughtExceptionMonitor", handler);
+        };
+      });
+    }
+
+    return raceLocalOperationWithTrap(operation, (rejectTrap) => {
+      process.setUncaughtExceptionCaptureCallback((error) => {
+        if (isLocalExecutionWasmTrap(error)) {
+          rejectTrap(error);
+          return;
+        }
+
+        process.setUncaughtExceptionCaptureCallback(null);
+        setImmediate(() => {
+          throw error;
+        });
+      });
+
+      return () => {
+        if (process.hasUncaughtExceptionCaptureCallback()) {
+          process.setUncaughtExceptionCaptureCallback(null);
+        }
+      };
+    });
+  }
+
+  return raceLocalOperationWithTrap(operation, (rejectTrap) => {
+    const handler: NodeJS.UncaughtExceptionListener = (error) => {
+      if (isLocalExecutionWasmTrap(error)) {
+        rejectTrap(error);
+        return;
+      }
+
+      // Unrelated exception: detach before re-raising. A listener-based
+      // handler suppresses Node's default crash, so rethrowing while still
+      // attached would loop straight back into this handler. Detaching first
+      // lets the rethrow reach Node's default (crash) behavior.
+      process.removeListener("uncaughtException", handler);
+      setImmediate(() => {
+        throw error;
+      });
+    };
+    process.on("uncaughtException", handler);
+    return () => {
+      process.removeListener("uncaughtException", handler);
+    };
+  });
+}
+
+function raceLocalOperationWithTrap<T>(
+  operation: () => Promise<T>,
+  installTrapHandler: (rejectTrap: (error: unknown) => void) => () => void,
+): Promise<T> {
+  let cleanupTrapHandler = () => {};
+  const trap = new Promise<never>((_, reject) => {
+    cleanupTrapHandler = installTrapHandler((error) => {
+      reject(new LocalExecutionWasmTrapError(error));
+    });
+  });
+
+  let operationPromise: Promise<T>;
+  try {
+    operationPromise = operation();
+  } catch (error) {
+    cleanupTrapHandler();
+    return Promise.reject(error);
+  }
+
+  return Promise.race([operationPromise, trap]).finally(cleanupTrapHandler);
+}
+
+class LocalExecutionWasmTrapError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `Provable SDK local execution trapped outside the pm.run promise: ${errorMessage(cause)}`,
+      { cause },
+    );
+    this.name = "LocalExecutionWasmTrapError";
+  }
+}
+
+function isLocalExecutionWasmTrap(error: unknown): boolean {
+  if (error instanceof WebAssembly.RuntimeError && error.message === "unreachable") {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { readonly name?: unknown; readonly message?: unknown };
+  return candidate.name === "RuntimeError" && candidate.message === "unreachable";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function dedupAndSortRuntimeImports(

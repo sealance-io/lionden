@@ -187,6 +187,78 @@ describe("AleoConnection", () => {
     );
   });
 
+  it("turns an uncaught WASM trap during local execution into a rejection", async () => {
+    const hadCaptureCallback = process.hasUncaughtExceptionCaptureCallback();
+    mockRun.mockImplementation(
+      () =>
+        new Promise(() => {
+          setImmediate(() => {
+            throw new WebAssembly.RuntimeError("unreachable");
+          });
+        }),
+    );
+
+    const connection = createDevnodeConnection();
+
+    await expect(
+      connection.execute("hello.aleo", "main", ["10u128", "11u128"], {
+        mode: "local",
+      }),
+    ).rejects.toThrow(
+      "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+    );
+
+    if (!hadCaptureCallback) {
+      expect(process.hasUncaughtExceptionCaptureCallback()).toBe(false);
+    }
+  });
+
+  it("turns a WASM trap into a rejection when a real capture callback is already installed", async () => {
+    const hadCaptureCallback = process.hasUncaughtExceptionCaptureCallback();
+    const capturedByExistingCallback: unknown[] = [];
+    const uncaughtExceptionListener = vi.fn();
+
+    if (!hadCaptureCallback) {
+      process.setUncaughtExceptionCaptureCallback((error) => {
+        capturedByExistingCallback.push(error);
+      });
+    }
+    process.once("uncaughtException", uncaughtExceptionListener);
+
+    mockRun.mockImplementation(
+      () =>
+        new Promise(() => {
+          setImmediate(() => {
+            throw new WebAssembly.RuntimeError("unreachable");
+          });
+        }),
+    );
+
+    const connection = createDevnodeConnection();
+
+    try {
+      expect(process.hasUncaughtExceptionCaptureCallback()).toBe(true);
+      await expect(
+        connection.execute("hello.aleo", "main", ["10u128", "11u128"], {
+          mode: "local",
+        }),
+      ).rejects.toThrow(
+        "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+      );
+      expect(uncaughtExceptionListener).not.toHaveBeenCalled();
+      if (!hadCaptureCallback) {
+        expect(capturedByExistingCallback).toHaveLength(1);
+        expect(capturedByExistingCallback[0]).toBeInstanceOf(WebAssembly.RuntimeError);
+        expect(process.hasUncaughtExceptionCaptureCallback()).toBe(true);
+      }
+    } finally {
+      process.removeListener("uncaughtException", uncaughtExceptionListener);
+      if (!hadCaptureCallback) {
+        process.setUncaughtExceptionCaptureCallback(null);
+      }
+    }
+  });
+
   // -------------------------------------------------------------------------
   // execute() — local mode: cross-program import fetching
   // -------------------------------------------------------------------------
@@ -2216,6 +2288,41 @@ describe("AleoConnection", () => {
       expect(signerRunMock).toHaveBeenCalledOnce();
       expect(mockRun).not.toHaveBeenCalled();
       expect(result.outputs).toEqual(["99u32"]);
+    });
+
+    it("can reuse the same signer PM for local execution after a captured WASM trap", async () => {
+      signerRunMock
+        .mockImplementationOnce(
+          () =>
+            new Promise(() => {
+              setImmediate(() => {
+                throw new WebAssembly.RuntimeError("unreachable");
+              });
+            }),
+        )
+        .mockResolvedValueOnce({ getOutputs: () => ["99u32"] });
+
+      const connection = createDevnodeConnection();
+      const signer = { privateKey: signerKey, address: signerAddress };
+
+      await expect(
+        connection.execute("hello.aleo", "main", ["10u128", "11u128"], {
+          mode: "local",
+          signer,
+        }),
+      ).rejects.toThrow(
+        "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+      );
+
+      const result = await connection.execute("hello.aleo", "main", ["1u32"], {
+        mode: "local",
+        signer,
+      });
+
+      expect(result.outputs).toEqual(["99u32"]);
+      expect(mockCreateSignerSdkObjects).toHaveBeenCalledOnce();
+      expect(signerRunMock).toHaveBeenCalledTimes(2);
+      expect(mockRun).not.toHaveBeenCalled();
     });
 
     it("uses default PM when no signer override is given", async () => {
