@@ -84,6 +84,20 @@ describe("recipe deployment context", () => {
     expect(lre.tasks.run).not.toHaveBeenCalled();
   });
 
+  it("accepts wrapper identity for cached deployments", async () => {
+    const getCached = vi
+      .fn<DeploymentManager["getCached"]>()
+      .mockReturnValue(completeRecord("hello.aleo"));
+    const lre = mockLre({ deployments: mockDeploymentManager(getCached) });
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    const result = await ctx.deploy({ programId: "hello.aleo" });
+
+    expect(result).toEqual({ programId: "hello.aleo", txId: "at1cached" });
+    expect(getCached).toHaveBeenCalledWith("hello.aleo", "devnode");
+    expect(lre.tasks.run).not.toHaveBeenCalled();
+  });
+
   it("bypasses the cached pre-check when noSkipDeployed is true", async () => {
     const getCached = vi
       .fn<DeploymentManager["getCached"]>()
@@ -157,6 +171,21 @@ describe("recipe deployment context", () => {
 
     expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
       program: "hello",
+      network: "devnode",
+      noCompile: true,
+      priorityFee: undefined,
+      noSkipDeployed: true,
+    });
+  });
+
+  it("accepts wrapper identity when cache skipping is disabled", async () => {
+    const lre = mockLre();
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    await ctx.deploy({ programId: "hello.aleo" }, { noSkipDeployed: true });
+
+    expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+      program: "hello.aleo",
       network: "devnode",
       noCompile: true,
       priorityFee: undefined,

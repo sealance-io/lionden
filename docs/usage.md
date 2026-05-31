@@ -214,6 +214,8 @@ import { createTokenContract } from "../typechain/index.js";
 
 const token = createTokenContract();
 token.connect(ctx.lre);                       // bind to a runtime
+token.programId;                              // "token.aleo"
+token.address();                              // deterministic program address
 
 // Local execution — no transaction, no broadcast. Returns decoded outputs.
 const sum = await hello.main.locally({ a: 3, b: 5 });
@@ -314,9 +316,9 @@ What `setup()` gives you:
 - `ctx.network` — the connected network name
 - `ctx.accounts` — well-known devnode accounts (empty array on HTTP)
 - `ctx.namedAccounts` and `ctx.named.signer(...)` / `.address(...)` / `.require(...)` — see [Named Accounts](#named-accounts)
-- `ctx.deploy(name, opts?)`, `ctx.execute(...)`, `ctx.raw.execute(...)`, `ctx.advanceBlocks(n)`, `ctx.teardown()`
+- `ctx.deploy(nameOrWrapper, opts?)`, `ctx.execute(...)`, `ctx.raw.execute(...)`, `ctx.advanceBlocks(n)`, `ctx.teardown()`
 
-`ctx.deploy()` can return a cached complete deployment `{ programId, txId }` when the program is already deployed in the connected context. Pass `{ noSkipDeployed: true }` when a test fixture must prove the deploy happened in that run.
+`ctx.deploy()` accepts a program name, a `.aleo` id, or a generated wrapper, and can return a cached complete deployment `{ programId, txId }` when the program is already deployed in the connected context. Pass `{ noSkipDeployed: true }` when a test fixture must prove the deploy happened in that run.
 
 `setup()` honors `testing.autoStartDevnode`. The devnode is started once per `loadFixture()` and torn down by `teardown()`. `loadFixture()` caches the result across tests in the same file/suite — keep deploy logic in the fixture function so you don't redeploy per test.
 
@@ -420,9 +422,9 @@ export const setupToken: DeploymentRecipe = async (ctx) => {
     deployer: "signer",
     treasury: "address",
   });
-  await ctx.deploy("token", { noSkipDeployed: true });
-
   const token = createTokenContract().connect(ctx.lre);
+  await ctx.deploy(token, { noSkipDeployed: true });
+
   await token.withSigner(deployer).mint_public.accepted({
     receiver: treasury,
     amount: 1_000_000n,

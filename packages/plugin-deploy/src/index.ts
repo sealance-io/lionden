@@ -297,6 +297,7 @@ export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
 export type {
   DeploymentContext,
   DeploymentRecipe,
+  ProgramDeploymentTarget,
   RecipeDeployOptions,
   RecipeDeployResult,
   RecipeExecuteOptions,

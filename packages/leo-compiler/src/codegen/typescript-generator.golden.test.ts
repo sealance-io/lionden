@@ -27,6 +27,7 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
       "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare function programAddressFromProgramId(programId: string): string;",
       "export declare class NetworkRecordDecryptionError extends Error {",
       "  readonly kind: \"NetworkRecordDecryptionError\";",
       "  readonly ciphertextPrefix: string;",
@@ -142,6 +143,20 @@ describe("codegen golden TypeScript validity", () => {
       expectGeneratedToTypecheck(goldenFile.replace(".ts", ""), output);
     });
   }
+
+  it("a generated wrapper is assignable to a deploy target (programId stays public)", () => {
+    // Regression guard for `ctx.deploy(wrapper)`: a wrapper structurally
+    // satisfies `ProgramDeploymentTarget`'s `{ readonly programId: string }`
+    // arm only while `BaseContract.programId` is public. Flipping it back to
+    // `protected` makes TypeScript treat the member nominally and this fails.
+    const assertion = [
+      'import { BaseContract } from "./BaseContract.js";',
+      "declare const wrapper: BaseContract;",
+      "const _deployTarget: { readonly programId: string } = wrapper;",
+      "void _deployTarget;",
+    ].join("\n");
+    expectGeneratedToTypecheck("deploy-target-assertion", assertion);
+  });
 });
 
 const INTERFACE_HELPERS_HELPERS = [

@@ -104,6 +104,11 @@ const governance = createGovernance({
 });
 ```
 
+Every wrapper exposes the owning program identity through `contract.programId`
+and derives the deterministic Aleo program address with `contract.address()`.
+The address is computed from the program id, so it is available before
+deployment and is not a deployment-state record.
+
 `imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` as a per-call additive layer, and `withSigner()` clones preserve the instance-level list. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
 
 `codegen.dynamicRecords` can emit conversion helpers for Leo v4 `dyn record` interface inputs when the concrete source record ABI is known:
