@@ -157,6 +157,29 @@ Each entry mirrors Leo's read operations and reuses the same key/value
 `MappingKeyNotFoundError` is part of the `LionDenTypechainError` hierarchy defined in the
 generated `BaseContract.ts`; consumers import it from their generated `typechain/index.ts`.
 
+#### Option-valued mappings
+
+When the value type is `Option<T>`, key presence and value-nullness are independent
+axes: a present-but-`None` entry is stored on-chain as a `{ is_some: false, … }` struct,
+so it is a real entry that the deserializer resolves to `null`. This produces three
+distinguishable states:
+
+| State | `contains` | `tryGet` | `get` | `getOrUse(key, d)` |
+|-------|-----------|----------|-------|--------------------|
+| key absent | `false` | `null` | throws `MappingKeyNotFoundError` | `d` |
+| present, `None` | `true` | `null` | `null` | `null` |
+| present, `Some(x)` | `true` | `x` | `x` | `x` |
+
+`tryGet` returns `null` for both *key absent* and *stored `None`* — it cannot tell them
+apart. Only `contains` reports the presence axis. To distinguish the two, check
+presence first, then read:
+
+```ts
+if (await c.mappings.maybeScore.contains(key)) {
+  const value = await c.mappings.maybeScore.get(key); // present ⇒ null means stored None
+}
+```
+
 ## `compile` and `clean`
 
 `packages/plugin-leo/src/index.ts` currently exposes:
