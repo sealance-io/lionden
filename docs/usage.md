@@ -227,9 +227,19 @@ await token.transfer_public.accepted({ receiver, amount: 50n }, { signer: accoun
 // Or pin a signer for a chain of calls:
 await token.withSigner(account1).transfer_public.accepted({ receiver, amount: 50n });
 
-// Mapping reads — one getter per mapping (camelCased "get<Name>"):
-const balance = await token.getBalances(account1);    // null if absent
+// Mapping reads — each mapping is exposed under `mappings.<camelName>`, mirroring
+// Leo's read operations:
+await token.mappings.balances.contains(account1);       // boolean — like Leo `contains`
+await token.mappings.balances.get(account1);            // value — like Leo `get`; throws MappingKeyNotFoundError if the key is absent
+await token.mappings.balances.getOrUse(account1, 0n);   // value or fallback — like Leo `get_or_use`
+await token.mappings.balances.tryGet(account1);         // value or null when the key is absent
 ```
+
+Use `.get` when the key is guaranteed to exist (it returns a non-nullable value and
+throws a typed `MappingKeyNotFoundError` otherwise), `.tryGet` when absence is expected,
+`.getOrUse` for a default, and `.contains` for existence checks. Note: for a mapping
+whose value is an `Option`, `.get` is about *key* presence — a present-but-`None` value
+still resolves to `null`.
 
 Every transition gets several call shapes: `.locally`, `.failsLocally`, `.captureLocalFailure`, `.submitted`, `.settled`, `.accepted`, `.rejected`. Use `.accepted` for the happy path on-chain, `.rejected` to assert finalizer rejection, and `.settled` when either is acceptable. See [`testing.md`](testing.md#typed-broadcast-results) for the typed-output contract, including how `EncryptedRecord<T>` and `EncryptedValue<T>` decrypt private outputs.
 
@@ -694,7 +704,7 @@ See `examples/async-escrow`. Pattern:
 const escrow = createEscrow();
 escrow.connect(ctx.lre);
 await escrow.create_escrow.accepted({ item_id: 42n });
-expect(await escrow.getEscrow_status(42n)).toBe(0);
+expect(await escrow.mappings.escrowStatus.get(42n)).toBe(0);
 
 // Off-chain failure (transition-level assert):
 await escrow.create_escrow.failsLocally({ item_id: 0n });

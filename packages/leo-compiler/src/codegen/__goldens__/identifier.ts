@@ -145,11 +145,27 @@ export class Governance extends BaseContract {
     },
   } as const;
 
-  async getSelected_strategy(key: IdentifierInput): Promise<LeoIdentifier | null> {
-    const _result = await this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }));
-    if (_result === null) return null;
-    return BaseContract.parseIdentifier(_result);
-  }
+  readonly mappings = {
+    selectedStrategy: {
+      contains: async (key: IdentifierInput): Promise<boolean> => {
+        return this.mappingContains("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }));
+      },
+      get: async (key: IdentifierInput): Promise<LeoIdentifier> => {
+        const _result = await this.requireMappingRaw("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }));
+        return BaseContract.parseIdentifier(_result);
+      },
+      getOrUse: async (key: IdentifierInput, def: LeoIdentifier): Promise<LeoIdentifier> => {
+        const _result = await this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }));
+        if (_result === null) return def;
+        return BaseContract.parseIdentifier(_result);
+      },
+      tryGet: async (key: IdentifierInput): Promise<LeoIdentifier | null> => {
+        const _result = await this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }));
+        if (_result === null) return null;
+        return BaseContract.parseIdentifier(_result);
+      },
+    },
+  } as const;
 }
 
 export function createGovernance(options?: BaseContractOptions): Governance {

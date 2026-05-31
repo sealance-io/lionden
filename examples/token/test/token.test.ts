@@ -48,7 +48,7 @@ describe("token program", () => {
   describe("mint_public", () => {
     it("recipe minted initial supply to treasury", async () => {
       const treasury = ctx!.named.address("treasury");
-      expect(await token.getBalances(treasury)).toBe(1_000_000n);
+      expect(await token.mappings.balances.get(treasury)).toBe(1_000_000n);
     });
   });
 
@@ -58,8 +58,8 @@ describe("token program", () => {
       const account2 = ctx!.accounts[2]!;
 
       // Capture balances before to keep assertions delta-based and order-independent.
-      const balance1Before = (await token.getBalances(account1)) ?? 0n;
-      const balance2Before = (await token.getBalances(account2)) ?? 0n;
+      const balance1Before = await token.mappings.balances.getOrUse(account1, 0n);
+      const balance2Before = await token.mappings.balances.getOrUse(account2, 0n);
 
       // Mint tokens to account-1 (default signer is account-0)
       await token.mint_public.accepted({ receiver: account1, amount: 5000n });
@@ -71,18 +71,18 @@ describe("token program", () => {
       await token.withSigner(account1).transfer_public.accepted({ receiver: account2, amount: 2000n });
 
       // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
-      expect(await token.getBalances(account1)).toBe(balance1Before + 3000n);
+      expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);
 
       // account-2: +2000 delta
-      expect(await token.getBalances(account2)).toBe(balance2Before + 2000n);
+      expect(await token.mappings.balances.get(account2)).toBe(balance2Before + 2000n);
     });
 
     it("supports per-call signer override via options.signer", async () => {
       const account1 = ctx!.accounts[1]!;
       const receiver = Leo.address(RECEIVERS.publicTransfer);
 
-      const balance1Before = (await token.getBalances(account1)) ?? 0n;
-      const receiverBefore = (await token.getBalances(receiver)) ?? 0n;
+      const balance1Before = await token.mappings.balances.getOrUse(account1, 0n);
+      const receiverBefore = await token.mappings.balances.getOrUse(receiver, 0n);
 
       // Mint to account-1 (default signer)
       await token.mint_public.accepted({ receiver: account1, amount: 5000n });
@@ -90,8 +90,8 @@ describe("token program", () => {
       // Per-call signer override (alternate to withSigner)
       await token.transfer_public.accepted({ receiver, amount: 2000n }, { signer: account1 });
 
-      expect(await token.getBalances(account1)).toBe(balance1Before + 3000n);
-      expect(await token.getBalances(receiver)).toBe(receiverBefore + 2000n);
+      expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);
+      expect(await token.mappings.balances.get(receiver)).toBe(receiverBefore + 2000n);
     });
   });
 
@@ -131,12 +131,12 @@ describe("token program", () => {
       const treasury = ctx!.named.address("treasury");
       expect(treasury.type).toBe("address-only");
 
-      const balanceBefore = (await token.getBalances(treasury)) ?? 0n;
+      const balanceBefore = await token.mappings.balances.getOrUse(treasury, 0n);
 
       // Mint to treasury using its named address rather than a hardcoded string
       await token.mint_public.accepted({ receiver: treasury, amount: 100n });
 
-      expect(await token.getBalances(treasury)).toBe(balanceBefore + 100n);
+      expect(await token.mappings.balances.get(treasury)).toBe(balanceBefore + 100n);
     });
   });
 });

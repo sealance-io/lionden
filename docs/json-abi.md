@@ -300,6 +300,10 @@ On-chain key-value storage. Declared as `mapping name: KeyType => ValueType` in 
 }
 ```
 
+Each mapping produces a `mappings.<camelName>` accessor group in the generated TypeScript
+bindings (`contains` / `get` / `getOrUse` / `tryGet`). The ABI schema itself is unchanged —
+see [`compiler.md` § Mapping accessors](compiler.md#mapping-accessors).
+
 ## Storage Variables
 
 Persistent on-chain state. Leo supports both singleton values (`storage name: Type`) and dynamic lists (`storage name: [Type]`).

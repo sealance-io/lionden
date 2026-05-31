@@ -341,14 +341,14 @@ describe("token program", () => {
 
   it("recipe minted initial supply to treasury", async () => {
     const treasury = ctx!.named.address("treasury");
-    expect(await token.getBalances(treasury)).toBe(1_000_000n);
+    expect(await token.mappings.balances.get(treasury)).toBe(1_000_000n);
   });
 
   it("transfers public tokens from a different signer", async () => {
     const account1 = ctx!.accounts[1]!;
     const receiver = ctx!.accounts[2]!;
 
-    const balance1Before = (await token.getBalances(account1)) ?? 0n;
+    const balance1Before = await token.mappings.balances.getOrUse(account1, 0n);
 
     // Mint tokens to account-1 (default signer is account-0)
     await token.mint_public.accepted({ receiver: account1, amount: 5000n });
@@ -358,7 +358,7 @@ describe("token program", () => {
     await token.withSigner(account1).transfer_public.accepted({ receiver, amount: 2000n });
 
     // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
-    expect(await token.getBalances(account1)).toBe(balance1Before + 3000n);
+    expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);
   });
 
   it("mints private tokens as a typed Token record", async () => {

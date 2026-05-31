@@ -116,11 +116,27 @@ export class Treasury extends BaseContract {
     },
   } as const;
 
-  async getDeposits(key: AddressInput): Promise<bigint | null> {
-    const _result = await this.queryMapping("deposits", BaseContract.serializeAddress(key, { programId: this.programId, input: "deposits key" }));
-    if (_result === null) return null;
-    return BaseContract.parseBigInt(_result);
-  }
+  readonly mappings = {
+    deposits: {
+      contains: async (key: AddressInput): Promise<boolean> => {
+        return this.mappingContains("deposits", BaseContract.serializeAddress(key, { programId: this.programId, input: "deposits key" }));
+      },
+      get: async (key: AddressInput): Promise<bigint> => {
+        const _result = await this.requireMappingRaw("deposits", BaseContract.serializeAddress(key, { programId: this.programId, input: "deposits key" }));
+        return BaseContract.parseBigInt(_result);
+      },
+      getOrUse: async (key: AddressInput, def: bigint): Promise<bigint> => {
+        const _result = await this.queryMapping("deposits", BaseContract.serializeAddress(key, { programId: this.programId, input: "deposits key" }));
+        if (_result === null) return def;
+        return BaseContract.parseBigInt(_result);
+      },
+      tryGet: async (key: AddressInput): Promise<bigint | null> => {
+        const _result = await this.queryMapping("deposits", BaseContract.serializeAddress(key, { programId: this.programId, input: "deposits key" }));
+        if (_result === null) return null;
+        return BaseContract.parseBigInt(_result);
+      },
+    },
+  } as const;
 }
 
 export function createTreasury(options?: BaseContractOptions): Treasury {

@@ -292,11 +292,27 @@ export class TokenContract extends BaseContract {
     },
   } as const;
 
-  async getBalances(key: AddressInput): Promise<bigint | null> {
-    const _result = await this.queryMapping("balances", BaseContract.serializeAddress(key, { programId: this.programId, input: "balances key" }));
-    if (_result === null) return null;
-    return BaseContract.parseBigInt(_result);
-  }
+  readonly mappings = {
+    balances: {
+      contains: async (key: AddressInput): Promise<boolean> => {
+        return this.mappingContains("balances", BaseContract.serializeAddress(key, { programId: this.programId, input: "balances key" }));
+      },
+      get: async (key: AddressInput): Promise<bigint> => {
+        const _result = await this.requireMappingRaw("balances", BaseContract.serializeAddress(key, { programId: this.programId, input: "balances key" }));
+        return BaseContract.parseBigInt(_result);
+      },
+      getOrUse: async (key: AddressInput, def: bigint): Promise<bigint> => {
+        const _result = await this.queryMapping("balances", BaseContract.serializeAddress(key, { programId: this.programId, input: "balances key" }));
+        if (_result === null) return def;
+        return BaseContract.parseBigInt(_result);
+      },
+      tryGet: async (key: AddressInput): Promise<bigint | null> => {
+        const _result = await this.queryMapping("balances", BaseContract.serializeAddress(key, { programId: this.programId, input: "balances key" }));
+        if (_result === null) return null;
+        return BaseContract.parseBigInt(_result);
+      },
+    },
+  } as const;
 }
 
 export function createTokenContract(options?: BaseContractOptions): TokenContract {

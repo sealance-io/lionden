@@ -260,17 +260,46 @@ export class Dex extends BaseContract {
     },
   } as const;
 
-  async getPairs(key: FieldInput): Promise<Pair | null> {
-    const _result = await this.queryMapping("pairs", BaseContract.serializeField(key, { programId: this.programId, input: "pairs key" }));
-    if (_result === null) return null;
-    return deserializePair(_result);
-  }
-
-  async getTotal_supply(key: FieldInput): Promise<bigint | null> {
-    const _result = await this.queryMapping("total_supply", BaseContract.serializeField(key, { programId: this.programId, input: "total_supply key" }));
-    if (_result === null) return null;
-    return BaseContract.parseBigInt(_result);
-  }
+  readonly mappings = {
+    pairs: {
+      contains: async (key: FieldInput): Promise<boolean> => {
+        return this.mappingContains("pairs", BaseContract.serializeField(key, { programId: this.programId, input: "pairs key" }));
+      },
+      get: async (key: FieldInput): Promise<Pair> => {
+        const _result = await this.requireMappingRaw("pairs", BaseContract.serializeField(key, { programId: this.programId, input: "pairs key" }));
+        return deserializePair(_result);
+      },
+      getOrUse: async (key: FieldInput, def: Pair): Promise<Pair> => {
+        const _result = await this.queryMapping("pairs", BaseContract.serializeField(key, { programId: this.programId, input: "pairs key" }));
+        if (_result === null) return def;
+        return deserializePair(_result);
+      },
+      tryGet: async (key: FieldInput): Promise<Pair | null> => {
+        const _result = await this.queryMapping("pairs", BaseContract.serializeField(key, { programId: this.programId, input: "pairs key" }));
+        if (_result === null) return null;
+        return deserializePair(_result);
+      },
+    },
+    totalSupply: {
+      contains: async (key: FieldInput): Promise<boolean> => {
+        return this.mappingContains("total_supply", BaseContract.serializeField(key, { programId: this.programId, input: "total_supply key" }));
+      },
+      get: async (key: FieldInput): Promise<bigint> => {
+        const _result = await this.requireMappingRaw("total_supply", BaseContract.serializeField(key, { programId: this.programId, input: "total_supply key" }));
+        return BaseContract.parseBigInt(_result);
+      },
+      getOrUse: async (key: FieldInput, def: bigint): Promise<bigint> => {
+        const _result = await this.queryMapping("total_supply", BaseContract.serializeField(key, { programId: this.programId, input: "total_supply key" }));
+        if (_result === null) return def;
+        return BaseContract.parseBigInt(_result);
+      },
+      tryGet: async (key: FieldInput): Promise<bigint | null> => {
+        const _result = await this.queryMapping("total_supply", BaseContract.serializeField(key, { programId: this.programId, input: "total_supply key" }));
+        if (_result === null) return null;
+        return BaseContract.parseBigInt(_result);
+      },
+    },
+  } as const;
 }
 
 export function createDex(options?: BaseContractOptions): Dex {

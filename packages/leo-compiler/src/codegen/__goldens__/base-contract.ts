@@ -469,7 +469,8 @@ export type TypechainErrorKind =
   | "RecordDecryptionKeyError"
   | "LocalRecordDecryptionError"
   | "LocalValueDecryptionError"
-  | "IdOnlyRecordResolutionError";
+  | "IdOnlyRecordResolutionError"
+  | "MappingKeyNotFoundError";
 
 export type TypechainErrorPhase =
   | "input"
@@ -477,7 +478,8 @@ export type TypechainErrorPhase =
   | "submit"
   | "confirm"
   | "settled"
-  | "shape";
+  | "shape"
+  | "mapping";
 
 export interface TypechainErrorContext {
   readonly phase: TypechainErrorPhase;
@@ -485,6 +487,8 @@ export interface TypechainErrorContext {
   readonly transition?: string;
   readonly input?: string;
   readonly outputIndex?: number;
+  readonly mapping?: string;
+  readonly key?: string;
   readonly cause?: unknown;
 }
 
@@ -495,6 +499,8 @@ export class LionDenTypechainError extends Error {
   readonly transition?: string;
   readonly input?: string;
   readonly outputIndex?: number;
+  readonly mapping?: string;
+  readonly key?: string;
 
   constructor(kind: TypechainErrorKind, message: string, context: TypechainErrorContext) {
     super(message, context.cause === undefined ? undefined : { cause: context.cause });
@@ -505,6 +511,8 @@ export class LionDenTypechainError extends Error {
     this.transition = context.transition;
     this.input = context.input;
     this.outputIndex = context.outputIndex;
+    this.mapping = context.mapping;
+    this.key = context.key;
   }
 }
 
@@ -553,6 +561,12 @@ export class UnexpectedTransactionStatusError extends LionDenTypechainError {
 export class TransactionShapeError extends LionDenTypechainError {
   constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
     super("TransactionShapeError", message, { ...context, phase: "shape" });
+  }
+}
+
+export class MappingKeyNotFoundError extends LionDenTypechainError {
+  constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
+    super("MappingKeyNotFoundError", message, { ...context, phase: "mapping" });
   }
 }
 
@@ -1493,6 +1507,27 @@ export abstract class BaseContract {
     }
 
     return network.getMappingValue(this.programId, mappingName, key);
+  }
+
+  protected async mappingContains(
+    mappingName: string,
+    key: string,
+  ): Promise<boolean> {
+    return (await this.queryMapping(mappingName, key)) !== null;
+  }
+
+  protected async requireMappingRaw(
+    mappingName: string,
+    key: string,
+  ): Promise<string> {
+    const raw = await this.queryMapping(mappingName, key);
+    if (raw === null) {
+      throw new MappingKeyNotFoundError(
+        'Mapping "' + mappingName + '" on ' + this.programId + ' has no entry for key ' + key + '.',
+        { programId: this.programId, mapping: mappingName, key },
+      );
+    }
+    return raw;
   }
 
   // ---------------------------------------------------------------------------

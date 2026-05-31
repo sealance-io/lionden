@@ -307,7 +307,15 @@ describe("generateBindings", () => {
 
   it("generates mapping accessors with deserialized values", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("async getBalances(key: AddressInput): Promise<bigint | null>");
+    // Mappings are exposed under a `mappings` namespace mirroring Leo's read ops.
+    expect(output).toContain("readonly mappings = {");
+    expect(output).toContain("balances: {");
+    expect(output).toContain("contains: async (key: AddressInput): Promise<boolean> =>");
+    expect(output).toContain("get: async (key: AddressInput): Promise<bigint> =>");
+    expect(output).toContain("getOrUse: async (key: AddressInput, def: bigint): Promise<bigint> =>");
+    expect(output).toContain("tryGet: async (key: AddressInput): Promise<bigint | null> =>");
+    expect(output).toContain('this.mappingContains("balances"');
+    expect(output).toContain('this.requireMappingRaw("balances"');
     expect(output).toContain('this.queryMapping("balances"');
     // Should deserialize the returned value, not return raw string
     expect(output).toContain("if (_result === null) return null;");
@@ -557,7 +565,9 @@ describe("external references", () => {
     };
     const output = generateBindings(abi);
     expect(output).toContain("info: PlaintextInput");
-    expect(output).toContain("async getMetadata(key: FieldInput): Promise<LeoPlaintext | null>");
+    expect(output).toContain("metadata: {");
+    expect(output).toContain("get: async (key: FieldInput): Promise<LeoPlaintext> =>");
+    expect(output).toContain("tryGet: async (key: FieldInput): Promise<LeoPlaintext | null> =>");
     expect(output).toContain("BaseContract.serializePlaintext");
     expect(output).toContain("BaseContract.parsePlaintext");
   });
@@ -931,7 +941,9 @@ describe("all primitive types in mappings", () => {
       transitions: [],
     };
     const output = generateBindings(abi);
-    expect(output).toContain("async getClaimed(key: AddressInput): Promise<boolean | null>");
+    expect(output).toContain("claimed: {");
+    expect(output).toContain("get: async (key: AddressInput): Promise<boolean> =>");
+    expect(output).toContain("tryGet: async (key: AddressInput): Promise<boolean | null> =>");
     expect(output).toContain("BaseContract.parseBoolean(_result)");
   });
 
@@ -951,7 +963,9 @@ describe("all primitive types in mappings", () => {
       transitions: [],
     };
     const output = generateBindings(abi);
-    expect(output).toContain("async getEntries(key: FieldInput): Promise<LeoAddress | null>");
+    expect(output).toContain("entries: {");
+    expect(output).toContain("get: async (key: FieldInput): Promise<LeoAddress> =>");
+    expect(output).toContain("tryGet: async (key: FieldInput): Promise<LeoAddress | null> =>");
     expect(output).toContain("BaseContract.serializeField(key");
     // Key serialization is validated before querying.
     expect(output).toContain('this.queryMapping("entries"');
@@ -981,8 +995,103 @@ describe("all primitive types in mappings", () => {
       transitions: [],
     };
     const output = generateBindings(abi);
-    expect(output).toContain("async getPairs(key: FieldInput): Promise<Pair | null>");
+    expect(output).toContain("pairs: {");
+    expect(output).toContain("get: async (key: FieldInput): Promise<Pair> =>");
     expect(output).toContain("deserializePair(_result)");
+  });
+
+  it("generates mapping accessor for Boolean keys", () => {
+    const abi: ProgramABI = {
+      program: "init.aleo",
+      structs: [],
+      records: [],
+      mappings: [
+        {
+          name: "initialized",
+          key: { Primitive: "Boolean" as const },
+          value: { Primitive: "Boolean" as const },
+        },
+      ],
+      storage_variables: [],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain("initialized: {");
+    expect(output).toContain("contains: async (key: boolean): Promise<boolean> =>");
+    expect(output).toContain("get: async (key: boolean): Promise<boolean> =>");
+    expect(output).toContain("BaseContract.serializeBoolean(key");
+  });
+
+  it("generates mapping accessor for Array values", () => {
+    const abi: ProgramABI = {
+      program: "lists.aleo",
+      structs: [],
+      records: [],
+      mappings: [
+        {
+          name: "rows",
+          key: { Primitive: "Field" as const },
+          value: { Array: [{ Primitive: { UInt: "U64" as const } }, 3] },
+        },
+      ],
+      storage_variables: [],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain("rows: {");
+    expect(output).toContain("get: async (key: FieldInput): Promise<ReadonlyArray<bigint>> =>");
+    expect(output).toContain("BaseContract.parseArray(_result)");
+  });
+
+  it("camelCases multi-word mapping names but preserves the on-chain name in queries", () => {
+    const abi: ProgramABI = {
+      program: "amm.aleo",
+      structs: [],
+      records: [],
+      mappings: [
+        {
+          name: "lp_vouchers",
+          key: { Primitive: "Field" as const },
+          value: { Primitive: { UInt: "U128" as const } },
+        },
+      ],
+      storage_variables: [],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    // Property key is camelCased ...
+    expect(output).toContain("lpVouchers: {");
+    expect(output).not.toContain("lp_vouchers: {");
+    // ... but the network query still uses the original snake_case name.
+    expect(output).toContain('this.queryMapping("lp_vouchers"');
+    expect(output).toContain('this.requireMappingRaw("lp_vouchers"');
+  });
+
+  it("falls back to original Leo names when camelCasing collides", () => {
+    const abi: ProgramABI = {
+      program: "collide.aleo",
+      structs: [],
+      records: [],
+      mappings: [
+        {
+          name: "lp_vouchers",
+          key: { Primitive: "Field" as const },
+          value: { Primitive: { UInt: "U128" as const } },
+        },
+        {
+          name: "lpVouchers",
+          key: { Primitive: "Field" as const },
+          value: { Primitive: { UInt: "U128" as const } },
+        },
+      ],
+      storage_variables: [],
+      transitions: [],
+    };
+    const output = generateBindings(abi);
+    // Both collide on `lpVouchers`, so each is emitted under its quoted original name.
+    expect(output).toContain('"lp_vouchers": {');
+    expect(output).toContain('"lpVouchers": {');
+    expect(output).not.toContain("lpVouchers: {");
   });
 });
 
@@ -1180,7 +1289,9 @@ describe("serialization of all primitive types", () => {
     expect(output).toContain("BaseContract.serializeIdentifier(e, context)");
     expect(output).toContain("{ is_some: false, val: 'lionden_zero' }");
     expect(output).toContain('BaseContract.parseIdentifier(this.outputAt(_result, "route", 0))');
-    expect(output).toContain("async getSelected_strategy(key: IdentifierInput): Promise<LeoIdentifier | null>");
+    expect(output).toContain("selectedStrategy: {");
+    expect(output).toContain("get: async (key: IdentifierInput): Promise<LeoIdentifier> =>");
+    expect(output).toContain("tryGet: async (key: IdentifierInput): Promise<LeoIdentifier | null> =>");
     expect(output).toContain('this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }))');
     expect(output).toContain("BaseContract.parseIdentifier(_result)");
     expectGeneratedToTypecheck("Governance", output);

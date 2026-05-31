@@ -7,7 +7,7 @@
 //   - Pure transitions with no finalize side effect (mint_private parity,
 //     transfer_private) → typed local-mode call.
 //   - Final-only (mint_public, transfer_public) → accepted(); assert
-//     mapping after via typed getAccount(addr).
+//     mapping after via typed mappings.account.get(addr).
 //   - Mixed transitions that finalize on chain are exercised through a single
 //     accepted() call, recovering record outputs with
 //     confirmed.outputs.decrypt(...). Proving needs the on-chain state paths,
@@ -58,7 +58,7 @@ describe("token.aleo", () => {
 
   it("mint_public increments account[receiver]", async () => {
     await token.withSigner(alice()).mint_public.accepted({ receiver: alice(), amount: 100n });
-    expect(await token.getAccount(alice())).toBe(100n);
+    expect(await token.mappings.account.get(alice())).toBe(100n);
   });
 
   it("mint_private returns a Token record (no mapping side effect)", async () => {
@@ -70,8 +70,8 @@ describe("token.aleo", () => {
   it("transfer_public moves balance between accounts", async () => {
     // alice has 100 from earlier mint_public. Send 10 to bob.
     await token.withSigner(alice()).transfer_public.accepted({ receiver: bob(), amount: 10n });
-    expect(await token.getAccount(alice())).toBe(90n);
-    expect(await token.getAccount(bob())).toBe(10n);
+    expect(await token.mappings.account.get(alice())).toBe(90n);
+    expect(await token.mappings.account.get(bob())).toBe(10n);
   });
 
   it("transfer_private splits a Token into (remainder, transferred)", async () => {
@@ -103,7 +103,7 @@ describe("token.aleo", () => {
     const remainder = await confirmed.outputs.decrypt(bob());
     expect(remainder.owner).toBe(bob().address);
     expect(remainder.amount).toBe(30n);
-    expect(await token.getAccount(alice())).toBe(110n);
+    expect(await token.mappings.account.get(alice())).toBe(110n);
   });
 
   it("transfer_public_to_private emits a private Token + decrements account[caller]", async () => {
@@ -119,6 +119,6 @@ describe("token.aleo", () => {
     expect(recvToken.owner).toBe(bob().address);
     expect(recvToken.amount).toBe(40n);
 
-    expect(await token.getAccount(alice())).toBe(70n);
+    expect(await token.mappings.account.get(alice())).toBe(70n);
   });
 });

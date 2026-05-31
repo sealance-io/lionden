@@ -265,11 +265,27 @@ export class TokenContract extends BaseContract {
     },
   } as const;
 
-  async getSupply(key: FieldInput): Promise<bigint | null> {
-    const _result = await this.queryMapping("supply", BaseContract.serializeField(key, { programId: this.programId, input: "supply key" }));
-    if (_result === null) return null;
-    return BaseContract.parseBigInt(_result);
-  }
+  readonly mappings = {
+    supply: {
+      contains: async (key: FieldInput): Promise<boolean> => {
+        return this.mappingContains("supply", BaseContract.serializeField(key, { programId: this.programId, input: "supply key" }));
+      },
+      get: async (key: FieldInput): Promise<bigint> => {
+        const _result = await this.requireMappingRaw("supply", BaseContract.serializeField(key, { programId: this.programId, input: "supply key" }));
+        return BaseContract.parseBigInt(_result);
+      },
+      getOrUse: async (key: FieldInput, def: bigint): Promise<bigint> => {
+        const _result = await this.queryMapping("supply", BaseContract.serializeField(key, { programId: this.programId, input: "supply key" }));
+        if (_result === null) return def;
+        return BaseContract.parseBigInt(_result);
+      },
+      tryGet: async (key: FieldInput): Promise<bigint | null> => {
+        const _result = await this.queryMapping("supply", BaseContract.serializeField(key, { programId: this.programId, input: "supply key" }));
+        if (_result === null) return null;
+        return BaseContract.parseBigInt(_result);
+      },
+    },
+  } as const;
 }
 
 export function createTokenContract(options?: BaseContractOptions): TokenContract {

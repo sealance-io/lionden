@@ -53,7 +53,7 @@ describe("counter v1", () => {
     await counter.increment.accepted();
     await counter.increment.accepted();
 
-    expect(await counter.getCounters(signer())).toBe(2n);
+    expect(await counter.mappings.counters.get(signer())).toBe(2n);
   });
 
   it("verifies account balance", async () => {
@@ -106,12 +106,12 @@ describe("upgrade to v2", () => {
       );
 
       // Old v1 mapping survived the upgrade
-      expect(await counter.getCounters(signer())).toBe(2n);
+      expect(await counter.mappings.counters.get(signer())).toBe(2n);
 
       // Old v1 transition still works post-upgrade
       await counter.increment.accepted();
 
-      expect(await counter.getCounters(signer())).toBe(3n);
+      expect(await counter.mappings.counters.get(signer())).toBe(3n);
     } finally {
       // Always restore v1 source to avoid polluting the repo
       fs.writeFileSync(programPath, v1Source, "utf-8");

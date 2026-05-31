@@ -581,9 +581,14 @@ function generateContractClass(
     lines.push(...indentLines(generateTransitionMethod(transition, ctx), "  "));
   }
 
-  for (const mapping of abi.mappings) {
+  if (abi.mappings.length > 0) {
+    const propKeys = buildMappingPropKeys(abi.mappings);
     lines.push("");
-    lines.push(...indentLines(generateMappingAccessor(mapping, ctx), "  "));
+    lines.push("  readonly mappings = {");
+    for (const mapping of abi.mappings) {
+      lines.push(...indentLines(generateMappingAccessor(mapping, propKeys, ctx), "    "));
+    }
+    lines.push("  } as const;");
   }
 
   lines.push("}");
@@ -677,8 +682,10 @@ function generateSerializedArgsLines(
 
 function generateMappingAccessor(
   mapping: MappingABI,
+  propKeys: Map<string, string>,
   ctx: GenerationContext,
 ): string[] {
+  const propKey = propKeys.get(mapping.name) ?? JSON.stringify(mapping.name);
   const keyType = plaintextToInputBindingTs(mapping.key, ctx);
   const valueType = plaintextToOutputBindingTs(mapping.value, ctx);
   const keySerializer = serializePlaintextExpr(
@@ -690,11 +697,25 @@ function generateMappingAccessor(
   const valueDeserializer = deserializePlaintextExpr("_result", mapping.value, ctx);
 
   return [
-    `async get${capitalize(mapping.name)}(key: ${keyType}): Promise<${valueType} | null> {`,
-    `  const _result = await this.queryMapping("${mapping.name}", ${keySerializer});`,
-    "  if (_result === null) return null;",
-    `  return ${valueDeserializer};`,
-    "}",
+    `${propKey}: {`,
+    `  contains: async (key: ${keyType}): Promise<boolean> => {`,
+    `    return this.mappingContains("${mapping.name}", ${keySerializer});`,
+    `  },`,
+    `  get: async (key: ${keyType}): Promise<${valueType}> => {`,
+    `    const _result = await this.requireMappingRaw("${mapping.name}", ${keySerializer});`,
+    `    return ${valueDeserializer};`,
+    `  },`,
+    `  getOrUse: async (key: ${keyType}, def: ${valueType}): Promise<${valueType}> => {`,
+    `    const _result = await this.queryMapping("${mapping.name}", ${keySerializer});`,
+    `    if (_result === null) return def;`,
+    `    return ${valueDeserializer};`,
+    `  },`,
+    `  tryGet: async (key: ${keyType}): Promise<${valueType} | null> => {`,
+    `    const _result = await this.queryMapping("${mapping.name}", ${keySerializer});`,
+    `    if (_result === null) return null;`,
+    `    return ${valueDeserializer};`,
+    `  },`,
+    `},`,
   ];
 }
 
@@ -1362,6 +1383,50 @@ export function resolveContractClassName(abi: ProgramABI): string {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function isValidIdentifier(name: string): boolean {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name);
+}
+
+/**
+ * snake_case -> camelCase for mapping property names. Leading underscores are
+ * preserved (`_internal` -> `_internal`); only internal `_x` boundaries are camelCased.
+ */
+function toCamelCase(name: string): string {
+  const lead = /^_+/.exec(name)?.[0] ?? "";
+  const rest = name.slice(lead.length);
+  const camel = rest.replace(/_+([a-zA-Z0-9])/g, (_, c: string) => c.toUpperCase());
+  return lead + camel;
+}
+
+/**
+ * Maps each mapping's original (Leo) name to the property key to emit on the
+ * generated `mappings` object. Collision-safe: if two mappings camelCase to the
+ * same key, every member of that collision group is emitted under its original
+ * Leo name (quoted) so no two mappings produce a duplicate object key.
+ */
+function buildMappingPropKeys(mappings: readonly MappingABI[]): Map<string, string> {
+  const groups = new Map<string, string[]>(); // camelName -> original names
+  for (const mapping of mappings) {
+    const camel = toCamelCase(mapping.name);
+    const originals = groups.get(camel) ?? [];
+    originals.push(mapping.name);
+    groups.set(camel, originals);
+  }
+
+  const propKeys = new Map<string, string>(); // original name -> emitted key token
+  for (const [camel, originals] of groups) {
+    if (originals.length > 1) {
+      for (const original of originals) {
+        propKeys.set(original, JSON.stringify(original));
+      }
+    } else {
+      const original = originals[0]!;
+      propKeys.set(original, isValidIdentifier(camel) ? camel : JSON.stringify(camel));
+    }
+  }
+  return propKeys;
 }
 
 function indentLines(lines: readonly string[], indent: string): string[] {

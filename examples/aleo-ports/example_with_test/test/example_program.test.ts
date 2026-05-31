@@ -74,6 +74,6 @@ describe("example_program.aleo", () => {
   // NOTE: leo-test parity gap. See tmp/leo-examples/example_with_test/tests/test_example_program.leo:34-38.
   it("set_mapping writes through finalize and is readable from the mapping", async () => {
     await example.set_mapping.accepted({ x: Leo.field("12field") });
-    expect(await example.getMap(Leo.field("0field"))).toBe("12field");
+    expect(await example.mappings.map.get(Leo.field("0field"))).toBe("12field");
   });
 });
