@@ -96,6 +96,17 @@ The ABI is the contract between Leo compilation and TypeScript code generation. 
 
 Generated bindings are the preferred user-facing API when the ABI is known. They encode ABI shape, Leo value serialization, visibility, encrypted output handles, and record helpers in TypeScript. Raw string execution remains available as an escape hatch for dynamic ABI situations, post-upgrade calls, or cases where the generated wrapper cannot yet model the call.
 
+### Scalar inputs (field / scalar / group)
+
+Transition arguments and mapping keys typed `field`, `scalar`, or `group` accept either a branded value from `Leo.field(...)` / `Leo.scalar(...)` / `Leo.group(...)` or a bare non-negative integer — `bigint` or `number` — which is auto-suffixed during serialization. So `pool_id: 1n` and `pool_id: Leo.field(1n)` are equivalent, and the same widening applies to the `Leo.*` constructors themselves, which now take `bigint | number | string`.
+
+Validation rules:
+
+- Values must be non-negative integers. A `number` above `2^53 - 1` is rejected (it cannot be represented exactly) — pass a `bigint` or string for large field values.
+- String inputs accept a bare-numeric form (`"12"`, auto-suffixed) or an already-suffixed literal (`"12field"`); visibility-suffixed strings (`"12field.public"`) are rejected on the input path. `group` is limited to integer literals.
+
+Type-safety tradeoff: branded values (`LeoField`, etc.) remain cross-type checked — a `LeoField` is not assignable where a `GroupInput` or `AddressInput` is expected. Bare numerics, however, are interchangeable across the three scalar slots (consistent with how integer inputs already work). Outputs and stored values stay branded, so reads remain strongly typed. Pass `Leo.field(...)` explicitly when you want the stricter cross-type guarantee at a call site.
+
 Each generated wrapper factory accepts a `BaseContractOptions` argument:
 
 ```ts

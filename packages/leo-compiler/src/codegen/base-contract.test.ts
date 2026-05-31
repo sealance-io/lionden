@@ -814,7 +814,7 @@ describe("BaseContract runtime", () => {
     });
 
     describe("branded Leo constructors", () => {
-      it("validates and normalizes primitive Leo literals", () => {
+      it("validates and normalizes suffixed primitive Leo literals", () => {
         expect(Leo.address({ address: "aleo1qqqq" })).toBe("aleo1qqqq");
         expect(Leo.field("12field")).toBe("12field");
         expect(Leo.group("7group")).toBe("7group");
@@ -822,11 +822,35 @@ describe("BaseContract runtime", () => {
         expect(Leo.identifier("'strategy_one'")).toBe("strategy_one");
       });
 
-      it("rejects invalid primitive Leo literals early", () => {
+      it("accepts bigint and number scalars, auto-suffixing", () => {
+        expect(Leo.field(12n)).toBe("12field");
+        expect(Leo.field(12)).toBe("12field");
+        expect(Leo.group(7n)).toBe("7group");
+        expect(Leo.group(0)).toBe("0group");
+        expect(Leo.scalar(9n)).toBe("9scalar");
+        expect(Leo.scalar(5)).toBe("5scalar");
+      });
+
+      it("accepts bare-numeric strings and is idempotent on suffixed strings", () => {
+        expect(Leo.field("12")).toBe("12field");
+        expect(Leo.group("7")).toBe("7group");
+        expect(Leo.scalar("9")).toBe("9scalar");
+        expect(Leo.field(Leo.field(12n))).toBe("12field");
+      });
+
+      it("rejects negative, non-integer, and unsafe-number scalars", () => {
+        expect(() => Leo.field(-1)).toThrow("non-negative integer");
+        expect(() => Leo.field(-1n)).toThrow("non-negative integer");
+        expect(() => Leo.scalar(1.5)).toThrow("non-negative integer");
+        expect(() => Leo.field(2 ** 53)).toThrow("bigint or string");
+      });
+
+      it("rejects malformed and visibility-suffixed scalar strings", () => {
         expect(() => Leo.address("not-an-address")).toThrow("expected Address");
-        expect(() => Leo.field("12")).toThrow("expected Field literal");
-        expect(() => Leo.group("7")).toThrow("expected Group literal");
-        expect(() => Leo.scalar("9")).toThrow("expected Scalar literal");
+        expect(() => Leo.field("notafield")).toThrow("expected Field literal");
+        expect(() => Leo.group("0x7")).toThrow("expected Group literal");
+        expect(() => Leo.scalar("9scalars")).toThrow("expected Scalar literal");
+        expect(() => Leo.field("12field.public")).toThrow("expected Field literal");
         expect(() => Leo.identifier("1strategy")).toThrow("expected Identifier matching");
       });
     });
@@ -848,6 +872,29 @@ describe("BaseContract runtime", () => {
         expect(() => BaseContract.serializeInt(-129, 8)).toThrow("expected i8 in range -128..127");
         expect(() => BaseContract.serializeInt(128, 8)).toThrow("expected i8 in range -128..127");
         expect(() => BaseContract.serializeInt(1, 64)).toThrow("expected i64 bigint");
+      });
+    });
+
+    describe("scalar serializers", () => {
+      it("serializes field/group/scalar from numerics and strings", () => {
+        expect(BaseContract.serializeField(7n)).toBe("7field");
+        expect(BaseContract.serializeField(7)).toBe("7field");
+        expect(BaseContract.serializeField("7")).toBe("7field");
+        expect(BaseContract.serializeField("7field")).toBe("7field");
+        expect(BaseContract.serializeGroup(0)).toBe("0group");
+        expect(BaseContract.serializeScalar(9n)).toBe("9scalar");
+      });
+
+      it("carries structured context for invalid scalar input", () => {
+        expect(() =>
+          BaseContract.serializeField("nope", {
+            programId: "token.aleo",
+            transition: "transfer",
+            input: "amount",
+          }),
+        ).toThrowErrorMatchingInlineSnapshot(
+          `[TransitionInputError: token.aleo/transfer input "amount" expected Field literal like 99field. Received string "nope". Use Leo.field(...).]`,
+        );
       });
     });
 
@@ -1007,6 +1054,14 @@ describe("BaseContract runtime", () => {
       expect(dyn).toBe(
         `{ owner: ${ADDR}.private, amount: 100u128.private, _nonce: 0group.public, _version: 0u8.public }`,
       );
+    });
+
+    it("accepts bare-numeric field/group/scalar fields", () => {
+      const dyn = Leo.dynamicRecord(
+        { _nonce: 0, root: 42, blinding: 7n },
+        { _nonce: "group.public", root: "field.public", blinding: "scalar.private" },
+      );
+      expect(dyn).toBe("{ _nonce: 0group.public, root: 42field.public, blinding: 7scalar.private }");
     });
 
     it("throws when value has missing keys vs schema", () => {
