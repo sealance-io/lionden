@@ -29,9 +29,13 @@ export type LeoDynamicRecord = LeoBrand<"DynamicRecord">;
 export type LeoPlaintext = LeoBrand<"Plaintext">;
 
 export type AddressInput = LeoAddress | { readonly address: string };
-export type FieldInput = LeoField;
-export type GroupInput = LeoGroup;
-export type ScalarInput = LeoScalar;
+// field/scalar/group inputs accept the branded value or a bare non-negative
+// integer (bigint | number), auto-suffixed during serialization. Branded values
+// remain cross-type checked; bare numerics are interchangeable across these
+// three slots (consistent with how integer inputs already work).
+export type FieldInput = LeoField | bigint | number;
+export type GroupInput = LeoGroup | bigint | number;
+export type ScalarInput = LeoScalar | bigint | number;
 export type IdentifierInput = LeoIdentifier;
 export type DynamicRecordInput = LeoDynamicRecord;
 export type PlaintextInput = LeoPlaintext;
@@ -696,15 +700,15 @@ export const Leo = {
     return brand<"Address">(BaseContract.serializeAddress(value, undefined));
   },
 
-  field(value: string): LeoField {
+  field(value: bigint | number | string): LeoField {
     return brand<"Field">(BaseContract.serializeField(value, undefined));
   },
 
-  group(value: string): LeoGroup {
+  group(value: bigint | number | string): LeoGroup {
     return brand<"Group">(BaseContract.serializeGroup(value, undefined));
   },
 
-  scalar(value: string): LeoScalar {
+  scalar(value: bigint | number | string): LeoScalar {
     return brand<"Scalar">(BaseContract.serializeScalar(value, undefined));
   },
 
@@ -1652,6 +1656,47 @@ export abstract class BaseContract {
     return value.toString() + "i" + bits;
   }
 
+  /**
+   * Normalize a non-negative integer "scalar-like" Leo literal (field, group,
+   * scalar) from a bigint, number, or string. Numbers/bigints are formatted
+   * with the type suffix; bare-numeric strings ("12") are suffixed; already
+   * suffixed strings ("12field") pass through unchanged. Visibility-suffixed
+   * strings ("12field.public") are rejected on the input path, matching the
+   * pre-existing per-type serializers. Group literals are limited to integer
+   * forms — coordinate/affine literals are not supported here.
+   */
+  private static serializeScalarLike(
+    value: unknown,
+    suffix: "field" | "group" | "scalar",
+    context?: TransitionInputContext,
+  ): string {
+    const label = suffix.charAt(0).toUpperCase() + suffix.slice(1);
+    const expected = label + " literal like 99" + suffix;
+    if (typeof value === "bigint") {
+      if (value < 0n) {
+        throw createInputError(label + " (non-negative integer)", value, context, "Use Leo." + suffix + "(...).");
+      }
+      return value.toString() + suffix;
+    }
+    if (typeof value === "number") {
+      if (!Number.isInteger(value) || value < 0) {
+        throw createInputError(label + " (non-negative integer)", value, context, "Use Leo." + suffix + "(...).");
+      }
+      if (!Number.isSafeInteger(value)) {
+        throw createInputError(label + " (use bigint or string above 2^53)", value, context, "Use Leo." + suffix + "(...).");
+      }
+      return value.toString() + suffix;
+    }
+    const literal = expectString(value, expected, context, "Use Leo." + suffix + "(...).");
+    if (new RegExp("^[0-9]+" + suffix + "$", "i").test(literal)) {
+      return literal;
+    }
+    if (/^[0-9]+$/.test(literal)) {
+      return literal + suffix;
+    }
+    throw createInputError(expected, value, context, "Use Leo." + suffix + "(...).");
+  }
+
   static serializeAddress(value: unknown, context?: TransitionInputContext): string {
     const raw = typeof value === "string"
       ? value
@@ -1670,11 +1715,7 @@ export abstract class BaseContract {
   }
 
   static serializeField(value: unknown, context?: TransitionInputContext): string {
-    const field = expectString(value, "Field", context, "Use Leo.field(...).");
-    if (!/^[0-9]+field$/i.test(field)) {
-      throw createInputError("Field literal like 99field", value, context, "Use Leo.field(...).");
-    }
-    return stripVisibility(field);
+    return BaseContract.serializeScalarLike(value, "field", context);
   }
 
   static parseField(value: string): LeoField {
@@ -1682,11 +1723,7 @@ export abstract class BaseContract {
   }
 
   static serializeGroup(value: unknown, context?: TransitionInputContext): string {
-    const group = expectString(value, "Group", context, "Use Leo.group(...).");
-    if (!/^[0-9]+group$/i.test(group)) {
-      throw createInputError("Group literal like 0group", value, context, "Use Leo.group(...).");
-    }
-    return stripVisibility(group);
+    return BaseContract.serializeScalarLike(value, "group", context);
   }
 
   static parseGroup(value: string): LeoGroup {
@@ -1694,11 +1731,7 @@ export abstract class BaseContract {
   }
 
   static serializeScalar(value: unknown, context?: TransitionInputContext): string {
-    const scalar = expectString(value, "Scalar", context, "Use Leo.scalar(...).");
-    if (!/^[0-9]+scalar$/i.test(scalar)) {
-      throw createInputError("Scalar literal like 0scalar", value, context, "Use Leo.scalar(...).");
-    }
-    return stripVisibility(scalar);
+    return BaseContract.serializeScalarLike(value, "scalar", context);
   }
 
   static parseScalar(value: string): LeoScalar {
