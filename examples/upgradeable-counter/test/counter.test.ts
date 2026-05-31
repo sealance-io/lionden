@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function deployCounter() {
   const ctx = await setup();
   try {
-    await ctx.deploy("counter", { noCompile: true });
+    await ctx.deploy(createCounter(), { noCompile: true });
     return { ctx };
   } catch (error) {
     await ctx.teardown();
@@ -95,11 +95,11 @@ describe("upgrade to v2", () => {
       // from the typechain class loaded by this test process (compiled from
       // v1 source at suite startup). Use the explicit raw escape hatch for those
       // post-upgrade ABI additions; v1 calls keep using the typed wrapper.
-      await ctx!.raw.execute("counter.aleo", "decrement", []);
+      await ctx!.raw.execute(counter.programId, "decrement", []);
 
       await assertMappingValue(
         ctx!.connection,
-        "counter.aleo",
+        counter.programId,
         "decrements",
         signer().address,
         "1u64",

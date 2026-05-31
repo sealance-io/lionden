@@ -2,10 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
 import { createHello } from "../typechain/Hello.js";
 
+const hello = createHello();
+
 async function deployHello() {
   const ctx = await setup();
   try {
-    await ctx.deploy("hello", { noCompile: true });
+    await ctx.deploy(hello, { noCompile: true });
     return { ctx };
   } catch (error) {
     await ctx.teardown();
@@ -29,8 +31,6 @@ afterAll(async () => {
 });
 
 describe("hello program", () => {
-  const hello = createHello();
-
   beforeAll(() => {
     hello.connect(ctx!.lre);
   });

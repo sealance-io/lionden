@@ -13,7 +13,7 @@ const nft = createNftRegistry();
 async function deployAndCreateCollection() {
   const ctx = await setup();
   try {
-    await ctx.deploy("nft_registry", { noCompile: true });
+    await ctx.deploy(nft, { noCompile: true });
 
     nft.connect(ctx.lre);
 

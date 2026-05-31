@@ -15,7 +15,7 @@ async function deployRewards() {
   // dependency "treasury" first (topological ordering). The library
   // "math_utils" is compiled but not deployed — libraries are compile-only.
   try {
-    await ctx.deploy("rewards", { noCompile: true });
+    await ctx.deploy(createRewards(), { noCompile: true });
     return { ctx };
   } catch (error) {
     await ctx.teardown();
