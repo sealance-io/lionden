@@ -41,7 +41,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | ABI parsing into a normalized internal representation; bridges v4 and v3.5 ABI shapes | `packages/leo-compiler/src/abi-parser.ts` |
 | TypeScript binding generation per program: `BaseContract.ts`, `<Name>.ts`, barrel `index.ts` | `packages/leo-compiler/src/codegen/typescript-generator.ts` |
 | Generated transition methods: `.locally`, `.failsLocally`, `.captureLocalFailure`, `.submitted`, `.settled`, `.accepted`, `.rejected` | same |
-| Mapping getters: `get<Mapping>(key)`, returning `null` for unset | same |
+| Mapping accessors: `mappings.<name>.{ contains, get, getOrUse, tryGet }` mirroring Leo's read ops (`get` throws `MappingKeyNotFoundError` when unset; `tryGet` returns `null`) | same |
 | Record helpers: `serialize<Name>`, `deserialize<Name>`, `decrypt<Name>` | `packages/leo-compiler/src/codegen/` |
 | Encrypted output types: `EncryptedRecord<T>.decrypt(key)`, `EncryptedValue<T>.decrypt(key)` | `packages/testing/...` + base contract code |
 | Id-only record output handles: `IdOnlyDynamicRecordHandle` (Leo v4 `dyn record`) and `IdOnlyExternalRecordHandle<T>` (cross-program `Record` outputs) — both carry `id` + `transitions` callgraph for inspection | `packages/leo-compiler/src/codegen/contract-wrapper.ts` |
@@ -266,7 +266,7 @@ LionDen and **doko-js** ([github.com/venture23-aleo/doko-js](https://github.com/
 ### Where LionDen and doko-js are at parity
 
 - **Leo compile + TypeScript binding generation** (class-per-program, typed transitions).
-- **Mapping queries** (LionDen: `connection.getMappingValue()` + typechain `get<Mapping>()`; doko-js: `zkGetMapping()`).
+- **Mapping queries** (LionDen: `connection.getMappingValue()` + typechain `mappings.<name>.{contains,get,getOrUse,tryGet}`; doko-js: `zkGetMapping()`).
 - **Private record decryption** (LionDen: `EncryptedRecord<T>.decrypt(key)`; doko-js: generated `decrypt<Name>()` helpers).
 - **Multi-account testing** (LionDen: `DEVNODE_ACCOUNTS` + `namedAccounts`; doko-js: per-network `accounts` array + `getAccounts()`).
 - **Multi-program / cross-program deploy** (both topologically order local dependencies).

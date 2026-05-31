@@ -116,11 +116,27 @@ export class Consumer extends BaseContract {
     },
   } as const;
 
-  async getMetadata(key: FieldInput): Promise<LeoPlaintext | null> {
-    const _result = await this.queryMapping("metadata", BaseContract.serializeField(key, { programId: this.programId, input: "metadata key" }));
-    if (_result === null) return null;
-    return BaseContract.parsePlaintext(_result);
-  }
+  readonly mappings = {
+    metadata: {
+      contains: async (key: FieldInput): Promise<boolean> => {
+        return this.mappingContains("metadata", BaseContract.serializeField(key, { programId: this.programId, input: "metadata key" }));
+      },
+      get: async (key: FieldInput): Promise<LeoPlaintext> => {
+        const _result = await this.requireMappingRaw("metadata", BaseContract.serializeField(key, { programId: this.programId, input: "metadata key" }));
+        return BaseContract.parsePlaintext(_result);
+      },
+      getOrUse: async (key: FieldInput, def: LeoPlaintext): Promise<LeoPlaintext> => {
+        const _result = await this.queryMapping("metadata", BaseContract.serializeField(key, { programId: this.programId, input: "metadata key" }));
+        if (_result === null) return def;
+        return BaseContract.parsePlaintext(_result);
+      },
+      tryGet: async (key: FieldInput): Promise<LeoPlaintext | null> => {
+        const _result = await this.queryMapping("metadata", BaseContract.serializeField(key, { programId: this.programId, input: "metadata key" }));
+        if (_result === null) return null;
+        return BaseContract.parsePlaintext(_result);
+      },
+    },
+  } as const;
 }
 
 export function createConsumer(options?: BaseContractOptions): Consumer {

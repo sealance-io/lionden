@@ -19,6 +19,7 @@ let LocalRecordDecryptionError: any;
 let LocalValueDecryptionError: any;
 let RecordDecryptionKeyError: any;
 let TransitionInputError: any;
+let MappingKeyNotFoundError: any;
 let createRecordOutputMatcher: any;
 let networkStub: any;
 let tmpDir: string;
@@ -83,6 +84,7 @@ beforeAll(async () => {
   LocalValueDecryptionError = mod.LocalValueDecryptionError;
   RecordDecryptionKeyError = mod.RecordDecryptionKeyError;
   TransitionInputError = mod.TransitionInputError;
+  MappingKeyNotFoundError = mod.MappingKeyNotFoundError;
   createRecordOutputMatcher = mod.createRecordOutputMatcher;
 
   // Import the stub module separately so tests can swap the decryption
@@ -132,6 +134,12 @@ function createTestContract(
     }
     async testQueryMapping(...args: any[]) {
       return this.queryMapping(...args);
+    }
+    async testMappingContains(...args: any[]) {
+      return this.mappingContains(...args);
+    }
+    async testRequireMappingRaw(...args: any[]) {
+      return this.requireMappingRaw(...args);
     }
   }
   return new TestContract(programId);
@@ -550,6 +558,53 @@ describe("BaseContract runtime", () => {
       await expect(
         contract.testQueryMapping("balances", "aleo1abc"),
       ).rejects.toThrow("Network is not available for test.aleo");
+    });
+  });
+
+  describe("mappingContains()", () => {
+    it("returns true when the key resolves to a value", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(mockLre({ getMappingValue: async () => "500u64" }));
+
+      expect(await contract.testMappingContains("balances", "aleo1abc")).toBe(true);
+    });
+
+    it("returns false when the key is absent (null)", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(mockLre({ getMappingValue: async () => null }));
+
+      expect(await contract.testMappingContains("balances", "aleo1abc")).toBe(false);
+    });
+  });
+
+  describe("requireMappingRaw()", () => {
+    it("returns the raw value when the key is present", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(mockLre({ getMappingValue: async () => "500u64" }));
+
+      expect(await contract.testRequireMappingRaw("balances", "aleo1abc")).toBe("500u64");
+    });
+
+    it("throws MappingKeyNotFoundError when the key is absent", async () => {
+      const contract = createTestContract("token.aleo");
+      contract.connect(mockLre({ getMappingValue: async () => null }));
+
+      let thrown: any;
+      try {
+        await contract.testRequireMappingRaw("balances", "aleo1abc");
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeInstanceOf(MappingKeyNotFoundError);
+      expect(thrown.kind).toBe("MappingKeyNotFoundError");
+      expect(thrown.phase).toBe("mapping");
+      expect(thrown.programId).toBe("token.aleo");
+      expect(thrown.mapping).toBe("balances");
+      expect(thrown.key).toBe("aleo1abc");
+      expect(thrown.message).toContain("token.aleo");
+      expect(thrown.message).toContain("balances");
+      expect(thrown.message).toContain("aleo1abc");
     });
   });
 

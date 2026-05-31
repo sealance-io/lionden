@@ -68,13 +68,13 @@ describe("vote.aleo", () => {
     const proposal = await confirmed.outputs.decrypt(proposer());
     pid = proposal.id;
 
-    expect(await vote.getTickets(pid)).toBe(0n);
+    expect(await vote.mappings.tickets.get(pid)).toBe(0n);
   });
 
   it("new_ticket() increments tickets[pid]", async () => {
     expect(pid, "propose() must run first").toBeDefined();
     await vote.new_ticket.accepted({ pid: pid!, voter: voter() });
-    expect(await vote.getTickets(pid!)).toBe(1n);
+    expect(await vote.mappings.tickets.get(pid!)).toBe(1n);
   });
 
   it("agree() increments agree_votes[pid]", async () => {
@@ -85,7 +85,7 @@ describe("vote.aleo", () => {
     const ticket = await confirmed.outputs.decrypt(voter());
 
     await vote.withSigner(voter()).agree.accepted({ ticket });
-    expect(await vote.getAgree_votes(pid!)).toBe(1n);
+    expect(await vote.mappings.agreeVotes.get(pid!)).toBe(1n);
   });
 
   it("disagree() increments disagree_votes[pid]", async () => {
@@ -94,6 +94,6 @@ describe("vote.aleo", () => {
     const ticket = await confirmed.outputs.decrypt(voter());
 
     await vote.withSigner(voter()).disagree.accepted({ ticket });
-    expect(await vote.getDisagree_votes(pid!)).toBe(1n);
+    expect(await vote.mappings.disagreeVotes.get(pid!)).toBe(1n);
   });
 });

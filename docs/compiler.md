@@ -137,6 +137,26 @@ The helper is emitted from the source program's generated module and wraps `Leo.
 
 Generated files are written under `config.paths.typechain`.
 
+### Mapping accessors
+
+Each program mapping is emitted under a per-contract `mappings` namespace, keyed by the
+mapping's camelCased name (`lp_vouchers` → `mappings.lpVouchers`). When two names collide
+after camelCasing, every member of the collision group falls back to its original Leo name
+as a quoted key. The on-chain query always uses the original Leo name regardless of the
+emitted property key.
+
+Each entry mirrors Leo's read operations and reuses the same key/value
+(de)serialization expression generators as transition codegen:
+
+- `contains(key): Promise<boolean>` — like Leo `contains`.
+- `get(key): Promise<Value>` — like Leo `get`; non-nullable, throws `MappingKeyNotFoundError`
+  when the key is absent.
+- `getOrUse(key, def): Promise<Value>` — like Leo `get_or_use`.
+- `tryGet(key): Promise<Value | null>` — returns `null` when the key is absent.
+
+`MappingKeyNotFoundError` is part of the `LionDenTypechainError` hierarchy defined in the
+generated `BaseContract.ts`; consumers import it from their generated `typechain/index.ts`.
+
 ## `compile` and `clean`
 
 `packages/plugin-leo/src/index.ts` currently exposes:

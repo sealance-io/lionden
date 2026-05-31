@@ -49,8 +49,8 @@ describe("nft_registry program", () => {
     it("sets up collection admin and supply mappings", async () => {
       const admin = ctx!.accounts[0]!.address;
 
-      expect(await nft.getCollection_admin(1n)).toBe(admin);
-      expect(await nft.getCollection_supply(1n)).toBe(0n);
+      expect(await nft.mappings.collectionAdmin.get(1n)).toBe(admin);
+      expect(await nft.mappings.collectionSupply.get(1n)).toBe(0n);
     });
   });
 
@@ -66,7 +66,7 @@ describe("nft_registry program", () => {
         uri_hash: Leo.field("1field"),
       });
 
-      expect(await nft.getCollection_supply(1n)).toBe(1n);
+      expect(await nft.mappings.collectionSupply.get(1n)).toBe(1n);
     });
 
     it("mints second NFT", async () => {
@@ -77,7 +77,7 @@ describe("nft_registry program", () => {
         uri_hash: Leo.field("2field"),
       });
 
-      expect(await nft.getCollection_supply(1n)).toBe(2n);
+      expect(await nft.mappings.collectionSupply.get(1n)).toBe(2n);
     });
   });
 
@@ -98,7 +98,7 @@ describe("nft_registry program", () => {
       expect(record.metadata.serial).toBe(99n);
 
       // Supply should be unchanged — local mode doesn't run finalize
-      expect(await nft.getCollection_supply(1n)).toBe(2n);
+      expect(await nft.mappings.collectionSupply.get(1n)).toBe(2n);
     });
   });
 });

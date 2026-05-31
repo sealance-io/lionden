@@ -51,7 +51,7 @@ describe("lottery.aleo", () => {
     // settled() returns the confirmation status, so finalize aborts are
     // explicit rejected outcomes rather than ambiguous thrown errors.
     const confirmed = await lottery.play.settled({ confirmTimeout: 60_000 });
-    const value = await lottery.getNum_winners(0);
+    const value = await lottery.mappings.numWinners.tryGet(0);
 
     if (confirmed.status === "accepted") {
       expect(value).toBe(1);

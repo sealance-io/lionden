@@ -46,7 +46,7 @@ describe("escrow program (via typechain)", () => {
     it("creates an escrow with status 0", async () => {
       await escrow.create_escrow.accepted({ item_id: 42n });
 
-      expect(await escrow.getEscrow_status(42n)).toBe(0);
+      expect(await escrow.mappings.escrowStatus.get(42n)).toBe(0);
     });
   });
 
@@ -54,7 +54,7 @@ describe("escrow program (via typechain)", () => {
     it("funds the escrow and transitions status to 1", async () => {
       await escrow.fund_escrow.accepted({ item_id: 42n });
 
-      expect(await escrow.getEscrow_status(42n)).toBe(1);
+      expect(await escrow.mappings.escrowStatus.get(42n)).toBe(1);
     });
   });
 
@@ -62,7 +62,7 @@ describe("escrow program (via typechain)", () => {
     it("completes the escrow and transitions status to 2", async () => {
       await escrow.complete_escrow.accepted({ item_id: 42n });
 
-      expect(await escrow.getEscrow_status(42n)).toBe(2);
+      expect(await escrow.mappings.escrowStatus.get(42n)).toBe(2);
     });
   });
 
@@ -73,7 +73,7 @@ describe("escrow program (via typechain)", () => {
       await escrow.create_escrow.failsLocally({ item_id: 0n });
 
       // No on-chain state was written
-      const status = await escrow.getEscrow_status(0n);
+      const status = await escrow.mappings.escrowStatus.tryGet(0n);
       expect(status).toBeNull();
     });
   });
@@ -90,7 +90,7 @@ describe("escrow program (via typechain)", () => {
       expect(result.status).toBe("rejected");
 
       // State is unchanged — still "funded" (1)
-      const status = await escrow.getEscrow_status(100n);
+      const status = await escrow.mappings.escrowStatus.get(100n);
       expect(status).toBe(1);
     });
   });

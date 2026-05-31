@@ -116,17 +116,46 @@ export class Rewards extends BaseContract {
     },
   } as const;
 
-  async getPoints(key: AddressInput): Promise<bigint | null> {
-    const _result = await this.queryMapping("points", BaseContract.serializeAddress(key, { programId: this.programId, input: "points key" }));
-    if (_result === null) return null;
-    return BaseContract.parseBigInt(_result);
-  }
-
-  async getClaimed(key: AddressInput): Promise<boolean | null> {
-    const _result = await this.queryMapping("claimed", BaseContract.serializeAddress(key, { programId: this.programId, input: "claimed key" }));
-    if (_result === null) return null;
-    return BaseContract.parseBoolean(_result);
-  }
+  readonly mappings = {
+    points: {
+      contains: async (key: AddressInput): Promise<boolean> => {
+        return this.mappingContains("points", BaseContract.serializeAddress(key, { programId: this.programId, input: "points key" }));
+      },
+      get: async (key: AddressInput): Promise<bigint> => {
+        const _result = await this.requireMappingRaw("points", BaseContract.serializeAddress(key, { programId: this.programId, input: "points key" }));
+        return BaseContract.parseBigInt(_result);
+      },
+      getOrUse: async (key: AddressInput, def: bigint): Promise<bigint> => {
+        const _result = await this.queryMapping("points", BaseContract.serializeAddress(key, { programId: this.programId, input: "points key" }));
+        if (_result === null) return def;
+        return BaseContract.parseBigInt(_result);
+      },
+      tryGet: async (key: AddressInput): Promise<bigint | null> => {
+        const _result = await this.queryMapping("points", BaseContract.serializeAddress(key, { programId: this.programId, input: "points key" }));
+        if (_result === null) return null;
+        return BaseContract.parseBigInt(_result);
+      },
+    },
+    claimed: {
+      contains: async (key: AddressInput): Promise<boolean> => {
+        return this.mappingContains("claimed", BaseContract.serializeAddress(key, { programId: this.programId, input: "claimed key" }));
+      },
+      get: async (key: AddressInput): Promise<boolean> => {
+        const _result = await this.requireMappingRaw("claimed", BaseContract.serializeAddress(key, { programId: this.programId, input: "claimed key" }));
+        return BaseContract.parseBoolean(_result);
+      },
+      getOrUse: async (key: AddressInput, def: boolean): Promise<boolean> => {
+        const _result = await this.queryMapping("claimed", BaseContract.serializeAddress(key, { programId: this.programId, input: "claimed key" }));
+        if (_result === null) return def;
+        return BaseContract.parseBoolean(_result);
+      },
+      tryGet: async (key: AddressInput): Promise<boolean | null> => {
+        const _result = await this.queryMapping("claimed", BaseContract.serializeAddress(key, { programId: this.programId, input: "claimed key" }));
+        if (_result === null) return null;
+        return BaseContract.parseBoolean(_result);
+      },
+    },
+  } as const;
 }
 
 export function createRewards(options?: BaseContractOptions): Rewards {
