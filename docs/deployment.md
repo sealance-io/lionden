@@ -167,6 +167,20 @@ Key interface methods include `isEphemeral(network)` (returns the resolved ephem
 
 The manager depends on the active network manager and artifact store. Plugin authors and scripts should prefer `lre.deployments` for deployment state instead of reading deployment files directly.
 
+## Deployment Context
+
+Deployment recipes receive a `DeploymentContext`. Its `deploy()` helper accepts
+a bare program name, a `.aleo` program id, or a generated wrapper with a
+`programId` property. Deployment state, skip/reuse behavior, constructor
+policy, and upgrade history remain owned by the context and deploy subsystem;
+wrappers remain typed ABI clients.
+
+Passing a wrapper is pure sugar for passing its `programId` — `deploy()` reads
+only that field. It does **not** deploy the wrapper's runtime `imports` (those
+are execution-time dispatch targets, see [Runtime Imports For Dynamic
+Dispatch](./network.md#runtime-imports-for-dynamic-dispatch)); dependency deploy
+order still follows static `import`s.
+
 ## Pending Recovery
 
 On non-ephemeral networks, deploy and upgrade write pending markers before broadcasting. On the next deploy or upgrade, `recoverPendingDeployments()` checks pending markers against the active network. Ephemeral networks skip pending marker writes and pending recovery because the chain and deployment state are memory-only for the session.

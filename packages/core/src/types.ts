@@ -343,3 +343,20 @@ export interface HookDispatcher {
     context: TContext,
   ): Promise<void>;
 }
+
+// ---------------------------------------------------------------------------
+// Deployment targets
+// ---------------------------------------------------------------------------
+
+/**
+ * A program to deploy: either a bare program name / `.aleo` id, or any object
+ * carrying a `programId` (e.g. a generated contract wrapper). Shared so that
+ * `DeploymentContext.deploy` and `TestContext.deploy` stay structurally
+ * identical by construction.
+ */
+export type ProgramDeploymentTarget = string | { readonly programId: string };
+
+/** Resolve a {@link ProgramDeploymentTarget} to its program name/id string. */
+export function programNameFromTarget(program: ProgramDeploymentTarget): string {
+  return typeof program === "string" ? program : program.programId;
+}

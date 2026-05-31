@@ -6,6 +6,7 @@ export { setup } from "./test-context.js";
 export type {
   TestContext,
   SetupOptions,
+  ProgramDeploymentTarget,
   DeployOptions,
   DeployResult,
   ExecuteOptions,

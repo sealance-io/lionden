@@ -25,9 +25,10 @@ export type {
   ArtifactStore,
   GlobalOptionDefinition,
   ConfigValidationError,
+  ProgramDeploymentTarget,
 } from "./types.js";
 
-export { ArgumentType } from "./types.js";
+export { ArgumentType, programNameFromTarget } from "./types.js";
 
 // Plugin loader
 export {

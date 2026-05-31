@@ -13,6 +13,7 @@
 
 import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import { programNameFromTarget } from "@lionden/core";
 import type { NetworkManager, NetworkConnection } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import { createNamedAccountAccessor } from "@lionden/config";
@@ -84,7 +85,8 @@ export function createCliDeploymentContext(
     namedAccounts: lre.namedAccounts,
     named: createNamedAccountAccessor(lre.namedAccounts, networkName),
 
-    async deploy(programName, opts) {
+    async deploy(program, opts) {
+      const programName = programNameFromTarget(program);
       const normalizedId = normalizeProgramId(programName);
       const deploymentCache = lre.deployments as DeploymentManager | null;
 

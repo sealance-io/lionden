@@ -7,7 +7,10 @@
  * from the CLI (via `lionden recipe --file ./path.ts`).
  */
 
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import type {
+  LionDenRuntimeEnvironment,
+  ProgramDeploymentTarget,
+} from "@lionden/core";
 import type {
   NetworkConnection,
   Signer,
@@ -16,14 +19,16 @@ import type {
 } from "@lionden/network";
 import type { NamedAccountAccessor, NamedAccounts } from "@lionden/config";
 
+export type { ProgramDeploymentTarget };
+
 // ---------------------------------------------------------------------------
 // DeploymentContext — the interface recipes receive
 // ---------------------------------------------------------------------------
 
 export interface DeploymentContext {
-  /** Deploy a program by name. Deploys transitive deps first. */
+  /** Deploy a program by name or generated wrapper. Deploys transitive deps first. */
   deploy(
-    programName: string,
+    program: ProgramDeploymentTarget,
     options?: RecipeDeployOptions,
   ): Promise<RecipeDeployResult>;
   /** Execute a transition on a deployed program. */

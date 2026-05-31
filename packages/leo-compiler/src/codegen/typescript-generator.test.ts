@@ -23,6 +23,7 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
       "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
       "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      "export declare function programAddressFromProgramId(programId: string): string;",
       "export declare class NetworkRecordDecryptionError extends Error {",
       "  readonly kind: \"NetworkRecordDecryptionError\";",
       "  readonly ciphertextPrefix: string;",
@@ -422,6 +423,8 @@ describe("generateBaseContract", () => {
   it("generates BaseContract class with execute and queryMapping", () => {
     const output = generateBaseContract();
     expect(output).toContain("export abstract class BaseContract");
+    expect(output).toContain("readonly programId: string;");
+    expect(output).toContain("address(): LeoAddress");
     expect(output).toContain("connect(lre: LionDenRuntimeEnvironment)");
     expect(output).toContain("protected getLre()");
     expect(output).toContain("protected async executeLocal(");

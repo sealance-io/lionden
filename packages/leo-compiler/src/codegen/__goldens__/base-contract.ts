@@ -4,6 +4,7 @@ import {
   decryptRecordCiphertext,
   decryptValueCiphertext,
   deriveViewKey,
+  programAddressFromProgramId,
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
 } from "@lionden/network";
@@ -755,7 +756,7 @@ export const Leo = {
 export abstract class BaseContract {
   static readonly RECORD_RAW: typeof RECORD_RAW = RECORD_RAW;
 
-  protected readonly programId: string;
+  readonly programId: string;
   protected readonly instanceImports: readonly string[];
   protected lre: LionDenRuntimeEnvironment | null = null;
   protected signer?: SignerInput;
@@ -769,6 +770,11 @@ export abstract class BaseContract {
   connect(lre: LionDenRuntimeEnvironment): this {
     this.lre = lre;
     return this;
+  }
+
+  /** Deterministic Aleo address for this program id. */
+  address(): LeoAddress {
+    return programAddressFromProgramId(this.programId) as LeoAddress;
   }
 
   /**

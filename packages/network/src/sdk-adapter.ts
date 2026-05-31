@@ -25,6 +25,7 @@ import {
   writeCreditsKeyCacheMetadata,
 } from "@lionden/core";
 import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
+import { Address } from "@provablehq/sdk/testnet.js";
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 import type { TransportFunction } from "@provablehq/sdk/testnet.js";
 
@@ -69,6 +70,27 @@ export interface SynthesizeExecutionKeyBytesOptions {
   readonly inputs: readonly string[];
   readonly imports?: Record<string, string>;
   readonly edition?: number;
+}
+
+/**
+ * Cache of derived program addresses. Derivation is a pure function of the
+ * program id and allocates+frees a WASM `Address`, so memoize per id.
+ */
+const programAddressCache = new Map<string, string>();
+
+export function programAddressFromProgramId(programId: string): string {
+  const cached = programAddressCache.get(programId);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const address = Address.fromProgramId(programId);
+  try {
+    const derived = address.to_string();
+    programAddressCache.set(programId, derived);
+    return derived;
+  } finally {
+    address.free();
+  }
 }
 
 // ---------------------------------------------------------------------------

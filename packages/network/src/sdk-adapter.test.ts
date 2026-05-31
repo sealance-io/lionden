@@ -18,6 +18,7 @@ import {
   decryptRecordCiphertext,
   decryptValueCiphertext,
   deriveViewKey,
+  programAddressFromProgramId,
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
   type SdkObjects,
@@ -47,6 +48,22 @@ let defaultSdk: SdkObjects;
 afterAll(() => {
   // Best-effort cleanup of WASM Account objects
   try { (defaultSdk?.account as any)?.destroy?.(); } catch { /* */ }
+});
+
+describe("programAddressFromProgramId()", () => {
+  it("derives deterministic program addresses with the SDK", () => {
+    expect(programAddressFromProgramId("compliant_amm.aleo")).toBe(
+      "aleo1xf5fmhacujf7jvyzynr24388hk82x606lgr62fkah054g5yz4ygsauf0wk",
+    );
+  });
+
+  it("returns a stable, memoized address across repeated calls", () => {
+    const first = programAddressFromProgramId("compliant_amm.aleo");
+    const second = programAddressFromProgramId("compliant_amm.aleo");
+    expect(second).toBe(first);
+    // Distinct program ids must not collide in the cache.
+    expect(programAddressFromProgramId("token.aleo")).not.toBe(first);
+  });
 });
 
 describe("createSdkObjects()", () => {

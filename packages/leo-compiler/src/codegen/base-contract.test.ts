@@ -43,6 +43,7 @@ beforeAll(async () => {
   // exercise decrypt happy-path mock the stub explicitly.
   const stubPath = join(tmpDir, "network-stub.mjs");
   writeFileSync(stubPath, [
+    "import { Address } from '@provablehq/sdk/testnet.js';",
     "export class NetworkRecordDecryptionError extends Error {",
     "  constructor(message, ciphertextPrefix, cause) {",
     "    super(message, cause === undefined ? undefined : { cause });",
@@ -62,6 +63,10 @@ beforeAll(async () => {
     "export let decryptRecordCiphertext = async () => { throw new NetworkRecordDecryptionError('stub', ''); };",
     "export let decryptValueCiphertext = async () => { throw new NetworkValueDecryptionError('stub', ''); };",
     "export let deriveViewKey = async () => { throw new NetworkRecordDecryptionError('stub deriveViewKey', ''); };",
+    "export function programAddressFromProgramId(programId) {",
+    "  const address = Address.fromProgramId(programId);",
+    "  try { return address.to_string(); } finally { address.free(); }",
+    "}",
     "export function __setDecryptStubs(stubs) {",
     "  if (stubs.decryptRecordCiphertext) decryptRecordCiphertext = stubs.decryptRecordCiphertext;",
     "  if (stubs.decryptValueCiphertext) decryptValueCiphertext = stubs.decryptValueCiphertext;",
@@ -104,8 +109,8 @@ function createTestContract(
   options?: { imports?: readonly string[] },
 ) {
   class TestContract extends BaseContract {
-    constructor(id = programId, ctorOpts: { imports?: readonly string[] } | undefined = options) {
-      super(id, ctorOpts);
+    constructor(ctorOpts: { imports?: readonly string[] } | undefined = options) {
+      super(programId, ctorOpts);
     }
     // Expose protected methods for testing
     async testExecuteLocal(...args: any[]) {
@@ -142,7 +147,7 @@ function createTestContract(
       return this.requireMappingRaw(...args);
     }
   }
-  return new TestContract(programId);
+  return new TestContract(options);
 }
 
 function mockLre(networkOverrides: Record<string, any> = {}) {
@@ -160,6 +165,17 @@ function mockLre(networkOverrides: Record<string, any> = {}) {
 // ---------------------------------------------------------------------------
 
 describe("BaseContract runtime", () => {
+  describe("identity", () => {
+    it("exposes programId and derives the program address from the SDK", () => {
+      const contract = createTestContract("compliant_amm.aleo");
+
+      expect(contract.programId).toBe("compliant_amm.aleo");
+      expect(contract.address()).toBe(
+        "aleo1xf5fmhacujf7jvyzynr24388hk82x606lgr62fkah054g5yz4ygsauf0wk",
+      );
+    });
+  });
+
   describe("connect / getLre", () => {
     it("throws when execution is called without connect()", async () => {
       const contract = createTestContract();
@@ -636,6 +652,17 @@ describe("BaseContract runtime", () => {
       await withSig.testSubmit("main", ["1u32"]);
 
       expect(executeSpy).toHaveBeenCalledOnce();
+    });
+
+    it("preserves program identity and address on the cloned instance", () => {
+      const contract = createTestContract("compliant_amm.aleo", {
+        imports: ["voting_power.aleo"],
+      });
+
+      const withSig = contract.withSigner(signer1);
+
+      expect(withSig.programId).toBe("compliant_amm.aleo");
+      expect(withSig.address()).toBe(contract.address());
     });
 
     it("merges instance signer as default in local execution", async () => {

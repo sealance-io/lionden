@@ -47,6 +47,7 @@ export {
   decryptRecordCiphertext,
   decryptValueCiphertext,
   deriveViewKey,
+  programAddressFromProgramId,
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
   makeNetworkTransport,

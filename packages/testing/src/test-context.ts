@@ -6,7 +6,11 @@
  * and executing transitions.
  */
 
-import { type LionDenRuntimeEnvironment } from "@lionden/core";
+import {
+  type LionDenRuntimeEnvironment,
+  type ProgramDeploymentTarget,
+  programNameFromTarget,
+} from "@lionden/core";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -75,8 +79,8 @@ export interface TestContext {
   readonly named: NamedAccountAccessor;
   /** Explicit string-based escape hatch for dynamic or post-upgrade ABI calls. */
   readonly raw: RawTestContext;
-  /** Deploy a program by name. Returns the deploy result. */
-  deploy(programName: string, options?: DeployOptions): Promise<DeployResult>;
+  /** Deploy a program by name or generated wrapper. Returns the deploy result. */
+  deploy(program: ProgramDeploymentTarget, options?: DeployOptions): Promise<DeployResult>;
   /** Execute a transition on a deployed program. */
   execute(
     programId: string,
@@ -112,6 +116,8 @@ export interface RawTestContext {
     options?: ExecuteOptions,
   ): Promise<ExecuteResult>;
 }
+
+export type { ProgramDeploymentTarget };
 
 export interface DeployOptions {
   priorityFee?: number;
@@ -278,7 +284,8 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       execute: executeRaw,
     },
 
-    async deploy(programName: string, deployOpts?: DeployOptions): Promise<DeployResult> {
+    async deploy(program: ProgramDeploymentTarget, deployOpts?: DeployOptions): Promise<DeployResult> {
+      const programName = programNameFromTarget(program);
       const normalizedId = normalizeProgramId(programName);
 
       // Check deployment cache first (sync, zero-latency for previously deployed programs)
