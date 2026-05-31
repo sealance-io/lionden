@@ -138,12 +138,14 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext } from "@lionden/testing";
 import { createHello } from "../typechain/Hello.js";
 
+const hello = createHello();
+
 let ctx: TestContext | undefined;
 
 beforeAll(async () => {
   ctx = await setup();
   try {
-    await ctx.deploy("hello");
+    await ctx.deploy(hello);
   } catch (error) {
     await ctx.teardown();
     ctx = undefined;
@@ -156,8 +158,6 @@ afterAll(async () => {
 });
 
 describe("hello program", () => {
-  const hello = createHello();
-
   beforeAll(() => {
     hello.connect(ctx!.lre);
   });
@@ -214,15 +214,15 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
     treasury: "address",
   });
 
-  const { programId } = await ctx.deploy("token", { noSkipDeployed: true });
-
   const token = createTokenContract().connect(ctx.lre);
+  await ctx.deploy(token, { noSkipDeployed: true });
+
   await token.withSigner(deployer).mint_public.accepted({
     receiver: treasury,
     amount: INITIAL_SUPPLY,
   });
 
-  return { programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
+  return { programId: token.programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };
 
 export default setupToken;
