@@ -7,17 +7,27 @@ export interface Inner {
   readonly x: number;
 }
 
+export interface InnerInput {
+  readonly x: number;
+}
+
 export interface Settings {
   readonly admin: LeoAddress;
   readonly backup: LeoAddress | null;
   readonly inner: Inner | null;
 }
 
+export interface SettingsInput {
+  readonly admin: AddressInput;
+  readonly backup: AddressInput | null;
+  readonly inner: InnerInput | null;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializeInner(value: Inner, context?: TransitionInputContext): string {
+export function serializeInner(value: InnerInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("x: " + BaseContract.serializeUInt(value.x, 32, BaseContract.childInputContext(context, "x")));
@@ -31,12 +41,12 @@ export function deserializeInner(value: string): Inner {
   };
 }
 
-export function serializeSettings(value: Settings, context?: TransitionInputContext): string {
+export function serializeSettings(value: SettingsInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("admin: " + BaseContract.serializeAddress(value.admin, BaseContract.childInputContext(context, "admin")));
   fields.push("backup: " + (value.backup != null ? "{ is_some: true, val: " + BaseContract.serializeAddress(value.backup, BaseContract.childInputContext(context, "backup")) + " }" : "{ is_some: false, val: aleo1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3ljyzc }"));
-  fields.push("inner: " + (value.inner != null ? "{ is_some: true, val: " + serializeInner(value.inner as Inner, BaseContract.childInputContext(context, "inner")) + " }" : "{ is_some: false, val: { x: 0u32 } }"));
+  fields.push("inner: " + (value.inner != null ? "{ is_some: true, val: " + serializeInner(value.inner as InnerInput, BaseContract.childInputContext(context, "inner")) + " }" : "{ is_some: false, val: { x: 0u32 } }"));
   return "{ " + fields.join(", ") + " }";
 }
 
@@ -104,52 +114,52 @@ export class Config extends BaseContract {
   } as const;
 
   readonly update = {
-    locally: async (args: { readonly settings: Settings }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (args: { readonly settings: SettingsInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       const _result = await this.executeLocal("update", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly settings: Settings }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (args: { readonly settings: SettingsInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       await this.expectLocalFailure("update", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly settings: Settings }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (args: { readonly settings: SettingsInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.expectLocalFailure("update", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.submitTransition("update", _args, options ?? {});
     },
 
-    settled: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.settleTyped("update", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.expectAcceptedTyped("update", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.expectRejected("update", _args, options ?? {});
     },

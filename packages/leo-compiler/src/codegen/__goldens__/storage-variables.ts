@@ -8,6 +8,11 @@ export interface Policy {
   readonly admin: LeoAddress;
 }
 
+export interface PolicyInput {
+  readonly max_amount: bigint;
+  readonly admin: AddressInput;
+}
+
 export interface VaultStorage {
   readonly admin: LeoAddress;
   readonly whitelist: LeoAddress[];
@@ -19,7 +24,7 @@ export interface VaultStorage {
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializePolicy(value: Policy, context?: TransitionInputContext): string {
+export function serializePolicy(value: PolicyInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("max_amount: " + BaseContract.serializeUInt(value.max_amount, 128, BaseContract.childInputContext(context, "max_amount")));

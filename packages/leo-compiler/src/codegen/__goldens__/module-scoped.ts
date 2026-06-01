@@ -7,7 +7,16 @@ export interface A_Thing {
   readonly x: number;
 }
 
+export interface A_ThingInput {
+  readonly x: number;
+}
+
 export interface B_Thing {
+  readonly y: bigint;
+  readonly z: boolean;
+}
+
+export interface B_ThingInput {
   readonly y: bigint;
   readonly z: boolean;
 }
@@ -16,7 +25,7 @@ export interface B_Thing {
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializeA_Thing(value: A_Thing, context?: TransitionInputContext): string {
+export function serializeA_Thing(value: A_ThingInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("x: " + BaseContract.serializeUInt(value.x, 32, BaseContract.childInputContext(context, "x")));
@@ -30,7 +39,7 @@ export function deserializeA_Thing(value: string): A_Thing {
   };
 }
 
-export function serializeB_Thing(value: B_Thing, context?: TransitionInputContext): string {
+export function serializeB_Thing(value: B_ThingInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("y: " + BaseContract.serializeUInt(value.y, 64, BaseContract.childInputContext(context, "y")));

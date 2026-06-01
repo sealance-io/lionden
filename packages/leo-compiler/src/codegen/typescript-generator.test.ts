@@ -167,7 +167,7 @@ describe("generateBindings", () => {
 
   it("generates record serializers using Leo syntax, not JSON", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("export function serializeToken(value: Token, context?: TransitionInputContext): string");
+    expect(output).toContain("export function serializeToken(value: TokenInput, context?: TransitionInputContext): string");
     // Should NOT use JSON.stringify
     expect(output).not.toContain("JSON.stringify");
   });
@@ -233,7 +233,7 @@ describe("generateBindings", () => {
     };
     const output = generateBindings(abi);
     // The transition method should serialize via serializeCoin(), not JSON.stringify
-    expect(output).toContain('serializeCoin(args.coin as Coin, this.inputContext("spend", "coin"))');
+    expect(output).toContain('serializeCoin(args.coin as CoinInput, this.inputContext("spend", "coin"))');
     expect(output).not.toContain("JSON.stringify");
   });
 
@@ -654,7 +654,7 @@ describe("external references", () => {
     expect(output).toContain('from "./Registry.js"');
     expect(output).toContain("readonly info: Registry_TokenInfo");
     expect(output).toContain("Promise<Registry_TokenInfo>");
-    expect(output).toContain('serializeRegistry_TokenInfo(args.info as Registry_TokenInfo, this.inputContext("submit", "info"))');
+    expect(output).toContain('serializeRegistry_TokenInfo(args.info as Registry_TokenInfoInput, this.inputContext("submit", "info"))');
     expect(output).toContain('deserializeRegistry_TokenInfo(this.outputAt(_result, "submit", 0))');
   });
 
@@ -706,7 +706,7 @@ describe("external references", () => {
     expect(output).toContain('from "./Credits.js"');
     expect(output).toContain("readonly record: Credits_Credit");
     expect(output).toContain("Promise<Credits_Credit>");
-    expect(output).toContain('serializeCredits_Credit(args.record as Credits_Credit, this.inputContext("forward", "record"))');
+    expect(output).toContain('serializeCredits_Credit(args.record as Credits_CreditInput, this.inputContext("forward", "record"))');
     // Resolved external record bindings carry an `.output` matcher value so
     // callers can write `accepted.outputs.match(Credits_Credit.output.from(...)).decrypt(key)`.
     expect(output).toContain("export const Credits_Credit = {");
@@ -812,7 +812,7 @@ describe("Optional type handling", () => {
       transitions: [],
     };
     const output = generateBindings(abi);
-    expect(output).toContain('serializeInner(value.backup as Inner, BaseContract.childInputContext(context, "backup"))');
+    expect(output).toContain('serializeInner(value.backup as InnerInput, BaseContract.childInputContext(context, "backup"))');
     expect(output).toContain('{ is_some: false, val: { x: 0u32 } }');
     expect(output).not.toContain('serializeUnsupportedOptionalNone');
   });
@@ -1152,8 +1152,8 @@ describe("struct with nested types", () => {
     expect(output).toContain("readonly start: Point;");
     expect(output).toContain("readonly end: Point;");
     // Serializer should use serializePoint for nested structs
-    expect(output).toContain('serializePoint(value.start as Point, BaseContract.childInputContext(context, "start"))');
-    expect(output).toContain('serializePoint(value.end as Point, BaseContract.childInputContext(context, "end"))');
+    expect(output).toContain('serializePoint(value.start as PointInput, BaseContract.childInputContext(context, "start"))');
+    expect(output).toContain('serializePoint(value.end as PointInput, BaseContract.childInputContext(context, "end"))');
     // Deserializer should use deserializePoint
     expect(output).toContain("deserializePoint(");
   });
@@ -1555,7 +1555,7 @@ describe("interface conversion helper emission", () => {
     // does the actual `Leo.dynamicRecord(...)` conversion, then `Object.assign`
     // attaches `.output` (a RecordOutputMatcher) so callers can feed it to
     // `.match(matcher.from(...))` or `.match(matcher.at(...))`.
-    expect(output).toContain("function _asPoolTokenImpl(value: Token): LeoDynamicRecord");
+    expect(output).toContain("function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord");
     expect(output).toContain("export const asPoolToken = Object.assign(_asPoolTokenImpl, {");
     expect(output).toContain("output: createRecordOutputMatcher<Token>({");
     expect(output).toContain('program: "stable_token.aleo"');

@@ -107,6 +107,39 @@ Validation rules:
 
 Type-safety tradeoff: branded values (`LeoField`, etc.) remain cross-type checked — a `LeoField` is not assignable where a `GroupInput` or `AddressInput` is expected. Bare numerics, however, are interchangeable across the three scalar slots (consistent with how integer inputs already work). Outputs and stored values stay branded, so reads remain strongly typed. Pass `Leo.field(...)` explicitly when you want the stricter cross-type guarantee at a call site.
 
+### Composite inputs (structs / records)
+
+Struct and record types are emitted as two interfaces: a branded `Name` (used for
+outputs — return values, mapping values, decrypted records, storage reads) and a
+widened `NameInput` (used for inputs — transition arguments, mapping keys, and the
+serializer signature). `NameInput` types every field through the input binding, so
+scalar fields accept `bigint | number`, address fields accept `AddressInput`, and
+nested arrays/structs/records widen recursively. A `MerkleProof` with
+`siblings: field[]` can therefore be passed as a plain literal:
+
+```ts
+await amm.add_liquidity.locally({
+  pool_id: 1n,
+  token_1_merkle_proof: [{ siblings: [1n, 2n], leaf_index: 0 }], // no per-element Leo.field(...)
+  // …
+});
+```
+
+Because every input field is a superset of its branded output (`AddressInput ⊇
+LeoAddress`, `FieldInput ⊇ LeoField`, `GroupInput ⊇ LeoGroup`), a record read or
+decrypted from chain (branded `Token`) re-spends back into an input slot with no
+conversion — pass the value straight through. Reads stay branded, so reading a
+returned struct/record or a mapping value is still strongly typed.
+
+For cross-program references, the consuming wrapper emits a local alias
+`type Producer_TypeInput = WidenInput<Producer_Type>` (defined in `BaseContract.ts`)
+rather than importing a separate input interface — no extra cross-program import is
+needed.
+
+Address caveat: `AddressInput` is `LeoAddress | { readonly address: string }`. A
+record `owner` or an address-typed field accepts a wrapper object (`{ address:
+"aleo1…" }`) or `Leo.address("aleo1…")`, but not a bare `aleo1…` string — wrap it.
+
 Each generated wrapper factory accepts a `BaseContractOptions` argument:
 
 ```ts

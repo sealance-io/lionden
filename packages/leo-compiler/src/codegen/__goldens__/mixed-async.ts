@@ -9,11 +9,17 @@ export interface Token {
   readonly _nonce: LeoGroup;
 }
 
+export interface TokenInput {
+  readonly owner: AddressInput;
+  readonly amount: bigint;
+  readonly _nonce: GroupInput;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializeToken(value: Token, context?: TransitionInputContext): string {
+export function serializeToken(value: TokenInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
   if (typeof _raw === "string") return _raw;
@@ -161,105 +167,105 @@ export class TokenContract extends BaseContract {
   } as const;
 
   readonly burn = {
-    locally: async (args: { readonly token: Token }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (args: { readonly token: TokenInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       const _result = await this.executeLocal("burn", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly token: Token }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (args: { readonly token: TokenInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       await this.expectLocalFailure("burn", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly token: Token }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (args: { readonly token: TokenInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       return this.expectLocalFailure("burn", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       return this.submitTransition("burn", _args, options ?? {});
     },
 
-    settled: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       return this.settleTyped("burn", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       return this.expectAcceptedTyped("burn", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("burn", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("burn", "token")),
       ];
       return this.expectRejected("burn", _args, options ?? {});
     },
   } as const;
 
   readonly split = {
-    locally: async (args: { readonly token: Token }, options?: LocalExecutionOptions): Promise<[Token, Token]> => {
+    locally: async (args: { readonly token: TokenInput }, options?: LocalExecutionOptions): Promise<[Token, Token]> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       const _result = await this.executeLocal("split", _args, options ?? {});
       const _decoded: [Token, Token] = [deserializeToken(this.outputAt(_result, "split", 0)), deserializeToken(this.outputAt(_result, "split", 1))];
       return _decoded;
     },
 
-    failsLocally: async (args: { readonly token: Token }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (args: { readonly token: TokenInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       await this.expectLocalFailure("split", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly token: Token }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (args: { readonly token: TokenInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       return this.expectLocalFailure("split", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       return this.submitTransition("split", _args, options ?? {});
     },
 
-    settled: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]> | RejectedTransition> => {
+    settled: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]> | RejectedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       return this.settleTyped("split", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 0), deserializeToken), BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 1), deserializeToken)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
     },
 
-    accepted: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]>> => {
+    accepted: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]>> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       return this.expectAcceptedTyped("split", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 0), deserializeToken), BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 1), deserializeToken)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
     },
 
-    rejected: async (args: { readonly token: Token }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (args: { readonly token: TokenInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("split", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("split", "token")),
       ];
       return this.expectRejected("split", _args, options ?? {});
     },

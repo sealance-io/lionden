@@ -57,8 +57,8 @@ describe("vote.aleo", () => {
 
   it("propose() registers a new proposal and initializes its ticket count", async () => {
     const info = {
-      title: Leo.field("11111111field"),
-      content: Leo.field("22222222field"),
+      title: 11111111n,
+      content: 22222222n,
       proposer: Leo.address(proposer()),
     };
 

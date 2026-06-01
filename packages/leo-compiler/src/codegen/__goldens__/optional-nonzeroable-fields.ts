@@ -8,11 +8,16 @@ export interface Settings {
   readonly external: LeoPlaintext | null;
 }
 
+export interface SettingsInput {
+  readonly admin: AddressInput;
+  readonly external: PlaintextInput | null;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializeSettings(value: Settings, context?: TransitionInputContext): string {
+export function serializeSettings(value: SettingsInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("admin: " + BaseContract.serializeAddress(value.admin, BaseContract.childInputContext(context, "admin")));
@@ -83,52 +88,52 @@ export class Consumer extends BaseContract {
   } as const;
 
   readonly update = {
-    locally: async (args: { readonly settings: Settings }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (args: { readonly settings: SettingsInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       const _result = await this.executeLocal("update", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly settings: Settings }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (args: { readonly settings: SettingsInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       await this.expectLocalFailure("update", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly settings: Settings }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (args: { readonly settings: SettingsInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.expectLocalFailure("update", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.submitTransition("update", _args, options ?? {});
     },
 
-    settled: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.settleTyped("update", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.expectAcceptedTyped("update", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly settings: Settings }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (args: { readonly settings: SettingsInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeSettings(args.settings as Settings, this.inputContext("update", "settings")),
+        serializeSettings(args.settings as SettingsInput, this.inputContext("update", "settings")),
       ];
       return this.expectRejected("update", _args, options ?? {});
     },

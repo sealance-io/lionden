@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
 import { createMessageContract } from "../typechain/Message.js";
-import { Leo } from "../typechain/BaseContract.js";
 
 async function deployMessage() {
   const ctx = await setup();
@@ -38,13 +37,13 @@ describe("message.aleo", () => {
 
   it("main returns first + second", async () => {
     expect(await message.main.locally({
-      m: { first: Leo.field("2field"), second: Leo.field("3field") },
+      m: { first: 2n, second: 3n },
     })).toBe("5field");
   });
 
   it("handles zero values", async () => {
     expect(await message.main.locally({
-      m: { first: Leo.field("0field"), second: Leo.field("0field") },
+      m: { first: 0n, second: 0n },
     })).toBe("0field");
   });
 });

@@ -1,0 +1,47 @@
+{
+  "program": "collisions.aleo",
+  "structs": [
+    {
+      "path": ["Foo"],
+      "fields": [
+        { "name": "id", "ty": { "Primitive": "Field" } },
+        { "name": "roots", "ty": { "Array": [{ "Primitive": "Field" }, 3] } }
+      ]
+    },
+    {
+      "path": ["FooInput"],
+      "fields": [
+        { "name": "value", "ty": { "Primitive": { "UInt": "U64" } } }
+      ]
+    },
+    {
+      "path": ["Field"],
+      "fields": [
+        { "name": "x", "ty": { "Primitive": "Field" } }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [
+    {
+      "name": "by_foo",
+      "key": { "Struct": { "path": ["Foo"], "program": null } },
+      "value": { "Primitive": { "UInt": "U64" } }
+    }
+  ],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "submit",
+      "is_async": false,
+      "inputs": [
+        { "name": "a", "ty": { "Plaintext": { "Struct": { "path": ["Foo"], "program": null } } }, "mode": "None" },
+        { "name": "b", "ty": { "Plaintext": { "Struct": { "path": ["FooInput"], "program": null } } }, "mode": "None" },
+        { "name": "c", "ty": { "Plaintext": { "Struct": { "path": ["Field"], "program": null } } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Plaintext": { "Primitive": "Field" } }, "mode": "None" }
+      ]
+    }
+  ]
+}

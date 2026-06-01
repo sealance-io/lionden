@@ -10,11 +10,18 @@ export interface Token {
   readonly _nonce: LeoGroup;
 }
 
+export interface TokenInput {
+  readonly owner: AddressInput;
+  readonly amount: bigint;
+  readonly _version: number;
+  readonly _nonce: GroupInput;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializeToken(value: Token, context?: TransitionInputContext): string {
+export function serializeToken(value: TokenInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
   if (typeof _raw === "string") return _raw;
@@ -45,7 +52,7 @@ export async function decryptToken(ciphertext: string, key: RecordDecryptionKey)
 // Interface conversion helpers
 // ---------------------------------------------------------------------------
 
-function _asPoolTokenImpl(value: Token): LeoDynamicRecord {
+function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord {
   return Leo.dynamicRecord(value, {
     owner: "address.private" as const,
     amount: "u128.private" as const,

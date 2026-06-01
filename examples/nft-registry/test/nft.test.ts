@@ -63,7 +63,7 @@ describe("nft_registry program", () => {
         receiver: Leo.address(receiver),
         collection_id: 1n,
         serial: 1n,
-        uri_hash: Leo.field("1field"),
+        uri_hash: 1n,
       });
 
       expect(await nft.mappings.collectionSupply.get(1n)).toBe(1n);
@@ -74,7 +74,7 @@ describe("nft_registry program", () => {
         receiver: Leo.address(receiver),
         collection_id: 1n,
         serial: 2n,
-        uri_hash: Leo.field("2field"),
+        uri_hash: 2n,
       });
 
       expect(await nft.mappings.collectionSupply.get(1n)).toBe(2n);
@@ -90,7 +90,7 @@ describe("nft_registry program", () => {
         receiver,
         collection_id: 1n,
         serial: 99n,
-        uri_hash: Leo.field("99field"),
+        uri_hash: 99n,
       });
 
       expect(record.owner).toBe(receiver.address);
