@@ -371,6 +371,93 @@ describe("checkAbiCompatibility", () => {
   });
 
   // -------------------------------------------------------------------------
+  // Views
+  // -------------------------------------------------------------------------
+
+  it("allows adding new views", () => {
+    const oldAbi = makeAbi({ views: [] });
+    const newAbi = makeAbi({
+      views: [{
+        name: "get_balance",
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(true);
+  });
+
+  it("rejects deleting a view", () => {
+    const oldAbi = makeAbi({
+      views: [{
+        name: "get_balance",
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+      }],
+    });
+    const newAbi = makeAbi({ views: [] });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("view_deleted");
+  });
+
+  it("rejects modifying a view signature", () => {
+    const oldAbi = makeAbi({
+      views: [{
+        name: "get_balance",
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+      }],
+    });
+    const newAbi = makeAbi({
+      views: [{
+        name: "get_balance",
+        inputs: [],
+        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Public" }],
+      }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("view_modified");
+  });
+
+  // -------------------------------------------------------------------------
+  // Implemented interfaces
+  // -------------------------------------------------------------------------
+
+  it("allows adding implemented interfaces", () => {
+    const oldAbi = makeAbi({ implements: [] });
+    const newAbi = makeAbi({
+      implements: [{ path: ["Readable"], program: null }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(true);
+  });
+
+  it("rejects deleting an implemented interface", () => {
+    const oldAbi = makeAbi({
+      implements: [{ path: ["Readable"], program: null }],
+    });
+    const newAbi = makeAbi({ implements: [] });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("interface_deleted");
+    expect(result.violations[0]!.name).toBe("Readable");
+  });
+
+  it("rejects modifying an implemented interface ref", () => {
+    const oldAbi = makeAbi({
+      implements: [{ path: ["Readable"], program: null }],
+    });
+    const newAbi = makeAbi({
+      implements: [{ path: ["Readable"], program: "interfaces.aleo" }],
+    });
+    const result = checkAbiCompatibility(oldAbi, newAbi);
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("interface_modified");
+  });
+
+  // -------------------------------------------------------------------------
   // Storage variables
   // -------------------------------------------------------------------------
 

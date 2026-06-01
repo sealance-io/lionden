@@ -144,6 +144,52 @@ const SAMPLE_ABI: ProgramABI = {
   ],
 };
 
+describe("Leo 4.1 ABI extensions", () => {
+  it("rejects executable functions with non-empty const_parameters", () => {
+    const abi: ProgramABI = {
+      program: "const_demo.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "main",
+          is_async: false,
+          inputs: [],
+          outputs: [],
+          const_parameters: [{ name: "N", type: "u8" }],
+        },
+      ],
+    };
+
+    expect(() => generateBindings(abi)).toThrow(/const_parameters/);
+  });
+
+  it("does not generate view query wrappers yet", () => {
+    const abi: ProgramABI = {
+      program: "view_demo.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+      views: [
+        {
+          name: "balance",
+          inputs: [],
+          outputs: [
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
+          ],
+        },
+      ],
+    };
+
+    const output = generateBindings(abi);
+    expect(output).not.toContain("readonly balance");
+  });
+});
+
 describe("generateBindings", () => {
   it("generates struct interfaces", () => {
     const output = generateBindings(SAMPLE_ABI);

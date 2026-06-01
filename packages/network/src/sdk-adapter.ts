@@ -1,7 +1,7 @@
 /**
  * SDK adapter — isolates the @provablehq/sdk initialization ceremony.
  *
- * The Provable SDK v0.10.5 baseline requires:
+ * The Provable SDK v0.11.0 baseline requires:
  * 1. initThreadPool() for multi-threaded WASM
  * 2. Network-specific loading via @provablehq/sdk/dynamic.js
  * 3. getOrInitConsensusVersionTestHeights() for devnode connections
@@ -24,7 +24,7 @@ import {
   readCreditsKeyCacheMetadata,
   writeCreditsKeyCacheMetadata,
 } from "@lionden/core";
-import type { AleoNetwork, ResolvedSdkKeyCacheConfig } from "@lionden/config";
+import type { AleoNetwork, ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
 import { Address } from "@provablehq/sdk/testnet.js";
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 import type { TransportFunction } from "@provablehq/sdk/testnet.js";
@@ -97,7 +97,7 @@ export function programAddressFromProgramId(programId: string): string {
 // SDK initialization
 // ---------------------------------------------------------------------------
 
-const SDK_VERSION = "^0.10.5";
+const SDK_VERSION = "^0.11.0";
 
 let sdkInitPromise: Promise<void> | undefined;
 const sdkModuleCache = new Map<AleoNetwork, Promise<SdkModule>>();
@@ -157,6 +157,13 @@ export async function initSdk(): Promise<void> {
         `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
+  }
+}
+
+export function applySdkLogLevel(sdk: SdkModule, logLevel: SdkLogLevel = "warn"): void {
+  const setLogLevel = (sdk as unknown as { setLogLevel?: unknown }).setLogLevel;
+  if (typeof setLogLevel === "function") {
+    setLogLevel(logLevel);
   }
 }
 
@@ -349,6 +356,7 @@ export interface CreateSdkObjectsOptions {
   /** API key passed as Authorization header to AleoNetworkClient. */
   apiKey?: string;
   keyCache?: ResolvedSdkKeyCacheConfig;
+  logLevel?: SdkLogLevel;
   /**
    * Egress policy for SDK network-host fetches. Required — installing the
    * guarded transport is what flips `hasCustomTransport=true` and forces
@@ -375,6 +383,7 @@ export async function createSdkObjects(
 
   try {
     const sdk = await loadSdkModule(opts.network);
+    applySdkLogLevel(sdk, opts.logLevel);
 
     const {
       Account,
@@ -476,6 +485,7 @@ export interface CreateSignerSdkObjectsOptions {
   network: AleoNetwork;
   keyProvider: SdkObjects["keyProvider"];
   apiKey?: string;
+  logLevel?: SdkLogLevel;
   /** Required — same rationale as on `CreateSdkObjectsOptions`. */
   egressPolicy: SdkEgressPolicy;
 }
@@ -903,6 +913,7 @@ export async function createSignerSdkObjects(
   await initSdk();
 
   const sdk = await loadSdkModule(opts.network);
+  applySdkLogLevel(sdk, opts.logLevel);
   const {
     Account,
     AleoNetworkClient,

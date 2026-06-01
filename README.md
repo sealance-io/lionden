@@ -58,10 +58,10 @@ For contributor workflows and realistic end-to-end runs, assume:
 
 - Node.js 20.19+ or 22.12+ (the root package declares `^20.19.0 || >=22.12.0`)
 - npm
-- Leo CLI v4.0.x available on `PATH` by default (Leo v3.5.x is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md))
+- Leo CLI v4.1.x available on `PATH` by default. Leo v4.0.x remains an explicit compatibility line, and Leo v3.5.x is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md)
 
 
-Network functionality depends on `@provablehq/sdk@^0.10.5` via `packages/network`.
+Network functionality depends on `@provablehq/sdk@^0.11.0` via `packages/network`.
 
 ## Getting Started
 
@@ -110,7 +110,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.0.0",
+  leoVersion: "4.1.0",
   // leoVersion declares a compatibility line; leoBinary controls the CLI that runs.
   defaultNetwork: "devnode",
   networks: {

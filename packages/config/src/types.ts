@@ -167,8 +167,8 @@ export interface TaskDefinitionRef {
 
 export interface LionDenUserConfig {
   /**
-   * Leo compatibility declaration. Default: "4.0.0".
-   * Supported lines are currently 4.0.x and 3.5.x.
+   * Leo compatibility declaration. Default: "4.1.0".
+   * Supported lines are currently 4.1.x, 4.0.x, and 3.5.x.
    */
   readonly leoVersion?: string;
 
@@ -328,6 +328,12 @@ export interface DeployConfig {
 }
 
 export interface SdkConfig {
+  /**
+   * SDK log level. Default: "warn".
+   *
+   * Applied only when the installed @provablehq/sdk exposes setLogLevel().
+   */
+  readonly logLevel?: SdkLogLevel;
   /** Proving/verifying key cache settings. Defaults to filesystem-backed caching. */
   readonly keyCache?: SdkKeyCacheConfig;
   /**
@@ -341,6 +347,9 @@ export interface SdkConfig {
    */
   readonly egress?: SdkEgressConfig;
 }
+
+export const SDK_LOG_LEVELS = ["silent", "error", "warn", "info", "debug"] as const;
+export type SdkLogLevel = typeof SDK_LOG_LEVELS[number];
 
 export interface SdkKeyCacheConfig {
   /** Cache storage backend. Default: "filesystem" */
@@ -462,6 +471,7 @@ export interface ResolvedDeployConfig {
 }
 
 export interface ResolvedSdkConfig {
+  readonly logLevel?: SdkLogLevel;
   readonly keyCache: ResolvedSdkKeyCacheConfig;
   /**
    * User-supplied network-host egress overrides. `undefined` means

@@ -8,6 +8,7 @@
 import type {
   AleoNetwork,
   ResolvedSdkKeyCacheConfig,
+  SdkLogLevel,
   RuntimeImportRef,
 } from "@lionden/config";
 import { normalizeRuntimeImportRef } from "@lionden/config";
@@ -50,6 +51,8 @@ export interface ConnectionOptions {
   artifactsDir?: string;
   /** Resolved Provable SDK key-cache config. */
   keyCache?: ResolvedSdkKeyCacheConfig;
+  /** Resolved Provable SDK log level. */
+  logLevel?: SdkLogLevel;
   /** SDK egress policy for this connection. Required; default resolved per connection by NetworkManager (network-host scope only — parameter downloads use an internal SDK host list). */
   egressPolicy: SdkEgressPolicy;
   /**
@@ -96,6 +99,7 @@ export class AleoConnection implements NetworkConnection {
   readonly egressPolicy: SdkEgressPolicy;
   private readonly artifactsDir?: string;
   private readonly keyCache?: ResolvedSdkKeyCacheConfig;
+  private readonly logLevel?: SdkLogLevel;
   private readonly projectRoot: string;
   private readonly executionImports: Readonly<Record<string, readonly RuntimeImportRef[]>>;
 
@@ -129,6 +133,7 @@ export class AleoConnection implements NetworkConnection {
     this.egressPolicy = options.egressPolicy;
     this.artifactsDir = options.artifactsDir;
     this.keyCache = options.keyCache;
+    this.logLevel = options.logLevel;
     this.projectRoot = options.projectRoot;
     this.executionImports = options.executionImports ?? {};
 
@@ -169,6 +174,7 @@ export class AleoConnection implements NetworkConnection {
           privateKey: this.privateKey,
           apiKey: this.apiKey,
           keyCache: this.keyCache,
+          logLevel: this.logLevel,
           egressPolicy: this.egressPolicy,
         });
         // Guard: if close() was called while we were initializing,
@@ -224,6 +230,7 @@ export class AleoConnection implements NetworkConnection {
           network: this.networkId,
           keyProvider: defaultSdk.keyProvider,
           apiKey: this.apiKey,
+          logLevel: this.logLevel,
           egressPolicy: this.egressPolicy,
         });
 
@@ -306,7 +313,7 @@ export class AleoConnection implements NetworkConnection {
     if (this.type === "devnode") {
       const { checkDevnodeSdkSupport, initConsensusHeights } =
         await import("./sdk-adapter.js");
-      // Enforce SDK v0.10.5 baseline for devnode operations
+      // Enforce the SDK baseline for devnode operations.
       await checkDevnodeSdkSupport();
       await initConsensusHeights();
     }

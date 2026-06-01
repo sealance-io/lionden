@@ -7,6 +7,10 @@
  * - Records can be ADDED but not deleted or modified (fields must match exactly)
  * - Transitions can be ADDED; existing transitions cannot be deleted and their
  *   input/output signatures must remain unchanged (logic-only changes are fine)
+ * - Views can be ADDED; existing views cannot be deleted and their signatures
+ *   must remain unchanged
+ * - Implemented interfaces can be ADDED; existing interface refs cannot be
+ *   deleted or modified
  * - Storage variables can be ADDED but not deleted or modified
  */
 
@@ -22,6 +26,8 @@ import type {
   AleoType,
   AbiInput,
   AbiOutput,
+  ViewABI,
+  InterfaceRefABI,
   StructFieldABI,
   RecordFieldABI,
 } from "@lionden/leo-compiler";
@@ -40,6 +46,10 @@ export interface AbiViolation {
     | "record_modified"
     | "transition_deleted"
     | "transition_modified"
+    | "view_deleted"
+    | "view_modified"
+    | "interface_deleted"
+    | "interface_modified"
     | "storage_variable_deleted"
     | "storage_variable_modified";
   readonly name: string;
@@ -102,6 +112,24 @@ export function checkAbiCompatibility(
     compareTransitionSignatures,
     violations,
     (t) => t.name,
+  );
+
+  checkNamedItems(
+    oldAbi.views ?? [],
+    newAbi.views ?? [],
+    "view",
+    compareViewSignatures,
+    violations,
+    (view) => view.name,
+  );
+
+  checkNamedItems(
+    oldAbi.implements ?? [],
+    newAbi.implements ?? [],
+    "interface",
+    compareInterfaceRefs,
+    violations,
+    interfaceRefKey,
   );
 
   // Check storage variables
@@ -186,7 +214,60 @@ function compareTransitionSignatures(
       return `transition "${oldT.name}" output[${i}] changed`;
     }
   }
+  if (JSON.stringify(oldT.const_parameters ?? []) !== JSON.stringify(newT.const_parameters ?? [])) {
+    return `transition "${oldT.name}" const parameters changed`;
+  }
   return null;
+}
+
+function compareViewSignatures(
+  oldView: ViewABI,
+  newView: ViewABI,
+): string | null {
+  if (oldView.inputs.length !== newView.inputs.length) {
+    return `view "${oldView.name}" input count changed (${oldView.inputs.length} -> ${newView.inputs.length})`;
+  }
+  if (oldView.outputs.length !== newView.outputs.length) {
+    return `view "${oldView.name}" output count changed (${oldView.outputs.length} -> ${newView.outputs.length})`;
+  }
+  for (let i = 0; i < oldView.inputs.length; i++) {
+    const oldIn = oldView.inputs[i]!;
+    const newIn = newView.inputs[i]!;
+    if (!transitionInputsEqual(oldIn, newIn)) {
+      return `view "${oldView.name}" input "${oldIn.name}" changed`;
+    }
+  }
+  for (let i = 0; i < oldView.outputs.length; i++) {
+    const oldOut = oldView.outputs[i]!;
+    const newOut = newView.outputs[i]!;
+    if (!transitionOutputsEqual(oldOut, newOut)) {
+      return `view "${oldView.name}" output[${i}] changed`;
+    }
+  }
+  if (JSON.stringify(oldView.const_parameters ?? []) !== JSON.stringify(newView.const_parameters ?? [])) {
+    return `view "${oldView.name}" const parameters changed`;
+  }
+  return null;
+}
+
+function compareInterfaceRefs(
+  oldRef: InterfaceRefABI,
+  newRef: InterfaceRefABI,
+): string | null {
+  if (JSON.stringify(canonicalInterfaceRef(oldRef)) !== JSON.stringify(canonicalInterfaceRef(newRef))) {
+    return `interface "${interfaceRefKey(oldRef)}" changed`;
+  }
+  return null;
+}
+
+function interfaceRefKey(ref: InterfaceRefABI): string {
+  return typeof ref === "string" ? ref : ref.path.join("::");
+}
+
+function canonicalInterfaceRef(ref: InterfaceRefABI): unknown {
+  return typeof ref === "string"
+    ? ref
+    : { path: ref.path, program: ref.program ?? null };
 }
 
 function compareMappings(

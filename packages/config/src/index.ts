@@ -22,6 +22,7 @@ export type {
   TestingConfig,
   DeployConfig,
   SdkConfig,
+  SdkLogLevel,
   SdkKeyCacheConfig,
   SdkEgressConfig,
   ExecutionConfig,
@@ -53,6 +54,7 @@ export {
   normalizeRuntimeImportRef,
   checkRuntimeImportRefExists,
 } from "./execution-imports.js";
+export { SDK_LOG_LEVELS } from "./types.js";
 export type {
   LionDenUserConfigExtensions,
   LionDenResolvedConfigExtensions,

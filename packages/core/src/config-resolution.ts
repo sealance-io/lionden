@@ -23,6 +23,7 @@ import type {
   ResolvedNamedAccountsConfig,
 } from "@lionden/config";
 import {
+  SDK_LOG_LEVELS,
   isConfigVariable,
   resolveConfigVariable,
   isValidAleoAddress,
@@ -75,6 +76,7 @@ export async function resolveConfig(
 
   // 2. Validate user config (built-in core passes + plugin handlers)
   const userErrors = [
+    ...validateSdkUserConfig(config),
     ...validateExecutionUserConfig(config),
     ...(await collectValidationErrorsFromHandlers(
       configHandlers,
@@ -260,7 +262,7 @@ function buildDefaults(
   const namedAccounts = resolveNamedAccountsConfig(config.namedAccounts ?? {});
 
   return {
-    leoVersion: config.leoVersion ?? "4.0.0",
+    leoVersion: config.leoVersion ?? "4.1.0",
     skipLeoVersionCheck: config.skipLeoVersionCheck ?? false,
     leoBinary: expandTilde(config.leoBinary ?? "leo"),
     paths,
@@ -282,13 +284,14 @@ function resolveSdkConfig(
   artifactsPath: string,
 ): ResolvedSdkConfig {
   const keyCache = config.sdk?.keyCache;
+  const logLevel = config.sdk?.logLevel ?? "warn";
   const storage = keyCache?.storage ?? "filesystem";
   const egress = resolveSdkEgressConfig(config);
 
   if (storage === "memory") {
     return egress === undefined
-      ? { keyCache: { storage } }
-      : { keyCache: { storage }, egress };
+      ? { logLevel, keyCache: { storage } }
+      : { logLevel, keyCache: { storage }, egress };
   }
 
   const rawPath = keyCache?.path ?? path.join(artifactsPath, ".cache", "provable-keys");
@@ -299,12 +302,14 @@ function resolveSdkConfig(
 
   return egress === undefined
     ? {
+        logLevel,
         keyCache: {
           storage,
           path: normalizeAleoKeyCachePath(absolutePath),
         },
       }
     : {
+        logLevel,
         keyCache: {
           storage,
           path: normalizeAleoKeyCachePath(absolutePath),
@@ -706,6 +711,22 @@ function validateExecutionUserConfig(
   return errors;
 }
 
+const SDK_LOG_LEVEL_SET = new Set<string>(SDK_LOG_LEVELS);
+
+function validateSdkUserConfig(
+  config: LionDenUserConfig,
+): ConfigValidationError[] {
+  const errors: ConfigValidationError[] = [];
+  const logLevel = config.sdk?.logLevel;
+  if (logLevel !== undefined && !SDK_LOG_LEVEL_SET.has(logLevel)) {
+    errors.push({
+      path: "sdk.logLevel",
+      message: `sdk.logLevel must be one of: ${SDK_LOG_LEVELS.join(", ")}`,
+    });
+  }
+  return errors;
+}
+
 function validateExecutionResolvedConfig(
   resolved: LionDenResolvedConfig,
 ): ConfigValidationError[] {
@@ -736,6 +757,7 @@ function mergeSdkConfig(
   return {
     ...base,
     ...(partial ?? {}),
+    logLevel: partial?.logLevel ?? base.logLevel,
     keyCache: mergedKeyCache.storage === "memory"
       ? { storage: "memory" }
       : mergedKeyCache,

@@ -16,6 +16,7 @@ export { unitId } from "./types.js";
 export type {
   ProgramABI,
   TransitionABI,
+  ViewABI,
   StructABI,
   StructFieldABI,
   RecordABI,
@@ -31,6 +32,9 @@ export type {
   Mode,
   AbiInput,
   AbiOutput,
+  ConstParameterABI,
+  InterfaceRefABI,
+  AbiJsonValue,
 } from "./abi-types.js";
 
 // Source discovery
@@ -56,6 +60,7 @@ export {
 
 // ABI parser
 export { parseAbi, AbiParseError } from "./abi-parser.js";
+export { computeAbiHash, canonicalizeAbiForHash } from "./abi-hash.js";
 
 // Cache
 export { computeUnitHash, isCached, writeCache } from "./cache.js";
