@@ -27,6 +27,27 @@ export function recordRefName(ref: RecordRef): string {
 }
 
 /**
+ * Derive a collision-free `${base}Input` identifier for a struct/record input
+ * type, given the set of names already reserved in the module. Pure: the result
+ * is a deterministic function of `base` and `reserved`.
+ *
+ * Prefers `${base}Input`; on collision, escalates underscores between the base
+ * and the `Input` suffix (`${base}_Input`, `${base}__Input`, …) until free.
+ * Since every candidate ends in `Input`, it can only collide with reserved names
+ * that also end in `Input` (imported `*Input` types, a user type literally named
+ * `FooInput`, or a previously claimed alias).
+ */
+export function disambiguateInputName(base: string, reserved: ReadonlySet<string>): string {
+  let candidate = `${base}Input`;
+  let underscores = 1;
+  while (reserved.has(candidate)) {
+    candidate = `${base}${"_".repeat(underscores)}Input`;
+    underscores++;
+  }
+  return candidate;
+}
+
+/**
  * Map a Leo/Aleo primitive type to its TypeScript representation.
  */
 export function primitiveToTs(prim: PrimitiveType): string {

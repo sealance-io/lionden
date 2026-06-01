@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
 import { createTwoadicity } from "../typechain/Twoadicity.js";
-import { Leo } from "../typechain/BaseContract.js";
 
 async function deployTwoadicity() {
   const ctx = await setup();
@@ -41,14 +40,14 @@ describe("twoadicity.aleo", () => {
   // set of inputs (odd, low power-of-two, low non-power) rather than a
   // saturating sweep.
   it("twoadicity(1) = 0 (odd)", async () => {
-    expect(await twoadicity.main.locally({ n: Leo.field("1field") })).toBe(0);
+    expect(await twoadicity.main.locally({ n: 1n })).toBe(0);
   }, 180_000);
 
   it("twoadicity(8) = 3 (2^3)", async () => {
-    expect(await twoadicity.main.locally({ n: Leo.field("8field") })).toBe(3);
+    expect(await twoadicity.main.locally({ n: 8n })).toBe(3);
   }, 180_000);
 
   it("twoadicity(12) = 2 (4·3)", async () => {
-    expect(await twoadicity.main.locally({ n: Leo.field("12field") })).toBe(2);
+    expect(await twoadicity.main.locally({ n: 12n })).toBe(2);
   }, 180_000);
 });

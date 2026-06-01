@@ -9,11 +9,17 @@ export interface Token {
   readonly _nonce: LeoGroup;
 }
 
+export interface TokenInput {
+  readonly owner: AddressInput;
+  readonly amount: bigint;
+  readonly _nonce: GroupInput;
+}
+
 // ---------------------------------------------------------------------------
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializeToken(value: Token, context?: TransitionInputContext): string {
+export function serializeToken(value: TokenInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
   if (typeof _raw === "string") return _raw;
@@ -226,9 +232,9 @@ export class TokenContract extends BaseContract {
   } as const;
 
   readonly transfer_private = {
-    locally: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<[Token, Token]> => {
+    locally: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<[Token, Token]> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];
@@ -237,54 +243,54 @@ export class TokenContract extends BaseContract {
       return _decoded;
     },
 
-    failsLocally: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];
       await this.expectLocalFailure("transfer_private", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];
       return this.expectLocalFailure("transfer_private", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];
       return this.submitTransition("transfer_private", _args, options ?? {});
     },
 
-    settled: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]> | RejectedTransition> => {
+    settled: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]> | RejectedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];
       return this.settleTyped("transfer_private", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "transfer_private", 0), deserializeToken), BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "transfer_private", 1), deserializeToken)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
     },
 
-    accepted: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]>> => {
+    accepted: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]>> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];
       return this.expectAcceptedTyped("transfer_private", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "transfer_private", 0), deserializeToken), BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "transfer_private", 1), deserializeToken)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
     },
 
-    rejected: async (args: { readonly token: Token; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (args: { readonly token: TokenInput; readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeToken(args.token as Token, this.inputContext("transfer_private", "token")),
+        serializeToken(args.token as TokenInput, this.inputContext("transfer_private", "token")),
         BaseContract.serializeAddress(args.receiver, this.inputContext("transfer_private", "receiver")),
         BaseContract.serializeUInt(args.amount, 64, this.inputContext("transfer_private", "amount")),
       ];

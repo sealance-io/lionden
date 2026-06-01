@@ -40,6 +40,24 @@ export type IdentifierInput = LeoIdentifier;
 export type DynamicRecordInput = LeoDynamicRecord;
 export type PlaintextInput = LeoPlaintext;
 
+// Widen a branded output type to its input counterpart, recursively. Used by
+// generated cross-program (external) struct/record input aliases; local
+// struct/record input shapes are emitted as explicit interfaces. Branded scalar
+// strings map to their *Input alias (so bare bigint/number is accepted); arrays
+// and nested structs/records widen element-wise; everything else is unchanged.
+// Arm order matters: branded strings and primitives resolve before the generic
+// object arm (arrays are objects too, so the array arm precedes it).
+export type WidenInput<T> =
+  T extends LeoField ? FieldInput :
+  T extends LeoGroup ? GroupInput :
+  T extends LeoScalar ? ScalarInput :
+  T extends LeoAddress ? AddressInput :
+  T extends LeoIdentifier ? IdentifierInput :
+  T extends bigint | number | boolean ? T :
+  T extends readonly (infer E)[] ? ReadonlyArray<WidenInput<E>> :
+  T extends object ? { readonly [K in keyof T]: WidenInput<T[K]> } :
+  T;
+
 export interface SignerInput {
   readonly privateKey: string;
   readonly address: string;

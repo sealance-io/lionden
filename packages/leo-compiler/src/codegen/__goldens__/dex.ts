@@ -10,11 +10,25 @@ export interface Pair {
   readonly reserve_b: bigint;
 }
 
+export interface PairInput {
+  readonly token_a: AddressInput;
+  readonly token_b: AddressInput;
+  readonly reserve_a: bigint;
+  readonly reserve_b: bigint;
+}
+
 export interface LPToken {
   readonly owner: LeoAddress;
   readonly amount: bigint;
   readonly pair_id: LeoField;
   readonly _nonce: LeoGroup;
+}
+
+export interface LPTokenInput {
+  readonly owner: AddressInput;
+  readonly amount: bigint;
+  readonly pair_id: FieldInput;
+  readonly _nonce: GroupInput;
 }
 
 export interface DexStorage {
@@ -25,7 +39,7 @@ export interface DexStorage {
 // Serialization / deserialization helpers
 // ---------------------------------------------------------------------------
 
-export function serializePair(value: Pair, context?: TransitionInputContext): string {
+export function serializePair(value: PairInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const fields: string[] = [];
   fields.push("token_a: " + BaseContract.serializeAddress(value.token_a, BaseContract.childInputContext(context, "token_a")));
@@ -45,7 +59,7 @@ export function deserializePair(value: string): Pair {
   };
 }
 
-export function serializeLPToken(value: LPToken, context?: TransitionInputContext): string {
+export function serializeLPToken(value: LPTokenInput, context?: TransitionInputContext): string {
   BaseContract.assertObject(value, context);
   const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
   if (typeof _raw === "string") return _raw;
@@ -150,52 +164,52 @@ export class Dex extends BaseContract {
   } as const;
 
   readonly remove_liquidity = {
-    locally: async (args: { readonly lp_token: LPToken }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (args: { readonly lp_token: LPTokenInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       const _result = await this.executeLocal("remove_liquidity", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly lp_token: LPToken }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (args: { readonly lp_token: LPTokenInput }, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       await this.expectLocalFailure("remove_liquidity", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly lp_token: LPToken }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (args: { readonly lp_token: LPTokenInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.expectLocalFailure("remove_liquidity", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly lp_token: LPToken }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.submitTransition("remove_liquidity", _args, options ?? {});
     },
 
-    settled: async (args: { readonly lp_token: LPToken }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.settleTyped("remove_liquidity", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly lp_token: LPToken }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.expectAcceptedTyped("remove_liquidity", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly lp_token: LPToken }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPToken, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.expectRejected("remove_liquidity", _args, options ?? {});
     },
