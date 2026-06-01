@@ -189,6 +189,7 @@ export async function compilePipeline(
   // 5. Compile in topological order
   const results: CompilationResult[] = [];
   const depHashes = new Map<string, string>();
+  const normalizedArtifactDirs = new Map<string, string>();
 
   for (const unit of compileOrder) {
     const id = unitId(unit);
@@ -204,9 +205,9 @@ export async function compilePipeline(
         networkDepIds.push(dep);
       } else {
         localDepIds.push(dep);
-        const depPkgDir = packageDirs.get(dep);
-        if (depPkgDir) {
-          linkLocalDependency(pkgDir, dep, path.join(depPkgDir, "build"));
+        const depArtifactDir = normalizedArtifactDirs.get(dep);
+        if (depArtifactDir) {
+          linkLocalDependency(pkgDir, dep, depArtifactDir);
         }
       }
     }
@@ -224,14 +225,17 @@ export async function compilePipeline(
 
     if (unit.kind === "program") {
       const abi = readProgramAbi(buildDir, id);
-      const aleoSource = path.join(buildDir, "main.aleo");
 
       // Copy final artifacts to artifactsDir/<programId>/
       const artifactDir = path.join(config.paths.artifacts, unit.programId);
-      copyArtifacts(buildDir, artifactDir);
+      const normalized = copyArtifacts(buildDir, artifactDir, id, {
+        requireAbi: true,
+        requireAleo: true,
+      });
+      normalizedArtifactDirs.set(id, artifactDir);
       writeKeyArtifactsMetadata(
         keyArtifactsMetadataPath(config.paths.artifacts, unit.programId),
-        buildKeyArtifactsMetadata(pkgDir, buildDir, artifactDir, unit.programId, abi),
+        buildKeyArtifactsMetadata(pkgDir, artifactDir, unit.programId, abi),
       );
 
       results.push({
@@ -240,9 +244,16 @@ export async function compilePipeline(
         packageDir: pkgDir,
         buildDir,
         abi,
-        aleoSource,
+        aleoSource: normalized.aleoPath!,
       } satisfies ProgramCompilationResult);
     } else {
+      const normalizedDir = path.join(config.paths.artifacts, ".build", id, ".normalized");
+      copyArtifacts(buildDir, normalizedDir, id, {
+        requireAbi: false,
+        requireAleo: false,
+      });
+      normalizedArtifactDirs.set(id, normalizedDir);
+
       results.push({
         unit,
         cached,
@@ -290,39 +301,203 @@ async function runLeoBuild(
 }
 
 function readProgramAbi(buildDir: string, id: string): ProgramABI {
-  const abiPath = path.join(buildDir, "abi.json");
-  if (!fs.existsSync(abiPath)) {
-    throw new CompilationError(id, `ABI file not found at ${abiPath}. Did leo build succeed?`);
+  const artifacts = resolveBuildArtifacts(buildDir, id);
+  if (!artifacts.abiPath) {
+    throw new CompilationError(
+      id,
+      `ABI file not found under ${buildDir}. Did leo build succeed?`,
+    );
   }
-  return parseAbi(fs.readFileSync(abiPath, "utf-8"));
+  return parseAbi(fs.readFileSync(artifacts.abiPath, "utf-8"));
 }
 
-function copyArtifacts(buildDir: string, destDir: string): void {
+interface CopyArtifactOptions {
+  readonly requireAbi: boolean;
+  readonly requireAleo: boolean;
+}
+
+interface NormalizedArtifactPaths {
+  readonly abiPath?: string;
+  readonly aleoPath?: string;
+}
+
+function copyArtifacts(
+  buildDir: string,
+  destDir: string,
+  id: string,
+  options: CopyArtifactOptions,
+): NormalizedArtifactPaths {
+  const artifacts = resolveBuildArtifacts(buildDir, id);
+  if (options.requireAbi && !artifacts.abiPath) {
+    throw new CompilationError(
+      id,
+      `ABI file not found under ${buildDir}. Did leo build succeed?`,
+    );
+  }
+  if (options.requireAleo && !artifacts.aleoPath) {
+    throw new CompilationError(
+      id,
+      `Compiled Aleo source not found under ${buildDir}. Did leo build succeed?`,
+    );
+  }
+
+  // `artifacts/<programId>` is compiler-owned output. Recreate it from
+  // scratch so stale legacy/per-unit artifacts cannot survive normalization.
+  fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
 
-  // Copy all relevant files: abi.json, main.aleo, *.prover, *.verifier
-  if (!fs.existsSync(buildDir)) return;
+  const normalized: { abiPath?: string; aleoPath?: string } = {};
 
-  for (const file of fs.readdirSync(buildDir)) {
-    if (
-      file === "abi.json" ||
-      file === "main.aleo" ||
-      file.endsWith(".prover") ||
-      file.endsWith(".verifier")
-    ) {
-      fs.copyFileSync(path.join(buildDir, file), path.join(destDir, file));
+  if (artifacts.abiPath) {
+    normalized.abiPath = path.join(destDir, "abi.json");
+    fs.copyFileSync(artifacts.abiPath, normalized.abiPath);
+  }
+  if (artifacts.aleoPath) {
+    normalized.aleoPath = path.join(destDir, "main.aleo");
+    fs.copyFileSync(artifacts.aleoPath, normalized.aleoPath);
+  }
+
+  for (const file of artifacts.keyFiles) {
+    fs.copyFileSync(file, path.join(destDir, path.basename(file)));
+  }
+
+  for (const interfacesDir of artifacts.interfacesDirs) {
+    copyDirectory(interfacesDir, path.join(destDir, "interfaces"));
+  }
+
+  return normalized;
+}
+
+interface ResolvedBuildArtifacts {
+  readonly abiPath?: string;
+  readonly aleoPath?: string;
+  readonly keyFiles: readonly string[];
+  readonly interfacesDirs: readonly string[];
+}
+
+function resolveBuildArtifacts(buildDir: string, id: string): ResolvedBuildArtifacts {
+  if (!fs.existsSync(buildDir)) {
+    return { keyFiles: [], interfacesDirs: [] };
+  }
+
+  const unitDir = findBuildUnitDir(buildDir, id);
+  const abiPath = existingFile(path.join(unitDir, "abi.json"));
+  const aleoPath = findAleoOutput(unitDir, id);
+
+  const keyFiles = fs.existsSync(unitDir)
+    ? fs.readdirSync(unitDir)
+      .filter((file) => file.endsWith(".prover") || file.endsWith(".verifier"))
+      .map((file) => path.join(unitDir, file))
+      .sort((a, b) => a.localeCompare(b))
+    : [];
+
+  const interfacesDirs = [
+    path.join(unitDir, "interfaces"),
+    path.join(buildDir, "interfaces"),
+  ].filter((dir, index, dirs) =>
+    fs.existsSync(dir) &&
+    fs.statSync(dir).isDirectory() &&
+    dirs.indexOf(dir) === index
+  );
+
+  return { abiPath, aleoPath, keyFiles, interfacesDirs };
+}
+
+function findBuildUnitDir(buildDir: string, id: string): string {
+  // Prefer legacy root output and exact unit directories. Other sibling
+  // directories are a last-resort fallback so unrelated per-unit outputs cannot
+  // win only because their files have a newer mtime.
+  const preferred = preferredBuildUnitDirs(buildDir, id);
+  const preferredMatch = newestBuildArtifactMatch(preferred, id);
+  if (preferredMatch) return preferredMatch;
+
+  const fallbackDirs = otherBuildUnitDirs(buildDir, preferred);
+  return newestBuildArtifactMatch(fallbackDirs, id) ?? buildDir;
+}
+
+function preferredBuildUnitDirs(buildDir: string, id: string): string[] {
+  const base = id.endsWith(".aleo") ? id.slice(0, -".aleo".length) : id;
+  return uniqueExistingDirs([buildDir, path.join(buildDir, id), path.join(buildDir, base)]);
+}
+
+function otherBuildUnitDirs(buildDir: string, preferred: readonly string[]): string[] {
+  if (!fs.existsSync(buildDir)) return [];
+  const preferredSet = new Set(preferred);
+  const out: string[] = [];
+  for (const entry of fs.readdirSync(buildDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(buildDir, entry.name);
+    if (!preferredSet.has(dir)) out.push(dir);
+  }
+  return uniqueExistingDirs(out);
+}
+
+function newestBuildArtifactMatch(dirs: readonly string[], id: string): string | undefined {
+  const matches = dirs
+    .map((dir, index) => {
+      const abiPath = existingFile(path.join(dir, "abi.json"));
+      const aleoPath = findAleoOutput(dir, id);
+      const artifactPath = abiPath ?? aleoPath;
+      return artifactPath
+        ? { dir, index, mtimeMs: fs.statSync(artifactPath).mtimeMs }
+        : null;
+    })
+    .filter((match): match is { dir: string; index: number; mtimeMs: number } => match !== null)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs || a.index - b.index);
+  return matches[0]?.dir;
+}
+
+function uniqueExistingDirs(dirs: readonly string[]): string[] {
+  return [...new Set(dirs)].filter((dir) =>
+    fs.existsSync(dir) && fs.statSync(dir).isDirectory()
+  );
+}
+
+function findAleoOutput(dir: string, id: string): string | undefined {
+  const base = id.endsWith(".aleo") ? id.slice(0, -".aleo".length) : id;
+  const candidateNames = [
+    "main.aleo",
+    id.endsWith(".aleo") ? id : `${id}.aleo`,
+    `${base}.aleo`,
+  ];
+  for (const name of [...new Set(candidateNames)]) {
+    const file = existingFile(path.join(dir, name));
+    if (file) return file;
+  }
+
+  if (!fs.existsSync(dir)) return undefined;
+  const aleoFiles = fs.readdirSync(dir)
+    .filter((file) => file.endsWith(".aleo") && fs.statSync(path.join(dir, file)).isFile())
+    .sort((a, b) => a.localeCompare(b));
+  return aleoFiles.length > 0 ? path.join(dir, aleoFiles[0]!) : undefined;
+}
+
+function existingFile(filePath: string): string | undefined {
+  return fs.existsSync(filePath) && fs.statSync(filePath).isFile()
+    ? filePath
+    : undefined;
+}
+
+function copyDirectory(srcDir: string, destDir: string): void {
+  for (const entry of fs.readdirSync(srcDir, { withFileTypes: true })) {
+    const src = path.join(srcDir, entry.name);
+    const dest = path.join(destDir, entry.name);
+    if (entry.isDirectory()) {
+      copyDirectory(src, dest);
+    } else if (entry.isFile()) {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(src, dest);
     }
   }
 }
 
 function buildKeyArtifactsMetadata(
   packageDir: string,
-  buildDir: string,
   artifactDir: string,
   programId: string,
   abi: ProgramABI,
 ): KeyArtifactsMetadata {
-  const sourcePath = path.join(buildDir, "main.aleo");
+  const sourcePath = path.join(artifactDir, "main.aleo");
   const sourceHash = fs.existsSync(sourcePath)
     ? sha256Text(fs.readFileSync(sourcePath, "utf-8"))
     : sha256Text("");

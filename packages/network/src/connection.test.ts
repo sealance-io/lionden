@@ -670,6 +670,46 @@ describe("AleoConnection", () => {
       }
     });
 
+    it("does not enter the SDK SnapshotQuery egress path for a record-consuming cache miss", async () => {
+      const { makeNetworkTransport } =
+        await vi.importActual<typeof import("./sdk-adapter.js")>("./sdk-adapter.js");
+      const guardedTransport = makeNetworkTransport(
+        TEST_EGRESS_POLICY.allowedNetworkHosts,
+        TEST_EGRESS_POLICY.violation,
+      );
+      const attemptedSnapshotQueries: string[] = [];
+      mockSynthesizeExecutionKeyBytes.mockImplementation(async () => {
+        const url = "https://api.provable.com/v2/testnet/statePaths";
+        attemptedSnapshotQueries.push(url);
+        await guardedTransport(url);
+        throw new Error("eager key synthesis attempted SDK SnapshotQuery egress");
+      });
+
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+      try {
+        const artifactsDir = path.join(tmpDir, "artifacts");
+        const artifactDir = path.join(artifactsDir, "hello.aleo");
+        const cachePath = path.join(tmpDir, ".aleo");
+        const source = "program hello.aleo { }";
+        fs.mkdirSync(artifactDir, { recursive: true });
+        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+        fs.writeFileSync(path.join(artifactDir, "abi.json"), recordInputAbi("main"));
+
+        const connection = createDevnodeConnection({
+          artifactsDir,
+          keyCache: { storage: "filesystem", path: cachePath },
+        });
+
+        await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
+
+        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
+        expect(attemptedSnapshotQueries).toEqual([]);
+        expect(mockExecute).toHaveBeenCalledOnce();
+      } finally {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+
     // Conservative default: when the ABI can't be located (no abi.json), we
     // can't prove the transition is record-free, so skip eager synthesis rather
     // than risk the leak.

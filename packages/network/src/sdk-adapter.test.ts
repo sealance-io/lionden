@@ -13,6 +13,7 @@ import * as path from "node:path";
 import {
   createSdkObjects,
   createSignerSdkObjects,
+  applySdkLogLevel,
   PersistentFunctionKeyProvider,
   synthesizeExecutionKeyBytes,
   decryptRecordCiphertext,
@@ -63,6 +64,20 @@ describe("programAddressFromProgramId()", () => {
     expect(second).toBe(first);
     // Distinct program ids must not collide in the cache.
     expect(programAddressFromProgramId("token.aleo")).not.toBe(first);
+  });
+});
+
+describe("applySdkLogLevel()", () => {
+  it("calls SDK setLogLevel when the import exposes it", () => {
+    const setLogLevel = vi.fn();
+
+    applySdkLogLevel({ setLogLevel } as any, "debug");
+
+    expect(setLogLevel).toHaveBeenCalledWith("debug");
+  });
+
+  it("ignores older SDK imports without setLogLevel", () => {
+    expect(() => applySdkLogLevel({} as any, "silent")).not.toThrow();
   });
 });
 

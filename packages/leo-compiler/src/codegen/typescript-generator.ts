@@ -69,6 +69,7 @@ export function generateBindings(
   const lines: string[] = [];
   const className = resolveContractClassName(abi);
   const ctx = createGenerationContext(abi, allAbis);
+  assertNoExecutableConstParameters(abi);
 
   const helpers = (options.dynamicRecords ?? []).filter(
     (helper) => helper.sourceProgram === abi.program,
@@ -143,6 +144,21 @@ export function generateBindings(
   lines.push(...generateContractClass(abi, className, ctx));
 
   return lines.join("\n") + "\n";
+}
+
+function assertNoExecutableConstParameters(abi: ProgramABI): void {
+  for (const transition of abi.transitions) {
+    if (transition.const_parameters && transition.const_parameters.length > 0) {
+      throw new CodegenError(
+        `Code generation for ${abi.program}/${transition.name} is unsupported: ` +
+          "executable functions with const_parameters are not yet supported.",
+        {
+          programId: abi.program,
+          phase: "generate",
+        },
+      );
+    }
+  }
 }
 
 /**

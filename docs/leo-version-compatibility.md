@@ -4,7 +4,8 @@
 
 | Version | Status | Scope |
 |---------|--------|-------|
-| Leo 4.0.x | Default, full support | All features including `lib.leo` library units |
+| Leo 4.1.x | Default, full support | Aleo Stack 4.7 builds, including per-unit build layouts and `lib.leo` library units |
+| Leo 4.0.x | Supported | Explicit compatibility line for projects staying on the previous Leo v4 line |
 | Leo 3.5.x | Supported | Deployable `main.leo` programs only |
 
 ## Leo v3.5 Support Scope
@@ -27,11 +28,19 @@ export default defineConfig({
 });
 ```
 
-- **`leoVersion`** — compatibility declaration, not a binary pin. Accepted stable patch versions are `4.0.x` (default line) and `3.5.x`.
+- **`leoVersion`** — compatibility declaration, not a binary pin. Accepted stable patch versions are `4.1.x` (default line), `4.0.x`, and `3.5.x`.
 - **`leoBinary`** — path to the Leo CLI binary that LionDen actually executes. Defaults to `"leo"` (resolved from `PATH`). Tilde (`~/`) is expanded to the user's home directory during config resolution, since `execFile`/`spawn` do not perform shell expansion.
 - **`skipLeoVersionCheck`** — default `false`. When `true`, LionDen still verifies that `leoBinary --disable-update-check --version` runs successfully, but skips parsing and comparing the version output. The configured `leoVersion` must still be a stable `major.minor.patch` string.
 
 Install both Leo versions side-by-side with `leo update --name v3.5.0` (available since Leo v3.2.0). The default `leo` on `PATH` remains v4; point `leoBinary` at the named v3.5 installation.
+
+The `examples/aleo-ports` smoke lane is intentionally pinned to Leo 4.0.x as a regression lane. If your default `leo` is 4.1.x, provide a side-by-side 4.0 binary when running it:
+
+```bash
+npm run test:smoke:aleo-ports -- --leo-4-binary /path/to/leo-4.0
+# or:
+LIONDEN_LEO_4_0_BINARY=/path/to/leo-4.0 npm run test:smoke:aleo-ports
+```
 
 Before LionDen-managed compilation or devnode startup, LionDen runs the configured Leo binary with update checks disabled:
 
@@ -39,7 +48,7 @@ Before LionDen-managed compilation or devnode startup, LionDen runs the configur
 leo --disable-update-check --version
 ```
 
-When version checking is enabled, the first stable `major.minor.patch` version in the output is compared against the configured `leoVersion` major/minor line. Patch drift is allowed: for example, `leoVersion: "4.0.0"` accepts a `leo 4.0.2` binary. Minor drift is not allowed unless `skipLeoVersionCheck: true` is set. Missing or inaccessible binaries always fail preflight.
+When version checking is enabled, the first stable `major.minor.patch` version in the output is compared against the configured `leoVersion` major/minor line. Patch drift is allowed: for example, `leoVersion: "4.0.0"` accepts a `leo 4.0.2` binary, and `leoVersion: "4.1.0"` accepts a `leo 4.1.x` binary. Minor drift is not allowed unless `skipLeoVersionCheck: true` is set. Missing or inaccessible binaries always fail preflight.
 
 ## Devnode Consensus Heights
 
@@ -65,6 +74,7 @@ The value is comma-delimited block heights at which each consensus version activ
 | Scenario | Supported |
 |----------|-----------|
 | Compile v3.5 deployable program | Yes |
+| Compile v4.1 program build layout | Yes |
 | Deploy v3.5 bytecode to v4-class devnode/network | Yes |
 | v3.5 → v3.5 upgrade (same compiler) | Yes |
 | v3.5 → v4 migration upgrade (`@admin` path) | Yes |
@@ -85,7 +95,7 @@ Users can deploy with Leo v3.5, migrate source to v4 syntax, and upgrade seamles
 
 1. Deploy the v3.5 program (edition 0).
 2. Convert source to v4 syntax: `fn` keyword, `-> Final` returns, non-async `constructor`, inline `return final { ... }` blocks, `::` cross-program calls.
-3. Update config: set `leoVersion` to a `4.0.x` patch such as `"4.0.0"`, remove or update `leoBinary`.
+3. Update config: set `leoVersion` to the default v4 line such as `"4.1.0"` or an explicit `4.0.x` patch if you are intentionally staying on Leo 4.0, then remove or update `leoBinary`.
 4. Run `upgrade` — LionDen recompiles with v4, validates ABI compatibility and constructor fingerprint, broadcasts the upgrade.
 
 The `@admin` constructor fingerprint (`assert.eq program_owner <addr>;`) is identical in v3.5 and v4 compiled output, so the fingerprint check passes across versions. On-chain state (mappings) is preserved through the upgrade.
@@ -95,6 +105,8 @@ The `@admin` constructor fingerprint (`assert.eq program_owner <addr>;`) is iden
 These details are relevant to contributors working on the compiler and deploy pipelines:
 
 - **ABI normalization.** v3.5 ABI uses `"transitions"` (v4: `"functions"`), `"is_async"` (v4: `"is_final"`), and bare `"Future"` output type (v4: `"Final"`). The ABI parser normalizes both formats to the same internal representation.
+- **Leo 4.1 build layout.** The compiler accepts both legacy `build/abi.json` + `build/main.aleo` and flat per-unit `build/<unit>/abi.json` + `build/<unit>/<unit>.aleo`, then normalizes program artifacts back to `artifacts/<programId>/abi.json` and `main.aleo`.
+- **Leo 4.1 ABI extensions.** `views`, `implements`, and non-empty `const_parameters` are parsed and included in ABI hashes only when present. Generated TypeScript wrappers still emit execution methods for transitions only; view query wrappers are deferred, and executable functions with non-empty `const_parameters` fail codegen explicitly.
 
 - **Constructor parsing.** v3.5 constructors use `async constructor()` syntax (e.g., `@noupgrade async constructor() {}`). The constructor parser accepts an optional `async` keyword before `constructor` in all four annotation patterns.
 
@@ -102,6 +114,6 @@ These details are relevant to contributors working on the compiler and deploy pi
 
 - **Compiled bytecode.** v3.5 and v4 produce structurally identical `main.aleo` output: same `function`/`finalize` sections, same `constructor:` block layout, same `.future` dispatch. The v4 devnode accepts v3.5-compiled bytecode without issue.
 
-- **SDK compatibility.** `@provablehq/sdk@^0.10.5` builds and submits transactions for v3.5-compiled bytecode without modification. The SDK has no consensus-heights concept.
+- **SDK compatibility.** `@provablehq/sdk@^0.11.0` builds and submits transactions for v3.5-compiled bytecode without modification. The SDK has no consensus-heights concept.
 
 - **Managed Leo invocations.** LionDen passes `--disable-update-check` before every managed Leo command (`--version`, `build`, and `devnode start`). This is fixed behavior, not a user-configurable setting.

@@ -74,6 +74,8 @@ The backend is chosen by `resolveDevnodeBackend` (`packages/network/src/devnode-
 
 The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `consensusHeights` is rejected (at config validation for an explicit `provider: "standalone"`, and before spawn for the auto-detected case). `consensusHeights` and `--network` apply to the Leo backend only.
 
+Leo 4.1 adds its own devnode persistence support, but LionDen does not enable or wrap it yet. Persistence and snapshot/restore remain standalone-backend-only in this repo.
+
 Devnode network config fields:
 
 | Field | Backend | Meaning |
@@ -189,11 +191,12 @@ SDK proving-key caching defaults to filesystem-backed execution key persistence:
 
 ```ts
 sdk: {
+  logLevel: "warn",
   keyCache: { storage: "filesystem" },
 }
 ```
 
-Projects that need process-local SDK caching only can opt out with `sdk.keyCache.storage = "memory"`.
+`sdk.logLevel` accepts `"silent"`, `"error"`, `"warn"`, `"info"`, or `"debug"` and defaults to `"warn"`. LionDen calls the SDK's `setLogLevel()` only when the installed SDK exposes it; the SDK setting is process-global, so the most recently initialized connection's level is the active one. Projects that need process-local SDK caching only can opt out with `sdk.keyCache.storage = "memory"`.
 
 The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention.
 

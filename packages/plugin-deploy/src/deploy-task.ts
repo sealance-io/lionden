@@ -8,23 +8,27 @@
  * and deployed first in topological order.
  */
 
-import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { ResolvedNetworkConfig, ResolvedSdkKeyCacheConfig } from "@lionden/config";
+import type {
+  ResolvedNetworkConfig,
+  ResolvedSdkKeyCacheConfig,
+  SdkLogLevel,
+} from "@lionden/config";
 import { isSignable } from "@lionden/config";
 import type {
   NetworkManager,
   NetworkConnection,
   SdkEgressPolicy,
 } from "@lionden/network";
-import type { ProgramABI } from "@lionden/leo-compiler";
 import {
+  computeAbiHash,
   discoverUnits,
   resolveDependencies,
   type DiscoveredProgram,
   type DependencyGraph,
+  type ProgramABI,
 } from "@lionden/leo-compiler";
 import {
   parseConstructor,
@@ -276,6 +280,7 @@ export async function deployAction(
         signerPrivateKey: deployerSignerKey,
         prove: options.prove,
         keyCache: config.sdk.keyCache,
+        logLevel: config.sdk.logLevel,
         egressPolicy: connection.egressPolicy,
       });
 
@@ -383,6 +388,7 @@ export async function deployAction(
       signerPrivateKey: deployerSignerKey,
       prove: options.prove,
       keyCache: config.sdk.keyCache,
+      logLevel: config.sdk.logLevel,
       egressPolicy: connection.egressPolicy,
     });
 
@@ -633,6 +639,8 @@ interface BuildDeployOptions {
   prove?: boolean;
   /** Resolved SDK key-cache config from `lre.config.sdk.keyCache`. */
   keyCache?: ResolvedSdkKeyCacheConfig;
+  /** Resolved SDK log level from `lre.config.sdk.logLevel`. */
+  logLevel?: SdkLogLevel;
   /** Egress policy from `connection.egressPolicy`. */
   egressPolicy: SdkEgressPolicy;
 }
@@ -665,6 +673,7 @@ export async function buildDeployTransaction(
     privateKey: opts.signerPrivateKey ?? opts.connection.privateKey,
     apiKey: opts.connection.apiKey,
     keyCache: opts.keyCache,
+    logLevel: opts.logLevel,
     egressPolicy: opts.egressPolicy,
   });
 
@@ -732,6 +741,7 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
       privateKey: signerKey,
       apiKey: connection.apiKey,
       keyCache: opts.keyCache,
+      logLevel: opts.logLevel,
       egressPolicy: opts.egressPolicy,
     });
 
@@ -750,6 +760,7 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
     privateKey: signerKey,
     apiKey: connection.apiKey,
     keyCache: opts.keyCache,
+    logLevel: opts.logLevel,
     egressPolicy: opts.egressPolicy,
   });
 
@@ -765,16 +776,6 @@ export { readLeoSourcesFromDir } from "./leo-sources.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Compute SHA-256 hex hash of an ABI for deduplication/fingerprinting.
- */
-export function computeAbiHash(abi: ProgramABI): string {
-  return crypto
-    .createHash("sha256")
-    .update(JSON.stringify(abi))
-    .digest("hex");
 }
 
 function resolveProveOption(

@@ -56,7 +56,15 @@ describe("config validation hooks", () => {
   ) => { path: string; message: string }[];
 
   it("accepts supported Leo patch lines", () => {
-    for (const leoVersion of ["4.0.0", "4.0.1", "4.0.2", "3.5.0", "3.5.1"]) {
+    for (const leoVersion of [
+      "4.1.0",
+      "4.1.1",
+      "4.0.0",
+      "4.0.1",
+      "4.0.2",
+      "3.5.0",
+      "3.5.1",
+    ]) {
       expect(validateUser({ leoVersion })).toHaveLength(0);
     }
   });
@@ -70,7 +78,7 @@ describe("config validation hooks", () => {
       " 4.0.0",
       "4.0.0 ",
       "3.4.0",
-      "4.1.0",
+      "4.2.0",
       "5.0.0",
       "not-a-version",
     ];

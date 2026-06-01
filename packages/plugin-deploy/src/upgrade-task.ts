@@ -9,15 +9,15 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as crypto from "node:crypto";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import type { ResolvedSdkKeyCacheConfig } from "@lionden/config";
+import type { ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
 import { isSignable } from "@lionden/config";
-import type { ProgramABI } from "@lionden/leo-compiler";
 import {
+  computeAbiHash,
   discoverUnits,
   parseAbi,
   type DiscoveredProgram,
+  type ProgramABI,
 } from "@lionden/leo-compiler";
 import type {
   NetworkManager,
@@ -303,6 +303,7 @@ export async function upgradeAction(
     signerPrivateKey: adminSignerKey,
     prove: options.prove,
     keyCache: config.sdk.keyCache,
+    logLevel: config.sdk.logLevel,
     egressPolicy: connection.egressPolicy,
   });
 
@@ -460,6 +461,8 @@ interface BuildUpgradeOptions {
   prove?: boolean;
   /** Resolved SDK key-cache config from `lre.config.sdk.keyCache`. */
   keyCache?: ResolvedSdkKeyCacheConfig;
+  /** Resolved SDK log level from `lre.config.sdk.logLevel`. */
+  logLevel?: SdkLogLevel;
   /** Egress policy from `connection.egressPolicy`. */
   egressPolicy: SdkEgressPolicy;
 }
@@ -485,6 +488,7 @@ async function buildAndBroadcastUpgrade(
     privateKey: signerPrivateKey ?? connection.privateKey,
     apiKey: connection.apiKey,
     keyCache: opts.keyCache,
+    logLevel: opts.logLevel,
     egressPolicy: opts.egressPolicy,
   });
 
@@ -523,7 +527,7 @@ async function buildAndBroadcastUpgrade(
 
   throw new DeployError(
     `Unable to upgrade "${programId}": no suitable upgrade method found on ProgramManager. ` +
-      `Ensure @provablehq/sdk@^0.10.5 is installed.`,
+      `Ensure @provablehq/sdk@^0.11.0 is installed.`,
   );
 }
 
@@ -551,10 +555,6 @@ function readAbiFromArtifacts(
   if (!fs.existsSync(abiPath)) return null;
   const raw = fs.readFileSync(abiPath, "utf-8");
   return parseAbi(raw);
-}
-
-function computeAbiHash(abi: ProgramABI): string {
-  return crypto.createHash("sha256").update(JSON.stringify(abi)).digest("hex");
 }
 
 async function resolveDeployerAddress(

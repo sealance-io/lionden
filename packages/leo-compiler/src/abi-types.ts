@@ -64,12 +64,37 @@ export interface AbiOutput {
   readonly mode: Mode;
 }
 
+export type AbiJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly AbiJsonValue[]
+  | { readonly [key: string]: AbiJsonValue };
+
+export type ConstParameterABI = AbiJsonValue;
+
 export interface TransitionABI {
   readonly name: string;
   readonly is_async: boolean;
   readonly inputs: readonly AbiInput[];
   readonly outputs: readonly AbiOutput[];
+  readonly const_parameters?: readonly ConstParameterABI[];
 }
+
+export interface ViewABI {
+  readonly name: string;
+  readonly inputs: readonly AbiInput[];
+  readonly outputs: readonly AbiOutput[];
+  readonly const_parameters?: readonly ConstParameterABI[];
+}
+
+export type InterfaceRefABI =
+  | string
+  | {
+      readonly path: readonly string[];
+      readonly program: string | null;
+    };
 
 export interface StructFieldABI {
   readonly name: string;
@@ -114,4 +139,6 @@ export interface ProgramABI {
   readonly mappings: readonly MappingABI[];
   readonly storage_variables: readonly StorageVariableABI[];
   readonly transitions: readonly TransitionABI[];
+  readonly views?: readonly ViewABI[];
+  readonly implements?: readonly InterfaceRefABI[];
 }

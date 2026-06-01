@@ -27,6 +27,21 @@ describe("extractProgramId", () => {
     expect(extractProgramId(file)).toBe("hello.aleo");
   });
 
+  it("extracts only the program ID from a multi-interface declaration", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(
+      file,
+      `program hello.aleo : Readable + admin.Owned + interfaces/reader.aleo::Readable {\n  fn main() {}\n}\n`,
+    );
+    expect(extractProgramId(file)).toBe("hello.aleo");
+  });
+
+  it("leaves malformed interface clauses to Leo after discovering the program ID", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, `program hello.aleo : + Readable {\n  fn main() {}\n}\n`);
+    expect(extractProgramId(file)).toBe("hello.aleo");
+  });
+
   it("returns null if no program declaration found", () => {
     const file = path.join(tmpDir, "main.leo");
     fs.writeFileSync(file, "fn helper() -> u32 { return 1u32; }\n");

@@ -516,6 +516,172 @@ describe("compilePipeline network dep handling", () => {
     }
   });
 
+  it("normalizes Leo 4.1 per-unit build layout into LionDen artifacts", async () => {
+    writeProgram(
+      "app",
+      "program app.aleo {\n  fn main() {}\n}\n",
+    );
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        "pkg=\"\"",
+        "prev=\"\"",
+        "for arg in \"$@\"; do",
+        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
+        "  prev=\"$arg\"",
+        "done",
+        "id=$(basename \"$pkg\")",
+        "mkdir -p \"$pkg/build\"",
+        "printf '{\"program\":\"stale.aleo\",\"functions\":[]}\\n' > \"$pkg/build/abi.json\"",
+        "printf 'program stale.aleo {}\\n' > \"$pkg/build/main.aleo\"",
+        "touch -t 202001010000 \"$pkg/build/abi.json\" \"$pkg/build/main.aleo\"",
+        "unit=\"$pkg/build/$id\"",
+        "mkdir -p \"$unit/interfaces\"",
+        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[{\"name\":\"main\",\"inputs\":[],\"outputs\":[]}]}\\n' \"$id\" > \"$unit/abi.json\"",
+        "printf 'program %s {}\\n' \"$id\" > \"$unit/$id\"",
+        "printf 'prover' > \"$unit/main.prover\"",
+        "printf 'verifier' > \"$unit/main.verifier\"",
+        "printf '{\"program\":\"reader.aleo\"}\\n' > \"$unit/interfaces/reader.abi.json\"",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      const result = await compilePipeline(makeConfig());
+      const artifactDir = path.join(artifactsDir, "app.aleo");
+
+      expect(fs.readFileSync(path.join(artifactDir, "abi.json"), "utf-8")).toContain(
+        "\"program\":\"app.aleo\"",
+      );
+      expect(fs.readFileSync(path.join(artifactDir, "main.aleo"), "utf-8")).toBe(
+        "program app.aleo {}\n",
+      );
+      expect(fs.existsSync(path.join(artifactDir, "interfaces", "reader.abi.json"))).toBe(true);
+      expect(result.results[0]?.unit.kind).toBe("program");
+      expect((result.results[0] as any).aleoSource).toBe(path.join(artifactDir, "main.aleo"));
+
+      const sidecar = readKeyArtifactsMetadata(
+        keyArtifactsMetadataPath(artifactsDir, "app.aleo"),
+      );
+      expect(sidecar?.functions?.[0]).toMatchObject({
+        transition: "main",
+        prover: { path: "main.prover" },
+        verifier: { path: "main.verifier" },
+      });
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("prefers root or exact unit artifacts over newer sibling build directories", async () => {
+    writeProgram(
+      "app",
+      "program app.aleo {\n  fn main() {}\n}\n",
+    );
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        "pkg=\"\"",
+        "prev=\"\"",
+        "for arg in \"$@\"; do",
+        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
+        "  prev=\"$arg\"",
+        "done",
+        "id=$(basename \"$pkg\")",
+        "unit=\"$pkg/build/$id\"",
+        "other=\"$pkg/build/other.aleo\"",
+        "mkdir -p \"$unit\" \"$other\"",
+        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$unit/abi.json\"",
+        "printf 'program %s {}\\n' \"$id\" > \"$unit/$id\"",
+        "touch -t 202001010000 \"$unit/abi.json\" \"$unit/$id\"",
+        "printf '{\"program\":\"other.aleo\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' > \"$other/abi.json\"",
+        "printf 'program other.aleo {}\\n' > \"$other/other.aleo\"",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      await compilePipeline(makeConfig());
+      const artifactDir = path.join(artifactsDir, "app.aleo");
+
+      expect(fs.readFileSync(path.join(artifactDir, "abi.json"), "utf-8")).toContain(
+        "\"program\":\"app.aleo\"",
+      );
+      expect(fs.readFileSync(path.join(artifactDir, "main.aleo"), "utf-8")).toBe(
+        "program app.aleo {}\n",
+      );
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("links local dependencies from normalized artifacts", async () => {
+    const libDir = path.join(programsDir, "utils");
+    fs.mkdirSync(libDir, { recursive: true });
+    fs.writeFileSync(path.join(libDir, "lib.leo"), "fn helper() {}\n");
+    writeProgram(
+      "app",
+      "import utils.aleo;\nprogram app.aleo {\n  fn main() { utils.aleo::helper(); }\n}\n",
+    );
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        "pkg=\"\"",
+        "prev=\"\"",
+        "for arg in \"$@\"; do",
+        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
+        "  prev=\"$arg\"",
+        "done",
+        "id=$(basename \"$pkg\")",
+        "if [ \"$id\" = \"app.aleo\" ]; then",
+        "  grep 'program utils.aleo' \"$pkg/imports/utils.aleo\" >/dev/null || exit 9",
+        "fi",
+        "unit=\"$pkg/build/$id\"",
+        "mkdir -p \"$unit\"",
+        "if [ \"$id\" = \"utils\" ]; then",
+        "  printf 'program utils.aleo {}\\n' > \"$unit/utils.aleo\"",
+        "else",
+        "  printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$unit/abi.json\"",
+        "  printf 'program %s {}\\n' \"$id\" > \"$unit/$id\"",
+        "fi",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      await compilePipeline(makeConfig());
+      expect(
+        fs.readFileSync(
+          path.join(artifactsDir, ".build", "app.aleo", "imports", "utils.aleo"),
+          "utf-8",
+        ),
+      ).toBe("program utils.aleo {}\n");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("passes config network as hint to fetchNetworkDep", async () => {
     writeProgram(
       "app",

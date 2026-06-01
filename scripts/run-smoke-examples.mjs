@@ -13,19 +13,64 @@ const CORE_EXAMPLES = [
 ];
 
 const PROVE_TEST_TIMEOUT_MS = 900_000;
+const LEO_4_0_BINARY_ENV = "LIONDEN_LEO_4_0_BINARY";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 
-const args = process.argv.slice(2);
-const listOnly = args.includes("--list");
-const typecheck = !args.includes("--no-typecheck");
-const prove = args.includes("--prove");
-const groups = args.filter((arg) => arg !== "--list" && arg !== "--no-typecheck" && arg !== "--prove");
+const {
+  listOnly,
+  typecheck,
+  prove,
+  groups,
+  leo40Binary,
+} = parseArgs(process.argv.slice(2));
 const requestedGroups = groups.length > 0 ? groups : ["core"];
+if (leo40Binary) {
+  process.env[LEO_4_0_BINARY_ENV] = leo40Binary;
+}
 
 function usage() {
-  console.error("Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [core] [aleo-ports] [all]");
+  console.error("Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--leo-4-binary <path>] [core] [aleo-ports] [all]");
+}
+
+function parseArgs(args) {
+  const parsed = {
+    listOnly: false,
+    typecheck: true,
+    prove: false,
+    groups: [],
+    leo40Binary: process.env[LEO_4_0_BINARY_ENV],
+  };
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    switch (arg) {
+      case "--list":
+        parsed.listOnly = true;
+        break;
+      case "--no-typecheck":
+        parsed.typecheck = false;
+        break;
+      case "--prove":
+        parsed.prove = true;
+        break;
+      case "--leo-4-binary": {
+        const value = args[++i];
+        if (!value) {
+          usage();
+          throw new Error("--leo-4-binary requires a path");
+        }
+        parsed.leo40Binary = value;
+        break;
+      }
+      default:
+        parsed.groups.push(arg);
+        break;
+    }
+  }
+
+  return parsed;
 }
 
 function coreConfigs() {
@@ -85,6 +130,14 @@ if (listOnly) {
   process.exit(0);
 }
 
+if (configs.some(isAleoPortConfig) && !process.env[LEO_4_0_BINARY_ENV]) {
+  console.warn(
+    `\n[smoke] aleo-ports configs are pinned to leoVersion 4.0.0. ` +
+    `If "leo" on PATH is not 4.0.x, rerun with --leo-4-binary <path> ` +
+    `or set ${LEO_4_0_BINARY_ENV}.`,
+  );
+}
+
 for (const config of configs) {
   const exampleName = dirname(config);
   console.log(`\n==> ${exampleName}`);
@@ -109,6 +162,10 @@ for (const config of configs) {
     "test",
     ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
   ]);
+}
+
+function isAleoPortConfig(config) {
+  return config.split(/[\\/]/).includes("aleo-ports");
 }
 
 function run(label, commandArgs) {

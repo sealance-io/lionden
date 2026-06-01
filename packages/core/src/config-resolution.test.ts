@@ -20,7 +20,7 @@ describe("resolveConfig", () => {
   it("fills all defaults for empty config", async () => {
     const resolved = await resolve({}, [], projectRoot);
 
-    expect(resolved.leoVersion).toBe("4.0.0");
+    expect(resolved.leoVersion).toBe("4.1.0");
     expect(resolved.skipLeoVersionCheck).toBe(false);
     expect(resolved.defaultNetwork).toBe("devnode");
     expect(resolved.paths.root).toBe(projectRoot);
@@ -35,6 +35,7 @@ describe("resolveConfig", () => {
     expect(resolved.testing.autoStartDevnode).toBe(true);
     expect(resolved.deploy.defaultPriorityFee).toBe(0);
     expect(resolved.deploy.confirmTransactions).toBe(true);
+    expect(resolved.sdk.logLevel).toBe("warn");
     expect(resolved.sdk.keyCache).toEqual({
       storage: "filesystem",
       path: "/tmp/test-project/artifacts/.cache/provable-keys/.aleo",
@@ -125,6 +126,23 @@ describe("resolveConfig", () => {
     );
 
     expect(resolved.sdk.keyCache).toEqual({ storage: "memory" });
+    expect(resolved.sdk.logLevel).toBe("warn");
+  });
+
+  it("resolves SDK log level", async () => {
+    const resolved = await resolve(
+      { sdk: { logLevel: "silent", keyCache: { storage: "memory" } } },
+      [],
+      projectRoot,
+    );
+
+    expect(resolved.sdk.logLevel).toBe("silent");
+  });
+
+  it("rejects unsupported SDK log levels", async () => {
+    await expect(
+      resolve({ sdk: { logLevel: "trace" as any } }, [], projectRoot),
+    ).rejects.toThrow(/sdk\.logLevel/);
   });
 
   it("does not retain the default filesystem path when a plugin resolves memory SDK key caching", async () => {
@@ -216,21 +234,21 @@ describe("resolveConfig", () => {
     ).rejects.toThrow("devnode not allowed");
   });
 
-  it("runs extendUserConfig hooks to transform config", async () => {
+  it("runs extendUserConfig hooks to transform config to the 4.0 compatibility line", async () => {
     const plugin: LionDenPlugin = {
       id: "extender-plugin",
       hookHandlers: {
         config: {
           extendUserConfig: (config) => ({
             ...config,
-            leoVersion: "4.1.0",
+            leoVersion: "4.0.0",
           }),
         },
       },
     };
 
     const { resolved } = await resolveConfig({}, [plugin], projectRoot);
-    expect(resolved.leoVersion).toBe("4.1.0");
+    expect(resolved.leoVersion).toBe("4.0.0");
   });
 
   it("succeeds when validation hooks return no errors", async () => {
@@ -245,7 +263,7 @@ describe("resolveConfig", () => {
     };
 
     const { resolved } = await resolveConfig({}, [plugin], projectRoot);
-    expect(resolved.leoVersion).toBe("4.0.0");
+    expect(resolved.leoVersion).toBe("4.1.0");
   });
 
   it("calls lazy config hook factory only once across all stages", async () => {

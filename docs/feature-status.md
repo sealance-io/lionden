@@ -120,12 +120,13 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 
 | Feature | Evidence |
 | --- | --- |
-| Leo v4.0.x default (full support, including `lib.leo` library units) | [`leo-version-compatibility.md`](leo-version-compatibility.md) |
+| Leo v4.1.x default; per-unit build layout normalized to LionDen artifacts | [`leo-version-compatibility.md`](leo-version-compatibility.md), `packages/leo-compiler/src/compiler.ts` |
+| Leo v4.0.x supported as an explicit compatibility line | [`leo-version-compatibility.md`](leo-version-compatibility.md) |
 | Leo v3.5.x supported for deployable `main.leo` programs (no libraries) | same |
 | `leoBinary` config (with `~/` expansion) to target a specific Leo install | `packages/config/src/types.ts` |
 | `--disable-update-check` always passed to managed Leo CLI invocations | `packages/leo-compiler/src/`, `packages/network/src/devnode-manager.ts` |
 | `consensusHeights` opt-in field on devnode networks (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts` |
-| ABI parser normalises `transitions`/`functions`, `is_async`/`is_final`, `Future`/`Final` between versions | `packages/leo-compiler/src/abi-parser.ts` |
+| ABI parser normalises `transitions`/`functions`, `is_async`/`is_final`, `Future`/`Final` between versions, and preserves Leo 4.1 `views`, `implements`, and non-empty `const_parameters` | `packages/leo-compiler/src/abi-parser.ts` |
 
 ---
 
@@ -241,7 +242,7 @@ Features explicitly deferred by the specs, or surfaced by the doko-js comparison
 - **Mainnet probe automation**. Anything touching mainnet should be a deliberate, gated operation; full automation isn't urgent.
 - **Frontend / web bindings**. The vision doc hints at this; not in any current phase.
 - **Library effects on multi-program deploy ordering**. Libraries are compile-only today; deploy ordering treats them as not-deployable.
-- **Generalized typechain generation for any deployed `.aleo` (network-fetched or user-supplied bytecode)**. Blocked on SDK availability: requires `generate_abi_from_aleo` (or equivalent) in the `@provablehq/sdk` version LionDen consumes so we can derive an ABI from compiled Aleo bytecode rather than requiring Leo source. Tracking: [ProvableHQ/leo#29350](https://github.com/ProvableHQ/leo/pull/29350), merged upstream on 2026-04-30 but not exposed by the local `@provablehq/sdk` 0.10.5 dependency at this snapshot. Once that API is available in LionDen's SDK dependency, the compile pipeline can extend codegen to network-fetched programs and emit typed wrappers automatically — superseding the per-program curated bindings introduced for V1 (checklist item 11).
+- **Generalized typechain generation for any deployed `.aleo` (network-fetched or user-supplied bytecode)**. Blocked on confirming the SDK ABI-generation surface in the version LionDen consumes, so we can derive an ABI from compiled Aleo bytecode rather than requiring Leo source. Tracking: [ProvableHQ/leo#29350](https://github.com/ProvableHQ/leo/pull/29350), merged upstream on 2026-04-30. Once available in LionDen's SDK dependency, the compile pipeline can extend codegen to network-fetched programs and emit typed wrappers automatically — superseding the per-program curated bindings introduced for V1 (checklist item 11).
 - **Expanded testing utilities** — convenience helpers beyond what `@lionden/testing` ships today (`setup`, `loadFixture`, the `assertMapping*` / `assertBalance*` / `assertBlockHeightAtLeast` / `assertTransaction*` assertions, devnode accounts). Candidates worth considering: Vitest custom matchers (`expect(tx).toBeAccepted()`, `expect(mapping).toHaveValue(...)`, decryption-aware matchers), synthetic/parallel address generators for tests that need many recipients, named-account-aware fixture helpers. None of these are blocking — they're DX polish.
 - **Deployment verification on explorers.** EVM-style bytecode-to-source verification is out of scope for v1. Aleo stores and exposes the deployed Aleo Instructions program (the compilation target, not original Leo source), so users can inspect the canonical deployed program text via `getProgram()`. LionDen does not attempt to verify or publish original Leo source, compiler metadata, project layout, or source maps in v1.
 
@@ -290,7 +291,7 @@ LionDen and **doko-js** ([github.com/venture23-aleo/doko-js](https://github.com/
 - **A battle-tested Leo v3.4-oriented compatibility lane.** Upstream doko-js still documents Leo `v3.4.0` as its baseline and has accumulated many fixes around that toolchain, generated wrappers, output parsing, record handling, and network execution. LionDen instead targets Leo v4 by default with scoped v3.5 deployable-program support.
 - **Type bindings for "imported" network programs (e.g. `credits.aleo`).** Doko-js (and its consumer templates) provides typed wrappers for pre-deployed Aleo programs so user code can invoke them in a type-safe way. LionDen currently fetches network dependencies as compiled Aleo source for the compile pipeline (see `defaultFetchNetworkDep` in `packages/leo-compiler/src/compiler.ts`) but does **not** emit typechain bindings for them — calls into `credits.aleo` and friends go through `ctx.raw.execute(...)` or the imperative connection API today. Two follow-ups, tracked separately:
   - **V1 (open — see checklist item 11):** ship curated, first-party bindings (or a similarly ergonomic helper) for the most common network programs starting with `credits.aleo`, so users get a type-safe surface without waiting for upstream tooling.
-  - **Post-V1 (blocked on SDK availability — see §5):** generalized "generate bindings from any deployed `.aleo`" path, blocked on `generate_abi_from_aleo` (or equivalent) being available in the `@provablehq/sdk` version LionDen consumes. Tracking PR [ProvableHQ/leo#29350](https://github.com/ProvableHQ/leo/pull/29350) is merged upstream, but the local `@provablehq/sdk` 0.10.5 dependency does not expose it yet. Once available, LionDen can extend the existing typechain pipeline to consume network-fetched programs and emit wrappers automatically.
+  - **Post-V1:** generalized "generate bindings from any deployed `.aleo`" path, blocked on confirming `generate_abi_from_aleo` (or equivalent) in the `@provablehq/sdk` version LionDen consumes. Once available, LionDen can extend the existing typechain pipeline to consume network-fetched programs and emit wrappers automatically.
 
 ### Different approach (not necessarily a gap either direction)
 

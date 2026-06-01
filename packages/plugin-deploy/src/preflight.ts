@@ -10,6 +10,7 @@ import type {
   LionDenResolvedConfig,
   ResolvedNetworkConfig,
   ResolvedSdkKeyCacheConfig,
+  SdkLogLevel,
 } from "@lionden/config";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
@@ -235,6 +236,7 @@ export async function checkFeeEstimate(
   importSources: Map<string, string>,
   signerPrivateKey?: string,
   keyCache?: ResolvedSdkKeyCacheConfig,
+  logLevel?: SdkLogLevel,
 ): Promise<{ estimate: bigint | undefined; warning: PreflightWarning | null }> {
   try {
     const { createSdkObjects } = await import("@lionden/network");
@@ -245,6 +247,7 @@ export async function checkFeeEstimate(
       apiKey: connection.apiKey,
       egressPolicy: connection.egressPolicy,
       keyCache,
+      logLevel,
     });
     const pm = sdk.programManager as any;
 
@@ -671,6 +674,7 @@ export async function runDeployPreflight(
           importSourcesForFee,
           signerPrivateKey,
           opts.config.sdk.keyCache,
+          opts.config.sdk.logLevel,
         );
         if (feeWarning) warnings.push(feeWarning);
 
@@ -700,6 +704,7 @@ export async function runDeployPreflight(
           privateKey: signerPrivateKey,
           apiKey: connection.apiKey,
           egressPolicy: connection.egressPolicy,
+          logLevel: opts.config.sdk.logLevel,
         });
         const account = sdk.account as any;
         signerAddress =

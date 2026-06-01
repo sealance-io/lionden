@@ -114,6 +114,12 @@ describe("preflightLeo", () => {
     await expect(preflightLeo(makeConfig({ leoVersion: "4.0.0" }))).resolves.toBeUndefined();
   });
 
+  it("accepts Leo 4.1 when configured for the 4.1 line", async () => {
+    mockExecFileSuccess("leo 4.1.0");
+
+    await expect(preflightLeo(makeConfig({ leoVersion: "4.1.0" }))).resolves.toBeUndefined();
+  });
+
   it("rejects unparseable output when checking is enabled", async () => {
     mockExecFileSuccess("leo dev build");
 

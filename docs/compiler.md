@@ -22,7 +22,7 @@ The current pipeline is:
 
 The compiler and generated bindings assume a specific Leo-era baseline:
 
-- Leo v4 default; Leo v3.5 deployable-program compatibility is supported with limitations (see [`leo-version-compatibility.md`](leo-version-compatibility.md))
+- Leo v4.1 default; Leo v4.0 remains an explicit compatibility line, and Leo v3.5 deployable-program compatibility is supported with limitations (see [`leo-version-compatibility.md`](leo-version-compatibility.md))
 - ABI-driven code generation from `build/abi.json`
 - source-first project layout under `programs/`
 - Leo libraries via `lib.leo` as compile-time dependencies rather than deployable programs
@@ -90,9 +90,11 @@ Compilation caching is driven by:
 
 ## ABI and Generated Bindings
 
-For program units, the compiler reads `build/abi.json`, parses it, and stores the ABI in the LRE artifact store.
+For program units, the compiler reads either legacy `build/abi.json` or Leo 4.1 per-unit `build/<unit>/abi.json`, parses it, and stores the ABI in the LRE artifact store. Compiled outputs are normalized back to `artifacts/<programId>/abi.json` and `artifacts/<programId>/main.aleo` for downstream deploy, upgrade, dependency linking, and key-cache identity.
 
 The ABI is the contract between Leo compilation and TypeScript code generation. That avoids regex-based parsing of generated Aleo source and keeps wrapper generation aligned with the compiler's structured output.
+
+Leo 4.1 ABI extensions are parsed conservatively: `views` and `implements` are preserved for compatibility checks and ABI hashes when present, but generated wrappers do not expose view-query methods yet. Executable functions with non-empty `const_parameters` fail codegen with an explicit unsupported-feature error.
 
 Generated bindings are the preferred user-facing API when the ABI is known. They encode ABI shape, Leo value serialization, visibility, encrypted output handles, and record helpers in TypeScript. Raw string execution remains available as an escape hatch for dynamic ABI situations, post-upgrade calls, or cases where the generated wrapper cannot yet model the call.
 
@@ -251,6 +253,8 @@ Current program artifact output is copied into `artifacts/<programId>/` and incl
 - generated prover files when present
 - generated verifier files when present
 - `lionden-key-artifacts.json`
+
+The compiler treats `artifacts/<programId>/` as compiler-owned output and recreates it on each successful compile of that program. Deployment state and caches live outside that directory.
 
 Deploy state is tracked separately by the deploy plugin.
 

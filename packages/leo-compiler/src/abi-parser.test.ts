@@ -178,6 +178,68 @@ describe("parseAbi — compiler format normalization", () => {
     expect(abi.transitions).toHaveLength(1);
     expect(abi.transitions[0]!.name).toBe("legacy");
   });
+
+  it("normalizes Leo 4.1 views, implements, and const parameters", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "view_demo.aleo",
+        implements: ["Readable", { path: ["admin", "Owned"], program: "owned_interface.aleo" }],
+        functions: [
+          {
+            name: "execute",
+            const_parameters: [{ name: "N", type: "u8" }],
+            inputs: [],
+            outputs: [],
+          },
+        ],
+        views: [
+          {
+            name: "get",
+            inputs: [
+              {
+                name: "account",
+                ty: { Plaintext: { Primitive: "Address" } },
+                mode: "Public",
+              },
+            ],
+            outputs: [
+              {
+                ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+                mode: "Public",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(abi.implements).toEqual([
+      "Readable",
+      { path: ["admin", "Owned"], program: "owned_interface.aleo" },
+    ]);
+    expect(abi.transitions[0]!.const_parameters).toEqual([{ name: "N", type: "u8" }]);
+    expect(abi.views).toHaveLength(1);
+    expect(abi.views?.[0]).toMatchObject({
+      name: "get",
+      inputs: [{ name: "account", mode: "Public" }],
+      outputs: [{ mode: "Public" }],
+    });
+  });
+
+  it("omits empty Leo 4.1 extension fields after normalization", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "plain.aleo",
+        functions: [{ name: "main", const_parameters: [], inputs: [], outputs: [] }],
+        views: [],
+        implements: [],
+      }),
+    );
+
+    expect(abi.views).toBeUndefined();
+    expect(abi.implements).toBeUndefined();
+    expect(abi.transitions[0]!.const_parameters).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------

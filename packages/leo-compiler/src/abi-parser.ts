@@ -12,6 +12,9 @@ import type {
   PlaintextType,
   StructRef,
   RecordRef,
+  ViewABI,
+  ConstParameterABI,
+  InterfaceRefABI,
 } from "./abi-types.js";
 
 export class AbiParseError extends Error {
@@ -69,6 +72,18 @@ export function parseAbi(json: string): ProgramABI {
     ),
   };
 
+  const views = asArray(obj["views"], "views").map((view) =>
+    normalizeView(view, programId),
+  );
+  if (views.length > 0) {
+    (abi as { views: readonly ViewABI[] }).views = views;
+  }
+
+  const implementedInterfaces = asArray(obj["implements"], "implements").map(normalizeInterfaceRef);
+  if (implementedInterfaces.length > 0) {
+    (abi as { implements: readonly InterfaceRefABI[] }).implements = implementedInterfaces;
+  }
+
   // Validate transition structure
   for (const t of abi.transitions) {
     if (typeof t.name !== "string") {
@@ -79,6 +94,17 @@ export function parseAbi(json: string): ProgramABI {
     }
     if (!Array.isArray(t.outputs)) {
       throw new AbiParseError(`Transition "${t.name}" missing 'outputs' array`);
+    }
+  }
+  for (const view of abi.views ?? []) {
+    if (typeof view.name !== "string") {
+      throw new AbiParseError("View missing 'name' field");
+    }
+    if (!Array.isArray(view.inputs)) {
+      throw new AbiParseError(`View "${view.name}" missing 'inputs' array`);
+    }
+    if (!Array.isArray(view.outputs)) {
+      throw new AbiParseError(`View "${view.name}" missing 'outputs' array`);
     }
   }
 
@@ -120,7 +146,7 @@ function normalizeFunction(raw: unknown, programId: string): TransitionABI {
   const rawInputs = obj["inputs"] === undefined ? [] : obj["inputs"];
   const rawOutputs = obj["outputs"] === undefined ? [] : obj["outputs"];
 
-  return {
+  const normalized: TransitionABI = {
     name: obj["name"] as string,
     is_async: isAsync,
     inputs: Array.isArray(rawInputs)
@@ -130,6 +156,35 @@ function normalizeFunction(raw: unknown, programId: string): TransitionABI {
       ? rawOutputs.map((o) => normalizeOutput(o as Record<string, unknown>, programId))
       : rawOutputs as unknown as AbiOutput[],
   };
+  const constParameters = normalizeConstParameters(obj["const_parameters"], "function.const_parameters");
+  if (constParameters.length > 0) {
+    (normalized as { const_parameters: readonly ConstParameterABI[] }).const_parameters =
+      constParameters;
+  }
+  return normalized;
+}
+
+function normalizeView(raw: unknown, programId: string): ViewABI {
+  if (typeof raw !== "object" || raw === null) return raw as ViewABI;
+  const obj = raw as Record<string, unknown>;
+  const rawInputs = obj["inputs"] === undefined ? [] : obj["inputs"];
+  const rawOutputs = obj["outputs"] === undefined ? [] : obj["outputs"];
+
+  const normalized: ViewABI = {
+    name: obj["name"] as string,
+    inputs: Array.isArray(rawInputs)
+      ? rawInputs.map((i) => normalizeInput(i as Record<string, unknown>, programId))
+      : rawInputs as unknown as AbiInput[],
+    outputs: Array.isArray(rawOutputs)
+      ? rawOutputs.map((o) => normalizeOutput(o as Record<string, unknown>, programId))
+      : rawOutputs as unknown as AbiOutput[],
+  };
+  const constParameters = normalizeConstParameters(obj["const_parameters"], "view.const_parameters");
+  if (constParameters.length > 0) {
+    (normalized as { const_parameters: readonly ConstParameterABI[] }).const_parameters =
+      constParameters;
+  }
+  return normalized;
 }
 
 function normalizeInput(raw: Record<string, unknown>, programId: string): AbiInput {
@@ -211,6 +266,27 @@ function normalizeStorageVariable(raw: unknown): StorageVariableABI {
     name: obj["name"] as string,
     ty: normalizeStorageType(obj["ty"]),
   };
+}
+
+function normalizeConstParameters(
+  raw: unknown,
+  fieldName: string,
+): readonly ConstParameterABI[] {
+  return asArray(raw, fieldName) as ConstParameterABI[];
+}
+
+function normalizeInterfaceRef(raw: unknown): InterfaceRefABI {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as { path?: unknown; program?: unknown };
+    if (Array.isArray(obj.path)) {
+      return {
+        path: obj.path.map(String),
+        program: typeof obj.program === "string" ? obj.program : null,
+      };
+    }
+  }
+  return String(raw);
 }
 
 // ---------------------------------------------------------------------------
