@@ -79,7 +79,7 @@ Simple variants serialize as bare strings. Wrapper variants serialize as single-
 { "Primitive": { "Int": "I32" } }
 ```
 
-Leo identifier values are represented as single-quoted literals on the wire, for example `'voting_power'`. Generated TypeScript bindings expose `Identifier` as `string`, serialize bare names like `voting_power` to `'voting_power'`, accept already quoted literals unchanged, and parse outputs back to bare names.
+Leo identifier values are represented as single-quoted literals on the wire, for example `'voting_power'`. Generated TypeScript bindings keep identifiers branded: outputs use `LeoIdentifier`, inputs use `IdentifierInput` (`LeoIdentifier`), and callers pass `Leo.identifier("voting_power")` rather than a bare string. The runtime serializer still normalizes bare or already quoted identifier text to the quoted wire form, and outputs parse back to a branded bare name.
 
 ## Plaintext Types
 
