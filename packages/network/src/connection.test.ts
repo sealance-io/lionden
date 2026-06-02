@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readRuntimeKeyCacheMetadata, sha256Json, sha256Text } from "@lionden/core";
+import { sha256Json, sha256Text } from "@lionden/core";
 import {
   buildRuntimeKeyIdentity,
   writeCachedExecutionKeys,
@@ -12,6 +12,7 @@ const mockRun = vi.fn();
 const mockExecute = vi.fn();
 const mockSynthesizeKeys = vi.fn();
 const mockSynthesizeExecutionKeyBytes = vi.fn();
+const mockBuildAuthorizationUnchecked = vi.fn();
 const mockBuildDevnodeExec = vi.fn();
 const mockSubmitTransaction = vi.fn();
 const mockGetProgramMappingValue = vi.fn();
@@ -38,6 +39,7 @@ vi.mock("./sdk-adapter.js", () => ({
 
 import { AleoConnection } from "./connection.js";
 import {
+  LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
   TransitionRejectedError,
   TransitionSelectionError,
@@ -51,7 +53,8 @@ const TEST_EGRESS_POLICY = {
 };
 
 // Minimal program ABI (as written beside main.aleo) whose transition has only
-// a plaintext input — i.e. record-free, so eager key synthesis is safe.
+// a plaintext input. Cache misses defer regardless of this shape now; the ABI
+// is still useful for exercising artifact resolution.
 function recordFreeAbi(transition: string): string {
   return JSON.stringify({
     functions: [
@@ -64,8 +67,8 @@ function recordFreeAbi(transition: string): string {
 }
 
 // ABI whose transition consumes a record (`{ Record }`) or a `"DynamicRecord"`
-// input — eager synthesis must be skipped for these to avoid the query-less
-// `synthesizeKeyPair` inclusion-proof leak to the public SnapshotQuery host.
+// input. These shapes used to drive cache-miss policy and remain covered as
+// regression evidence.
 function recordInputAbi(transition: string, ty: unknown = { Record: { path: ["Token"], program: "tok.aleo" } }): string {
   return JSON.stringify({
     functions: [{ name: transition, inputs: [{ name: "r", ty, mode: "None" }] }],
@@ -116,6 +119,7 @@ describe("AleoConnection", () => {
     mockGetLatestProgramEdition.mockResolvedValue(3);
     mockBuildDevnodeExec.mockResolvedValue("mock-tx-bytes");
     mockExecute.mockResolvedValue("at1executed");
+    mockBuildAuthorizationUnchecked.mockResolvedValue({ kind: "authorization" });
     mockSynthesizeKeys.mockResolvedValue([
       { toBytes: () => new Uint8Array([10, 11]) },
       { toBytes: () => new Uint8Array([12, 13]) },
@@ -150,6 +154,7 @@ describe("AleoConnection", () => {
         run: mockRun,
         execute: mockExecute,
         synthesizeKeys: mockSynthesizeKeys,
+        buildAuthorizationUnchecked: mockBuildAuthorizationUnchecked,
         prepareInputs: mockPrepareInputs,
         account: mockAccount,
         buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
@@ -238,6 +243,123 @@ describe("AleoConnection", () => {
         false,
         undefined,
       );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // checkLocalExecution() — failure-helper path
+  // -------------------------------------------------------------------------
+
+  describe("checkLocalExecution()", () => {
+    it("uses buildAuthorizationUnchecked with resolved source", async () => {
+      const connection = createDevnodeConnection();
+
+      await connection.checkLocalExecution("hello.aleo", "main", ["1u32"]);
+
+      expect(mockCheckDevnodeSdkSupport).toHaveBeenCalledOnce();
+      expect(mockInitConsensusHeights).toHaveBeenCalledOnce();
+      expect(mockBuildAuthorizationUnchecked).toHaveBeenCalledWith({
+        programName: "hello.aleo",
+        functionName: "main",
+        inputs: ["1u32"],
+        programSource: "program hello.aleo { }",
+      });
+      expect(mockRun).not.toHaveBeenCalled();
+    });
+
+    it("passes runtime imports to buildAuthorizationUnchecked", async () => {
+      mockGetProgram.mockImplementation(async (id: string) => {
+        if (id === "governance.aleo") return "program governance.aleo { }";
+        if (id === "voting_power.aleo") return "program voting_power.aleo;";
+        throw new Error(`unexpected ${id}`);
+      });
+
+      const connection = createDevnodeConnection({
+        executionImports: {
+          "governance.aleo": [{ kind: "programId", programId: "voting_power.aleo" }],
+        },
+      });
+
+      await connection.checkLocalExecution("governance.aleo", "main", []);
+
+      expect(mockBuildAuthorizationUnchecked).toHaveBeenCalledWith(expect.objectContaining({
+        programSource: "program governance.aleo { }",
+        programImports: { "voting_power.aleo": "program voting_power.aleo;" },
+      }));
+    });
+
+    it("respects signer override", async () => {
+      const signerBuildAuthorizationUnchecked = vi.fn().mockResolvedValue({ kind: "signer-auth" });
+      const signer = {
+        privateKey: "APrivateKey1zkpSigner",
+        address: "aleo1signer",
+      };
+      mockCreateSignerSdkObjects.mockResolvedValue({
+        account: { privateKey: () => ({ kind: "signer-private-key" }) },
+        programManager: {
+          run: mockRun,
+          execute: mockExecute,
+          buildAuthorizationUnchecked: signerBuildAuthorizationUnchecked,
+          buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
+        },
+        recordProvider: {},
+        programManagerBase: { kind: "signer-base" },
+      });
+
+      const connection = createDevnodeConnection();
+
+      await connection.checkLocalExecution("hello.aleo", "main", ["1u32"], { signer });
+
+      expect(mockCreateSignerSdkObjects).toHaveBeenCalledOnce();
+      expect(signerBuildAuthorizationUnchecked).toHaveBeenCalledWith(expect.objectContaining({
+        programName: "hello.aleo",
+        functionName: "main",
+      }));
+      expect(mockBuildAuthorizationUnchecked).not.toHaveBeenCalled();
+    });
+
+    it("wraps vetted VM failures in LocalVmExecutionError", async () => {
+      mockBuildAuthorizationUnchecked.mockRejectedValueOnce(
+        "Stack authorization failed: Stack evaluation failed: assertion failed",
+      );
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.checkLocalExecution("hello.aleo", "main", ["1u32"]),
+      ).rejects.toBeInstanceOf(LocalVmExecutionError);
+      await expect(
+        connection.checkLocalExecution("hello.aleo", "main", ["1u32"]),
+      ).resolves.toBeUndefined();
+    });
+
+    it("treats VM failures as catchable only with vetted SDK prefixes", async () => {
+      mockBuildAuthorizationUnchecked.mockRejectedValueOnce(
+        new Error("Error: Stack authorization failed: Stack evaluation failed: assertion failed"),
+      );
+      const connection = createDevnodeConnection();
+
+      let thrown: unknown;
+      try {
+        await connection.checkLocalExecution("hello.aleo", "main", ["1u32"]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      expect(thrown).not.toBeInstanceOf(LocalVmExecutionError);
+      expect((thrown as Error).message).toBe(
+        "Error: Stack authorization failed: Stack evaluation failed: assertion failed",
+      );
+    });
+
+    it("rethrows infrastructure errors unchanged", async () => {
+      const infra = new Error("PROBE-FETCH-DENY: blocked egress");
+      mockBuildAuthorizationUnchecked.mockRejectedValueOnce(infra);
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.checkLocalExecution("hello.aleo", "main", ["1u32"]),
+      ).rejects.toBe(infra);
     });
   });
 
@@ -472,6 +594,9 @@ describe("AleoConnection", () => {
           importsHash: sha256Json({ imports: [] }),
           wasmHash: "f".repeat(64),
         });
+        // Production no longer writes runtime user-program entries on execution
+        // misses; this injected entry verifies that legacy/sidecar-warmed hits
+        // still thread through to pm.execute.
         writeCachedExecutionKeys(
           {
             identity,
@@ -503,7 +628,7 @@ describe("AleoConnection", () => {
       }
     });
 
-    it("synthesizes and persists filesystem keys on miss, then hits the runtime cache", async () => {
+    it("defers filesystem key-cache misses to pm.execute lazy synthesis", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
       try {
         const artifactsDir = path.join(tmpDir, "artifacts");
@@ -520,33 +645,25 @@ describe("AleoConnection", () => {
         });
 
         await connection.execute("hello.aleo", "main", ["1u32"]);
-        await connection.execute("hello.aleo", "main", ["2u32"]);
 
         expect(mockSynthesizeKeys).not.toHaveBeenCalled();
-        expect(mockPrepareInputs).toHaveBeenCalledOnce();
-        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledOnce();
-        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledWith(expect.objectContaining({
-          privateKey: { kind: "private-key" },
-          source,
-          transitionName: "main",
-          inputs: ["1u32"],
+        expect(mockPrepareInputs).not.toHaveBeenCalled();
+        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
+        expect(mockCreateExecutionKeysFromBytes).not.toHaveBeenCalled();
+        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+          programName: "hello.aleo",
+          functionName: "main",
+          program: source,
           edition: 3,
         }));
-        expect(mockCreateExecutionKeysFromBytes).toHaveBeenCalledTimes(2);
-        expect(mockExecute).toHaveBeenNthCalledWith(1, expect.objectContaining({
-          provingKey: { kind: "proving", bytes: [10, 11] },
-          verifyingKey: { kind: "verifying", bytes: [12, 13] },
-        }));
-        expect(mockExecute).toHaveBeenNthCalledWith(2, expect.objectContaining({
-          provingKey: { kind: "proving", bytes: [10, 11] },
-          verifyingKey: { kind: "verifying", bytes: [12, 13] },
-        }));
+        expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("provingKey");
+        expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("verifyingKey");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
 
-    it("synthesizes with recursive local imports and hashes the same graph", async () => {
+    it("defers filesystem misses while still resolving recursive local imports", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
       try {
         const artifactsDir = path.join(tmpDir, "artifacts");
@@ -585,26 +702,17 @@ describe("AleoConnection", () => {
         };
         expect(mockGetProgram).not.toHaveBeenCalled();
         expect(mockSynthesizeKeys).not.toHaveBeenCalled();
-        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledWith(expect.objectContaining({
-          source: appSource,
+        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
+        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
+          program: appSource,
           imports: expectedImports,
-        }));
-
-        const runtimeRoot = path.join(cachePath, "lionden-runtime");
-        const entryDir = path.join(runtimeRoot, fs.readdirSync(runtimeRoot)[0]!);
-        const metadata = readRuntimeKeyCacheMetadata(path.join(entryDir, "metadata.json"))!;
-        expect(metadata.identity.importsHash).toBe(sha256Json({
-          imports: [
-            { programId: "bar.aleo", sourceHash: sha256Text(barSource) },
-            { programId: "foo.aleo", sourceHash: sha256Text(fooSource) },
-          ],
         }));
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
 
-    it("synthesizes filesystem keys with undefined edition for not-yet-deployed programs", async () => {
+    it("defers filesystem misses without edition for not-yet-deployed programs", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
       try {
         const artifactsDir = path.join(tmpDir, "artifacts");
@@ -623,23 +731,18 @@ describe("AleoConnection", () => {
 
         await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
 
-        expect(mockSynthesizeExecutionKeyBytes).toHaveBeenCalledWith(expect.objectContaining({
-          source,
-          transitionName: "main",
-          inputs: ["1u32"],
-        }));
-        expect(mockSynthesizeExecutionKeyBytes.mock.calls[0]![0]).not.toHaveProperty("edition");
+        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
         expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("edition");
+        expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("provingKey");
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
     });
 
-    // Eager key synthesis runs the query-less WASM `synthesizeKeyPair`. For a
-    // record-consuming transition that builds an inclusion proof against the
-    // SDK's baked-in SnapshotQuery (public host), bypassing the egress-guarded
-    // transport. So on a cache miss we must NOT eagerly synthesize — `pm.execute`
-    // synthesizes lazily with the CallbackQuery wired to the active endpoint.
+    // Eager key synthesis runs the query-less WASM `synthesizeKeyPair`, which
+    // cannot be guarded by LionDen's transport. On any cache miss we must NOT
+    // eagerly synthesize — `pm.execute` synthesizes lazily with the CallbackQuery
+    // wired to the active endpoint. Cache hits above are still injected.
     it.each([
       ["record", { Record: { path: ["Token"], program: "tok.aleo" } }],
       ["dynamic record", "DynamicRecord"],
@@ -710,9 +813,8 @@ describe("AleoConnection", () => {
       }
     });
 
-    // Conservative default: when the ABI can't be located (no abi.json), we
-    // can't prove the transition is record-free, so skip eager synthesis rather
-    // than risk the leak.
+    // Conservative default: when the ABI can't be located (no abi.json), a miss
+    // still defers to lazy pm.execute synthesis.
     it("skips eager synthesis on a cache miss when the ABI is unavailable", async () => {
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
       try {

@@ -81,7 +81,7 @@ The most important engineering constraints preserved from the original design wo
 - Package materialization must preserve nested source layout, or Leo imports break.
 - Leo libraries and deployable programs must be treated differently in compile, codegen, and deploy flows.
 - Upgradeability and constructor enforcement are part of the deployment contract, not optional metadata.
-- Compile-time proving-key synthesis is deferred. `synthesizeKeyPair` in the Provable SDK requires real per-transition inputs that the compiler doesn't have, so LionDen relies on the runtime filesystem cache where eager synthesis is safe instead of a compile-time pre-warm. Record-consuming or unknown-ABI cache misses synthesize lazily through `pm.execute` so state queries use the guarded network path. See [`research/key-caching.md`](research/key-caching.md) for the full analysis.
+- Compile-time proving-key synthesis is deferred. `synthesizeKeyPair` in the Provable SDK requires real per-transition inputs that the compiler doesn't have, and the eager path cannot receive LionDen's guarded query object. LionDen injects sidecar/runtime cache hits, but cache misses synthesize lazily through `pm.execute` so state queries use the guarded network path. See [`research/key-caching.md`](research/key-caching.md) for the full analysis.
 
 ## How To Use This Doc
 

@@ -875,6 +875,9 @@ export async function createExecutionKeysFromBytes(
 export async function synthesizeExecutionKeyBytes(
   options: SynthesizeExecutionKeyBytesOptions,
 ): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
+  // Retained for future query-bound synthesis or explicit diagnostics. Runtime
+  // execution no longer calls this on cache misses because the SDK eager
+  // synthesis path cannot receive LionDen's guarded query object.
   const keyPair = await options.programManagerBase.synthesizeKeyPair(
     options.privateKey,
     options.source,

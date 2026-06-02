@@ -86,19 +86,17 @@ export async function resolveProgramExecutionArtifacts(
  * `abi.json` (a sibling of `main.aleo` in `artifactDir`).
  *
  * Record-consuming transitions need an on-chain inclusion proof. The eager
- * key-synthesis path (`synthesizeKeyPair`) has no query parameter, so for these
- * transitions snarkVM builds that inclusion proof against the SDK's baked-in
- * SnapshotQuery (`https://api.provable.com/v2`) instead of the configured
- * endpoint, bypassing the egress-guarded transport. Callers use this to skip
- * eager synthesis for such transitions.
+ * key-synthesis path (`synthesizeKeyPair`) has no query parameter, so it can
+ * bypass LionDen's egress-guarded transport. Production execution now skips
+ * eager synthesis on every cache miss; this classifier is retained for ABI
+ * diagnostics and tests around record-shape recognition.
  *
  * Returns `undefined` when the ABI can't be located, parsed, or trusted to
  * prove the transition is record-free: network-sourced program (no
  * `artifactDir`), missing/garbled `abi.json`, unknown transition, OR any input
  * whose `ty` shape is unrecognized (e.g. a stale/corrupt entry missing `ty`, or
  * a future ABI variant). `false` is returned only when EVERY input is a
- * recognized record-free shape. Callers must treat `undefined` conservatively —
- * skip eager synthesis rather than risk the leak.
+ * recognized record-free shape.
  */
 export function transitionHasRecordInput(
   artifacts: ProgramExecutionArtifacts,

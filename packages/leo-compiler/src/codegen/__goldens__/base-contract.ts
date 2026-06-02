@@ -5,6 +5,7 @@ import {
   decryptValueCiphertext,
   deriveViewKey,
   programAddressFromProgramId,
+  LocalVmExecutionError,
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
 } from "@lionden/network";
@@ -880,10 +881,31 @@ export abstract class BaseContract {
     args: string[],
     options: LocalExecutionOptions = {},
   ): Promise<LocalTransitionError> {
+    const network = this.getNetwork();
+    if (typeof network.checkLocalExecution !== "function") {
+      throw new TransactionShapeError(
+        "Network for " + this.programId + " does not expose checkLocalExecution(). Cannot assert local failure for " + transitionName + ".",
+        { programId: this.programId, transition: transitionName },
+      );
+    }
     try {
-      await this.executeLocal(transitionName, args, options);
+      await network.checkLocalExecution(
+        this.programId,
+        transitionName,
+        args,
+        this.buildEffectiveOptions({ ...options, mode: "local" }),
+      );
     } catch (error) {
-      if (error instanceof LocalTransitionError) return error;
+      if (error instanceof LocalVmExecutionError) {
+        return new LocalTransitionError(
+          this.programId + "/" + transitionName + " failed during local execution. This usually means a transition assertion or local runtime check failed. Cause: " + errorMessage(error),
+          {
+            programId: this.programId,
+            transition: transitionName,
+            cause: error,
+          },
+        );
+      }
       throw error;
     }
     throw new UnexpectedLocalSuccessError(
@@ -1503,6 +1525,12 @@ export abstract class BaseContract {
     options: BaseCallOptions & { readonly mode: ExecutionMode },
   ): Promise<TransitionExecutionResult> {
     const network = this.getNetwork();
+    return network.execute(this.programId, transitionName, args, this.buildEffectiveOptions(options));
+  }
+
+  private buildEffectiveOptions(
+    options: BaseCallOptions & { readonly mode: ExecutionMode },
+  ): BaseCallOptions & { readonly mode: ExecutionMode } {
     const effectiveOptions: BaseCallOptions & { readonly mode: ExecutionMode } = { ...options };
     if (this.signer && !effectiveOptions.signer) {
       effectiveOptions.signer = this.signer;
@@ -1517,7 +1545,7 @@ export abstract class BaseContract {
     if (mergedImports.length > 0) {
       effectiveOptions.imports = mergedImports;
     }
-    return network.execute(this.programId, transitionName, args, effectiveOptions);
+    return effectiveOptions;
   }
 
   protected async queryMapping(

@@ -15,10 +15,12 @@ export type {
   ConfirmationTimeoutStage,
   NetworkConfirmationTimeoutContext,
   TransitionRejectedContext,
+  LocalVmExecutionContext,
   TransitionSelectionContext,
 } from "./types.js";
 export {
   NetworkConfirmationTimeoutError,
+  LocalVmExecutionError,
   TransitionRejectedError,
   TransitionSelectionError,
 } from "./types.js";

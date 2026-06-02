@@ -134,6 +134,31 @@ describe("NetworkManagerImpl", () => {
     ).rejects.toThrow("No active network connection");
   });
 
+  it("checkLocalExecution throws when not connected", async () => {
+    await expect(
+      manager.checkLocalExecution("test.aleo", "foo", []),
+    ).rejects.toThrow("No active network connection");
+  });
+
+  it("checkLocalExecution delegates to the active connection", async () => {
+    const conn = await manager.connect("devnode") as NetworkConnection & {
+      checkLocalExecution?: ReturnType<typeof vi.fn>;
+    };
+    const checkLocalExecution = vi.fn().mockResolvedValue(undefined);
+    conn.checkLocalExecution = checkLocalExecution;
+
+    await manager.checkLocalExecution("test.aleo", "foo", ["1u32"], {
+      mode: "local",
+    });
+
+    expect(checkLocalExecution).toHaveBeenCalledWith(
+      "test.aleo",
+      "foo",
+      ["1u32"],
+      { mode: "local" },
+    );
+  });
+
   it("getMappingValue throws when not connected", async () => {
     await expect(
       manager.getMappingValue("test.aleo", "map", "key"),
