@@ -37,7 +37,7 @@ Layout on disk:
   metadata.json     # RuntimeKeyCacheMetadata (format: "lionden.runtimeKeyCache.v1")
 ```
 
-Atomic writes (temp+rename), fingerprint verification on read (size + SHA-256), reject-on-mismatch. The cache populates lazily after the first successful synthesis through `synthesizeAndCacheExecutionKeys` in `packages/network/src/connection.ts`, but only when the transition's ABI proves it is record-free. Record / `DynamicRecord` transitions, and transitions whose ABI is absent or not trusted, skip eager synthesis on cache miss and synthesize lazily through `pm.execute` so state queries use the guarded `CallbackQuery`.
+Atomic writes (temp+rename), fingerprint verification on read (size + SHA-256), reject-on-mismatch. LionDen still reads and injects matching runtime cache entries, but it no longer populates this cache on an execution miss. Cache misses synthesize lazily through `pm.execute` so state queries use the guarded `CallbackQuery`.
 
 ### 2. Compile-time sidecar `lionden-key-artifacts.json`
 
@@ -52,7 +52,7 @@ The sidecar is written per program under `artifacts/<programId>/lionden-key-arti
 
 Today Leo v4 does not emit key files alongside `leo build`, so in practice `functions[]` is empty for current Leo versions. The sidecar is still emitted because (a) it pins identity for downstream consumers and (b) the field is forward-compatible: if a future Leo version emits paired key files, they flow into the cache through this channel with no LionDen code change.
 
-The runtime cache consults the sidecar first (`readSidecarKeys` in `packages/network/src/execution-key-cache.ts`), then falls back to its own per-identity directory, then either performs safe SDK synthesis or defers to lazy `pm.execute` synthesis for record-consuming / unknown-ABI misses.
+The runtime cache consults the sidecar first (`readSidecarKeys` in `packages/network/src/execution-key-cache.ts`), then falls back to its own per-identity directory. If neither contains keys, execution defers to lazy `pm.execute` synthesis rather than calling eager `synthesizeKeyPair`.
 
 ### 3. Named `credits.aleo` key warmup + write-back
 
@@ -71,9 +71,9 @@ For a proven execution (`packages/network/src/connection.ts` → `getPersistentE
 
 1. **Sidecar refs** — when the program's `lionden-key-artifacts.json` declares matching `.prover` + `.verifier` files in the artifact directory and both file fingerprints verify, use them.
 2. **Runtime cache** — match on the full circuit identity, verify both file fingerprints, use them.
-3. **SDK synthesis on safe misses** — if the transition ABI proves every input is record-free, call `ProgramManagerBase.synthesizeKeyPair(...)`, then atomically write back to (2). Execute the transition with the freshly synthesized keys injected. If the transition has a record / `DynamicRecord` input, or if the ABI is missing, malformed, missing the transition, or has an unrecognized input shape, LionDen skips eager synthesis and lets `pm.execute` synthesize lazily through the SDK's `CallbackQuery`; those keys are not persisted on that call.
+3. **SDK lazy synthesis on misses** — if neither cache layer has keys, do not call eager `ProgramManagerBase.synthesizeKeyPair(...)`. Execute without injected keys and let `pm.execute` synthesize lazily through the SDK's `CallbackQuery`; those keys are not persisted by LionDen on that call.
 
-Source/imports/wasm hash changes invalidate the cache as expected: a recompiled program with the same id but a changed circuit gets a new identity hash and re-synthesizes on next call.
+Source/imports/wasm hash changes invalidate the cache as expected: a recompiled program with the same id but a changed circuit gets a new identity hash and misses until new sidecar/runtime keys are available or the SDK synthesizes lazily for that call.
 
 For covered named `credits.aleo` keys:
 
@@ -109,15 +109,12 @@ Compile time has none of that:
 
 A "pre-warm at compile" pass would therefore need a generic Leo-ABI fixture fabricator: for each transition, produce a synthetic but well-typed input vector, including records with valid owner addresses and any mapping entries the transition reads. For non-trivial programs that's effectively writing a property-based fuzzer for Leo ABIs — well outside the compile pipeline's scope, and architecturally cross-cutting (compiler would need a runtime/network dependency).
 
-The runtime cache + write-back already amortizes synthesis cost where eager synthesis is safe:
+The runtime cache still amortizes synthesis cost when keys already exist:
 
-- First record-free call to a given `(network, programId, transition, edition, sourceHash, importsHash, wasmHash)` → synthesize and persist (~one-time cost per identity).
-- Every subsequent call with a sidecar/runtime cache hit → cache hit, near-zero overhead.
-- Record-consuming or unknown-ABI cache misses deliberately avoid write-back because `synthesizeKeyPair` cannot receive the guarded query object; they synthesize lazily inside `pm.execute`.
+- Calls with sidecar/runtime cache hits for a given `(network, programId, transition, edition, sourceHash, importsHash, wasmHash)` → inject cached keys, near-zero overhead.
+- Cache misses deliberately avoid write-back because `synthesizeKeyPair` cannot receive the guarded query object; they synthesize lazily inside `pm.execute`.
 
-For record-free transitions, this reaches the same end state a compile-time pre-warm would produce — except the runtime version is keyed by the real fingerprint of the circuit being proved, which is honest about what was synthesized.
-
-For those record-free identities, the only scenario where a compile-time pre-warm would pay off is **the very first run on a clean checkout**. That's a CI-cache concern, not a framework concern: cache `artifacts/.cache/` between CI runs and the same amortization applies.
+Compile-time sidecar keys or externally warmed runtime keys can still reach the same end state a compile-time pre-warm would produce. Cache `artifacts/.cache/` between CI runs when those files are available.
 
 ## What would unblock it
 
@@ -129,7 +126,7 @@ The deferred `_docs/research/leo_keys_caching.md` (local-only research notes fro
 
 | Cache | Identity | Where | When written |
 | --- | --- | --- | --- |
-| Runtime execution-key | `(network, programId, transition, edition?, sourceHash, importsHash, wasmHash)` | `<keyCache.path>/lionden-runtime/<sha256(identity)>/` | After first safe eager synthesis at proven call time; skipped on cache miss for record-consuming / unknown-ABI transitions |
+| Runtime execution-key | `(network, programId, transition, edition?, sourceHash, importsHash, wasmHash)` | `<keyCache.path>/lionden-runtime/<sha256(identity)>/` | Not written on execution cache misses; existing sidecar/runtime entries are read and injected |
 | Compile-time sidecar | `(programId, sourceHash, importsHash)` + paired `.prover` / `.verifier` refs | `artifacts/<programId>/lionden-key-artifacts.json` | Every `leo build` success |
 | Named `credits.aleo` key | `(locator, network, wasmHash)` | `<keyCache.path>/lionden-credits/<wasmHash>/<network>/<base64url(locator)>.prover` | Warmup-on-init read, write-back-after-fetch on cold |
 

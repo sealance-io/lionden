@@ -16,18 +16,16 @@ import * as fs from "node:fs";
 import type {
   SdkEgressPolicy,
   SdkObjects,
-  SdkProgramManagerBase,
   SignerSdkObjects,
 } from "./sdk-adapter.js";
 import {
   buildRuntimeKeyIdentity,
   findCachedExecutionKeys,
   resolveProgramExecutionArtifacts,
-  transitionHasRecordInput,
-  writeCachedExecutionKeys,
   type ProgramExecutionArtifacts,
 } from "./execution-key-cache.js";
 import {
+  LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
   TransitionRejectedError,
   type NetworkConnection,
@@ -198,14 +196,13 @@ export class AleoConnection implements NetworkConnection {
    */
   private async getEffectivePm(
     signerPrivateKey?: string,
-  ): Promise<{ pm: unknown; nc: unknown; programManagerBase: SdkProgramManagerBase }> {
+  ): Promise<{ pm: unknown; nc: unknown }> {
     const defaultSdk = await this.getSdkObjects();
 
     if (!signerPrivateKey || signerPrivateKey === this.privateKey) {
       return {
         pm: defaultSdk.programManager,
         nc: defaultSdk.networkClient,
-        programManagerBase: defaultSdk.programManagerBase,
       };
     }
 
@@ -215,7 +212,6 @@ export class AleoConnection implements NetworkConnection {
       return {
         pm: resolved.programManager,
         nc: defaultSdk.networkClient,
-        programManagerBase: resolved.programManagerBase,
       };
     }
 
@@ -257,7 +253,6 @@ export class AleoConnection implements NetworkConnection {
     return {
       pm: signerSdk.programManager,
       nc: defaultSdk.networkClient,
-      programManagerBase: signerSdk.programManagerBase,
     };
   }
 
@@ -323,7 +318,6 @@ export class AleoConnection implements NetworkConnection {
     const {
       pm: effectivePm,
       nc: effectiveNc,
-      programManagerBase,
     } = await this.getEffectivePm(options?.signer?.privateKey);
     const pm = effectivePm as any;
     const nc = effectiveNc as any;
@@ -384,12 +378,9 @@ export class AleoConnection implements NetworkConnection {
       txId = await this.broadcastTransaction(tx);
     } else {
       const persistentExtras = await this.getPersistentExecutionOptions(
-        pm,
-        programManagerBase,
         nc,
         programId,
         transitionName,
-        args,
         artifacts,
       );
       // Standard execution via ProgramManager
@@ -409,6 +400,65 @@ export class AleoConnection implements NetworkConnection {
       return { outputs: [], txId };
     }
     return this.getTransitionOutputs(txId, programId, transitionName);
+  }
+
+  async checkLocalExecution(
+    programId: string,
+    transitionName: string,
+    args: string[],
+    options?: ExecuteOptions,
+  ): Promise<void> {
+    this.assertOpen();
+    if (this.type === "devnode") {
+      const { checkDevnodeSdkSupport, initConsensusHeights } =
+        await import("./sdk-adapter.js");
+      await checkDevnodeSdkSupport();
+      await initConsensusHeights();
+    }
+
+    const {
+      pm: effectivePm,
+      nc: effectiveNc,
+    } = await this.getEffectivePm(options?.signer?.privateKey);
+    const pm = effectivePm as any;
+    const nc = effectiveNc as any;
+
+    if (typeof pm.buildAuthorizationUnchecked !== "function") {
+      throw new Error(
+        "Local failure checks require SDK ProgramManager.buildAuthorizationUnchecked().",
+      );
+    }
+
+    const runtimeImports = this.collectRuntimeImports(programId, options?.imports);
+    const artifacts = await resolveProgramExecutionArtifacts({
+      artifactsDir: this.artifactsDir,
+      programId,
+      networkClient: nc,
+      includeSidecar: true,
+      runtimeImports,
+    });
+
+    try {
+      await pm.buildAuthorizationUnchecked({
+        programName: programId,
+        functionName: transitionName,
+        inputs: args,
+        programSource: artifacts.source,
+        ...(artifacts.imports === undefined ? {} : { programImports: artifacts.imports }),
+      });
+    } catch (error) {
+      if (isCatchableLocalVmError(error)) {
+        throw new LocalVmExecutionError(
+          `Local VM execution failed for ${programId}/${transitionName}: ${errorMessage(error)}`,
+          {
+            programId,
+            transitionName,
+            cause: error,
+          },
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -476,12 +526,9 @@ export class AleoConnection implements NetworkConnection {
   }
 
   private async getPersistentExecutionOptions(
-    pm: any,
-    programManagerBase: SdkProgramManagerBase,
     nc: { getProgram(id: string): Promise<string>; getLatestProgramEdition?: (id: string) => Promise<number> },
     programId: string,
     transitionName: string,
-    args: string[],
     artifacts: ProgramExecutionArtifacts,
   ): Promise<Record<string, unknown> | undefined> {
     if (this.keyCache?.storage !== "filesystem" || !this.keyCache.path) {
@@ -509,27 +556,11 @@ export class AleoConnection implements NetworkConnection {
 
     let keyBytes: { provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array } | undefined = cached;
     if (!keyBytes) {
-      // Cache miss. Eager synthesis runs the WASM `synthesizeKeyPair`, which
-      // takes no query parameter: for a record-consuming transition snarkVM
-      // builds the inclusion proof against the SDK's baked-in SnapshotQuery
-      // (https://api.provable.com/v2) instead of the configured endpoint,
-      // bypassing the egress-guarded transport. Skip it for those transitions
-      // and let `pm.execute` synthesize the keys lazily — that path threads the
-      // CallbackQuery wired to the active endpoint. `undefined` (ABI absent /
-      // unknown transition) is treated as record-consuming: skip rather than
-      // risk the leak. Cache hits above are unaffected.
-      if (transitionHasRecordInput(artifacts, transitionName) !== false) {
-        return edition === undefined ? undefined : { edition };
-      }
-      keyBytes = await this.synthesizeAndCacheExecutionKeys({
-        pm,
-        programManagerBase,
-        artifacts,
-        transitionName,
-        args,
-        identity,
-        sdkMetadata,
-      });
+      // Cache miss. Do not call the query-less WASM `synthesizeKeyPair` path:
+      // direct PROBE-2 evidence showed `pm.execute` lazy synthesis stays on the
+      // guarded CallbackQuery path, while eager synthesis cannot be transport
+      // guarded. Cache hits above still inject keys.
+      return edition === undefined ? undefined : { edition };
     }
 
     const keys = await runtime.createExecutionKeysFromBytes(this.networkId, {
@@ -542,52 +573,6 @@ export class AleoConnection implements NetworkConnection {
       provingKey: keys.provingKey,
       verifyingKey: keys.verifyingKey,
     };
-  }
-
-  private async synthesizeAndCacheExecutionKeys(
-    options: {
-      pm: any;
-      programManagerBase: SdkProgramManagerBase;
-      artifacts: ProgramExecutionArtifacts;
-      transitionName: string;
-      args: string[];
-      identity: import("@lionden/core").RuntimeKeyIdentity;
-      sdkMetadata: { sdkVersion?: string; wasmVersion?: string };
-    },
-  ): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
-    const runtime = await import("./sdk-adapter.js");
-    const privateKey = getProgramManagerPrivateKey(options.pm);
-    const preparedInputs = prepareExecutionInputs(
-      options.pm,
-      options.artifacts.source,
-      options.transitionName,
-      options.args,
-    );
-    const { provingKeyBytes, verifyingKeyBytes } =
-      await runtime.synthesizeExecutionKeyBytes({
-        programManagerBase: options.programManagerBase,
-        privateKey,
-        source: options.artifacts.source,
-        transitionName: options.transitionName,
-        inputs: preparedInputs,
-        ...(options.artifacts.imports === undefined ? {} : { imports: options.artifacts.imports }),
-        ...(options.identity.edition === undefined ? {} : { edition: options.identity.edition }),
-      });
-
-    writeCachedExecutionKeys(
-      {
-        identity: options.identity,
-        provingKeyBytes,
-        verifyingKeyBytes,
-        diagnostics: {
-          ...(options.sdkMetadata.sdkVersion === undefined ? {} : { sdkVersion: options.sdkMetadata.sdkVersion }),
-          ...(options.sdkMetadata.wasmVersion === undefined ? {} : { wasmVersion: options.sdkMetadata.wasmVersion }),
-        },
-      },
-      this.keyCache!.path!,
-    );
-
-    return { provingKeyBytes, verifyingKeyBytes };
   }
 
   async waitForConfirmation(
@@ -860,36 +845,6 @@ async function getLatestProgramEditionIfAvailable(
   }
 }
 
-function getProgramManagerPrivateKey(pm: unknown): any {
-  const account = (pm as { account?: unknown })?.account;
-  if (!account || typeof (account as { privateKey?: unknown }).privateKey !== "function") {
-    throw new Error(
-      "Filesystem key-cache synthesis requires the SDK ProgramManager to have an account with privateKey().",
-    );
-  }
-  return (account as { privateKey(): unknown }).privateKey();
-}
-
-function prepareExecutionInputs(
-  pm: unknown,
-  source: string,
-  transitionName: string,
-  args: string[],
-): string[] {
-  if (typeof (pm as { prepareInputs?: unknown }).prepareInputs !== "function") {
-    throw new Error(
-      "Filesystem key-cache synthesis requires SDK ProgramManager.prepareInputs().",
-    );
-  }
-  const prepared = (pm as {
-    prepareInputs(source: string, transitionName: string, args: string[]): unknown;
-  }).prepareInputs(source, transitionName, args);
-  if (!Array.isArray(prepared)) {
-    throw new Error("SDK ProgramManager.prepareInputs() returned a non-array value.");
-  }
-  return prepared.map((value) => String(value));
-}
-
 /**
  * Flatten a `RawTransitionOutput` to a string for the `outputs: string[]`
  * field of `TransitionCallResult`. Plain string entries pass through;
@@ -1085,4 +1040,14 @@ function extractLocalExecutionOutputs(result: unknown): string[] {
   }
 
   return [];
+}
+
+function isCatchableLocalVmError(error: unknown): boolean {
+  const message = errorMessage(error);
+  return message.startsWith("Stack authorization failed:") ||
+    message.startsWith("Stack evaluation failed:");
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

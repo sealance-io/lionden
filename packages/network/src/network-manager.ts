@@ -144,6 +144,26 @@ export class NetworkManagerImpl implements NetworkManager {
     return conn.execute(programId, transitionName, args, options);
   }
 
+  async checkLocalExecution(
+    programId: string,
+    transitionName: string,
+    args: string[],
+    options?: ExecuteOptions,
+  ): Promise<void> {
+    const conn = this.requireConnection() as NetworkConnection & {
+      checkLocalExecution?: (
+        programId: string,
+        transitionName: string,
+        args: string[],
+        options?: ExecuteOptions,
+      ) => Promise<void>;
+    };
+    if (typeof conn.checkLocalExecution !== "function") {
+      throw new Error("Active network connection does not support local execution checks.");
+    }
+    return conn.checkLocalExecution(programId, transitionName, args, options);
+  }
+
   async getMappingValue(
     programId: string,
     mappingName: string,

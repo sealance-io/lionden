@@ -44,6 +44,15 @@ beforeAll(async () => {
   const stubPath = join(tmpDir, "network-stub.mjs");
   writeFileSync(stubPath, [
     "import { Address } from '@provablehq/sdk/testnet.js';",
+    "export class LocalVmExecutionError extends Error {",
+    "  constructor(message, context = {}) {",
+    "    super(message, context.cause === undefined ? undefined : { cause: context.cause });",
+    "    this.name = 'LocalVmExecutionError';",
+    "    this.kind = 'LocalVmExecutionError';",
+    "    this.programId = context.programId;",
+    "    this.transitionName = context.transitionName;",
+    "  }",
+    "}",
     "export class NetworkRecordDecryptionError extends Error {",
     "  constructor(message, ciphertextPrefix, cause) {",
     "    super(message, cause === undefined ? undefined : { cause });",
@@ -266,12 +275,16 @@ describe("BaseContract runtime", () => {
 
   describe("expectLocalFailure()", () => {
     it("captures local execution failures as structured errors", async () => {
-      const sdkError = new Error("assertion failed");
+      const vmError = new networkStub.LocalVmExecutionError("assertion failed", {
+        programId: "hello.aleo",
+        transitionName: "main",
+        cause: "Stack authorization failed: Stack evaluation failed: assertion failed",
+      });
       const contract = createTestContract("hello.aleo");
       contract.connect(
         mockLre({
-          execute: async () => {
-            throw sdkError;
+          checkLocalExecution: async () => {
+            throw vmError;
           },
         }),
       );
@@ -284,19 +297,77 @@ describe("BaseContract runtime", () => {
         programId: "hello.aleo",
         transition: "main",
       });
-      expect(error.cause).toBe(sdkError);
+      expect(error.cause).toBe(vmError);
       expect(error.message).toContain("hello.aleo/main failed during local execution");
+    });
+
+    it("delegates to checkLocalExecution with merged local options", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("hello.aleo", { imports: ["config_dep"] });
+      contract.connect(
+        mockLre({
+          checkLocalExecution: async (...args: any[]) => {
+            spy.calls.push(args);
+            throw new networkStub.LocalVmExecutionError("assertion failed", {
+              programId: "hello.aleo",
+              transitionName: "main",
+            });
+          },
+        }),
+      );
+
+      await contract.testExpectLocalFailure("main", ["1u32"], {
+        fee: 200,
+        imports: ["call_dep"],
+      });
+
+      expect(spy.calls[0]).toEqual([
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        { fee: 200, mode: "local", imports: ["config_dep", "call_dep"] },
+      ]);
+    });
+
+    it("rethrows infrastructure errors from checkLocalExecution", async () => {
+      const infra = new Error("blocked egress");
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          checkLocalExecution: async () => {
+            throw infra;
+          },
+        }),
+      );
+
+      await expect(
+        contract.testExpectLocalFailure("main", ["1u32"]),
+      ).rejects.toBe(infra);
     });
 
     it("throws UnexpectedLocalSuccessError when the transition succeeds", async () => {
       const contract = createTestContract("hello.aleo");
-      contract.connect(mockLre({ execute: async () => ({ outputs: ["1u32"] }) }));
+      contract.connect(mockLre({ checkLocalExecution: async () => undefined }));
 
       await expect(
         contract.testExpectLocalFailure("main", ["1u32"]),
       ).rejects.toMatchObject({
         kind: "UnexpectedLocalSuccessError",
         phase: "local",
+        programId: "hello.aleo",
+        transition: "main",
+      });
+    });
+
+    it("throws a shape error when the network lacks checkLocalExecution", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(mockLre());
+
+      await expect(
+        contract.testExpectLocalFailure("main", ["1u32"]),
+      ).rejects.toMatchObject({
+        kind: "TransactionShapeError",
+        phase: "shape",
         programId: "hello.aleo",
         transition: "main",
       });

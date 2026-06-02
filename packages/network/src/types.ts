@@ -131,6 +131,31 @@ export class TransitionRejectedError extends Error {
   }
 }
 
+export interface LocalVmExecutionContext {
+  readonly programId: string;
+  readonly transitionName: string;
+  readonly cause?: unknown;
+}
+
+/**
+ * Thrown by the network layer when a local VM authorization check reaches a
+ * catchable transition/runtime failure. Infrastructure, configuration, SDK
+ * egress, and source-resolution failures are deliberately not wrapped in this
+ * class so generated failure helpers can rethrow them unchanged.
+ */
+export class LocalVmExecutionError extends Error {
+  readonly kind = "LocalVmExecutionError" as const;
+  readonly programId: string;
+  readonly transitionName: string;
+
+  constructor(message: string, context: LocalVmExecutionContext) {
+    super(message, context.cause === undefined ? undefined : { cause: context.cause });
+    this.name = "LocalVmExecutionError";
+    this.programId = context.programId;
+    this.transitionName = context.transitionName;
+  }
+}
+
 export interface TransitionSelectionContext {
   readonly programId: string;
   readonly transitionName: string;
