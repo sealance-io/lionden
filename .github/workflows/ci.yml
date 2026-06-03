@@ -1,0 +1,259 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# No default permissions — every job requests only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect what changed so the rollup can pass doc-only PRs and skip the expensive
+  # smoke lane when no code/build inputs changed. Job-level skipping (not a workflow-level
+  # `paths:` filter) keeps the required "CI Status" check from hanging as "Pending".
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      smoke: ${{ steps.filter.outputs.smoke }}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify changed files
+        id: filter
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+            echo "Manual run — running all lanes"
+            exit 0
+          fi
+
+          # Fail-safe: if the base can't be fetched or diffed, run all lanes rather than
+          # silently treating it as "no changes".
+          if ! git fetch origin "$BASE_REF" --depth=1; then
+            echo "::warning::Could not fetch base '$BASE_REF' — running all lanes"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD"); then
+            echo "::warning::Could not diff against base '$BASE_REF' — running all lanes"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Changed files:"; echo "$CHANGED"
+
+          if echo "$CHANGED" | grep -qvE '\.md$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+            echo "Docs-only change"
+          fi
+
+          if echo "$CHANGED" | grep -qE '^(packages/|examples/|scripts/|vitest\.config\.ts$|tsconfig.*\.json$|package\.json$|package-lock\.json$|\.nvmrc$)'; then
+            echo "smoke=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "smoke=false" >> "$GITHUB_OUTPUT"
+            echo "No build/example inputs changed — smoke lane will skip"
+          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+
+  # Review changed dependencies for known vulnerabilities. dependency-review requires a
+  # public repo (or GitHub Advanced Security on a private repo), so it is visibility-gated
+  # while this repo is internal. Set repo var SECURITY_CHECKS_ON_PRIVATE=true to force it on
+  # once GHAS is enabled. See docs/ci-cd/REPOSITORY-SETUP.md.
+  dependency-review:
+    # PR-only: the action needs a base/head to diff, which workflow_dispatch lacks.
+    if: github.event_name == 'pull_request' && (github.event.repository.visibility == 'public' || vars.SECURITY_CHECKS_ON_PRIVATE == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write # for comment-summary-in-pr
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4.9.0
+        with:
+          config-file: ./.github/dependency-review-config.yml
+
+  # Placeholder — linting/formatting is intentionally deferred to a follow-up PR.
+  # Always green; does NOT invoke the existing `lint` script yet.
+  lint-format:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Lint/format placeholder
+        run: |
+          echo "::notice::Lint/format checks are intentionally deferred."
+          echo "TODO: enable eslint + a formatter in a follow-up PR (wire npm run lint here)."
+
+  build:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # Guard the lockfile (registry-only, integrity, no git/tarball sources) before any
+      # install. Zero-dependency, so it runs before npm ci. test/smoke gate on this job.
+      - run: npm run lint:lockfile
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run build
+
+  # Unit + contract tests (pure — no devnode, no Leo). Builds first because contract tests
+  # import @lionden/* from dist. Runs only after `build` passes (fail fast).
+  test:
+    needs: [detect-changes, build]
+    if: needs.detect-changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run build
+      - run: npm test
+
+  # Workflow smoke: compile + typecheck + test each core example against the built-in Leo
+  # devnode (leo devnode start). No prove mode, core examples only, serial (one devnode at a
+  # time on 127.0.0.1:3030). Requires a built repo (examples import @lionden/* from dist).
+  smoke:
+    needs: [detect-changes, build]
+    if: needs.detect-changes.outputs.smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read # setup-leo-action reads the workflow cache
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Set up Leo CLI
+        uses: sealance-io/setup-leo-action@4491779e127672f9c8a251258e06f366f3f9f0bf # v1.1.0
+        with:
+          version: "4.1.0" # must match core examples' leoVersion (preflight checks major.minor)
+          enable-cache: true
+          cache-save: ${{ github.ref == 'refs/heads/main' }}
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run build
+      - run: npm run test:smoke # core examples, no --prove
+
+  # Rollup sentinel: a single stable required check for the branch ruleset.
+  # Configure the ruleset to require "CI Status" — never the individual jobs (they may skip).
+  ci-status:
+    name: CI Status
+    needs: [detect-changes, dependency-review, lint-format, build, test, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - name: Check results
+        run: |
+          echo "::group::Job results"
+          echo "detect-changes:    $DETECT"
+          echo "code changed:   $CODE"
+          echo "smoke selected: $SMOKE"
+          echo "dependency-review: $DEP_REVIEW"
+          echo "lint-format:       $LINT"
+          echo "build:             $BUILD"
+          echo "test:              $TEST"
+          echo "smoke:             $SMOKE_RESULT"
+          echo "::endgroup::"
+
+          # If change detection didn't succeed, its outputs are empty — fail closed rather than
+          # treating it as docs-only and silently skipping build/test/smoke.
+          if [[ "$DETECT" != "success" ]]; then
+            echo "::error::change detection did not succeed ($DETECT)"
+            exit 1
+          fi
+
+          # dependency-review: skipped is OK (PR-only/visibility-gated); failure/cancelled is not.
+          if [[ "$DEP_REVIEW" == "failure" || "$DEP_REVIEW" == "cancelled" ]]; then
+            echo "::error::dependency-review failed"
+            exit 1
+          fi
+
+          # Placeholder must always be green.
+          if [[ "$LINT" != "success" ]]; then
+            echo "::error::lint-format placeholder did not succeed"
+            exit 1
+          fi
+
+          # Docs-only change: build/test/smoke skipped — that's fine.
+          if [[ "$CODE" != "true" ]]; then
+            echo "::notice::Docs-only change — code lanes skipped"
+            exit 0
+          fi
+
+          if [[ "$BUILD" != "success" ]]; then
+            echo "::error::build failed or was skipped while code changed"
+            exit 1
+          fi
+          if [[ "$TEST" != "success" ]]; then
+            echo "::error::test failed or was skipped while code changed"
+            exit 1
+          fi
+
+          # smoke: skipped is OK (no build/example inputs changed); failure/cancelled is not.
+          if [[ "$SMOKE_RESULT" == "failure" || "$SMOKE_RESULT" == "cancelled" ]]; then
+            echo "::error::smoke failed"
+            exit 1
+          fi
+
+          echo "::notice::All required checks passed"
+        env:
+          DETECT: ${{ needs.detect-changes.result }}
+          CODE: ${{ needs.detect-changes.outputs.code }}
+          SMOKE: ${{ needs.detect-changes.outputs.smoke }}
+          DEP_REVIEW: ${{ needs.dependency-review.result }}
+          LINT: ${{ needs.lint-format.result }}
+          BUILD: ${{ needs.build.result }}
+          TEST: ${{ needs.test.result }}
+          SMOKE_RESULT: ${{ needs.smoke.result }}

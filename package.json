@@ -21,9 +21,16 @@
     "test:smoke:aleo-ports:prove": "node scripts/run-smoke-examples.mjs --prove aleo-ports",
     "test:smoke:all": "node scripts/run-smoke-examples.mjs all",
     "test:smoke:all:prove": "node scripts/run-smoke-examples.mjs --prove all",
-    "lint": "eslint packages/"
+    "lint": "eslint packages/",
+    "lint:lockfile": "node scripts/validate-lockfile.mjs",
+    "test:lockfile": "node scripts/validate-lockfile.test.mjs",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset publish"
   },
   "devDependencies": {
+    "@changesets/changelog-github": "^0.7.0",
+    "@changesets/cli": "^2.31.0",
     "@types/node": "24.12.0",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0",
@@ -31,5 +38,6 @@
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
-  }
+  },
+  "packageManager": "npm@11.12.1"
 }

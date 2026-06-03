@@ -2,6 +2,11 @@
   "name": "@lionden/config",
   "version": "0.1.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sealance-io/lionden.git",
+    "directory": "packages/config"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
