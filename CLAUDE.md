@@ -106,6 +106,7 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | Leo version support, v3.5 compat, `leoBinary`, consensus heights | `docs/leo-version-compatibility.md` |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | `docs/vision-and-roadmap.md` |
 | Agent-driven bug-hunt workflow, probe structure, bug handling loop | `docs/agent-bug-hunt-workflow.md` |
+| CI/CD workflows, repo settings (rulesets, environments, GitHub App, npm OIDC), changesets release flow | `docs/ci-cd/REPOSITORY-SETUP.md`, `docs/ci-cd/RELEASING.md` |
 
 `_docs/` contains design specs and implementation plan — treat as roadmap, not source of truth. When code and plan differ, trust the code.
 

@@ -2,6 +2,11 @@
   "name": "@lionden/plugin-network",
   "version": "0.1.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sealance-io/lionden.git",
+    "directory": "packages/plugin-network"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,9 +18,9 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@lionden/config": "*",
-    "@lionden/core": "*",
-    "@lionden/network": "*"
+    "@lionden/config": "^0.1.0",
+    "@lionden/core": "^0.1.0",
+    "@lionden/network": "^0.1.0"
   },
   "devDependencies": {
     "@lionden/test-internals": "*"

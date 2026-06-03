@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/suzuki-shunsuke/pinact/refs/heads/main/json-schema/pinact.json
+# pinact - https://github.com/suzuki-shunsuke/pinact
+#
+# All GitHub Actions are pinned to a full commit SHA with a `# vX.Y.Z` comment.
+# `pinact run --verify` checks the comment matches the SHA; `pinact run --verify-min-age`
+# enforces the cooldown below. Both run in .github/workflows/pinact-verify.yml.
+version: 3
+
+# Cooldown policy: only adopt action releases at least 21 days old — matches the
+# github-actions Dependabot cooldown in .github/dependabot.yml.
+min_age:
+  value: 21
