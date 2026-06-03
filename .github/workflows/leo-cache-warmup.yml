@@ -1,0 +1,76 @@
+name: Leo CLI Cache Warmup
+
+on:
+  schedule:
+    # Run every Saturday at 11 PM UTC (before the work week)
+    - cron: "0 23 * * 6"
+  workflow_dispatch:
+    inputs:
+      force-rebuild:
+        description: "Force rebuild even if cache exists"
+        type: boolean
+        default: false
+
+# No default permissions - jobs must explicitly request what they need
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  warmup-cache:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # Required for cache operations
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # TEMPORARY pin to the PR #19 head (unreleased) — adds Leo 4.1.0 source-tag support
+      # (leo-lang-v4.1.0), which the v1.1.0 release cannot resolve. sealance-io is a
+      # first-party publisher, so this is exempt from the pinact/Dependabot cooldown (see
+      # .pinact.yaml ignore rule). Re-pin to the tagged release SHA (# vX.Y.Z) and drop the
+      # ignore rule once PR #19 ships: https://github.com/sealance-io/setup-leo-action/pull/19
+      - name: Setup Leo CLI (Cache Warmup)
+        id: setup-leo
+        uses: sealance-io/setup-leo-action@1a751b63289e0475d09058db0cbc18e88abc7048 # PR #19 head (unreleased)
+        with:
+          version: "4.1.0" # semver-only; matches core examples' leoVersion
+          rust-version: "1.96.0" # Leo v4.1.0 minimum toolchain
+          enable-cache: true
+          cache-save: always # Always save to ensure cache is refreshed
+          run-audit: true
+          audit-deny-warnings: false
+
+      - name: Report cache status
+        run: |
+          {
+            echo "## Leo CLI Cache Warmup Summary"
+            echo ""
+            echo "| Metric | Value |"
+            echo "|--------|-------|"
+            echo "| Leo Version | 4.1.0 |"
+            echo "| Rust Version | 1.96.0 |"
+            echo "| Cache Hit (Binary) | $CACHE_HIT_BINARY |"
+            echo "| Build Time | ${BUILD_TIME_SECONDS}s |"
+            echo ""
+            if [ "$CACHE_HIT_BINARY" = "true" ]; then
+              echo "Cache was already warm - refreshed for another 7 days"
+            else
+              echo "Cache miss - Leo was compiled from source and cached"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          CACHE_HIT_BINARY: ${{ steps.setup-leo.outputs.cache-hit-binary }}
+          BUILD_TIME_SECONDS: ${{ steps.setup-leo.outputs.build-time-seconds }}
+
+      - name: Verify Leo installation
+        run: leo --version

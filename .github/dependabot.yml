@@ -19,13 +19,17 @@ updates:
       timezone: "Etc/UTC"
     # Pin to exact resolved versions in the lockfile
     versioning-strategy: increase
-    # Cooldown: wait before adopting freshly published versions (supply-chain hygiene)
+    # Cooldown: wait before adopting freshly published versions (supply-chain hygiene).
+    # Owner-graded (see docs/ci-cd/REPOSITORY-SETUP.md): Provable/Aleo packages are
+    # near-first-party, so they are excluded from the cooldown (minimal wait, <=3 days).
     cooldown:
       default-days: 7
       semver-minor-days: 7
       semver-patch-days: 4
       include:
         - "*"
+      exclude:
+        - "@provablehq/*"
     groups:
       # Security fixes: one grouped PR, any bump level
       security-updates:
@@ -62,8 +66,12 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Etc/UTC"
+    # Owner-graded cooldown (see docs/ci-cd/REPOSITORY-SETUP.md): sealance-io actions are
+    # first-party, so they are excluded from the cooldown entirely (no wait).
     cooldown:
       default-days: 21
+      exclude:
+        - "sealance-io/*"
     groups:
       github-actions:
         patterns:
