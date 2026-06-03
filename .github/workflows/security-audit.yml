@@ -1,0 +1,150 @@
+name: Security Audit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly on Mondays at 00:00 UTC
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+# No default permissions — every job requests only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Skip the audit for PRs that don't touch workflow/security files. Job-level skipping
+  # (not a workflow-level `paths:` filter) keeps the required "Security Audit Status" check
+  # from hanging as "Pending".
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      workflows: ${{ steps.filter.outputs.workflows }}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check for workflow/security changes
+        id: filter
+        run: |
+          # Fail-safe: on any fetch/diff failure, default to auditing rather than silently
+          # treating it as "no changes".
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if ! CHANGED=$(git diff --name-only HEAD~1 HEAD); then
+              echo "::warning::Could not diff push range — auditing"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if ! git fetch origin "$BASE_REF" --depth=1; then
+              echo "::warning::Could not fetch base '$BASE_REF' — auditing"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if ! CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD"); then
+              echo "::warning::Could not diff against base '$BASE_REF' — auditing"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          else
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+            echo "Scheduled/manual run — always audit"
+            exit 0
+          fi
+
+          if echo "$CHANGED" | grep -qE '^\.github/(workflows/|actions/|zizmor\.yml|dependabot\.yml|dependency-review-config\.yml|actionlint\.yaml)|^\.pinact\.yaml$'; then
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+            echo "Workflow/security changes detected"
+          else
+            echo "workflows=false" >> "$GITHUB_OUTPUT"
+            echo "No workflow/security changes"
+          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+
+  zizmor-audit:
+    name: Workflow Security Audit
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # SARIF upload (only used when advanced-security is true)
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      # zizmor always runs and fails the job on findings (the rollup signal). SARIF upload
+      # to code scanning is gated on visibility — it needs GitHub Advanced Security on a
+      # private repo, so while internal we run zizmor for its exit code only.
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+        with:
+          persona: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'auditor' || 'pedantic' }}
+          min-severity: medium
+          # Upload SARIF only when allowed (public/GHAS) AND the token can write — i.e. not a
+          # fork PR (forked pull_request runs get a read-only GITHUB_TOKEN). zizmor still runs
+          # and fails the job on findings regardless, so the rollup signal is preserved.
+          advanced-security: ${{ (github.event.repository.visibility == 'public' || vars.SECURITY_CHECKS_ON_PRIVATE == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+      # Inline PR annotations (no SARIF upload — safe on private repos).
+      - name: Annotate PR
+        if: github.event_name == 'pull_request'
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+        with:
+          persona: pedantic
+          min-severity: medium
+          annotations: true
+          advanced-security: false
+
+  # Rollup sentinel: stable required check name for the branch ruleset.
+  security-status:
+    name: Security Audit Status
+    needs: [detect-changes, zizmor-audit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - name: Check results
+        run: |
+          echo "::group::Job results"
+          echo "detect-changes:   $DETECT_RESULT"
+          echo "workflow changes: $WORKFLOW_CHANGES"
+          echo "audit result:     $AUDIT_RESULT"
+          echo "::endgroup::"
+
+          # If change detection didn't succeed, its output is empty — fail closed rather than
+          # treating it as "no changes" and silently skipping the audit.
+          if [[ "$DETECT_RESULT" != "success" ]]; then
+            echo "::error::change detection did not succeed ($DETECT_RESULT)"
+            exit 1
+          fi
+          if [[ "$WORKFLOW_CHANGES" != "true" ]]; then
+            echo "::notice::No workflow/security changes — audit skipped"
+            exit 0
+          fi
+          if [[ "$AUDIT_RESULT" != "success" ]]; then
+            echo "::error::Security audit failed or was cancelled"
+            exit 1
+          fi
+          echo "::notice::Security audit passed"
+        env:
+          DETECT_RESULT: ${{ needs.detect-changes.result }}
+          WORKFLOW_CHANGES: ${{ needs.detect-changes.outputs.workflows }}
+          AUDIT_RESULT: ${{ needs.zizmor-audit.result }}

@@ -1,0 +1,14 @@
+# zizmor configuration
+# https://docs.zizmor.sh/configuration/
+#
+# All audits stay enabled. The only exception is a scoped, documented ignore below.
+rules:
+  # The release workflows intentionally retain a scoped GitHub App token on checkout:
+  # `changesets/action` pushes the version branch, and the publish job runs
+  # `git push --follow-tags`. Both jobs upload no artifacts, so the artipacked
+  # (credentials-leak-via-artifact) risk does not apply. Pinning and minimal per-job
+  # permissions are still enforced everywhere.
+  artipacked:
+    ignore:
+      - release-version.yml
+      - release-publish.yml

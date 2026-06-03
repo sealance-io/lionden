@@ -2,6 +2,11 @@
   "name": "@lionden/leo-compiler",
   "version": "0.1.0",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sealance-io/lionden.git",
+    "directory": "packages/leo-compiler"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,7 +18,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@lionden/config": "*",
-    "@lionden/core": "*"
+    "@lionden/config": "^0.1.0",
+    "@lionden/core": "^0.1.0"
   }
 }

@@ -1,0 +1,78 @@
+# Dependabot configuration
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Strategy (see docs/ci-cd/REPOSITORY-SETUP.md):
+# - npm: daily, grouped, cooldown to dodge compromised just-published versions, majors blocked.
+# - github-actions: weekly, grouped, longer cooldown. Actions are SHA-pinned (immutable); Dependabot
+#   bumps the SHA + version comment. pinact-verify.yml keeps the pins honest.
+version: 2
+
+updates:
+  # ----------------------------------------------------------------------------
+  # npm — single root lockfile covers all workspaces
+  # ----------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    # Pin to exact resolved versions in the lockfile
+    versioning-strategy: increase
+    # Cooldown: wait before adopting freshly published versions (supply-chain hygiene)
+    cooldown:
+      default-days: 7
+      semver-minor-days: 7
+      semver-patch-days: 4
+      include:
+        - "*"
+    groups:
+      # Security fixes: one grouped PR, any bump level
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      # Routine updates: one grouped PR, minor/patch only (majors are ignored below)
+      all-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Hold back all major bumps for manual, deliberate upgrades (incl. @provablehq/sdk).
+      # Minor/patch of @provablehq/sdk still flow through the grouped PR.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+    labels:
+      - "dependencies"
+
+  # ----------------------------------------------------------------------------
+  # GitHub Actions — SHA-pinned in workflows; Dependabot updates the pins
+  # ----------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Etc/UTC"
+    cooldown:
+      default-days: 21
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"

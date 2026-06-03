@@ -1,0 +1,132 @@
+name: Pinact Verify
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# No default permissions — every job requests only what it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Only verify pins when workflow/action/pinact files change. Job-level skipping keeps the
+  # required "pinact Status" check from hanging as "Pending" on unrelated PRs.
+  detect-changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      workflows: ${{ steps.filter.outputs.workflows }}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check for workflow/pinact changes
+        id: filter
+        run: |
+          # Fail-safe: on any fetch/diff failure, default to verifying rather than silently
+          # treating it as "no changes".
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if ! CHANGED=$(git diff --name-only HEAD~1 HEAD); then
+              echo "::warning::Could not diff push range — verifying"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            if ! git fetch origin "$BASE_REF" --depth=1; then
+              echo "::warning::Could not fetch base '$BASE_REF' — verifying"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if ! CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD"); then
+              echo "::warning::Could not diff against base '$BASE_REF' — verifying"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+          else
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+            echo "Scheduled/manual run — always verify"
+            exit 0
+          fi
+
+          if echo "$CHANGED" | grep -qE '^\.github/(workflows/|actions/)|^\.pinact\.yaml$'; then
+            echo "workflows=true" >> "$GITHUB_OUTPUT"
+            echo "Workflow/pinact changes detected"
+          else
+            echo "workflows=false" >> "$GITHUB_OUTPUT"
+            echo "No workflow/pinact changes"
+          fi
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+
+  # Assert every action is pinned to a SHA, its version comment matches, and the pinned
+  # release satisfies the cooldown (min_age: 21 in .pinact.yaml). --check = read-only.
+  pinact:
+    name: Verify SHA pinning + cooldown
+    needs: detect-changes
+    if: needs.detect-changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Install and run pinact
+        run: |
+          go install github.com/suzuki-shunsuke/pinact/v4/cmd/pinact@v4.0.0
+          "$(go env GOPATH)/bin/pinact" run --check --verify --verify-min-age
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # API calls (SHA + release-age lookups)
+
+  # Rollup sentinel: stable required check name for the branch ruleset.
+  pinact-status:
+    name: pinact Status
+    needs: [detect-changes, pinact]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    defaults:
+      run:
+        shell: bash -eo pipefail {0}
+    steps:
+      - name: Check results
+        run: |
+          echo "::group::Job results"
+          echo "detect-changes:   $DETECT_RESULT"
+          echo "workflow changes: $WORKFLOW_CHANGES"
+          echo "pinact result:    $PINACT_RESULT"
+          echo "::endgroup::"
+
+          # If change detection didn't succeed, its output is empty — fail closed rather than
+          # treating it as "no changes" and silently skipping pin verification.
+          if [[ "$DETECT_RESULT" != "success" ]]; then
+            echo "::error::change detection did not succeed ($DETECT_RESULT)"
+            exit 1
+          fi
+          if [[ "$WORKFLOW_CHANGES" != "true" ]]; then
+            echo "::notice::No workflow/pinact changes — verification skipped"
+            exit 0
+          fi
+          if [[ "$PINACT_RESULT" != "success" ]]; then
+            echo "::error::Action pins or cooldown verification failed"
+            exit 1
+          fi
+          echo "::notice::All actions are pinned and within cooldown policy"
+        env:
+          DETECT_RESULT: ${{ needs.detect-changes.result }}
+          WORKFLOW_CHANGES: ${{ needs.detect-changes.outputs.workflows }}
+          PINACT_RESULT: ${{ needs.pinact.result }}

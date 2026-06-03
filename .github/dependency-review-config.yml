@@ -1,0 +1,24 @@
+# Dependency Review Action configuration
+# https://github.com/actions/dependency-review-action
+#
+# Consumed by the `dependency-review` job in ci.yml.
+# NOTE: dependency-review only runs on public repos (or private repos with GitHub
+# Advanced Security). While this repo is internal the job is visibility-gated and skips.
+
+# Fail the PR on high/critical vulnerabilities in changed dependencies.
+fail-on-severity: high
+
+# Scan runtime, dev, and unscoped dependency changes.
+fail-on-scopes:
+  - runtime
+  - development
+  - unknown
+
+# License policy is not enforced yet (repo is pre-OSS). Revisit when going public.
+license-check: false
+
+# Post a summary comment on the PR (requires pull-requests: write on the job).
+comment-summary-in-pr: always
+
+# OpenSSF Scorecard surfacing is off for now to keep PR noise down.
+show-openssf-scorecard: false

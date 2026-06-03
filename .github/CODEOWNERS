@@ -1,0 +1,8 @@
+# Code owners — required reviewers via branch ruleset.
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @sealance-io/sealance-engineers
+
+# CI/CD and release machinery — guard changes to workflows and security configs.
+/.github/** @sealance-io/sealance-engineers
+/.changeset/** @sealance-io/sealance-engineers
