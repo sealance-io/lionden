@@ -42,7 +42,7 @@ function findConfigFile(startDir: string): string | null {
  */
 export async function createTestLre(): Promise<LionDenRuntimeEnvironment> {
   if (cachedLre) return cachedLre;
-  if (cachedPromise) return cachedPromise;
+  if (cachedPromise !== null) return cachedPromise;
 
   cachedPromise = buildLre();
   try {

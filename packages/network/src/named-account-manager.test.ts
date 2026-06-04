@@ -223,9 +223,13 @@ describe("NamedAccountManager", () => {
     };
     const manager = new NamedAccountManager(config);
     const result = (await manager.resolveForNetwork(makeOpts())) as Record<string, unknown>;
-    // The result from resolveForNetwork is frozen — writes are silently ignored in strict mode
-    // or throw in non-strict. Either way, the internal cache is unaffected.
-    // Just verify the second call still returns the original value.
+    // resolveForNetwork returns a frozen defensive copy, so callers cannot reach the cache.
+    expect(Object.isFrozen(result)).toBe(true);
+    // In ESM strict mode, writing to a frozen object throws — the mutation never lands.
+    expect(() => {
+      result["treasury"] = { address: "aleo1tampered" };
+    }).toThrow();
+    // The cache is unaffected: the next call still returns the original value.
     const cached = await manager.resolveForNetwork(makeOpts());
     expect(cached["treasury"]!.address).toBe(TREASURY_ADDR);
   });

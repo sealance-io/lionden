@@ -234,12 +234,10 @@ export async function upgradeAction(
     // Use UpgradeCompatibilityError when the only failures are ABI violations
     const onlyAbiErrors = preflightResult.errors.every((e) => e.code === "ABI_INCOMPATIBLE");
     if (onlyAbiErrors) {
-      const violations: AbiViolation[] = preflightResult.errors.flatMap((e) => {
-        // Re-run compat to extract typed violations for UpgradeCompatibilityError
-        const compat = checkAbiCompatibility(oldAbi, newAbi);
-        return [...compat.violations];
-      });
-      throw new UpgradeCompatibilityError(programId, violations);
+      // All ABI failures stem from the same comparison; compute the typed violations
+      // once rather than re-running (and duplicating) the check per preflight error.
+      const compat = checkAbiCompatibility(oldAbi, newAbi);
+      throw new UpgradeCompatibilityError(programId, [...compat.violations]);
     }
     throw new DeployError(`Upgrade pre-flight failed:\n${errorMessages}`);
   }

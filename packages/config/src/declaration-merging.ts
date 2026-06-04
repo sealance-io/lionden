@@ -17,8 +17,12 @@
  * ```
  */
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type LionDenUserConfigExtensions = {};
+// Declared as interfaces (not type aliases) so plugins can merge fields into them
+// via `declare module "@lionden/config"`. Interface declaration merging does not
+// work on type aliases. These are wired into LionDenUserConfig / LionDenResolvedConfig
+// in types.ts, so augmented fields surface on the resolved config types.
+// biome-ignore lint/suspicious/noEmptyInterface: augmentation target — must stay an interface (a type alias cannot be module-augmented) and starts empty
+export interface LionDenUserConfigExtensions {}
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type LionDenResolvedConfigExtensions = {};
+// biome-ignore lint/suspicious/noEmptyInterface: augmentation target — must stay an interface (a type alias cannot be module-augmented) and starts empty
+export interface LionDenResolvedConfigExtensions {}

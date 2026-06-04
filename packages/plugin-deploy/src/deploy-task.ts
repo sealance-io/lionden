@@ -94,7 +94,6 @@ export async function deployAction(
   };
 
   const config = lre.config;
-  const artifactsDir = config.paths.artifacts;
   const programsDir = config.paths.programs;
   const manager = lre.deployments as DeploymentManager | null;
 
