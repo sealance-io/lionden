@@ -4,9 +4,13 @@
  * Tests the test task registration, config validation, and arg flow.
  * Mocks vitest/node to capture the config that runTests passes to startVitest.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createMockConfig } from "@lionden/test-internals";
-import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
+
+import {
+  type ContractLreResult,
+  createContractLre,
+  createMockConfig,
+} from "@lionden/test-internals";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import pluginTest from "./index.js";
 
 // Mock vitest/node so we don't start real vitest
@@ -16,10 +20,7 @@ vi.mock("vitest/node", () => ({
     state: {
       getFiles: () => [
         {
-          tasks: [
-            { result: { state: "pass" } },
-            { result: { state: "pass" } },
-          ],
+          tasks: [{ result: { state: "pass" } }, { result: { state: "pass" } }],
         },
       ],
     },

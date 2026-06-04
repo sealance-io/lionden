@@ -1,15 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
-import { resolveConfig, ConfigResolutionError } from "./config-resolution.js";
 import type { LionDenUserConfig } from "@lionden/config";
 import { configVariable } from "@lionden/config";
+import { describe, expect, it, vi } from "vitest";
+import { ConfigResolutionError, resolveConfig } from "./config-resolution.js";
 import type { LionDenPlugin } from "./types.js";
 
 /** Helper to unwrap the resolved config from the result tuple */
-async function resolve(
-  config: LionDenUserConfig,
-  plugins: readonly LionDenPlugin[],
-  root: string,
-) {
+async function resolve(config: LionDenUserConfig, plugins: readonly LionDenPlugin[], root: string) {
   const result = await resolveConfig(config, plugins, root);
   return result.resolved;
 }
@@ -88,9 +84,7 @@ describe("resolveConfig", () => {
         local: { type: "devnet" },
       },
     } as unknown as LionDenUserConfig;
-    await expect(resolve(config, [], projectRoot)).rejects.toThrow(
-      /Unknown network type "devnet"/,
-    );
+    await expect(resolve(config, [], projectRoot)).rejects.toThrow(/Unknown network type "devnet"/);
   });
 
   it("respects user-specified paths", async () => {
@@ -119,11 +113,7 @@ describe("resolveConfig", () => {
   });
 
   it("allows opting out of filesystem SDK key caching", async () => {
-    const resolved = await resolve(
-      { sdk: { keyCache: { storage: "memory" } } },
-      [],
-      projectRoot,
-    );
+    const resolved = await resolve({ sdk: { keyCache: { storage: "memory" } } }, [], projectRoot);
 
     expect(resolved.sdk.keyCache).toEqual({ storage: "memory" });
     expect(resolved.sdk.logLevel).toBe("warn");
@@ -140,9 +130,9 @@ describe("resolveConfig", () => {
   });
 
   it("rejects unsupported SDK log levels", async () => {
-    await expect(
-      resolve({ sdk: { logLevel: "trace" as any } }, [], projectRoot),
-    ).rejects.toThrow(/sdk\.logLevel/);
+    await expect(resolve({ sdk: { logLevel: "trace" as any } }, [], projectRoot)).rejects.toThrow(
+      /sdk\.logLevel/,
+    );
   });
 
   it("does not retain the default filesystem path when a plugin resolves memory SDK key caching", async () => {
@@ -202,16 +192,14 @@ describe("resolveConfig", () => {
       id: "validator-plugin",
       hookHandlers: {
         config: {
-          validateUserConfig: () => [
-            { path: "leoVersion", message: "unsupported version" },
-          ],
+          validateUserConfig: () => [{ path: "leoVersion", message: "unsupported version" }],
         },
       },
     };
 
-    await expect(
-      resolveConfig({ leoVersion: "3.0.0" }, [plugin], projectRoot),
-    ).rejects.toThrow(ConfigResolutionError);
+    await expect(resolveConfig({ leoVersion: "3.0.0" }, [plugin], projectRoot)).rejects.toThrow(
+      ConfigResolutionError,
+    );
   });
 
   it("runs validateResolvedConfig hooks and throws on errors", async () => {
@@ -229,9 +217,7 @@ describe("resolveConfig", () => {
       },
     };
 
-    await expect(
-      resolveConfig({}, [plugin], projectRoot),
-    ).rejects.toThrow("devnode not allowed");
+    await expect(resolveConfig({}, [plugin], projectRoot)).rejects.toThrow("devnode not allowed");
   });
 
   it("runs extendUserConfig hooks to transform config to the 4.0 compatibility line", async () => {
@@ -355,15 +341,11 @@ describe("resolveConfig", () => {
       networks: {
         local: {
           type: "devnode",
-          accounts: [
-            { privateKey: configVariable("NONEXISTENT_VAR_FOR_TEST") },
-          ],
+          accounts: [{ privateKey: configVariable("NONEXISTENT_VAR_FOR_TEST") }],
         },
       },
     };
-    await expect(resolve(config, [], projectRoot)).rejects.toThrow(
-      "NONEXISTENT_VAR_FOR_TEST",
-    );
+    await expect(resolve(config, [], projectRoot)).rejects.toThrow("NONEXISTENT_VAR_FOR_TEST");
   });
 
   it("defaults leoBinary to 'leo'", async () => {
@@ -530,11 +512,7 @@ describe("resolveNamedAccountsConfig", () => {
   });
 
   it("resolves a numeric index to { type: 'index' }", async () => {
-    const resolved = await resolve(
-      { namedAccounts: { deployer: { default: 0 } } },
-      [],
-      root,
-    );
+    const resolved = await resolve({ namedAccounts: { deployer: { default: 0 } } }, [], root);
     expect(resolved.namedAccounts["deployer"]).toEqual({
       networks: {},
       default: { type: "index", index: 0 },
@@ -543,11 +521,7 @@ describe("resolveNamedAccountsConfig", () => {
 
   it("resolves a valid aleo1 address to { type: 'address' }", async () => {
     const addr = "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
-    const resolved = await resolve(
-      { namedAccounts: { treasury: { default: addr } } },
-      [],
-      root,
-    );
+    const resolved = await resolve({ namedAccounts: { treasury: { default: addr } } }, [], root);
     expect(resolved.namedAccounts["treasury"]).toEqual({
       networks: {},
       default: { type: "address", address: addr },
@@ -556,11 +530,7 @@ describe("resolveNamedAccountsConfig", () => {
 
   it("resolves an APrivateKey1 string to { type: 'privateKey' }", async () => {
     const key = "APrivateKey1zkpFakeKey123456789";
-    const resolved = await resolve(
-      { namedAccounts: { deployer: { default: key } } },
-      [],
-      root,
-    );
+    const resolved = await resolve({ namedAccounts: { deployer: { default: key } } }, [], root);
     expect(resolved.namedAccounts["deployer"]).toEqual({
       networks: {},
       default: { type: "privateKey", privateKey: key },
@@ -711,11 +681,7 @@ describe("execution.imports", () => {
 
   it("rejects entries that are neither program-id nor path-shaped", async () => {
     await expect(
-      resolve(
-        { execution: { imports: { "governance.aleo": ["foo.bar"] } } },
-        [],
-        projectRoot,
-      ),
+      resolve({ execution: { imports: { "governance.aleo": ["foo.bar"] } } }, [], projectRoot),
     ).rejects.toThrow(/is neither a Leo program id/);
   });
 

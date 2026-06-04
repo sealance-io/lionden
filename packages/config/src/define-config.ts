@@ -18,18 +18,12 @@ import type { LionDenUserConfig } from "./types.js";
  * });
  * ```
  */
-export function defineConfig(
-  config: LionDenUserConfig,
-): LionDenUserConfig;
+export function defineConfig(config: LionDenUserConfig): LionDenUserConfig;
 export function defineConfig(
   factory: () => LionDenUserConfig | Promise<LionDenUserConfig>,
 ): () => LionDenUserConfig | Promise<LionDenUserConfig>;
 export function defineConfig(
-  configOrFactory:
-    | LionDenUserConfig
-    | (() => LionDenUserConfig | Promise<LionDenUserConfig>),
-):
-  | LionDenUserConfig
-  | (() => LionDenUserConfig | Promise<LionDenUserConfig>) {
+  configOrFactory: LionDenUserConfig | (() => LionDenUserConfig | Promise<LionDenUserConfig>),
+): LionDenUserConfig | (() => LionDenUserConfig | Promise<LionDenUserConfig>) {
   return configOrFactory;
 }

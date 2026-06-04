@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
 
 // ---------------------------------------------------------------------------
 // TempProject result
@@ -69,11 +69,7 @@ export class TempProjectBuilder {
    * Add a Leo program with cross-program imports and optional constructor annotation.
    * Generates a standard `main.leo` with import lines, annotation, and a stub transition.
    */
-  addProgramWithImports(
-    name: string,
-    imports: string[],
-    annotation?: string,
-  ): this {
+  addProgramWithImports(name: string, imports: string[], annotation?: string): this {
     this.programs.push({ name, imports, annotation });
     return this;
   }
@@ -118,14 +114,10 @@ export class TempProjectBuilder {
  * Generate a minimal Leo program source from a ProgramEntry.
  */
 function generateProgramSource(prog: ProgramEntry): string {
-  const importLines = (prog.imports ?? [])
-    .map((imp) => `import ${imp};`)
-    .join("\n");
+  const importLines = (prog.imports ?? []).map((imp) => `import ${imp};`).join("\n");
 
   const constructorBlock =
-    prog.annotation !== undefined
-      ? prog.annotation
-      : "@noupgrade\n    constructor() {}";
+    prog.annotation !== undefined ? prog.annotation : "@noupgrade\n    constructor() {}";
 
   const prefix = importLines ? `${importLines}\n` : "";
 

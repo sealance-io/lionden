@@ -1,21 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {
-  KEY_ARTIFACTS_FORMAT,
   fingerprintBytes,
+  KEY_ARTIFACTS_FORMAT,
   sha256Json,
   sha256Text,
   writeKeyArtifactsMetadata,
 } from "@lionden/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildRuntimeKeyIdentity,
   findCachedExecutionKeys,
+  type ProgramExecutionArtifacts,
   resolveProgramExecutionArtifacts,
   transitionHasRecordInput,
   writeCachedExecutionKeys,
-  type ProgramExecutionArtifacts,
 } from "./execution-key-cache.js";
 
 let tmpDir: string;
@@ -127,17 +127,19 @@ describe("execution key cache", () => {
         programId: "hello.aleo",
         sourceHash: sha256Text(source),
         importsHash: sha256Json({ imports: [] }),
-        functions: [{
-          transition: "main",
-          prover: {
-            path: "main.prover",
-            fingerprint: fingerprintBytes(new Uint8Array([7])),
+        functions: [
+          {
+            transition: "main",
+            prover: {
+              path: "main.prover",
+              fingerprint: fingerprintBytes(new Uint8Array([7])),
+            },
+            verifier: {
+              path: "main.verifier",
+              fingerprint: fingerprintBytes(new Uint8Array([8])),
+            },
           },
-          verifier: {
-            path: "main.verifier",
-            fingerprint: fingerprintBytes(new Uint8Array([8])),
-          },
-        }],
+        ],
       },
     };
     writeKeyArtifactsMetadata(
@@ -146,7 +148,11 @@ describe("execution key cache", () => {
     );
     writeCachedExecutionKeys(
       {
-        identity: { ...identity, sourceHash: artifacts.sourceHash, importsHash: artifacts.importsHash },
+        identity: {
+          ...identity,
+          sourceHash: artifacts.sourceHash,
+          importsHash: artifacts.importsHash,
+        },
         provingKeyBytes: new Uint8Array([1]),
         verifyingKeyBytes: new Uint8Array([2]),
       },
@@ -155,7 +161,11 @@ describe("execution key cache", () => {
 
     const hit = findCachedExecutionKeys({
       cachePath,
-      identity: { ...identity, sourceHash: artifacts.sourceHash, importsHash: artifacts.importsHash },
+      identity: {
+        ...identity,
+        sourceHash: artifacts.sourceHash,
+        importsHash: artifacts.importsHash,
+      },
       artifacts,
     });
     expect(hit?.source).toBe("sidecar");
@@ -193,12 +203,14 @@ describe("execution key cache", () => {
       "bar.aleo": barSource,
       "foo.aleo": fooSource,
     });
-    expect(artifacts.importsHash).toBe(sha256Json({
-      imports: [
-        { programId: "bar.aleo", sourceHash: sha256Text(barSource) },
-        { programId: "foo.aleo", sourceHash: sha256Text(fooSource) },
-      ],
-    }));
+    expect(artifacts.importsHash).toBe(
+      sha256Json({
+        imports: [
+          { programId: "bar.aleo", sourceHash: sha256Text(barSource) },
+          { programId: "foo.aleo", sourceHash: sha256Text(fooSource) },
+        ],
+      }),
+    );
   });
 });
 
@@ -214,7 +226,10 @@ describe("transitionHasRecordInput", () => {
 
   function artifactsWithAbi(abi: unknown | undefined): ProgramExecutionArtifacts {
     if (abi !== undefined) {
-      fs.writeFileSync(path.join(dir, "abi.json"), typeof abi === "string" ? abi : JSON.stringify(abi));
+      fs.writeFileSync(
+        path.join(dir, "abi.json"),
+        typeof abi === "string" ? abi : JSON.stringify(abi),
+      );
     }
     return {
       source: "program p.aleo;",
@@ -226,7 +241,14 @@ describe("transitionHasRecordInput", () => {
   }
 
   it("returns true for a local/external record input", () => {
-    const abi = { functions: [{ name: "spend", inputs: [{ name: "r", ty: { Record: { path: ["Token"], program: "tok.aleo" } } }] }] };
+    const abi = {
+      functions: [
+        {
+          name: "spend",
+          inputs: [{ name: "r", ty: { Record: { path: ["Token"], program: "tok.aleo" } } }],
+        },
+      ],
+    };
     expect(transitionHasRecordInput(artifactsWithAbi(abi), "spend")).toBe(true);
   });
 
@@ -236,12 +258,24 @@ describe("transitionHasRecordInput", () => {
   });
 
   it("returns false when all inputs are plaintext", () => {
-    const abi = { functions: [{ name: "main", inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } }] }] };
+    const abi = {
+      functions: [
+        {
+          name: "main",
+          inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } }],
+        },
+      ],
+    };
     expect(transitionHasRecordInput(artifactsWithAbi(abi), "main")).toBe(false);
   });
 
   it("returns false for a transition with no inputs", () => {
-    expect(transitionHasRecordInput(artifactsWithAbi({ functions: [{ name: "noop", inputs: [] }] }), "noop")).toBe(false);
+    expect(
+      transitionHasRecordInput(
+        artifactsWithAbi({ functions: [{ name: "noop", inputs: [] }] }),
+        "noop",
+      ),
+    ).toBe(false);
   });
 
   it("returns false when an input is a Future (record-free)", () => {
@@ -264,10 +298,7 @@ describe("transitionHasRecordInput", () => {
       functions: [
         {
           name: "main",
-          inputs: [
-            { name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } },
-            { name: "y" },
-          ],
+          inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } }, { name: "y" }],
         },
       ],
     };

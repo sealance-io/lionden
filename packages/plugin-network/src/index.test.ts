@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
-import pluginNetwork from "./index.js";
-import { createLre } from "@lionden/core";
 import type { ConfigValidationError } from "@lionden/core";
-import { createMockConfig } from "@lionden/test-internals";
+import { createLre } from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
+import { createMockConfig } from "@lionden/test-internals";
+import { describe, expect, it } from "vitest";
+import pluginNetwork from "./index.js";
 
 const mockConfig = createMockConfig();
 
@@ -74,8 +74,7 @@ describe("plugin-network", () => {
     const runTask = pluginNetwork.tasks?.find((t) => t.id === "run");
     expect(runTask).toBeDefined();
 
-    const positionalNames =
-      runTask!.positionalArguments?.map((p) => p.name) ?? [];
+    const positionalNames = runTask!.positionalArguments?.map((p) => p.name) ?? [];
     expect(positionalNames).toContain("script");
 
     const optionNames = runTask!.options?.map((o) => o.name) ?? [];
@@ -160,12 +159,16 @@ describe("extendLre lifecycle", () => {
 
     const plugin1 = {
       id: "first",
-      extendLre: () => { order.push("first"); },
+      extendLre: () => {
+        order.push("first");
+      },
     };
 
     const plugin2 = {
       id: "second",
-      extendLre: () => { order.push("second"); },
+      extendLre: () => {
+        order.push("second");
+      },
     };
 
     createLre({

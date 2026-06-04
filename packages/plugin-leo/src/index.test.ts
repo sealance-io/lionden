@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
-import pluginLeo from "./index.js";
-import { createLre, type ConfigHookHandlers } from "@lionden/core";
+import * as path from "node:path";
+import { type ConfigHookHandlers, createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
+import { describe, expect, it } from "vitest";
+import pluginLeo from "./index.js";
 
 describe("plugin-leo", () => {
   it("has correct plugin id and name", () => {
@@ -56,15 +56,7 @@ describe("config validation hooks", () => {
   ) => { path: string; message: string }[];
 
   it("accepts supported Leo patch lines", () => {
-    for (const leoVersion of [
-      "4.1.0",
-      "4.1.1",
-      "4.0.0",
-      "4.0.1",
-      "4.0.2",
-      "3.5.0",
-      "3.5.1",
-    ]) {
+    for (const leoVersion of ["4.1.0", "4.1.1", "4.0.0", "4.0.1", "4.0.2", "3.5.0", "3.5.1"]) {
       expect(validateUser({ leoVersion })).toHaveLength(0);
     }
   });
@@ -100,14 +92,7 @@ describe("config validation hooks", () => {
   });
 
   it("still rejects non-stable versions when skipLeoVersionCheck is true", () => {
-    const rejected = [
-      "^5.0.0",
-      " 5.0.0",
-      "5.0.0 ",
-      "5.0.0-rc1",
-      "5.0.0+build",
-      "bad",
-    ];
+    const rejected = ["^5.0.0", " 5.0.0", "5.0.0 ", "5.0.0-rc1", "5.0.0+build", "bad"];
 
     for (const leoVersion of rejected) {
       const errors = validateUser({ leoVersion, skipLeoVersionCheck: true });
@@ -127,10 +112,7 @@ describe("config validation hooks", () => {
       leoVersion: "5.0.0",
       skipLeoVersionCheck: "yes",
     });
-    expect(errors.map((e) => e.path)).toEqual([
-      "skipLeoVersionCheck",
-      "leoVersion",
-    ]);
+    expect(errors.map((e) => e.path)).toEqual(["skipLeoVersionCheck", "leoVersion"]);
   });
 
   it("accepts config with no leoVersion (defaults handled elsewhere)", () => {
@@ -234,7 +216,9 @@ describe("dynamicRecords config validation", () => {
         },
       },
     });
-    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.sourceRecord")).toBe(true);
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.sourceRecord")).toBe(
+      true,
+    );
   });
 
   it("rejects sourceProgram not ending in .aleo", () => {
@@ -249,7 +233,9 @@ describe("dynamicRecords config validation", () => {
         },
       },
     });
-    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.sourceProgram")).toBe(true);
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.sourceProgram")).toBe(
+      true,
+    );
   });
 
   it("rejects empty schema", () => {
@@ -278,7 +264,11 @@ describe("dynamicRecords config validation", () => {
         },
       },
     });
-    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.bad")).toBe(true);
-    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.wrongVisibility")).toBe(true);
+    expect(errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.bad")).toBe(
+      true,
+    );
+    expect(
+      errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.wrongVisibility"),
+    ).toBe(true);
   });
 });

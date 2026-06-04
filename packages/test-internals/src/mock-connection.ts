@@ -1,5 +1,5 @@
-import { vi } from "vitest";
 import type { NetworkConnection } from "@lionden/network";
+import { vi } from "vitest";
 import { TEST_DEVNODE_EGRESS_POLICY } from "./test-egress-policy.js";
 
 /**

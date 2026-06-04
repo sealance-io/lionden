@@ -51,8 +51,9 @@ export type NamedAccountRole = "signer" | "address";
 /** Reusable named account contract for recipes and tests. */
 export type NamedAccountSpec = Record<string, NamedAccountRole>;
 
-type ResolveNamedAccountRole<R extends NamedAccountRole> =
-  R extends "signer" ? SignableNamedAccount : NamedAccount;
+type ResolveNamedAccountRole<R extends NamedAccountRole> = R extends "signer"
+  ? SignableNamedAccount
+  : NamedAccount;
 
 export interface NamedAccountAccessor {
   /**
@@ -184,10 +185,7 @@ export function createNamedAccountAccessor(
  * @deprecated Prefer `ctx.named.address(...)` or `ctx.named.require(...)`
  * when working from a DeploymentContext or TestContext.
  */
-export function requireNamedAccount(
-  accounts: NamedAccounts,
-  name: string,
-): NamedAccount {
+export function requireNamedAccount(accounts: NamedAccounts, name: string): NamedAccount {
   const account = accounts[name];
   if (!account) {
     throw new Error(
@@ -242,7 +240,10 @@ export function requireSignableNamedAccount(
  * @deprecated Prefer passing values from `ctx.named.signer(...)` or
  * signer roles returned by `ctx.named.require(...)` directly.
  */
-export function asSigner(account: NamedAccount): { readonly privateKey: string; readonly address: string } {
+export function asSigner(account: NamedAccount): {
+  readonly privateKey: string;
+  readonly address: string;
+} {
   if (account.type !== "signable") {
     throw new Error(
       `Named account "${account.name}" is address-only and cannot be used as a signer. ` +
@@ -267,10 +268,7 @@ function getRoleFailure(
   return undefined;
 }
 
-function formatNamedAccountContractError(
-  networkName: string,
-  failures: readonly string[],
-): string {
+function formatNamedAccountContractError(networkName: string, failures: readonly string[]): string {
   return [
     `Named accounts contract failed for network "${networkName}":`,
     ...failures.map((failure) => `  - ${failure}`),

@@ -1,14 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
 import { createMockConnection } from "@lionden/test-internals";
+import { describe, expect, it, vi } from "vitest";
 import {
-  assertMappingValue,
+  AssertionError,
+  assertBalance,
+  assertBalanceAtLeast,
+  assertBlockHeightAtLeast,
   assertMappingEmpty,
+  assertMappingValue,
   assertTransactionConfirmed,
   assertTransactionRejected,
-  assertBalanceAtLeast,
-  assertBalance,
-  assertBlockHeightAtLeast,
-  AssertionError,
 } from "./assertions.js";
 
 const mockConnection = createMockConnection;
@@ -72,9 +72,9 @@ describe("assertions", () => {
         getMappingValue: vi.fn().mockResolvedValue("100u64"),
       });
 
-      await expect(
-        assertMappingEmpty(conn, "token.aleo", "balances", "aleo1abc"),
-      ).rejects.toThrow(AssertionError);
+      await expect(assertMappingEmpty(conn, "token.aleo", "balances", "aleo1abc")).rejects.toThrow(
+        AssertionError,
+      );
     });
   });
 
@@ -82,25 +82,27 @@ describe("assertions", () => {
     it("passes when transaction is accepted", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "accepted", transitions: [],
+          txId: "at1test",
+          blockHeight: 10,
+          status: "accepted",
+          transitions: [],
         }),
       });
 
-      await expect(
-        assertTransactionConfirmed(conn, "at1test"),
-      ).resolves.toBeUndefined();
+      await expect(assertTransactionConfirmed(conn, "at1test")).resolves.toBeUndefined();
     });
 
     it("throws when transaction is rejected", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "rejected", transitions: [],
+          txId: "at1test",
+          blockHeight: 10,
+          status: "rejected",
+          transitions: [],
         }),
       });
 
-      await expect(
-        assertTransactionConfirmed(conn, "at1test"),
-      ).rejects.toThrow("rejected");
+      await expect(assertTransactionConfirmed(conn, "at1test")).rejects.toThrow("rejected");
     });
   });
 
@@ -108,25 +110,27 @@ describe("assertions", () => {
     it("passes when transaction is rejected", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "rejected", transitions: [],
+          txId: "at1test",
+          blockHeight: 10,
+          status: "rejected",
+          transitions: [],
         }),
       });
 
-      await expect(
-        assertTransactionRejected(conn, "at1test"),
-      ).resolves.toBeUndefined();
+      await expect(assertTransactionRejected(conn, "at1test")).resolves.toBeUndefined();
     });
 
     it("throws when transaction is accepted", async () => {
       const conn = mockConnection({
         waitForConfirmation: vi.fn().mockResolvedValue({
-          txId: "at1test", blockHeight: 10, status: "accepted", transitions: [],
+          txId: "at1test",
+          blockHeight: 10,
+          status: "accepted",
+          transitions: [],
         }),
       });
 
-      await expect(
-        assertTransactionRejected(conn, "at1test"),
-      ).rejects.toThrow("accepted");
+      await expect(assertTransactionRejected(conn, "at1test")).rejects.toThrow("accepted");
     });
   });
 
@@ -136,9 +140,7 @@ describe("assertions", () => {
         getBalance: vi.fn().mockResolvedValue(1000n),
       });
 
-      await expect(
-        assertBalanceAtLeast(conn, "aleo1abc", 500n),
-      ).resolves.toBeUndefined();
+      await expect(assertBalanceAtLeast(conn, "aleo1abc", 500n)).resolves.toBeUndefined();
     });
 
     it("passes when balance equals minimum", async () => {
@@ -146,9 +148,7 @@ describe("assertions", () => {
         getBalance: vi.fn().mockResolvedValue(1000n),
       });
 
-      await expect(
-        assertBalanceAtLeast(conn, "aleo1abc", 1000n),
-      ).resolves.toBeUndefined();
+      await expect(assertBalanceAtLeast(conn, "aleo1abc", 1000n)).resolves.toBeUndefined();
     });
 
     it("throws when balance is below minimum", async () => {
@@ -156,9 +156,7 @@ describe("assertions", () => {
         getBalance: vi.fn().mockResolvedValue(100n),
       });
 
-      await expect(
-        assertBalanceAtLeast(conn, "aleo1abc", 500n),
-      ).rejects.toThrow(AssertionError);
+      await expect(assertBalanceAtLeast(conn, "aleo1abc", 500n)).rejects.toThrow(AssertionError);
     });
   });
 
@@ -168,9 +166,7 @@ describe("assertions", () => {
         getBalance: vi.fn().mockResolvedValue(1000n),
       });
 
-      await expect(
-        assertBalance(conn, "aleo1abc", 1000n),
-      ).resolves.toBeUndefined();
+      await expect(assertBalance(conn, "aleo1abc", 1000n)).resolves.toBeUndefined();
     });
 
     it("throws when balance does not match", async () => {
@@ -178,9 +174,7 @@ describe("assertions", () => {
         getBalance: vi.fn().mockResolvedValue(999n),
       });
 
-      await expect(
-        assertBalance(conn, "aleo1abc", 1000n),
-      ).rejects.toThrow(AssertionError);
+      await expect(assertBalance(conn, "aleo1abc", 1000n)).rejects.toThrow(AssertionError);
     });
   });
 
@@ -190,9 +184,7 @@ describe("assertions", () => {
         getBlockHeight: vi.fn().mockResolvedValue(100),
       });
 
-      await expect(
-        assertBlockHeightAtLeast(conn, 50),
-      ).resolves.toBeUndefined();
+      await expect(assertBlockHeightAtLeast(conn, 50)).resolves.toBeUndefined();
     });
 
     it("throws when height is below minimum", async () => {
@@ -200,9 +192,7 @@ describe("assertions", () => {
         getBlockHeight: vi.fn().mockResolvedValue(10),
       });
 
-      await expect(
-        assertBlockHeightAtLeast(conn, 50),
-      ).rejects.toThrow(AssertionError);
+      await expect(assertBlockHeightAtLeast(conn, 50)).rejects.toThrow(AssertionError);
     });
   });
 });

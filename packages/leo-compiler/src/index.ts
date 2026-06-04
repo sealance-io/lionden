@@ -1,85 +1,77 @@
 // Types
-export type {
-  DiscoveredUnit,
-  DiscoveredProgram,
-  DiscoveredLibrary,
-  CompilationResult,
-  ProgramCompilationResult,
-  LibraryCompilationResult,
-  CompileOptions,
-  CompilationUnitResult,
-} from "./types.js";
 
-export { unitId } from "./types.js";
+export { canonicalizeAbiForHash, computeAbiHash } from "./abi-hash.js";
+// ABI parser
+export { AbiParseError, parseAbi } from "./abi-parser.js";
 
 // ABI types
 export type {
-  ProgramABI,
-  TransitionABI,
-  ViewABI,
-  StructABI,
-  StructFieldABI,
-  RecordABI,
-  RecordFieldABI,
-  MappingABI,
-  StorageVariableABI,
-  StorageType,
-  AleoType,
-  PlaintextType,
-  PrimitiveType,
-  StructRef,
-  RecordRef,
-  Mode,
   AbiInput,
+  AbiJsonValue,
   AbiOutput,
+  AleoType,
   ConstParameterABI,
   InterfaceRefABI,
-  AbiJsonValue,
+  MappingABI,
+  Mode,
+  PlaintextType,
+  PrimitiveType,
+  ProgramABI,
+  RecordABI,
+  RecordFieldABI,
+  RecordRef,
+  StorageType,
+  StorageVariableABI,
+  StructABI,
+  StructFieldABI,
+  StructRef,
+  TransitionABI,
+  ViewABI,
 } from "./abi-types.js";
-
-// Source discovery
-export { discoverUnits, extractProgramId } from "./source-discovery.js";
-
-// Import parser
-export { parseImports } from "./import-parser.js";
-
-// Dependency resolver
-export {
-  resolveDependencies,
-  CircularDependencyError,
-  type DependencyGraph,
-} from "./dependency-resolver.js";
-
-// Package materializer
-export {
-  materializePackage,
-  linkLocalDependency,
-  linkNetworkDependency,
-  getCachedNetworkDep,
-} from "./package-materializer.js";
-
-// ABI parser
-export { parseAbi, AbiParseError } from "./abi-parser.js";
-export { computeAbiHash, canonicalizeAbiForHash } from "./abi-hash.js";
-
 // Cache
 export { computeUnitHash, isCached, writeCache } from "./cache.js";
-
-// Compiler pipeline
-export {
-  compilePipeline,
-  CompilationError,
-  defaultFetchNetworkDep,
-  type CompilePipelineResult,
-  type FetchNetworkDep,
-} from "./compiler.js";
-
+export { CodegenError } from "./codegen/codegen-error.js";
+export { aleoTypeToTs, pathToTsName, plaintextToTs, primitiveToTs } from "./codegen/type-mapper.js";
 // Codegen
 export {
-  generateBindings,
-  generateBaseContract,
-  resolveContractClassName,
   type GenerateBindingsOptions,
+  generateBaseContract,
+  generateBindings,
+  resolveContractClassName,
 } from "./codegen/typescript-generator.js";
-export { primitiveToTs, plaintextToTs, aleoTypeToTs, pathToTsName } from "./codegen/type-mapper.js";
-export { CodegenError } from "./codegen/codegen-error.js";
+// Compiler pipeline
+export {
+  CompilationError,
+  type CompilePipelineResult,
+  compilePipeline,
+  defaultFetchNetworkDep,
+  type FetchNetworkDep,
+} from "./compiler.js";
+// Dependency resolver
+export {
+  CircularDependencyError,
+  type DependencyGraph,
+  resolveDependencies,
+} from "./dependency-resolver.js";
+// Import parser
+export { parseImports } from "./import-parser.js";
+// Package materializer
+export {
+  getCachedNetworkDep,
+  linkLocalDependency,
+  linkNetworkDependency,
+  materializePackage,
+} from "./package-materializer.js";
+// Source discovery
+export { discoverUnits, extractProgramId } from "./source-discovery.js";
+export type {
+  CompilationResult,
+  CompilationUnitResult,
+  CompileOptions,
+  DiscoveredLibrary,
+  DiscoveredProgram,
+  DiscoveredUnit,
+  LibraryCompilationResult,
+  ProgramCompilationResult,
+} from "./types.js";
+export { unitId } from "./types.js";

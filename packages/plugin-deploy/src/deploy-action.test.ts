@@ -6,15 +6,14 @@
  * - Fix 4: Transitive dependency inclusion and topological ordering
  */
 
-import { describe, it, expect, vi, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
-import { resolveDeployTargets, readLeoSourcesFromDir } from "./deploy-task.js";
-import { validateAdminSigner } from "./upgrade-task.js";
-import { DeployError } from "./deploy-task.js";
-import type { DiscoveredProgram, DependencyGraph } from "@lionden/leo-compiler";
+import * as path from "node:path";
+import type { DependencyGraph, DiscoveredProgram } from "@lionden/leo-compiler";
 import { createMockConnection } from "@lionden/test-internals";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DeployError, readLeoSourcesFromDir, resolveDeployTargets } from "./deploy-task.js";
+import { validateAdminSigner } from "./upgrade-task.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -85,10 +84,7 @@ describe("readLeoSourcesFromDir (Fix 2: source dir from discovery)", () => {
     tmpDir = setup();
     fs.writeFileSync(path.join(tmpDir, "main.leo"), "program test.aleo {}");
     fs.mkdirSync(path.join(tmpDir, "internal"));
-    fs.writeFileSync(
-      path.join(tmpDir, "internal", "helpers.leo"),
-      "@custom\nconstructor() {}",
-    );
+    fs.writeFileSync(path.join(tmpDir, "internal", "helpers.leo"), "@custom\nconstructor() {}");
 
     const source = readLeoSourcesFromDir(tmpDir);
     expect(source).toContain("@custom");
@@ -141,12 +137,7 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
       ["token.aleo", token],
     ]);
 
-    const result = resolveDeployTargets(
-      ["token.aleo", "utils.aleo"],
-      programMap,
-      graph,
-      undefined,
-    );
+    const result = resolveDeployTargets(["token.aleo", "utils.aleo"], programMap, graph, undefined);
 
     expect(result).toEqual(["utils.aleo", "token.aleo"]);
   });
@@ -167,12 +158,7 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
     ]);
 
     // compiledIds in reverse order — graph.order should prevail
-    const result = resolveDeployTargets(
-      ["main.aleo", "dep.aleo"],
-      programMap,
-      graph,
-      undefined,
-    );
+    const result = resolveDeployTargets(["main.aleo", "dep.aleo"], programMap, graph, undefined);
 
     expect(result[0]).toBe("dep.aleo");
     expect(result[1]).toBe("main.aleo");
@@ -182,14 +168,11 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
     const base = makeProgram("base.aleo", "/p/base");
     const mid = makeProgram("mid.aleo", "/p/mid");
     const top = makeProgram("top.aleo", "/p/top");
-    const graph = makeGraph(
-      [base, mid, top],
-      {
-        "base.aleo": [],
-        "mid.aleo": ["base.aleo"],
-        "top.aleo": ["mid.aleo", "credits.aleo"],
-      },
-    );
+    const graph = makeGraph([base, mid, top], {
+      "base.aleo": [],
+      "mid.aleo": ["base.aleo"],
+      "top.aleo": ["mid.aleo", "credits.aleo"],
+    });
     const programMap = new Map<string, DiscoveredProgram>([
       ["base.aleo", base],
       ["mid.aleo", mid],
@@ -210,24 +193,16 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
   it("deploys only target when it has no local deps", () => {
     const alpha = makeProgram("alpha.aleo", "/p/alpha");
     const beta = makeProgram("beta.aleo", "/p/beta");
-    const graph = makeGraph(
-      [alpha, beta],
-      {
-        "alpha.aleo": ["credits.aleo"],
-        "beta.aleo": ["credits.aleo"],
-      },
-    );
+    const graph = makeGraph([alpha, beta], {
+      "alpha.aleo": ["credits.aleo"],
+      "beta.aleo": ["credits.aleo"],
+    });
     const programMap = new Map<string, DiscoveredProgram>([
       ["alpha.aleo", alpha],
       ["beta.aleo", beta],
     ]);
 
-    const result = resolveDeployTargets(
-      ["alpha.aleo", "beta.aleo"],
-      programMap,
-      graph,
-      "beta",
-    );
+    const result = resolveDeployTargets(["alpha.aleo", "beta.aleo"], programMap, graph, "beta");
 
     expect(result).toEqual(["beta.aleo"]);
   });
@@ -260,18 +235,11 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
     ]);
 
     // Deploy token — should pull in utils (transitive through math_lib)
-    const result = resolveDeployTargets(
-      ["utils.aleo", "token.aleo"],
-      programMap,
-      graph,
-      "token",
-    );
+    const result = resolveDeployTargets(["utils.aleo", "token.aleo"], programMap, graph, "token");
 
     expect(result).toContain("utils.aleo");
     expect(result).toContain("token.aleo");
-    expect(result.indexOf("utils.aleo")).toBeLessThan(
-      result.indexOf("token.aleo"),
-    );
+    expect(result.indexOf("utils.aleo")).toBeLessThan(result.indexOf("token.aleo"));
     // math_lib should NOT be in deploy list (it's a library)
     expect(result).not.toContain("math_lib");
   });
@@ -279,43 +247,29 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
   it("normalizes program name by adding .aleo suffix", () => {
     const hello = makeProgram("hello.aleo", "/p/hello");
     const graph = makeGraph([hello], { "hello.aleo": [] });
-    const programMap = new Map<string, DiscoveredProgram>([
-      ["hello.aleo", hello],
-    ]);
+    const programMap = new Map<string, DiscoveredProgram>([["hello.aleo", hello]]);
 
-    const result = resolveDeployTargets(
-      ["hello.aleo"],
-      programMap,
-      graph,
-      "hello",
-    );
+    const result = resolveDeployTargets(["hello.aleo"], programMap, graph, "hello");
     expect(result).toEqual(["hello.aleo"]);
   });
 
   it("throws when target program not found", () => {
     const graph = makeGraph([], {});
     const programMap = new Map<string, DiscoveredProgram>();
-    expect(() =>
-      resolveDeployTargets(["other.aleo"], programMap, graph, "missing"),
-    ).toThrow(DeployError);
-    expect(() =>
-      resolveDeployTargets(["other.aleo"], programMap, graph, "missing"),
-    ).toThrow("not found");
+    expect(() => resolveDeployTargets(["other.aleo"], programMap, graph, "missing")).toThrow(
+      DeployError,
+    );
+    expect(() => resolveDeployTargets(["other.aleo"], programMap, graph, "missing")).toThrow(
+      "not found",
+    );
   });
 
   it("includes compiled programs not in graph (safety fallback)", () => {
     const known = makeProgram("known.aleo", "/p/known");
     const graph = makeGraph([known], { "known.aleo": [] });
-    const programMap = new Map<string, DiscoveredProgram>([
-      ["known.aleo", known],
-    ]);
+    const programMap = new Map<string, DiscoveredProgram>([["known.aleo", known]]);
 
-    const result = resolveDeployTargets(
-      ["known.aleo", "extra.aleo"],
-      programMap,
-      graph,
-      undefined,
-    );
+    const result = resolveDeployTargets(["known.aleo", "extra.aleo"], programMap, graph, undefined);
 
     expect(result).toContain("known.aleo");
     expect(result).toContain("extra.aleo");
@@ -377,16 +331,15 @@ describe("upgrade ABI ordering (Fix 1)", () => {
         program: "hello.aleo",
         structs: [],
         records: [],
-        mappings: [{ name: "counter", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+        mappings: [
+          { name: "counter", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+        ],
         storage_variables: [],
         transitions: [{ name: "increment", is_async: false, inputs: [], outputs: [] }],
       };
 
       // Write the "old" ABI (as if from a previous deploy)
-      fs.writeFileSync(
-        path.join(programDir, "abi.json"),
-        JSON.stringify(oldAbi),
-      );
+      fs.writeFileSync(path.join(programDir, "abi.json"), JSON.stringify(oldAbi));
 
       // Read it back — this simulates what upgrade-task.ts does BEFORE compile
       const raw = fs.readFileSync(path.join(programDir, "abi.json"), "utf-8");
@@ -400,10 +353,7 @@ describe("upgrade ABI ordering (Fix 1)", () => {
         ...oldAbi,
         mappings: [], // Mapping deleted — incompatible!
       };
-      fs.writeFileSync(
-        path.join(programDir, "abi.json"),
-        JSON.stringify(newAbi),
-      );
+      fs.writeFileSync(path.join(programDir, "abi.json"), JSON.stringify(newAbi));
 
       // Re-reading from disk now gets the NEW abi
       const rawNew = fs.readFileSync(path.join(programDir, "abi.json"), "utf-8");
@@ -452,7 +402,7 @@ describe("validateAdminSigner (Fix 3)", () => {
     ).rejects.toThrow(DeployError);
     await expect(
       validateAdminSigner(mockConnection, config, "nonexistent", adminAddress, "token.aleo"),
-    ).rejects.toThrow("network \"nonexistent\" not found in config");
+    ).rejects.toThrow('network "nonexistent" not found in config');
   });
 
   it("throws when signer address cannot be derived", async () => {

@@ -66,8 +66,7 @@ export async function assertMappingEmpty(
 
   if (actual !== null) {
     throw new AssertionError(
-      `Expected ${programId}/${mappingName}[${key}] to have no entry, ` +
-        `but got "${actual}".`,
+      `Expected ${programId}/${mappingName}[${key}] to have no entry, ` + `but got "${actual}".`,
     );
   }
 }
@@ -88,8 +87,7 @@ export async function assertTransactionConfirmed(
 
   if (confirmed.status !== "accepted") {
     throw new AssertionError(
-      `Expected transaction ${txId} to be accepted, ` +
-        `but it was ${confirmed.status}.`,
+      `Expected transaction ${txId} to be accepted, ` + `but it was ${confirmed.status}.`,
     );
   }
 }
@@ -106,8 +104,7 @@ export async function assertTransactionRejected(
 
   if (confirmed.status !== "rejected") {
     throw new AssertionError(
-      `Expected transaction ${txId} to be rejected, ` +
-        `but it was ${confirmed.status}.`,
+      `Expected transaction ${txId} to be rejected, ` + `but it was ${confirmed.status}.`,
     );
   }
 }

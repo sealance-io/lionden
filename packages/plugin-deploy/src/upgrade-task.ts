@@ -9,34 +9,29 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
 import { isSignable } from "@lionden/config";
+import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import {
   computeAbiHash,
-  discoverUnits,
-  parseAbi,
   type DiscoveredProgram,
+  discoverUnits,
   type ProgramABI,
+  parseAbi,
 } from "@lionden/leo-compiler";
-import type {
-  NetworkManager,
-  NetworkConnection,
-  SdkEgressPolicy,
-} from "@lionden/network";
-import type { CompleteDeploymentRecord, DeploymentRecord, PendingDeployment } from "./deployment-types.js";
+import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
+import { type AbiViolation, checkAbiCompatibility } from "./abi-compat.js";
+import { extractConstructorFingerprint, parseConstructor } from "./constructor-parser.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import { readAbiSnapshot } from "./deployment-state.js";
-import {
-  parseConstructor,
-  extractConstructorFingerprint,
-  type ConstructorInfo,
-} from "./constructor-parser.js";
-import { checkAbiCompatibility, type AbiViolation } from "./abi-compat.js";
+import type {
+  CompleteDeploymentRecord,
+  DeploymentRecord,
+  PendingDeployment,
+} from "./deployment-types.js";
 import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir } from "./leo-sources.js";
 import { runUpgradePreflight } from "./preflight.js";
-import { validateAdminSigner } from "./admin-signer.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,8 +68,7 @@ export async function upgradeAction(
   const programArg = args["program"] as string | undefined;
   if (!programArg) {
     throw new DeployError(
-      "The --program option is required for upgrade. " +
-        "Usage: lionden upgrade --program <name>",
+      "The --program option is required for upgrade. " + "Usage: lionden upgrade --program <name>",
     );
   }
 
@@ -93,9 +87,7 @@ export async function upgradeAction(
   const manager = lre.deployments as DeploymentManager | null;
 
   // Normalize program ID
-  const programId = options.program.endsWith(".aleo")
-    ? options.program
-    : `${options.program}.aleo`;
+  const programId = options.program.endsWith(".aleo") ? options.program : `${options.program}.aleo`;
 
   // 1. Connect to network
   const networkName = options.network ?? config.defaultNetwork;
@@ -190,17 +182,13 @@ export async function upgradeAction(
   // 7. Read new ABI from compilation artifacts
   const newAbi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
   if (!newAbi) {
-    throw new DeployError(
-      `No compiled ABI found for "${programId}". Compilation may have failed.`,
-    );
+    throw new DeployError(`No compiled ABI found for "${programId}". Compilation may have failed.`);
   }
 
   // 8. Read compiled Aleo source
   const aleoSource = lre.artifacts.getAleoSource(programId);
   if (!aleoSource) {
-    throw new DeployError(
-      `No compiled .aleo source found for "${programId}".`,
-    );
+    throw new DeployError(`No compiled .aleo source found for "${programId}".`);
   }
 
   // 9. Discover Leo source directory for constructor parsing
@@ -265,7 +253,12 @@ export async function upgradeAction(
   const previousEdition = existingRecord.edition;
   const newEdition = previousEdition + 1;
   const newAbiHash = computeAbiHash(newAbi);
-  const deployerAddress = await resolveDeployerAddress(connection, config, networkName, adminSignerKey);
+  const deployerAddress = await resolveDeployerAddress(
+    connection,
+    config,
+    networkName,
+    adminSignerKey,
+  );
 
   if (manager) {
     const pending: PendingDeployment = {
@@ -311,14 +304,9 @@ export async function upgradeAction(
   let blockHeight = 0;
   const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
   if (shouldConfirm) {
-    const confirmed = await connection.waitForConfirmation(
-      txId,
-      config.deploy.confirmationTimeout,
-    );
+    const confirmed = await connection.waitForConfirmation(txId, config.deploy.confirmationTimeout);
     if (confirmed.status === "rejected") {
-      throw new DeployError(
-        `Upgrade transaction ${txId} was rejected on-chain.`,
-      );
+      throw new DeployError(`Upgrade transaction ${txId} was rejected on-chain.`);
     }
     blockHeight = confirmed.blockHeight;
   }
@@ -396,10 +384,7 @@ export async function upgradeAction(
  * Check that the existing deployment's constructor permits upgrade.
  * @deprecated Use runUpgradePreflight() — it now includes this check.
  */
-export function validateUpgradePermission(
-  record: DeploymentRecord,
-  programId: string,
-): void {
+export function validateUpgradePermission(record: DeploymentRecord, programId: string): void {
   const type = record.constructor.type;
 
   switch (type) {
@@ -433,12 +418,8 @@ export class UpgradeCompatibilityError extends DeployError {
   readonly violations: readonly AbiViolation[];
 
   constructor(programId: string, violations: readonly AbiViolation[]) {
-    const details = violations
-      .map((v) => `  - [${v.kind}] ${v.detail}`)
-      .join("\n");
-    super(
-      `Upgrade of "${programId}" is not ABI-compatible with the deployed version:\n${details}`,
-    );
+    const details = violations.map((v) => `  - [${v.kind}] ${v.detail}`).join("\n");
+    super(`Upgrade of "${programId}" is not ABI-compatible with the deployed version:\n${details}`);
     this.name = "UpgradeCompatibilityError";
     this.violations = violations;
   }
@@ -467,13 +448,12 @@ interface BuildUpgradeOptions {
   egressPolicy: SdkEgressPolicy;
 }
 
-async function buildAndBroadcastUpgrade(
-  opts: BuildUpgradeOptions,
-): Promise<string> {
+async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<string> {
   const { programId, aleoSource, connection, fee, privateFee, edition, signerPrivateKey } = opts;
 
-  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
-    await import("@lionden/network");
+  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } = await import(
+    "@lionden/network"
+  );
 
   if (connection.type === "devnode") {
     await initConsensusHeights();
@@ -547,10 +527,7 @@ function resolveProveOption(
   return process.env["LIONDEN_PROVE"] === "true";
 }
 
-function readAbiFromArtifacts(
-  artifactsDir: string,
-  programId: string,
-): ProgramABI | null {
+function readAbiFromArtifacts(artifactsDir: string, programId: string): ProgramABI | null {
   const abiPath = path.join(artifactsDir, programId, "abi.json");
   if (!fs.existsSync(abiPath)) return null;
   const raw = fs.readFileSync(abiPath, "utf-8");
@@ -595,14 +572,16 @@ async function resolveDeployerAddress(
 function computeAbiChanges(
   oldAbi: ProgramABI,
   newAbi: ProgramABI,
-): {
-  added: {
-    mappings: string[];
-    structs: string[];
-    records: string[];
-    transitions: string[];
-  };
-} | undefined {
+):
+  | {
+      added: {
+        mappings: string[];
+        structs: string[];
+        records: string[];
+        transitions: string[];
+      };
+    }
+  | undefined {
   const oldMappingNames = new Set(oldAbi.mappings.map((m) => m.name));
   const oldStructPaths = new Set(oldAbi.structs.map((s) => s.path.join("::")));
   const oldRecordPaths = new Set(oldAbi.records.map((r) => r.path.join("::")));

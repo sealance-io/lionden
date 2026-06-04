@@ -5,9 +5,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "references": [
-    { "path": "../config" },
-    { "path": "../core" },
-    { "path": "../network" }
-  ]
+  "references": [{ "path": "../config" }, { "path": "../core" }, { "path": "../network" }]
 }

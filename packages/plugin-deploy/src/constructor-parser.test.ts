@@ -1,9 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  extractConstructorFingerprint,
+  isValidAleoAddress,
   parseConstructor,
   parseConstructorFromFiles,
-  isValidAleoAddress,
-  extractConstructorFingerprint,
 } from "./constructor-parser.js";
 
 describe("parseConstructor", () => {
@@ -215,26 +215,17 @@ describe("parseConstructorFromFiles", () => {
   });
 
   it("finds constructor in first file", () => {
-    const sources = [
-      `@noupgrade\nconstructor() {}`,
-      `fn main() {}`,
-    ];
+    const sources = [`@noupgrade\nconstructor() {}`, `fn main() {}`];
     expect(parseConstructorFromFiles(sources)?.type).toBe("noupgrade");
   });
 
   it("finds constructor in second file", () => {
-    const sources = [
-      `fn main() {}`,
-      `@custom\nconstructor() {}`,
-    ];
+    const sources = [`fn main() {}`, `@custom\nconstructor() {}`];
     expect(parseConstructorFromFiles(sources)?.type).toBe("custom");
   });
 
   it("returns null when no file has constructor", () => {
-    const sources = [
-      `fn main() {}`,
-      `fn helper() {}`,
-    ];
+    const sources = [`fn main() {}`, `fn helper() {}`];
     expect(parseConstructorFromFiles(sources)).toBeNull();
   });
 });
@@ -291,14 +282,15 @@ describe("extractConstructorFingerprint", () => {
   });
 
   it("custom mode detects edition assertion change", () => {
-    const makeSource = (edition: number) => [
-      "program dao.aleo;",
-      "",
-      "constructor:",
-      "    call governance.aleo/check_vote into r0;",
-      "    assert.eq edition " + edition + "u16;",
-      "",
-    ].join("\n");
+    const makeSource = (edition: number) =>
+      [
+        "program dao.aleo;",
+        "",
+        "constructor:",
+        "    call governance.aleo/check_vote into r0;",
+        "    assert.eq edition " + edition + "u16;",
+        "",
+      ].join("\n");
     // For @custom, different edition values produce different fingerprints
     expect(extractConstructorFingerprint(makeSource(0), "custom")).not.toBe(
       extractConstructorFingerprint(makeSource(1), "custom"),
@@ -340,17 +332,13 @@ describe("extractConstructorFingerprint", () => {
 describe("isValidAleoAddress", () => {
   it("validates correct aleo address", () => {
     expect(
-      isValidAleoAddress(
-        "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
-      ),
+      isValidAleoAddress("aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px"),
     ).toBe(true);
   });
 
   it("rejects address without aleo1 prefix", () => {
     expect(
-      isValidAleoAddress(
-        "btc1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
-      ),
+      isValidAleoAddress("btc1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px"),
     ).toBe(false);
   });
 
@@ -360,9 +348,7 @@ describe("isValidAleoAddress", () => {
 
   it("rejects address with uppercase characters", () => {
     expect(
-      isValidAleoAddress(
-        "aleo1RHGDU77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
-      ),
+      isValidAleoAddress("aleo1RHGDU77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px"),
     ).toBe(false);
   });
 

@@ -1,6 +1,6 @@
 import * as crypto from "node:crypto";
-import type { ProgramABI, TransitionABI, ViewABI } from "./abi-types.js";
 import { parseAbi } from "./abi-parser.js";
+import type { ProgramABI, TransitionABI, ViewABI } from "./abi-types.js";
 
 /**
  * Compute the canonical ABI fingerprint used by deploy and upgrade state.

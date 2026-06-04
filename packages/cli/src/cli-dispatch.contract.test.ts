@@ -5,23 +5,23 @@
  * disk → plugin resolution → config resolution → LRE creation → task dispatch.
  * Uses real loadConfigFile() against temp .ts config files on disk.
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
+
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { findConfigFile, loadConfigFile } from "./config-discovery.js";
-import { parseArgs, dispatchTask } from "./task-dispatch.js";
-import {
-  resolvePluginOrder,
-  collectGlobalOptions,
-  resolveConfig,
-  createLre,
-  task,
-  ArgumentType,
-  type LionDenPlugin,
-  type TaskDefinition,
-} from "@lionden/core";
 import type { LionDenUserConfig } from "@lionden/config";
-import { TempProjectBuilder, type TempProject } from "@lionden/test-internals";
+import {
+  ArgumentType,
+  collectGlobalOptions,
+  createLre,
+  type LionDenPlugin,
+  resolveConfig,
+  resolvePluginOrder,
+  task,
+} from "@lionden/core";
+import { type TempProject, TempProjectBuilder } from "@lionden/test-internals";
+import { afterEach, describe, expect, it } from "vitest";
+import { findConfigFile, loadConfigFile } from "./config-discovery.js";
+import { dispatchTask, parseArgs } from "./task-dispatch.js";
 
 describe("CLI dispatch contract", () => {
   let project: TempProject;
@@ -52,9 +52,7 @@ describe("CLI dispatch contract", () => {
     };
 
     // Write a real config file that defineConfig would produce
-    const projectDir = createTempProject(
-      `export default { leoVersion: "4.0.0" };`,
-    );
+    const projectDir = createTempProject(`export default { leoVersion: "4.0.0" };`);
 
     // 1. Config discovery — real findConfigFile
     const configPath = findConfigFile(projectDir);
@@ -103,9 +101,7 @@ describe("CLI dispatch contract", () => {
       ],
     };
 
-    const projectDir = createTempProject(
-      `export default { leoVersion: "4.0.0" };`,
-    );
+    const projectDir = createTempProject(`export default { leoVersion: "4.0.0" };`);
     const configPath = findConfigFile(projectDir)!;
     const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
     const plugins = resolvePluginOrder([testPlugin]);
@@ -119,11 +115,7 @@ describe("CLI dispatch contract", () => {
       "no-compile": "test/skip-devnode.test.ts",
     });
 
-    const { resolved } = await resolveConfig(
-      rawConfig as LionDenUserConfig,
-      plugins,
-      projectRoot,
-    );
+    const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
     const lre = createLre({ config: resolved, plugins });
     const parsed = parseArgs(
       ["test", "--no-compile", "test/skip-devnode.test.ts"],
@@ -232,9 +224,7 @@ describe("CLI dispatch contract", () => {
     const testPlugin: LionDenPlugin = {
       id: "global-opts-test",
       name: "Global Opts",
-      globalOptions: [
-        { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
-      ],
+      globalOptions: [{ name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN }],
       tasks: [],
     };
 
@@ -248,11 +238,7 @@ describe("CLI dispatch contract", () => {
     const parsed = parseArgs(["--prove"], globalOptionDefs);
     expect(parsed.globalArgs["prove"]).toBe(true);
 
-    const { resolved } = await resolveConfig(
-      rawConfig as LionDenUserConfig,
-      plugins,
-      projectRoot,
-    );
+    const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
     const globalOptions: Record<string, unknown> = {};
     for (const [name] of globalOptionDefs) {
       if (name in parsed.globalArgs) {

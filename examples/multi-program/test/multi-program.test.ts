@@ -1,12 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
-import { createTreasury } from "../typechain/Treasury.js";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRewards } from "../typechain/Rewards.js";
+import { createTreasury } from "../typechain/Treasury.js";
 
 async function deployRewards() {
   const ctx = await setup();

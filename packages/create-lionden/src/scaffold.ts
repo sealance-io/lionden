@@ -2,9 +2,9 @@
  * Project scaffolding — writes template files to disk.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { sharedFiles, type Template } from "./templates.js";
 
 export interface ScaffoldOptions {
@@ -33,9 +33,7 @@ export async function scaffold(options: ScaffoldOptions): Promise<ScaffoldResult
   if (existsSync(projectDir)) {
     const entries = (await import("node:fs")).readdirSync(projectDir);
     if (entries.length > 0) {
-      throw new Error(
-        `Directory "${projectDir}" already exists and is not empty.`,
-      );
+      throw new Error(`Directory "${projectDir}" already exists and is not empty.`);
     }
   }
 

@@ -1,12 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { sha256Json, sha256Text } from "@lionden/core";
-import {
-  buildRuntimeKeyIdentity,
-  writeCachedExecutionKeys,
-} from "./execution-key-cache.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildRuntimeKeyIdentity, writeCachedExecutionKeys } from "./execution-key-cache.js";
 
 const mockRun = vi.fn();
 const mockExecute = vi.fn();
@@ -69,13 +66,18 @@ function recordFreeAbi(transition: string): string {
 // ABI whose transition consumes a record (`{ Record }`) or a `"DynamicRecord"`
 // input. These shapes used to drive cache-miss policy and remain covered as
 // regression evidence.
-function recordInputAbi(transition: string, ty: unknown = { Record: { path: ["Token"], program: "tok.aleo" } }): string {
+function recordInputAbi(
+  transition: string,
+  ty: unknown = { Record: { path: ["Token"], program: "tok.aleo" } },
+): string {
   return JSON.stringify({
     functions: [{ name: transition, inputs: [{ name: "r", ty, mode: "None" }] }],
   });
 }
 
-function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>) {
+function createDevnodeConnection(
+  overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>,
+) {
   return new AleoConnection({
     type: "devnode",
     name: "devnode",
@@ -88,7 +90,9 @@ function createDevnodeConnection(overrides?: Partial<ConstructorParameters<typeo
   });
 }
 
-function createHttpConnection(overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>) {
+function createHttpConnection(
+  overrides?: Partial<ConstructorParameters<typeof AleoConnection>[0]>,
+) {
   return new AleoConnection({
     type: "http",
     name: "testnet",
@@ -217,13 +221,10 @@ describe("AleoConnection", () => {
       });
 
       expect(result.outputs).toEqual(["3u32"]);
-      expect(mockRun).toHaveBeenCalledWith(
-        topSource,
-        "main",
-        [],
-        false,
-        { "dep_a.aleo": depASource, "dep_b.aleo": depBSource },
-      );
+      expect(mockRun).toHaveBeenCalledWith(topSource, "main", [], false, {
+        "dep_a.aleo": depASource,
+        "dep_b.aleo": depBSource,
+      });
       // getProgram called 3 times: target + 2 imports
       expect(mockGetProgram).toHaveBeenCalledTimes(3);
     });
@@ -282,10 +283,12 @@ describe("AleoConnection", () => {
 
       await connection.checkLocalExecution("governance.aleo", "main", []);
 
-      expect(mockBuildAuthorizationUnchecked).toHaveBeenCalledWith(expect.objectContaining({
-        programSource: "program governance.aleo { }",
-        programImports: { "voting_power.aleo": "program voting_power.aleo;" },
-      }));
+      expect(mockBuildAuthorizationUnchecked).toHaveBeenCalledWith(
+        expect.objectContaining({
+          programSource: "program governance.aleo { }",
+          programImports: { "voting_power.aleo": "program voting_power.aleo;" },
+        }),
+      );
     });
 
     it("respects signer override", async () => {
@@ -311,10 +314,12 @@ describe("AleoConnection", () => {
       await connection.checkLocalExecution("hello.aleo", "main", ["1u32"], { signer });
 
       expect(mockCreateSignerSdkObjects).toHaveBeenCalledOnce();
-      expect(signerBuildAuthorizationUnchecked).toHaveBeenCalledWith(expect.objectContaining({
-        programName: "hello.aleo",
-        functionName: "main",
-      }));
+      expect(signerBuildAuthorizationUnchecked).toHaveBeenCalledWith(
+        expect.objectContaining({
+          programName: "hello.aleo",
+          functionName: "main",
+        }),
+      );
       expect(mockBuildAuthorizationUnchecked).not.toHaveBeenCalled();
     });
 
@@ -357,9 +362,9 @@ describe("AleoConnection", () => {
       mockBuildAuthorizationUnchecked.mockRejectedValueOnce(infra);
       const connection = createDevnodeConnection();
 
-      await expect(
-        connection.checkLocalExecution("hello.aleo", "main", ["1u32"]),
-      ).rejects.toBe(infra);
+      await expect(connection.checkLocalExecution("hello.aleo", "main", ["1u32"])).rejects.toBe(
+        infra,
+      );
     });
   });
 
@@ -488,10 +493,12 @@ describe("AleoConnection", () => {
 
         await connection.execute("governance.aleo", "main", []);
 
-        expect(mockBuildDevnodeExec).toHaveBeenCalledWith(expect.objectContaining({
-          program: "program governance.aleo { }",
-          imports: { "voting_power.aleo": "program voting_power.aleo;" },
-        }));
+        expect(mockBuildDevnodeExec).toHaveBeenCalledWith(
+          expect.objectContaining({
+            program: "program governance.aleo { }",
+            imports: { "voting_power.aleo": "program voting_power.aleo;" },
+          }),
+        );
       });
 
       it("threads per-call options.imports into pm.execute for http", async () => {
@@ -507,10 +514,12 @@ describe("AleoConnection", () => {
           imports: ["voting_power"],
         });
 
-        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-          program: "program governance.aleo { }",
-          imports: { "voting_power.aleo": "program voting_power.aleo;" },
-        }));
+        expect(mockExecute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            program: "program governance.aleo { }",
+            imports: { "voting_power.aleo": "program voting_power.aleo;" },
+          }),
+        );
       });
 
       it("merges config-level and per-call imports (additive, deduped)", async () => {
@@ -531,12 +540,14 @@ describe("AleoConnection", () => {
           imports: ["voting_power", "quadratic_power.aleo"], // first dups config layer
         });
 
-        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-          imports: {
-            "quadratic_power.aleo": "program quadratic_power.aleo;",
-            "voting_power.aleo": "program voting_power.aleo;",
-          },
-        }));
+        expect(mockExecute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            imports: {
+              "quadratic_power.aleo": "program quadratic_power.aleo;",
+              "voting_power.aleo": "program voting_power.aleo;",
+            },
+          }),
+        );
       });
 
       it("forwards imports to pm.run in local mode", async () => {
@@ -555,13 +566,9 @@ describe("AleoConnection", () => {
 
         await connection.execute("governance.aleo", "main", [], { mode: "local" });
 
-        expect(mockRun).toHaveBeenCalledWith(
-          "program governance.aleo { }",
-          "main",
-          [],
-          false,
-          { "voting_power.aleo": "program voting_power.aleo;" },
-        );
+        expect(mockRun).toHaveBeenCalledWith("program governance.aleo { }", "main", [], false, {
+          "voting_power.aleo": "program voting_power.aleo;",
+        });
       });
 
       it("raises a clear error when a per-call path ref does not exist", async () => {
@@ -615,14 +622,16 @@ describe("AleoConnection", () => {
 
         expect(mockGetProgram).not.toHaveBeenCalled();
         expect(mockSynthesizeKeys).not.toHaveBeenCalled();
-        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-          programName: "hello.aleo",
-          functionName: "main",
-          program: source,
-          edition: 3,
-          provingKey: { kind: "proving", bytes: [1, 2, 3] },
-          verifyingKey: { kind: "verifying", bytes: [4, 5] },
-        }));
+        expect(mockExecute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            programName: "hello.aleo",
+            functionName: "main",
+            program: source,
+            edition: 3,
+            provingKey: { kind: "proving", bytes: [1, 2, 3] },
+            verifyingKey: { kind: "verifying", bytes: [4, 5] },
+          }),
+        );
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
@@ -650,12 +659,14 @@ describe("AleoConnection", () => {
         expect(mockPrepareInputs).not.toHaveBeenCalled();
         expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
         expect(mockCreateExecutionKeysFromBytes).not.toHaveBeenCalled();
-        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-          programName: "hello.aleo",
-          functionName: "main",
-          program: source,
-          edition: 3,
-        }));
+        expect(mockExecute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            programName: "hello.aleo",
+            functionName: "main",
+            program: source,
+            edition: 3,
+          }),
+        );
         expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("provingKey");
         expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("verifyingKey");
       } finally {
@@ -672,8 +683,7 @@ describe("AleoConnection", () => {
           "import foo.aleo;\nprogram app.aleo;\nfunction main:\n  output 1u32 as u32.private;\n";
         const fooSource =
           "import bar.aleo;\nprogram foo.aleo;\nfunction helper:\n  output 1u32 as u32.private;\n";
-        const barSource =
-          "program bar.aleo;\nfunction helper:\n  output 2u32 as u32.private;\n";
+        const barSource = "program bar.aleo;\nfunction helper:\n  output 2u32 as u32.private;\n";
 
         for (const [programId, source] of [
           ["app.aleo", appSource],
@@ -703,10 +713,12 @@ describe("AleoConnection", () => {
         expect(mockGetProgram).not.toHaveBeenCalled();
         expect(mockSynthesizeKeys).not.toHaveBeenCalled();
         expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
-        expect(mockExecute).toHaveBeenCalledWith(expect.objectContaining({
-          program: appSource,
-          imports: expectedImports,
-        }));
+        expect(mockExecute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            program: appSource,
+            imports: expectedImports,
+          }),
+        );
       } finally {
         fs.rmSync(tmpDir, { recursive: true, force: true });
       }
@@ -940,11 +952,7 @@ describe("AleoConnection", () => {
       const value = await connection.getMappingValue("token.aleo", "balances", "aleo1abc");
 
       expect(value).toBe("100u64");
-      expect(mockGetProgramMappingValue).toHaveBeenCalledWith(
-        "token.aleo",
-        "balances",
-        "aleo1abc",
-      );
+      expect(mockGetProgramMappingValue).toHaveBeenCalledWith("token.aleo", "balances", "aleo1abc");
     });
 
     it("returns null when SDK returns undefined", async () => {
@@ -1072,9 +1080,7 @@ describe("AleoConnection", () => {
     it("throws when no address and no private key configured", async () => {
       const connection = createDevnodeConnection({ privateKey: undefined });
 
-      await expect(connection.getBalance()).rejects.toThrow(
-        "No address specified",
-      );
+      await expect(connection.getBalance()).rejects.toThrow("No address specified");
     });
   });
 
@@ -1092,8 +1098,7 @@ describe("AleoConnection", () => {
   describe("waitForConfirmation()", () => {
     let fetchMock: ReturnType<typeof vi.fn>;
 
-    const TEST_BLOCK_HASH =
-      "ab1ajw276h6xe6hqswh87yr5ljjxf7dqtefxd6awhsp5znc36fupsqs8auddq";
+    const TEST_BLOCK_HASH = "ab1ajw276h6xe6hqswh87yr5ljjxf7dqtefxd6awhsp5znc36fupsqs8auddq";
 
     type MockOpts = {
       txType?: "execute" | "deploy" | "fee" | "missing";
@@ -1174,15 +1179,9 @@ describe("AleoConnection", () => {
       await connection.waitForConfirmation("at1test");
 
       const calls = fetchMock.mock.calls.map((c) => c[0] as string);
-      expect(calls).toContain(
-        "http://127.0.0.1:3030/testnet/transaction/confirmed/at1test",
-      );
-      expect(calls).toContain(
-        "http://127.0.0.1:3030/testnet/find/blockHash/at1test",
-      );
-      expect(calls).toContain(
-        `http://127.0.0.1:3030/testnet/block/${TEST_BLOCK_HASH}`,
-      );
+      expect(calls).toContain("http://127.0.0.1:3030/testnet/transaction/confirmed/at1test");
+      expect(calls).toContain("http://127.0.0.1:3030/testnet/find/blockHash/at1test");
+      expect(calls).toContain(`http://127.0.0.1:3030/testnet/block/${TEST_BLOCK_HASH}`);
       expect(fetchMock).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({ headers: {} }),
@@ -1387,9 +1386,7 @@ describe("AleoConnection", () => {
 
       await vi.advanceTimersByTimeAsync(4_000);
 
-      await expect(promise).rejects.toThrow(
-        "block-hash lookup did not resolve",
-      );
+      await expect(promise).rejects.toThrow("block-hash lookup did not resolve");
       await expect(promise).rejects.toMatchObject({
         kind: "NetworkConfirmationTimeoutError",
         stage: "blockHash",
@@ -1421,9 +1418,7 @@ describe("AleoConnection", () => {
 
       await vi.advanceTimersByTimeAsync(4_000);
 
-      await expect(promise).rejects.toThrow(
-        "block height could not be resolved",
-      );
+      await expect(promise).rejects.toThrow("block height could not be resolved");
       await expect(promise).rejects.toMatchObject({
         kind: "NetworkConfirmationTimeoutError",
         stage: "blockHeight",
@@ -1458,9 +1453,9 @@ describe("AleoConnection", () => {
       });
       const connection = createDevnodeConnection();
 
-      await expect(
-        connection.waitForConfirmation("at1test"),
-      ).rejects.toThrow("header.metadata.height is missing or non-numeric");
+      await expect(connection.waitForConfirmation("at1test")).rejects.toThrow(
+        "header.metadata.height is missing or non-numeric",
+      );
     });
 
     it("throws if /block/<hash> returns 200 but header.metadata.height is non-numeric", async () => {
@@ -1490,9 +1485,9 @@ describe("AleoConnection", () => {
       });
       const connection = createDevnodeConnection();
 
-      await expect(
-        connection.waitForConfirmation("at1test"),
-      ).rejects.toThrow("header.metadata.height is missing or non-numeric");
+      await expect(connection.waitForConfirmation("at1test")).rejects.toThrow(
+        "header.metadata.height is missing or non-numeric",
+      );
     });
 
     it("returns blockHeight 0 when the block JSON explicitly reports height 0 (genesis-adjacent)", async () => {
@@ -1609,7 +1604,11 @@ describe("AleoConnection", () => {
     // malformed bodies. Malformed-after-200 must fail fast (no retry loop).
     // -----------------------------------------------------------------------
 
-    function mockConfirmation(txBody: Record<string, unknown>, height = 99, blockHash = TEST_BLOCK_HASH) {
+    function mockConfirmation(
+      txBody: Record<string, unknown>,
+      height = 99,
+      blockHash = TEST_BLOCK_HASH,
+    ) {
       const blockBody = {
         block_hash: blockHash,
         header: { metadata: { network: 1, round: height, height } },
@@ -1641,9 +1640,7 @@ describe("AleoConnection", () => {
                 program: "token.aleo",
                 function: "mint_private",
                 tpk: "1234group",
-                outputs: [
-                  { type: "record", id: "out1", value: "record1plaintextish" },
-                ],
+                outputs: [{ type: "record", id: "out1", value: "record1plaintextish" }],
               },
             ],
           },
@@ -1678,9 +1675,7 @@ describe("AleoConnection", () => {
                 program: "token.aleo",
                 function: "transfer_private",
                 tpk: "tpk_transfer",
-                outputs: [
-                  { type: "record", id: "r", value: "record1tokenct" },
-                ],
+                outputs: [{ type: "record", id: "r", value: "record1tokenct" }],
               },
             ],
           },
@@ -1717,9 +1712,7 @@ describe("AleoConnection", () => {
         },
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: "transaction.execution.transitions[0].program",
       });
@@ -1736,9 +1729,7 @@ describe("AleoConnection", () => {
         },
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: "transaction.execution.transitions[0].function",
       });
@@ -1757,9 +1748,7 @@ describe("AleoConnection", () => {
         },
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: "transaction.execution.transitions[0].tpk",
       });
@@ -1771,9 +1760,7 @@ describe("AleoConnection", () => {
         transaction: { type: "execute", id: "at1test" }, // no execution
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: "transaction.execution",
       });
@@ -1785,9 +1772,7 @@ describe("AleoConnection", () => {
         transaction: { type: "execute", id: "at1test", execution: {} },
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: "transaction.execution.transitions",
       });
@@ -1811,9 +1796,7 @@ describe("AleoConnection", () => {
         },
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: expect.stringContaining(".outputs[0].value"),
       });
@@ -1870,9 +1853,7 @@ describe("AleoConnection", () => {
         throw new Error(`unexpected fetch ${url}`);
       });
 
-      await expect(
-        createDevnodeConnection().waitForConfirmation("at1test"),
-      ).rejects.toMatchObject({
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
         kind: "TransactionShapeParseError",
         field: "body",
         txId: "at1test",
@@ -2086,11 +2067,7 @@ describe("AleoConnection", () => {
       const connection = createDevnodeConnection();
 
       await expect(
-        connection.getTransitionOutputs(
-          "at1broadcast",
-          "token.aleo",
-          "mint_public",
-        ),
+        connection.getTransitionOutputs("at1broadcast", "token.aleo", "mint_public"),
       ).rejects.toBeInstanceOf(TransitionSelectionError);
     });
   });
@@ -2112,28 +2089,20 @@ describe("AleoConnection", () => {
 
       await connection.advanceBlocks?.(2);
 
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        1,
-        "http://127.0.0.1:3030/testnet/block/create",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ num_blocks: 1 }),
+      expect(fetchMock).toHaveBeenNthCalledWith(1, "http://127.0.0.1:3030/testnet/block/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
-      expect(fetchMock).toHaveBeenNthCalledWith(
-        2,
-        "http://127.0.0.1:3030/testnet/block/create",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ num_blocks: 1 }),
+        body: JSON.stringify({ num_blocks: 1 }),
+      });
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "http://127.0.0.1:3030/testnet/block/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({ num_blocks: 1 }),
+      });
     });
 
     it("throws when fetch response is not ok", async () => {
@@ -2220,7 +2189,9 @@ describe("AleoConnection", () => {
 
       await expect(connection.getBlockHeight()).rejects.toThrow("Connection is closed.");
       await expect(connection.getBalance("aleo1abc")).rejects.toThrow("Connection is closed.");
-      await expect(connection.getMappingValue("t.aleo", "m", "k")).rejects.toThrow("Connection is closed.");
+      await expect(connection.getMappingValue("t.aleo", "m", "k")).rejects.toThrow(
+        "Connection is closed.",
+      );
       await expect(connection.execute("t.aleo", "f", [])).rejects.toThrow("Connection is closed.");
       await expect(connection.waitForConfirmation("at1x")).rejects.toThrow("Connection is closed.");
       await expect(connection.broadcastTransaction("tx")).rejects.toThrow("Connection is closed.");
@@ -2229,7 +2200,11 @@ describe("AleoConnection", () => {
 
     it("calls account.destroy() on resolved signer accounts", async () => {
       const signerDestroy = vi.fn();
-      const signerPm = { run: mockRun, execute: mockExecute, buildDevnodeExecutionTransaction: mockBuildDevnodeExec };
+      const signerPm = {
+        run: mockRun,
+        execute: mockExecute,
+        buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
+      };
       mockCreateSignerSdkObjects.mockResolvedValue({
         account: { destroy: signerDestroy },
         recordProvider: {},
@@ -2251,8 +2226,17 @@ describe("AleoConnection", () => {
       const defaultDestroy = vi.fn();
       mockCreateSdkObjects.mockResolvedValue({
         account: { destroy: defaultDestroy, address: () => ({ to_string: () => "aleo1d" }) },
-        networkClient: { getProgram: mockGetProgram, submitTransaction: mockSubmitTransaction, getProgramMappingValue: mockGetProgramMappingValue, getLatestHeight: mockGetLatestHeight },
-        programManager: { run: mockRun, execute: mockExecute, buildDevnodeExecutionTransaction: mockBuildDevnodeExec },
+        networkClient: {
+          getProgram: mockGetProgram,
+          submitTransaction: mockSubmitTransaction,
+          getProgramMappingValue: mockGetProgramMappingValue,
+          getLatestHeight: mockGetLatestHeight,
+        },
+        programManager: {
+          run: mockRun,
+          execute: mockExecute,
+          buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
+        },
         keyProvider: {},
         recordProvider: {},
       });
@@ -2386,9 +2370,9 @@ describe("AleoConnection", () => {
       const signer = { privateKey: signerKey, address: signerAddress };
 
       // First call fails
-      await expect(
-        connection.execute("hello.aleo", "main", ["1u32"], { signer }),
-      ).rejects.toThrow("WASM init failed");
+      await expect(connection.execute("hello.aleo", "main", ["1u32"], { signer })).rejects.toThrow(
+        "WASM init failed",
+      );
 
       // Retry succeeds
       await connection.execute("hello.aleo", "main", ["1u32"], { signer });

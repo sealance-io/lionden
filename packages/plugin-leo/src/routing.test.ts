@@ -4,9 +4,10 @@
  * compile-task tests don't cover cleanly because of their shared `vi.mock`
  * setup.
  */
-import { describe, it, expect } from "vitest";
-import { resolveDynamicRecordHelpers } from "./index.js";
+
 import type { LionDenResolvedConfig } from "@lionden/config";
+import { describe, expect, it } from "vitest";
+import { resolveDynamicRecordHelpers } from "./index.js";
 
 function lreWith(
   dynamicRecords: Record<
@@ -42,7 +43,9 @@ function programResult(programId: string, recordPaths: readonly (readonly string
 
 describe("resolveDynamicRecordHelpers", () => {
   it("returns empty map when no helpers are configured", () => {
-    const result = resolveDynamicRecordHelpers(lreWith({}), [programResult("token.aleo", [["Token"]])]);
+    const result = resolveDynamicRecordHelpers(lreWith({}), [
+      programResult("token.aleo", [["Token"]]),
+    ]);
     expect(result.size).toBe(0);
   });
 

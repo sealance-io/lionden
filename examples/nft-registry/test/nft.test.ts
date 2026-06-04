@@ -1,12 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
-import { createNftRegistry } from "../typechain/NftRegistry.js";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Leo } from "../typechain/BaseContract.js";
+import { createNftRegistry } from "../typechain/NftRegistry.js";
 
 const nft = createNftRegistry();
 
@@ -55,8 +50,7 @@ describe("nft_registry program", () => {
   });
 
   describe("mint_nft", () => {
-    const receiver =
-      "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
+    const receiver = "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
 
     it("mints first NFT and increments supply", async () => {
       await nft.mint_nft.accepted({

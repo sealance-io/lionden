@@ -12,15 +12,15 @@
  */
 
 import * as path from "node:path";
+import { createNamedAccountAccessor } from "@lionden/config";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import { programNameFromTarget } from "@lionden/core";
-import type { NetworkManager, NetworkConnection } from "@lionden/network";
+import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
-import { createNamedAccountAccessor } from "@lionden/config";
-import type { DeploymentContext } from "./recipe-types.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
+import type { DeploymentContext } from "./recipe-types.js";
 
 // ---------------------------------------------------------------------------
 // Recipe action
@@ -53,15 +53,11 @@ export async function recipeAction(
   const ctx = createCliDeploymentContext(lre, connection, networkName);
 
   // 4. Import and run recipe — resolve relative to project root, not cwd
-  const resolved = path.isAbsolute(file)
-    ? file
-    : path.resolve(lre.config.paths.root, file);
+  const resolved = path.isAbsolute(file) ? file : path.resolve(lre.config.paths.root, file);
   const mod = await import(resolved);
   const recipeFn = mod[exportName];
   if (typeof recipeFn !== "function") {
-    throw new DeployError(
-      `No function "${exportName}" exported from "${file}".`,
-    );
+    throw new DeployError(`No function "${exportName}" exported from "${file}".`);
   }
 
   const result = await recipeFn(ctx);
@@ -91,11 +87,7 @@ export function createCliDeploymentContext(
       const deploymentCache = lre.deployments as DeploymentManager | null;
 
       if (!opts?.noSkipDeployed) {
-        const cached = getCachedDeployment(
-          deploymentCache,
-          normalizedId,
-          networkName,
-        );
+        const cached = getCachedDeployment(deploymentCache, normalizedId, networkName);
         if (isCompleteDeploymentWithTxId(cached)) {
           return { programId: normalizedId, txId: cached.txId };
         }
@@ -131,29 +123,18 @@ export function createCliDeploymentContext(
         };
       }
 
-      const cached = getCachedDeployment(
-        deploymentCache,
-        normalizedId,
-        networkName,
-      );
+      const cached = getCachedDeployment(deploymentCache, normalizedId, networkName);
       if (isCompleteDeploymentWithTxId(cached)) {
         return { programId: normalizedId, txId: cached.txId };
       }
 
-      throw createEmptyDeployResultError(
-        programName,
-        normalizedId,
-        networkName,
-        cached,
-      );
+      throw createEmptyDeployResultError(programName, normalizedId, networkName, cached);
     },
 
     async execute(programId, transitionName, args, opts) {
       const mode = opts?.mode ?? "onchain";
       const awaitOpt =
-        mode === "onchain"
-          ? { awaitConfirmation: opts?.awaitConfirmation ?? true }
-          : {};
+        mode === "onchain" ? { awaitConfirmation: opts?.awaitConfirmation ?? true } : {};
       const result = await connection.execute(programId, transitionName, args, {
         mode,
         fee: opts?.fee,
@@ -184,11 +165,7 @@ function getCachedDeployment(
 function isCompleteDeploymentWithTxId(
   record: DeploymentRecord | null,
 ): record is DeploymentRecord & { readonly status: "complete"; readonly txId: string } {
-  return (
-    record?.status === "complete" &&
-    typeof record.txId === "string" &&
-    record.txId.length > 0
-  );
+  return record?.status === "complete" && typeof record.txId === "string" && record.txId.length > 0;
 }
 
 function getDeployResultForProgram(

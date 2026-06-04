@@ -1,90 +1,82 @@
 // Types
-export type {
-  LionDenPlugin,
-  LionDenRuntimeEnvironment,
-  TaskDefinition,
-  TaskAction,
-  TaskActionWithSuper,
-  TaskOption,
-  TaskFlag,
-  TaskPositionalArgument,
-  TaskRunner,
-  HookDispatcher,
-  HookDispatchMode,
-  HookCategory,
-  HookHandlerMap,
-  ConfigHookHandlers,
-  CompilationHookHandlers,
-  NetworkHookHandlers,
-  TestingHookHandlers,
-  DeploymentHookHandlers,
-  ProgramDeployedContext,
-  ProgramUpgradedContext,
-  CompilationContext,
-  CompilationResult,
-  ArtifactStore,
-  GlobalOptionDefinition,
-  ConfigValidationError,
-  ProgramDeploymentTarget,
-} from "./types.js";
 
-export { ArgumentType, programNameFromTarget } from "./types.js";
-
-// Plugin loader
-export {
-  resolvePluginOrder,
-  collectGlobalOptions,
-  PluginLoadError,
-} from "./plugin-loader.js";
-
+export type { ResolveConfigResult } from "./config-resolution.js";
+// Config resolution
+export { ConfigResolutionError, resolveConfig } from "./config-resolution.js";
 // Hook system
 export { HookDispatcherImpl } from "./hook-system.js";
-
-// Task builder
-export { task, overrideTask, TaskBuilder, OverrideTaskBuilder } from "./task-builder.js";
-
-// Task runner
-export { TaskRunnerImpl, TaskNotFoundError } from "./task-runner.js";
-
-// Config resolution
-export { resolveConfig, ConfigResolutionError } from "./config-resolution.js";
-export type { ResolveConfigResult } from "./config-resolution.js";
-
-// Leo CLI preflight
-export { preflightLeo } from "./leo-preflight.js";
-
-// LRE
-export { createLre } from "./lre.js";
-export type { CreateLreOptions } from "./lre.js";
-
-// Key artifact metadata
-export {
-  KEY_ARTIFACTS_FORMAT,
-  RUNTIME_KEY_CACHE_FORMAT,
-  CREDITS_KEY_CACHE_FORMAT,
-  KeyArtifactsMetadataError,
-  keyArtifactsMetadataPath,
-  readKeyArtifactsMetadata,
-  writeKeyArtifactsMetadata,
-  readRuntimeKeyCacheMetadata,
-  writeRuntimeKeyCacheMetadata,
-  readCreditsKeyCacheMetadata,
-  writeCreditsKeyCacheMetadata,
-  fingerprintBytes,
-  fingerprintFile,
-  sha256Text,
-  sha256Json,
-  verifyKeyFileRef,
-  resolveKeyFileRef,
-  fingerprintsEqual,
-} from "./key-artifacts.js";
 export type {
-  KeyFingerprint,
-  KeyFileRef,
+  CreditsKeyCacheMetadata,
   KeyArtifactFunctionRef,
   KeyArtifactsMetadata,
-  RuntimeKeyIdentity,
+  KeyFileRef,
+  KeyFingerprint,
   RuntimeKeyCacheDiagnostics,
   RuntimeKeyCacheMetadata,
-  CreditsKeyCacheMetadata,
+  RuntimeKeyIdentity,
 } from "./key-artifacts.js";
+// Key artifact metadata
+export {
+  CREDITS_KEY_CACHE_FORMAT,
+  fingerprintBytes,
+  fingerprintFile,
+  fingerprintsEqual,
+  KEY_ARTIFACTS_FORMAT,
+  KeyArtifactsMetadataError,
+  keyArtifactsMetadataPath,
+  RUNTIME_KEY_CACHE_FORMAT,
+  readCreditsKeyCacheMetadata,
+  readKeyArtifactsMetadata,
+  readRuntimeKeyCacheMetadata,
+  resolveKeyFileRef,
+  sha256Json,
+  sha256Text,
+  verifyKeyFileRef,
+  writeCreditsKeyCacheMetadata,
+  writeKeyArtifactsMetadata,
+  writeRuntimeKeyCacheMetadata,
+} from "./key-artifacts.js";
+// Leo CLI preflight
+export { preflightLeo } from "./leo-preflight.js";
+export type { CreateLreOptions } from "./lre.js";
+// LRE
+export { createLre } from "./lre.js";
+// Plugin loader
+export {
+  collectGlobalOptions,
+  PluginLoadError,
+  resolvePluginOrder,
+} from "./plugin-loader.js";
+// Task builder
+export { OverrideTaskBuilder, overrideTask, TaskBuilder, task } from "./task-builder.js";
+// Task runner
+export { TaskNotFoundError, TaskRunnerImpl } from "./task-runner.js";
+export type {
+  ArtifactStore,
+  CompilationContext,
+  CompilationHookHandlers,
+  CompilationResult,
+  ConfigHookHandlers,
+  ConfigValidationError,
+  DeploymentHookHandlers,
+  GlobalOptionDefinition,
+  HookCategory,
+  HookDispatcher,
+  HookDispatchMode,
+  HookHandlerMap,
+  LionDenPlugin,
+  LionDenRuntimeEnvironment,
+  NetworkHookHandlers,
+  ProgramDeployedContext,
+  ProgramDeploymentTarget,
+  ProgramUpgradedContext,
+  TaskAction,
+  TaskActionWithSuper,
+  TaskDefinition,
+  TaskFlag,
+  TaskOption,
+  TaskPositionalArgument,
+  TaskRunner,
+  TestingHookHandlers,
+} from "./types.js";
+export { ArgumentType, programNameFromTarget } from "./types.js";

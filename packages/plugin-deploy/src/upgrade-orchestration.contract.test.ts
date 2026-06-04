@@ -1,28 +1,17 @@
-/**
- * Tier 2 contract test — crosses: @lionden/plugin-deploy + @lionden/leo-compiler + @lionden/network
- *
- * Tests the full upgrade orchestration: upgradeAction() reads deployment state
- * via DeploymentManager, calls compile (which refreshes in-memory artifacts),
- * checks ABI compatibility and constructor immutability via preflight, then
- * builds and broadcasts an upgrade transaction through a mocked NetworkConnection.
- */
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
+import type { LionDenPlugin } from "@lionden/core";
 import { task } from "@lionden/core";
-import type { LionDenRuntimeEnvironment, LionDenPlugin } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkManager } from "@lionden/network";
-import { upgradeAction, UpgradeCompatibilityError } from "./upgrade-task.js";
-import { DeployError } from "./errors.js";
+import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { extractConstructorFingerprint } from "./constructor-parser.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
 import { writeAbiSnapshot } from "./deployment-state.js";
-import { extractConstructorFingerprint } from "./constructor-parser.js";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
+import { DeployError } from "./errors.js";
+import { UpgradeCompatibilityError, upgradeAction } from "./upgrade-task.js";
 
-const DEVNODE_ACCOUNT_0 =
-  "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
+const DEVNODE_ACCOUNT_0 = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
 
 const mockCreateSdkObjects = vi.hoisted(() => vi.fn());
 const mockBuildDevnodeUpgradeTransaction = vi.hoisted(() => vi.fn());
@@ -36,15 +25,17 @@ vi.mock("@lionden/network", async (importOriginal) => {
     createSdkObjects: mockCreateSdkObjects,
     checkDevnodeSdkSupport: vi.fn().mockResolvedValue(undefined),
     initConsensusHeights: vi.fn().mockResolvedValue(undefined),
-    DEVNODE_ACCOUNTS: [{ address: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px", privateKey: "test-key" }],
+    DEVNODE_ACCOUNTS: [
+      {
+        address: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+        privateKey: "test-key",
+      },
+    ],
   };
 });
 
 /** Minimal ABI with one mapping and one transition. */
-function makeAbi(opts?: {
-  mappings?: string[];
-  records?: ProgramABI["records"];
-}): ProgramABI {
+function makeAbi(opts?: { mappings?: string[]; records?: ProgramABI["records"] }): ProgramABI {
   const mappings = (opts?.mappings ?? ["counters"]).map((name) => ({
     name,
     key: { Primitive: "Address" } as const,
@@ -53,9 +44,7 @@ function makeAbi(opts?: {
 
   return {
     program: "hello.aleo",
-    transitions: [
-      { name: "increment", inputs: [], outputs: [], is_async: false },
-    ],
+    transitions: [{ name: "increment", inputs: [], outputs: [], is_async: false }],
     structs: [],
     records: opts?.records ?? [],
     mappings,
@@ -170,8 +159,7 @@ describe("upgrade orchestration contract", () => {
 
     const oldAbi = makeAbi({ mappings: oldMappings });
     const newAbi = makeAbi({ mappings: newMappings, records: opts?.newRecords });
-    const defaultAleoSource =
-      `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
+    const defaultAleoSource = `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
     const aleoSource = opts?.newAleoSource ?? defaultAleoSource;
 
     // Track compile calls
@@ -221,8 +209,7 @@ describe("upgrade orchestration contract", () => {
     // in-memory cache (ephemeral) are populated.
     if (!opts?.skipRecord) {
       const fingerprint =
-        opts?.fingerprint ??
-        extractConstructorFingerprint(defaultAleoSource, constructorType);
+        opts?.fingerprint ?? extractConstructorFingerprint(defaultAleoSource, constructorType);
 
       const record = makeRecord({ constructorType, edition, fingerprint });
       if (constructorType === "checksum") {
@@ -248,8 +235,10 @@ describe("upgrade orchestration contract", () => {
     // Seed getProgramSource so devnode validation sees the program as on-chain.
     // When skipRecord=true (testing "not deployed" scenario), leave getProgramSource returning null.
     if (!opts?.skipRecord) {
-      fakeNetwork!.setProgramSource("hello.aleo",
-        `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`);
+      fakeNetwork!.setProgramSource(
+        "hello.aleo",
+        `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
+      );
     }
 
     return {
@@ -375,21 +364,17 @@ describe("upgrade orchestration contract", () => {
     });
     const { lre } = await createUpgradeFixture({ constructorType: "admin" });
 
-    await expect(
-      upgradeAction({ program: "hello", prove: true }, lre),
-    ).rejects.toThrow(/buildUpgradeTransaction/);
+    await expect(upgradeAction({ program: "hello", prove: true }, lre)).rejects.toThrow(
+      /buildUpgradeTransaction/,
+    );
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
   });
 
   it("rejects upgrade of @noupgrade program", async () => {
     const { lre } = await createUpgradeFixture({ constructorType: "noupgrade" });
 
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "@noupgrade",
-    );
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      DeployError,
-    );
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("@noupgrade");
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(DeployError);
   });
 
   it("rejects upgrade when new ABI is not compatible (mapping removed)", async () => {
@@ -408,9 +393,7 @@ describe("upgrade orchestration contract", () => {
 
     fakeNetwork.setConfirmBehavior("reject");
 
-    await expect(
-      upgradeAction({ program: "hello" }, lre),
-    ).rejects.toThrow(DeployError);
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(DeployError);
   });
 
   it("skips confirmation when skipConfirm is true", async () => {
@@ -432,9 +415,7 @@ describe("upgrade orchestration contract", () => {
   it("throws when old ABI snapshot is missing", async () => {
     const { lre } = await createUpgradeFixture({ skipOldAbi: true });
 
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "No ABI found",
-    );
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("No ABI found");
   });
 
   it("rejects upgrade when constructor type changes", async () => {
@@ -455,9 +436,7 @@ describe("upgrade orchestration contract", () => {
         '@admin(address="aleo1qnr4dkkvkgfqph0vzc3y6z2eu975wnpz2925ntjccd5cfqxtyu8s7pyjh9")\n    constructor() {}',
     });
 
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "admin address changed",
-    );
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("admin address changed");
   });
 
   it("rejects upgrade when @custom constructor body changes", async () => {
@@ -507,25 +486,33 @@ describe("upgrade orchestration contract", () => {
         task("compile", "Test compile")
           .setAction(async (_args, lre) => {
             lre.artifacts.setAbi("hello.aleo", makeAbi());
-            lre.artifacts.setAleoSource("hello.aleo",
-              "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
+            lre.artifacts.setAleoSource(
+              "hello.aleo",
+              "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
+            );
           })
           .build(),
       ],
     };
 
     fixture = createContractLre({
-      programs: [{
-        name: "hello",
-        annotation: '@checksum(mapping="new_gov.aleo::checksums", key="hello")\n    constructor() {}',
-      }],
+      programs: [
+        {
+          name: "hello",
+          annotation:
+            '@checksum(mapping="new_gov.aleo::checksums", key="hello")\n    constructor() {}',
+        },
+      ],
       plugins: [compilePlugin],
       withNetwork: true,
-      prePopulateArtifacts: [{
-        programId: "hello.aleo",
-        abi: makeAbi(),
-        aleoSource: "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
-      }],
+      prePopulateArtifacts: [
+        {
+          programId: "hello.aleo",
+          abi: makeAbi(),
+          aleoSource:
+            "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
+        },
+      ],
     });
 
     const { lre } = fixture;
@@ -559,8 +546,10 @@ describe("upgrade orchestration contract", () => {
     };
     await manager.record(record, "deploy", { abi: makeAbi() });
 
-    fixture.fakeNetwork!.setProgramSource("hello.aleo",
-      "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n");
+    fixture.fakeNetwork!.setProgramSource(
+      "hello.aleo",
+      "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
+    );
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
       "@checksum parameters changed",

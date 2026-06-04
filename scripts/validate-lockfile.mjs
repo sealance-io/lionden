@@ -21,7 +21,9 @@ const raw = readFileSync("package-lock.json", "utf8");
 const lock = JSON.parse(raw);
 
 if (!lock.lockfileVersion || lock.lockfileVersion < 2) {
-  console.error(`Lockfile version ${lock.lockfileVersion ?? "missing"} is unsupported (requires >= 2)`);
+  console.error(
+    `Lockfile version ${lock.lockfileVersion ?? "missing"} is unsupported (requires >= 2)`,
+  );
   process.exit(1);
 }
 

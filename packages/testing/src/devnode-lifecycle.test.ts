@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock DevnodeManager before importing the module under test
 const { resolveDevnodeBackend, preflightDevnode } = vi.hoisted(() => ({
@@ -43,7 +43,15 @@ function makeConfig(networks: Record<string, unknown> = {}): LionDenResolvedConf
     compiler: { enableDce: false, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    deploy: {
+      defaultPriorityFee: 0,
+      privateFee: false,
+      confirmTransactions: true,
+      confirmationTimeout: 60_000,
+      deploymentsDir: "deployments",
+      skipDeployed: true,
+      autoExport: false,
+    },
     sdk: { keyCache: { storage: "memory" } },
     execution: { imports: {} },
     namedAccounts: {},
@@ -187,10 +195,9 @@ describe("devnode-lifecycle", () => {
       await startDevnode();
 
       const { DevnodeManager } = await import("@lionden/network");
-      const instance = (DevnodeManager as unknown as ReturnType<typeof vi.fn>).mock.results[0]!.value;
-      expect(instance.start).toHaveBeenCalledWith(
-        expect.objectContaining({ autoBlock: true }),
-      );
+      const instance = (DevnodeManager as unknown as ReturnType<typeof vi.fn>).mock.results[0]!
+        .value;
+      expect(instance.start).toHaveBeenCalledWith(expect.objectContaining({ autoBlock: true }));
     });
   });
 

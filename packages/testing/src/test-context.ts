@@ -6,36 +6,33 @@
  * and executing transitions.
  */
 
-import {
-  type LionDenRuntimeEnvironment,
-  type ProgramDeploymentTarget,
-  programNameFromTarget,
-} from "@lionden/core";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import type {
-  NetworkConnection,
-  NetworkManager,
-  DevnodeAccount,
-  Signer,
-  RawTransitionOutput,
-} from "@lionden/network";
-import { DEVNODE_ACCOUNTS } from "@lionden/network";
-import type { DevnodeStartOptions } from "@lionden/network";
 import {
   createNamedAccountAccessor,
   type NamedAccountAccessor,
   type NamedAccounts,
 } from "@lionden/config";
+import {
+  type LionDenRuntimeEnvironment,
+  type ProgramDeploymentTarget,
+  programNameFromTarget,
+} from "@lionden/core";
+import type {
+  DevnodeAccount,
+  DevnodeStartOptions,
+  NetworkConnection,
+  NetworkManager,
+  RawTransitionOutput,
+  Signer,
+} from "@lionden/network";
+import { DEVNODE_ACCOUNTS } from "@lionden/network";
+import type { CachedDeploymentRecord, DeploymentCacheAccessor } from "./deployment-cache.js";
 import type { ManagedDevnode } from "./devnode-lifecycle.js";
 import { startDevnode, stopDevnode } from "./devnode-lifecycle.js";
 import { clearFixtures } from "./fixtures.js";
 import { createTestLre } from "./lre-factory.js";
-import type {
-  CachedDeploymentRecord,
-  DeploymentCacheAccessor,
-} from "./deployment-cache.js";
 
 const MANUAL_DEVNODE_HEALTH_TIMEOUT_MS = 5_000;
 
@@ -255,9 +252,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   ): Promise<ExecuteResult> => {
     const mode = execOpts?.mode ?? "onchain";
     const awaitOpt =
-      mode === "onchain"
-        ? { awaitConfirmation: execOpts?.awaitConfirmation ?? true }
-        : {};
+      mode === "onchain" ? { awaitConfirmation: execOpts?.awaitConfirmation ?? true } : {};
     const result = await connection.execute(programId, transitionName, args, {
       mode,
       fee: execOpts?.fee,
@@ -284,7 +279,10 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       execute: executeRaw,
     },
 
-    async deploy(program: ProgramDeploymentTarget, deployOpts?: DeployOptions): Promise<DeployResult> {
+    async deploy(
+      program: ProgramDeploymentTarget,
+      deployOpts?: DeployOptions,
+    ): Promise<DeployResult> {
       const programName = programNameFromTarget(program);
       const normalizedId = normalizeProgramId(programName);
 
@@ -304,9 +302,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         skipConfirm: deployOpts?.skipConfirm,
         noCompile: deployOpts?.noCompile,
         noSkipDeployed: deployOpts?.noSkipDeployed,
-        ...(deployOpts?.prove !== undefined || prove
-          ? { prove: deployOpts?.prove ?? prove }
-          : {}),
+        ...(deployOpts?.prove !== undefined || prove ? { prove: deployOpts?.prove ?? prove } : {}),
       });
 
       // Unwrap DeployTaskResult discriminated union
@@ -337,12 +333,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         return { programId: normalizedId, txId: cached.txId };
       }
 
-      throw createEmptyDeployResultError(
-        programName,
-        normalizedId,
-        connectedNetwork,
-        cached,
-      );
+      throw createEmptyDeployResultError(programName, normalizedId, connectedNetwork, cached);
     },
 
     execute: executeRaw,
@@ -492,11 +483,7 @@ function normalizeProgramId(programName: string): string {
 function isCompleteDeploymentWithTxId(
   record: CachedDeploymentRecord | null,
 ): record is CachedDeploymentRecord & { readonly txId: string } {
-  return (
-    record?.status === "complete" &&
-    typeof record.txId === "string" &&
-    record.txId.length > 0
-  );
+  return record?.status === "complete" && typeof record.txId === "string" && record.txId.length > 0;
 }
 
 function getDeployResultForProgram(
@@ -523,9 +510,7 @@ function createEmptyDeployResultError(
   );
 }
 
-function describeCachedDeployment(
-  cached: CachedDeploymentRecord | null,
-): string {
+function describeCachedDeployment(cached: CachedDeploymentRecord | null): string {
   if (!cached) {
     return "cached state: none";
   }

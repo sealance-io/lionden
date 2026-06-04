@@ -1,4 +1,4 @@
-import type { LionDenPlugin, GlobalOptionDefinition } from "./types.js";
+import type { GlobalOptionDefinition, LionDenPlugin } from "./types.js";
 
 export class PluginLoadError extends Error {
   constructor(message: string) {
@@ -14,9 +14,7 @@ export class PluginLoadError extends Error {
  * @param plugins - The user-provided plugin list
  * @returns Plugins in dependency-first order, with conditional deps injected
  */
-export function resolvePluginOrder(
-  plugins: readonly LionDenPlugin[],
-): LionDenPlugin[] {
+export function resolvePluginOrder(plugins: readonly LionDenPlugin[]): LionDenPlugin[] {
   const userPluginIds = new Set(plugins.map((p) => p.id));
   const allPlugins = new Map<string, LionDenPlugin>();
 
@@ -27,9 +25,7 @@ export function resolvePluginOrder(
     if (allPlugins.has(plugin.id)) {
       const existing = allPlugins.get(plugin.id)!;
       if (existing !== plugin) {
-        throw new PluginLoadError(
-          `Duplicate plugin ID "${plugin.id}" with different instances`,
-        );
+        throw new PluginLoadError(`Duplicate plugin ID "${plugin.id}" with different instances`);
       }
       continue;
     }
@@ -56,9 +52,7 @@ export function resolvePluginOrder(
   function visit(plugin: LionDenPlugin): void {
     if (visited.has(plugin.id)) return;
     if (visiting.has(plugin.id)) {
-      throw new PluginLoadError(
-        `Circular plugin dependency detected involving "${plugin.id}"`,
-      );
+      throw new PluginLoadError(`Circular plugin dependency detected involving "${plugin.id}"`);
     }
 
     visiting.add(plugin.id);

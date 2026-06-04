@@ -1,20 +1,20 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { LionDenResolvedConfig } from "@lionden/config";
 import {
-  type LionDenPlugin,
-  type LionDenRuntimeEnvironment,
   type ConfigHookHandlers,
   type ConfigValidationError,
+  type LionDenPlugin,
+  type LionDenRuntimeEnvironment,
   task,
 } from "@lionden/core";
-import type { LionDenResolvedConfig } from "@lionden/config";
 import type { NetworkManager } from "@lionden/network";
 import { deployAction } from "./deploy-task.js";
-import { upgradeAction } from "./upgrade-task.js";
-import { recipeAction } from "./recipe-task.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
 import { DeployError } from "./errors.js";
+import { recipeAction } from "./recipe-task.js";
+import { upgradeAction } from "./upgrade-task.js";
 
 // ---------------------------------------------------------------------------
 // Config hooks
@@ -176,8 +176,7 @@ async function exportAction(
   args: Record<string, unknown>,
   lre: LionDenRuntimeEnvironment,
 ): Promise<unknown> {
-  const networkName =
-    (args["network"] as string | undefined) ?? lre.config.defaultNetwork;
+  const networkName = (args["network"] as string | undefined) ?? lre.config.defaultNetwork;
   const outPath = args["out"] as string | undefined;
 
   const manager = lre.deployments as DeploymentManager | null;
@@ -229,69 +228,62 @@ export default pluginDeploy;
 // Re-exports — public API
 // ---------------------------------------------------------------------------
 
-// Deployment state types
-export type {
-  DeploymentRecord,
-  CompleteDeploymentRecord,
-  DegradedDeploymentRecord,
-  RecoveredDeploymentRecord,
-  DeploymentHistoryEntry,
-  NetworkMetadata,
-  PendingDeployment,
-  ExportBundle,
-  ExportedProgram,
-  RecordConstructorInfo,
-} from "./deployment-types.js";
-
-// Deployment manager
-export type { DeploymentManager, PreflightOptions, RecordOptions } from "./deployment-manager.js";
-export { DeploymentManagerImpl } from "./deployment-manager.js";
-
-// Preflight types
-export type {
-  DeployPreflightResult,
-  UpgradePreflightResult,
-  PreflightWarning,
-  PreflightError,
-  ProgramPreflightOutcome,
-} from "./preflight.js";
-
-// On-chain check
-export { checkProgramOnChain } from "./on-chain-check.js";
-
-// Deploy task
+export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
+// ABI compatibility
+export { checkAbiCompatibility } from "./abi-compat.js";
+export type { ConstructorInfo, ConstructorType } from "./constructor-parser.js";
+// Constructor parser
 export {
-  DeployError,
-  validateConstructor,
-  readLeoSourcesFromDir,
-  resolveDeployTargets,
-} from "./deploy-task.js";
+  isValidAleoAddress,
+  parseConstructor,
+  parseConstructorFromFiles,
+} from "./constructor-parser.js";
+export type { DeployManifest } from "./deploy-manifest.js";
+// Legacy exports (deploy-manifest.ts is left unused; kept for external code that may reference it)
+export {
+  deployManifestPath,
+  readDeployManifest,
+  writeDeployManifest,
+} from "./deploy-manifest.js";
 export type {
   DeployOptions,
   DeployResult,
   DeployTaskResult,
   DryRunResult,
 } from "./deploy-task.js";
-
-// Upgrade task
+// Deploy task
 export {
-  UpgradeCompatibilityError,
-  validateUpgradePermission,
-  validateAdminSigner,
-} from "./upgrade-task.js";
-export type { UpgradeOptions, UpgradeResult } from "./upgrade-task.js";
-
-// Constructor parser
-export {
-  parseConstructor,
-  parseConstructorFromFiles,
-  isValidAleoAddress,
-} from "./constructor-parser.js";
-export type { ConstructorInfo, ConstructorType } from "./constructor-parser.js";
-
-// ABI compatibility
-export { checkAbiCompatibility } from "./abi-compat.js";
-export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
+  DeployError,
+  readLeoSourcesFromDir,
+  resolveDeployTargets,
+  validateConstructor,
+} from "./deploy-task.js";
+// Deployment manager
+export type { DeploymentManager, PreflightOptions, RecordOptions } from "./deployment-manager.js";
+export { DeploymentManagerImpl } from "./deployment-manager.js";
+// Deployment state types
+export type {
+  CompleteDeploymentRecord,
+  DegradedDeploymentRecord,
+  DeploymentHistoryEntry,
+  DeploymentRecord,
+  ExportBundle,
+  ExportedProgram,
+  NetworkMetadata,
+  PendingDeployment,
+  RecordConstructorInfo,
+  RecoveredDeploymentRecord,
+} from "./deployment-types.js";
+// On-chain check
+export { checkProgramOnChain } from "./on-chain-check.js";
+// Preflight types
+export type {
+  DeployPreflightResult,
+  PreflightError,
+  PreflightWarning,
+  ProgramPreflightOutcome,
+  UpgradePreflightResult,
+} from "./preflight.js";
 
 // Recipe types
 export type {
@@ -303,11 +295,10 @@ export type {
   RecipeExecuteOptions,
   RecipeExecuteResult,
 } from "./recipe-types.js";
-
-// Legacy exports (deploy-manifest.ts is left unused; kept for external code that may reference it)
+export type { UpgradeOptions, UpgradeResult } from "./upgrade-task.js";
+// Upgrade task
 export {
-  readDeployManifest,
-  writeDeployManifest,
-  deployManifestPath,
-} from "./deploy-manifest.js";
-export type { DeployManifest } from "./deploy-manifest.js";
+  UpgradeCompatibilityError,
+  validateAdminSigner,
+  validateUpgradePermission,
+} from "./upgrade-task.js";

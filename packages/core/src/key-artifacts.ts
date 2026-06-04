@@ -68,31 +68,21 @@ export class KeyArtifactsMetadataError extends Error {
   }
 }
 
-export function keyArtifactsMetadataPath(
-  artifactsDir: string,
-  programId: string,
-): string {
+export function keyArtifactsMetadataPath(artifactsDir: string, programId: string): string {
   return path.join(artifactsDir, programId, "lionden-key-artifacts.json");
 }
 
-export function readKeyArtifactsMetadata(
-  filePath: string,
-): KeyArtifactsMetadata | undefined {
+export function readKeyArtifactsMetadata(filePath: string): KeyArtifactsMetadata | undefined {
   if (!fs.existsSync(filePath)) return undefined;
   return parseKeyArtifactsMetadata(readJson(filePath), filePath);
 }
 
-export function writeKeyArtifactsMetadata(
-  filePath: string,
-  metadata: KeyArtifactsMetadata,
-): void {
+export function writeKeyArtifactsMetadata(filePath: string, metadata: KeyArtifactsMetadata): void {
   parseKeyArtifactsMetadata(metadata, filePath);
   writeJsonAtomic(filePath, metadata);
 }
 
-export function readRuntimeKeyCacheMetadata(
-  filePath: string,
-): RuntimeKeyCacheMetadata | undefined {
+export function readRuntimeKeyCacheMetadata(filePath: string): RuntimeKeyCacheMetadata | undefined {
   if (!fs.existsSync(filePath)) return undefined;
   return parseRuntimeKeyCacheMetadata(readJson(filePath), filePath);
 }
@@ -105,9 +95,7 @@ export function writeRuntimeKeyCacheMetadata(
   writeJsonAtomic(filePath, metadata);
 }
 
-export function readCreditsKeyCacheMetadata(
-  filePath: string,
-): CreditsKeyCacheMetadata | undefined {
+export function readCreditsKeyCacheMetadata(filePath: string): CreditsKeyCacheMetadata | undefined {
   if (!fs.existsSync(filePath)) return undefined;
   return parseCreditsKeyCacheMetadata(readJson(filePath), filePath);
 }
@@ -185,26 +173,19 @@ function writeJsonAtomic(filePath: string, value: unknown): void {
   fs.renameSync(tmpPath, filePath);
 }
 
-function parseKeyArtifactsMetadata(
-  value: unknown,
-  filePath: string,
-): KeyArtifactsMetadata {
+function parseKeyArtifactsMetadata(value: unknown, filePath: string): KeyArtifactsMetadata {
   if (!isRecord(value)) {
     throw invalidMetadata(filePath, "expected an object");
   }
   if (value["format"] !== KEY_ARTIFACTS_FORMAT) {
-    throw invalidMetadata(
-      filePath,
-      `unsupported format ${JSON.stringify(value["format"])}`,
-    );
+    throw invalidMetadata(filePath, `unsupported format ${JSON.stringify(value["format"])}`);
   }
   const programId = expectString(value, "programId", filePath);
   const sourceHash = expectString(value, "sourceHash", filePath);
   const importsHash = expectString(value, "importsHash", filePath);
   const functionsRaw = value["functions"];
-  const functions = functionsRaw === undefined
-    ? undefined
-    : expectFunctionRefs(functionsRaw, filePath);
+  const functions =
+    functionsRaw === undefined ? undefined : expectFunctionRefs(functionsRaw, filePath);
 
   return {
     format: KEY_ARTIFACTS_FORMAT,
@@ -215,25 +196,20 @@ function parseKeyArtifactsMetadata(
   };
 }
 
-function parseRuntimeKeyCacheMetadata(
-  value: unknown,
-  filePath: string,
-): RuntimeKeyCacheMetadata {
+function parseRuntimeKeyCacheMetadata(value: unknown, filePath: string): RuntimeKeyCacheMetadata {
   if (!isRecord(value)) {
     throw invalidMetadata(filePath, "expected an object");
   }
   if (value["format"] !== RUNTIME_KEY_CACHE_FORMAT) {
-    throw invalidMetadata(
-      filePath,
-      `unsupported format ${JSON.stringify(value["format"])}`,
-    );
+    throw invalidMetadata(filePath, `unsupported format ${JSON.stringify(value["format"])}`);
   }
   const identity = expectIdentity(value["identity"], filePath);
   const prover = expectFingerprint(value["prover"], "prover", filePath);
   const verifier = expectFingerprint(value["verifier"], "verifier", filePath);
-  const diagnostics = value["diagnostics"] === undefined
-    ? undefined
-    : expectDiagnostics(value["diagnostics"], filePath);
+  const diagnostics =
+    value["diagnostics"] === undefined
+      ? undefined
+      : expectDiagnostics(value["diagnostics"], filePath);
 
   return {
     format: RUNTIME_KEY_CACHE_FORMAT,
@@ -244,18 +220,12 @@ function parseRuntimeKeyCacheMetadata(
   };
 }
 
-function parseCreditsKeyCacheMetadata(
-  value: unknown,
-  filePath: string,
-): CreditsKeyCacheMetadata {
+function parseCreditsKeyCacheMetadata(value: unknown, filePath: string): CreditsKeyCacheMetadata {
   if (!isRecord(value)) {
     throw invalidMetadata(filePath, "expected an object");
   }
   if (value["format"] !== CREDITS_KEY_CACHE_FORMAT) {
-    throw invalidMetadata(
-      filePath,
-      `unsupported format ${JSON.stringify(value["format"])}`,
-    );
+    throw invalidMetadata(filePath, `unsupported format ${JSON.stringify(value["format"])}`);
   }
   return {
     format: CREDITS_KEY_CACHE_FORMAT,
@@ -266,10 +236,7 @@ function parseCreditsKeyCacheMetadata(
   };
 }
 
-function expectFunctionRefs(
-  value: unknown,
-  filePath: string,
-): KeyArtifactFunctionRef[] {
+function expectFunctionRefs(value: unknown, filePath: string): KeyArtifactFunctionRef[] {
   if (!Array.isArray(value)) {
     throw invalidMetadata(filePath, "functions must be an array");
   }
@@ -278,12 +245,14 @@ function expectFunctionRefs(
       throw invalidMetadata(filePath, `functions[${index}] must be an object`);
     }
     const transition = expectString(entry, "transition", filePath);
-    const prover = entry["prover"] === undefined
-      ? undefined
-      : expectKeyFileRef(entry["prover"], `functions[${index}].prover`, filePath);
-    const verifier = entry["verifier"] === undefined
-      ? undefined
-      : expectKeyFileRef(entry["verifier"], `functions[${index}].verifier`, filePath);
+    const prover =
+      entry["prover"] === undefined
+        ? undefined
+        : expectKeyFileRef(entry["prover"], `functions[${index}].prover`, filePath);
+    const verifier =
+      entry["verifier"] === undefined
+        ? undefined
+        : expectKeyFileRef(entry["verifier"], `functions[${index}].verifier`, filePath);
     return {
       transition,
       ...(prover === undefined ? {} : { prover }),
@@ -324,10 +293,7 @@ function expectIdentity(value: unknown, filePath: string): RuntimeKeyIdentity {
   };
 }
 
-function expectDiagnostics(
-  value: unknown,
-  filePath: string,
-): RuntimeKeyCacheDiagnostics {
+function expectDiagnostics(value: unknown, filePath: string): RuntimeKeyCacheDiagnostics {
   if (!isRecord(value)) {
     throw invalidMetadata(filePath, "diagnostics must be an object");
   }
@@ -349,11 +315,7 @@ function expectDiagnostics(
   return diagnostics;
 }
 
-function expectFingerprint(
-  value: unknown,
-  label: string,
-  filePath: string,
-): KeyFingerprint {
+function expectFingerprint(value: unknown, label: string, filePath: string): KeyFingerprint {
   if (!isRecord(value)) {
     throw invalidMetadata(filePath, `${label} must be an object`);
   }
@@ -368,11 +330,7 @@ function expectFingerprint(
   return { sha256, size };
 }
 
-function expectString(
-  value: Record<string, unknown>,
-  key: string,
-  filePath: string,
-): string {
+function expectString(value: Record<string, unknown>, key: string, filePath: string): string {
   const raw = value[key];
   if (typeof raw !== "string" || raw.length === 0) {
     throw invalidMetadata(filePath, `${key} must be a non-empty string`);

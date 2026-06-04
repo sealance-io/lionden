@@ -18,8 +18,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTimelockExample } from "../typechain/TimelockExample.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -56,9 +56,7 @@ async function currentBlockHeight(c: TestContext): Promise<number> {
     networkId: string;
     endpoint: string;
   };
-  const response = await fetch(
-    `${conn.endpoint}/${conn.networkId}/block/height/latest`,
-  );
+  const response = await fetch(`${conn.endpoint}/${conn.networkId}/block/height/latest`);
   const text = await response.text();
   return Number(text.trim());
 }
@@ -75,18 +73,8 @@ describe("timelock_example.aleo", () => {
   });
 
   it("upgrade succeeds once block.height crosses the threshold", async () => {
-    const programPath = path.resolve(
-      __dirname,
-      "..",
-      "programs",
-      "timelock_example",
-      "main.leo",
-    );
-    const v2FixturePath = path.resolve(
-      __dirname,
-      "fixtures",
-      "timelock_example_v2.leo",
-    );
+    const programPath = path.resolve(__dirname, "..", "programs", "timelock_example", "main.leo");
+    const v2FixturePath = path.resolve(__dirname, "fixtures", "timelock_example_v2.leo");
     const v1Source = fs.readFileSync(programPath, "utf-8");
 
     try {
@@ -104,12 +92,9 @@ describe("timelock_example.aleo", () => {
       // The v2-only `subtract` transition isn't on the typed wrapper class
       // loaded at suite startup (typechain reflects v1). Use the explicit
       // raw escape hatch for the post-upgrade ABI addition.
-      const sub = await ctx!.raw.execute(
-        "timelock_example.aleo",
-        "subtract",
-        ["10u32", "3u32"],
-        { mode: "local" },
-      );
+      const sub = await ctx!.raw.execute("timelock_example.aleo", "subtract", ["10u32", "3u32"], {
+        mode: "local",
+      });
       expect(sub.outputs[0]).toBe("7u32");
     } finally {
       fs.writeFileSync(programPath, v1Source, "utf-8");

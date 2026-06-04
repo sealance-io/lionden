@@ -11,13 +11,9 @@
 // confirmed.outputs.decrypt(account); proving needs the on-chain state paths,
 // so we don't pre-run them in local mode. Local mode is reserved for pure
 // parity checks (e.g. interest math) with no finalize side effect.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBasicBank, type Token } from "../typechain/BasicBank.js";
 
 async function deployBank() {
@@ -59,7 +55,9 @@ describe("basic_bank.aleo", () => {
   let token: Token | undefined;
 
   it("issue() mints a fresh Token to the recipient when called by the bank", async () => {
-    const confirmed = await basicBank.withSigner(bank()).issue.accepted({ owner: user(), amount: 100n });
+    const confirmed = await basicBank
+      .withSigner(bank())
+      .issue.accepted({ owner: user(), amount: 100n });
     token = await confirmed.outputs.decrypt(user());
     expect(token.owner).toBe(user().address);
     expect(token.amount).toBe(100n);
@@ -79,7 +77,9 @@ describe("basic_bank.aleo", () => {
     // TS, so we don't enumerate / assert balances directly. NOTE: a future
     // assertion would benefit from a TS-side BHP256 helper or a
     // mapping-iteration API on @lionden/network.
-    const confirmed = await basicBank.withSigner(user()).deposit.accepted({ token: token!, amount: 30n });
+    const confirmed = await basicBank
+      .withSigner(user())
+      .deposit.accepted({ token: token!, amount: 30n });
     const remaining = await confirmed.outputs.decrypt(user());
     expect(remaining.amount).toBe(70n);
 

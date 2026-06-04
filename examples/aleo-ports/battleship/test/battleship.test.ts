@@ -9,12 +9,13 @@
 // Typed-wrapper coverage: battleship.aleo returns records declared in imported
 // programs (BoardState in board.aleo, Move in move.aleo), and typechain imports
 // those generated types so the full round-trip stays typed.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBattleship } from "../typechain/Battleship.js";
-import { createVerify } from "../typechain/Verify.js";
 import type { BoardState } from "../typechain/Board.js";
 import type { Move } from "../typechain/Move.js";
+import { createVerify } from "../typechain/Verify.js";
 
 // Player 1's ship coordinates from upstream run.sh:
 // carrier=34084860461056, battleship=551911718912, cruiser=7, destroyer=1157425104234217472.
@@ -70,36 +71,36 @@ describe("battleship multi-program", () => {
   let dummyMoveForP1: Move | undefined;
 
   it("verify.aleo::validate_ship accepts a valid horizontal placement", async () => {
-    expect(await verify.validate_ship.locally({
-      ship: CARRIER,
-      length: 5n,
-      horizontal: 31n,
-      vertical: 4311810305n,
-    })).toBe(true);
+    expect(
+      await verify.validate_ship.locally({
+        ship: CARRIER,
+        length: 5n,
+        horizontal: 31n,
+        vertical: 4311810305n,
+      }),
+    ).toBe(true);
   });
 
   it("verify.aleo::create_board OR's the four ships into one bitstring", async () => {
     // Expect popcount 14; combined value per upstream run.sh comments.
-    expect(await verify.create_board.locally({
-      carrier: CARRIER,
-      battleship: BATTLESHIP_SHIP,
-      cruiser: CRUISER,
-      destroyer: DESTROYER,
-    })).toBe(
-      1157459741006397447n,
-    );
-  });
-
-  it("battleship.aleo::initialize_board (player 1) returns a fresh BoardState", async () => {
-    board1Initial = await battleship
-      .withSigner(player1())
-      .initialize_board.locally({
+    expect(
+      await verify.create_board.locally({
         carrier: CARRIER,
         battleship: BATTLESHIP_SHIP,
         cruiser: CRUISER,
         destroyer: DESTROYER,
-        player: player2(),
-      });
+      }),
+    ).toBe(1157459741006397447n);
+  });
+
+  it("battleship.aleo::initialize_board (player 1) returns a fresh BoardState", async () => {
+    board1Initial = await battleship.withSigner(player1()).initialize_board.locally({
+      carrier: CARRIER,
+      battleship: BATTLESHIP_SHIP,
+      cruiser: CRUISER,
+      destroyer: DESTROYER,
+      player: player2(),
+    });
     expect(board1Initial.game_started).toBe(false);
     expect(board1Initial.player_1).toBe(player1().address);
     expect(board1Initial.player_2).toBe(player2().address);
@@ -125,22 +126,18 @@ describe("battleship multi-program", () => {
     // Player 2 initializes their own board (with player 1 as opponent).
     // Reusing player 1's coords for simplicity — different ships placement
     // would be 2 different valid bitstrings; not necessary for parity.
-    const board2Initial = await battleship
-      .withSigner(player2())
-      .initialize_board.locally({
-        carrier: CARRIER,
-        battleship: BATTLESHIP_SHIP,
-        cruiser: CRUISER,
-        destroyer: DESTROYER,
-        player: player1(),
-      });
+    const board2Initial = await battleship.withSigner(player2()).initialize_board.locally({
+      carrier: CARRIER,
+      battleship: BATTLESHIP_SHIP,
+      cruiser: CRUISER,
+      destroyer: DESTROYER,
+      player: player1(),
+    });
 
-    const [started, move] = await battleship
-      .withSigner(player2())
-      .start_battleship.locally({
-        board: board2Initial,
-        move_start: dummyMoveForP2!,
-      });
+    const [started, move] = await battleship.withSigner(player2()).start_battleship.locally({
+      board: board2Initial,
+      move_start: dummyMoveForP2!,
+    });
     board2Started = started;
     dummyMoveForP1 = move;
 
@@ -153,13 +150,11 @@ describe("battleship multi-program", () => {
     expect(dummyMoveForP1).toBeDefined();
 
     // Shoot at bit 0 (single-bit u64 = 1).
-    const [nextBoard, nextMove] = await battleship
-      .withSigner(player1())
-      .play.locally({
-        board: board1Started!,
-        move_incoming: dummyMoveForP1!,
-        shoot: 1n,
-      });
+    const [nextBoard, nextMove] = await battleship.withSigner(player1()).play.locally({
+      board: board1Started!,
+      move_incoming: dummyMoveForP1!,
+      shoot: 1n,
+    });
 
     expect(nextBoard.game_started).toBe(true);
     // Next move is owned by the opponent (player 2).

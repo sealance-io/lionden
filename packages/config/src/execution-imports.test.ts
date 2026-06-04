@@ -1,15 +1,15 @@
-import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { describe, expect, it } from "vitest";
 
 import {
-  normalizeProgramId,
-  looksLikePath,
+  checkRuntimeImportRefExists,
   classifyRuntimeImportRef,
   isValidExecutionImportsMapKey,
+  looksLikePath,
+  normalizeProgramId,
   normalizeRuntimeImportRef,
-  checkRuntimeImportRefExists,
 } from "./execution-imports.js";
 
 describe("normalizeProgramId", () => {
@@ -109,7 +109,9 @@ describe("normalizeRuntimeImportRef", () => {
   });
 
   it("throws on invalid refs", () => {
-    expect(() => normalizeRuntimeImportRef("123abc", projectRoot)).toThrow(/Invalid runtime import ref/);
+    expect(() => normalizeRuntimeImportRef("123abc", projectRoot)).toThrow(
+      /Invalid runtime import ref/,
+    );
   });
 });
 
@@ -117,7 +119,7 @@ describe("checkRuntimeImportRefExists", () => {
   it("returns null for programId refs (existence resolved later)", () => {
     const diag = checkRuntimeImportRefExists(
       { kind: "programId", programId: "voting_power.aleo" },
-      "execution.imports[\"governance.aleo\"][0]",
+      'execution.imports["governance.aleo"][0]',
     );
     expect(diag).toBeNull();
   });
@@ -129,7 +131,7 @@ describe("checkRuntimeImportRefExists", () => {
     try {
       const diag = checkRuntimeImportRefExists(
         { kind: "path", absolutePath: filePath },
-        "execution.imports[\"governance.aleo\"][0]",
+        'execution.imports["governance.aleo"][0]',
       );
       expect(diag).toBeNull();
     } finally {
@@ -141,10 +143,10 @@ describe("checkRuntimeImportRefExists", () => {
     const missing = "/tmp/this/path/should/not/exist/foo.aleo";
     const diag = checkRuntimeImportRefExists(
       { kind: "path", absolutePath: missing },
-      "execution.imports[\"governance.aleo\"][0]",
+      'execution.imports["governance.aleo"][0]',
     );
     expect(diag).not.toBeNull();
-    expect(diag!.path).toBe("execution.imports[\"governance.aleo\"][0]");
+    expect(diag!.path).toBe('execution.imports["governance.aleo"][0]');
     expect(diag!.message).toContain(missing);
   });
 
@@ -153,7 +155,7 @@ describe("checkRuntimeImportRefExists", () => {
     try {
       const diag = checkRuntimeImportRefExists(
         { kind: "path", absolutePath: dir },
-        "execution.imports[\"governance.aleo\"][0]",
+        'execution.imports["governance.aleo"][0]',
       );
       expect(diag).not.toBeNull();
       expect(diag!.message).toContain("not a regular file");

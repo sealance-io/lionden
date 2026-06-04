@@ -1,13 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { existsSync } from "node:fs";
 import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { createMockConnection } from "@lionden/test-internals";
-import type {
-  CachedDeploymentRecord,
-  DeploymentCacheAccessor,
-} from "./deployment-cache.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CachedDeploymentRecord, DeploymentCacheAccessor } from "./deployment-cache.js";
 
 vi.mock("@lionden/core", async (importOriginal) => {
   const original = await importOriginal<typeof import("@lionden/core")>();
@@ -36,17 +33,23 @@ vi.mock("./lre-factory.js", async () => {
       return mockLre;
     }),
     resetTestLre: vi.fn(),
-    __setMockLre: (lre: LionDenRuntimeEnvironment) => { mockLre = lre; },
+    __setMockLre: (lre: LionDenRuntimeEnvironment) => {
+      mockLre = lre;
+    },
   };
 });
 
-import { setup } from "./test-context.js";
 import { preflightLeo } from "@lionden/core";
+import { setup } from "./test-context.js";
 
-function mockLre(options: { readonly connection?: NetworkConnection } = {}): LionDenRuntimeEnvironment {
-  const connection = options.connection ?? createMockConnection({
-    execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1exec" }),
-  });
+function mockLre(
+  options: { readonly connection?: NetworkConnection } = {},
+): LionDenRuntimeEnvironment {
+  const connection =
+    options.connection ??
+    createMockConnection({
+      execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1exec" }),
+    });
   const manager: NetworkManager = {
     connect: vi.fn().mockResolvedValue(connection),
     getConnection: vi.fn().mockReturnValue(connection),
@@ -84,7 +87,12 @@ function mockLre(options: { readonly connection?: NetworkConnection } = {}): Lio
           ephemeral: true,
         },
       },
-      compiler: { enableDce: false, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
+      compiler: {
+        enableDce: false,
+        conditionalBlockMaxDepth: 10,
+        buildTests: false,
+        extraFlags: [],
+      },
       codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
       testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
       deploy: {
@@ -330,9 +338,7 @@ describe("test-context", () => {
 
     it("times out manual devnode reachability checks with the same clear error shape", async () => {
       vi.useFakeTimers();
-      const getBlockHeight = vi.fn(
-        () => new Promise<number>(() => {}),
-      );
+      const getBlockHeight = vi.fn(() => new Promise<number>(() => {}));
       const connection = createMockConnection({ getBlockHeight });
       const lre = mockLre({ connection });
 
@@ -367,10 +373,7 @@ describe("test-context", () => {
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
       // Should be called without autoBlock override (second arg undefined or without autoBlock)
-      expect(startDevnode).toHaveBeenCalledWith(
-        lre.config,
-        undefined,
-      );
+      expect(startDevnode).toHaveBeenCalledWith(lre.config, undefined);
     });
 
     it("passes explicit autoBlock override when caller sets it", async () => {
@@ -378,10 +381,7 @@ describe("test-context", () => {
       await setup({ lre, autoBlock: false });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
-      expect(startDevnode).toHaveBeenCalledWith(
-        lre.config,
-        { autoBlock: false },
-      );
+      expect(startDevnode).toHaveBeenCalledWith(lre.config, { autoBlock: false });
     });
   });
 
@@ -533,13 +533,13 @@ describe("test-context", () => {
         mode: "deploy",
         results: [],
       });
-      const getCached = vi
-        .fn<DeploymentCacheAccessor["getCached"]>()
-        .mockReturnValue(cachedDeployment("hello.aleo", {
+      const getCached = vi.fn<DeploymentCacheAccessor["getCached"]>().mockReturnValue(
+        cachedDeployment("hello.aleo", {
           status: "degraded",
           txId: null,
           blockHeight: null,
-        }));
+        }),
+      );
       attachDeploymentCache(lre, getCached);
       const ctx = await setup({ lre, skipDevnode: true });
 
@@ -605,10 +605,13 @@ describe("test-context", () => {
 
       await ctx.execute("hello.aleo", "main", ["1u32", "2u32"]);
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", ["1u32", "2u32"],
-        { mode: "onchain", fee: undefined, prove: false, signer: undefined, awaitConfirmation: true },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "main", ["1u32", "2u32"], {
+        mode: "onchain",
+        fee: undefined,
+        prove: false,
+        signer: undefined,
+        awaitConfirmation: true,
+      });
     });
 
     it("passes prove=true when LIONDEN_PROVE is set", async () => {
@@ -618,10 +621,13 @@ describe("test-context", () => {
 
       await ctx.execute("hello.aleo", "main", ["1u32"]);
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", ["1u32"],
-        { mode: "onchain", fee: undefined, prove: true, signer: undefined, awaitConfirmation: true },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "main", ["1u32"], {
+        mode: "onchain",
+        fee: undefined,
+        prove: true,
+        signer: undefined,
+        awaitConfirmation: true,
+      });
     });
 
     it("explicit mode overrides default", async () => {
@@ -630,10 +636,12 @@ describe("test-context", () => {
 
       await ctx.execute("hello.aleo", "main", [], { mode: "local" });
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", [],
-        { mode: "local", fee: undefined, prove: false, signer: undefined },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "main", [], {
+        mode: "local",
+        fee: undefined,
+        prove: false,
+        signer: undefined,
+      });
     });
 
     it("passes execution options", async () => {
@@ -642,10 +650,13 @@ describe("test-context", () => {
 
       await ctx.execute("hello.aleo", "main", [], { mode: "onchain", fee: 500 });
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", [],
-        { mode: "onchain", fee: 500, prove: false, signer: undefined, awaitConfirmation: true },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "main", [], {
+        mode: "onchain",
+        fee: 500,
+        prove: false,
+        signer: undefined,
+        awaitConfirmation: true,
+      });
     });
 
     it("forwards awaitConfirmation: false to the underlying connection", async () => {
@@ -654,10 +665,13 @@ describe("test-context", () => {
 
       await ctx.execute("hello.aleo", "main", [], { awaitConfirmation: false });
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "main", [],
-        { mode: "onchain", fee: undefined, prove: false, signer: undefined, awaitConfirmation: false },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "main", [], {
+        mode: "onchain",
+        fee: undefined,
+        prove: false,
+        signer: undefined,
+        awaitConfirmation: false,
+      });
     });
 
     it("surfaces rawOutputs when the underlying connection returns them", async () => {
@@ -685,10 +699,12 @@ describe("test-context", () => {
 
       await ctx.raw.execute("hello.aleo", "post_upgrade", ["1u32"], { mode: "local" });
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "post_upgrade", ["1u32"],
-        { mode: "local", fee: undefined, prove: false, signer: undefined },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "post_upgrade", ["1u32"], {
+        mode: "local",
+        fee: undefined,
+        prove: false,
+        signer: undefined,
+      });
     });
 
     it("defaults to awaitConfirmation: true on the on-chain path", async () => {
@@ -697,10 +713,13 @@ describe("test-context", () => {
 
       await ctx.raw.execute("hello.aleo", "post_upgrade", ["1u32"]);
 
-      expect(ctx.connection.execute).toHaveBeenCalledWith(
-        "hello.aleo", "post_upgrade", ["1u32"],
-        { mode: "onchain", fee: undefined, prove: false, signer: undefined, awaitConfirmation: true },
-      );
+      expect(ctx.connection.execute).toHaveBeenCalledWith("hello.aleo", "post_upgrade", ["1u32"], {
+        mode: "onchain",
+        fee: undefined,
+        prove: false,
+        signer: undefined,
+        awaitConfirmation: true,
+      });
     });
 
     it("uses the same implementation as the compatibility ctx.execute helper", async () => {
@@ -757,9 +776,9 @@ describe("test-context", () => {
 
     it("snapshotReset requires an auto-started devnode", async () => {
       const lre = mockLre();
-      await expect(
-        setup({ lre, skipDevnode: true, snapshotReset: true }),
-      ).rejects.toThrow(/auto-started/);
+      await expect(setup({ lre, skipDevnode: true, snapshotReset: true })).rejects.toThrow(
+        /auto-started/,
+      );
     });
 
     it("ctx.restore invalidates the deployment session cache", async () => {
@@ -812,9 +831,7 @@ describe("test-context", () => {
       });
       const lre = mockLre();
 
-      await expect(setup({ lre, snapshotReset: true })).rejects.toThrow(
-        "aleo-devnode not found",
-      );
+      await expect(setup({ lre, snapshotReset: true })).rejects.toThrow("aleo-devnode not found");
       expect(passedStoragePath).toBeDefined();
       expect(existsSync(path.dirname(passedStoragePath!))).toBe(false);
     });

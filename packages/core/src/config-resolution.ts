@@ -1,39 +1,39 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import type {
-  LionDenUserConfig,
-  LionDenResolvedConfig,
-  ResolvedCompilerConfig,
-  ResolvedCodegenConfig,
-  ResolvedDynamicRecordHelper,
-  ResolvedTestingConfig,
-  ResolvedDeployConfig,
-  ResolvedSdkConfig,
-  ResolvedSdkEgressConfig,
-  ResolvedExecutionConfig,
-  RuntimeImportRef,
-  ResolvedPaths,
-  ResolvedNetworkConfig,
-  NetworkUserConfig,
   ConfigVariable,
+  LionDenResolvedConfig,
+  LionDenUserConfig,
   NamedAccountConfig,
   NamedAccountValue,
-  ResolvedNamedAccountValue,
+  NetworkUserConfig,
+  ResolvedCodegenConfig,
+  ResolvedCompilerConfig,
+  ResolvedDeployConfig,
+  ResolvedDynamicRecordHelper,
+  ResolvedExecutionConfig,
   ResolvedNamedAccountEntry,
   ResolvedNamedAccountsConfig,
+  ResolvedNamedAccountValue,
+  ResolvedNetworkConfig,
+  ResolvedPaths,
+  ResolvedSdkConfig,
+  ResolvedSdkEgressConfig,
+  ResolvedTestingConfig,
+  RuntimeImportRef,
 } from "@lionden/config";
 import {
-  SDK_LOG_LEVELS,
-  isConfigVariable,
-  resolveConfigVariable,
-  isValidAleoAddress,
+  checkRuntimeImportRefExists,
   classifyRuntimeImportRef,
-  normalizeRuntimeImportRef,
+  isConfigVariable,
+  isValidAleoAddress,
   isValidExecutionImportsMapKey,
   normalizeProgramId,
-  checkRuntimeImportRefExists,
+  normalizeRuntimeImportRef,
+  resolveConfigVariable,
+  SDK_LOG_LEVELS,
 } from "@lionden/config";
-import type { LionDenPlugin, ConfigValidationError } from "./types.js";
+import type { ConfigValidationError, LionDenPlugin } from "./types.js";
 
 export class ConfigResolutionError extends Error {
   constructor(
@@ -78,11 +78,7 @@ export async function resolveConfig(
   const userErrors = [
     ...validateSdkUserConfig(config),
     ...validateExecutionUserConfig(config),
-    ...(await collectValidationErrorsFromHandlers(
-      configHandlers,
-      "validateUserConfig",
-      config,
-    )),
+    ...(await collectValidationErrorsFromHandlers(configHandlers, "validateUserConfig", config)),
   ];
   if (userErrors.length > 0) {
     throw new ConfigResolutionError(
@@ -180,10 +176,7 @@ function formatErrors(errors: ConfigValidationError[]): string {
   return errors.map((e) => `  - ${e.path}: ${e.message}`).join("\n");
 }
 
-function buildDefaults(
-  config: LionDenUserConfig,
-  projectRoot: string,
-): LionDenResolvedConfig {
+function buildDefaults(config: LionDenUserConfig, projectRoot: string): LionDenResolvedConfig {
   const programsDir = config.programsDir ?? "programs";
   const artifactsDir = config.artifactsDir ?? "artifacts";
   const typechainDir = config.typechainDir ?? "typechain";
@@ -318,9 +311,7 @@ function resolveSdkConfig(
       };
 }
 
-function resolveSdkEgressConfig(
-  config: LionDenUserConfig,
-): ResolvedSdkEgressConfig | undefined {
+function resolveSdkEgressConfig(config: LionDenUserConfig): ResolvedSdkEgressConfig | undefined {
   const egress = config.sdk?.egress;
   if (!egress) return undefined;
   const resolved: {
@@ -355,7 +346,12 @@ function normalizeDynamicRecords(
     const helper = value as Record<string, unknown>;
     const sourceRecord = helper["sourceRecord"];
     const schema = helper["schema"];
-    if (typeof sourceRecord !== "string" || schema == null || typeof schema !== "object" || Array.isArray(schema)) {
+    if (
+      typeof sourceRecord !== "string" ||
+      schema == null ||
+      typeof schema !== "object" ||
+      Array.isArray(schema)
+    ) {
       continue;
     }
     const normalizedSchema: Record<string, string> = {};
@@ -394,7 +390,8 @@ function resolveNetworkConfig(
           if (!key) {
             const err = {
               path: `networks.${networkName}.accounts[${i}].privateKey`,
-              message: "Account private key must be a non-empty string or a resolvable ConfigVariable",
+              message:
+                "Account private key must be a non-empty string or a resolvable ConfigVariable",
             };
             throw new ConfigResolutionError(err.message, [err]);
           }
@@ -429,18 +426,18 @@ function resolveNetworkConfig(
       const unknownType = (config as { type: string }).type;
       throw new ConfigResolutionError(
         `Unknown network type "${unknownType}" for network "${networkName}". Supported types are "devnode" and "http".`,
-        [{
-          path: `networks.${networkName}.type`,
-          message: `Unknown network type "${unknownType}". Supported types are "devnode" and "http".`,
-        }],
+        [
+          {
+            path: `networks.${networkName}.type`,
+            message: `Unknown network type "${unknownType}". Supported types are "devnode" and "http".`,
+          },
+        ],
       );
     }
   }
 }
 
-function resolveStringOrVariable(
-  value: string | ConfigVariable | undefined,
-): string | undefined {
+function resolveStringOrVariable(value: string | ConfigVariable | undefined): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value === "string") return value;
   if (isConfigVariable(value)) return resolveConfigVariable(value);
@@ -510,7 +507,12 @@ function resolveNamedAccountValue(
   } else {
     throw new ConfigResolutionError(
       `Named account "${accountName}" (${keyName}): unsupported value type.`,
-      [{ path: `namedAccounts.${accountName}.${keyName}`, message: "Value must be a number, string, or ConfigVariable." }],
+      [
+        {
+          path: `namedAccounts.${accountName}.${keyName}`,
+          message: "Value must be a number, string, or ConfigVariable.",
+        },
+      ],
     );
   }
 
@@ -519,10 +521,12 @@ function resolveNamedAccountValue(
     if (!Number.isFinite(raw) || !Number.isInteger(raw) || raw < 0) {
       throw new ConfigResolutionError(
         `Named account "${accountName}" (${keyName}): index must be a non-negative integer, got ${raw}.`,
-        [{
-          path: `namedAccounts.${accountName}.${keyName}`,
-          message: `Index must be a non-negative integer, got ${raw}.`,
-        }],
+        [
+          {
+            path: `namedAccounts.${accountName}.${keyName}`,
+            message: `Index must be a non-negative integer, got ${raw}.`,
+          },
+        ],
       );
     }
     return { type: "index", index: raw };
@@ -534,10 +538,12 @@ function resolveNamedAccountValue(
       throw new ConfigResolutionError(
         `Named account "${accountName}" (${keyName}): "${raw}" looks like an Aleo address but has an invalid format. ` +
           `Expected "aleo1" followed by exactly 58 lowercase alphanumeric characters.`,
-        [{
-          path: `namedAccounts.${accountName}.${keyName}`,
-          message: `Invalid Aleo address format. Expected "aleo1" + 58 lowercase alphanumeric chars.`,
-        }],
+        [
+          {
+            path: `namedAccounts.${accountName}.${keyName}`,
+            message: `Invalid Aleo address format. Expected "aleo1" + 58 lowercase alphanumeric chars.`,
+          },
+        ],
       );
     }
     return { type: "address", address: raw };
@@ -549,10 +555,12 @@ function resolveNamedAccountValue(
 
   throw new ConfigResolutionError(
     `Named account "${accountName}" (${keyName}): string "${raw}" is not a recognized Aleo address (aleo1...) or private key (APrivateKey1...).`,
-    [{
-      path: `namedAccounts.${accountName}.${keyName}`,
-      message: `Must be an Aleo address (aleo1...), a private key (APrivateKey1...), or a devnode account index (number).`,
-    }],
+    [
+      {
+        path: `namedAccounts.${accountName}.${keyName}`,
+        message: `Must be an Aleo address (aleo1...), a private key (APrivateKey1...), or a devnode account index (number).`,
+      },
+    ],
   );
 }
 
@@ -656,9 +664,7 @@ function dedupAndSortRuntimeImports(
   return out;
 }
 
-function validateExecutionUserConfig(
-  config: LionDenUserConfig,
-): ConfigValidationError[] {
+function validateExecutionUserConfig(config: LionDenUserConfig): ConfigValidationError[] {
   const errors: ConfigValidationError[] = [];
   const imports = config.execution?.imports;
   if (imports === undefined) return errors;
@@ -713,9 +719,7 @@ function validateExecutionUserConfig(
 
 const SDK_LOG_LEVEL_SET = new Set<string>(SDK_LOG_LEVELS);
 
-function validateSdkUserConfig(
-  config: LionDenUserConfig,
-): ConfigValidationError[] {
+function validateSdkUserConfig(config: LionDenUserConfig): ConfigValidationError[] {
   const errors: ConfigValidationError[] = [];
   const logLevel = config.sdk?.logLevel;
   if (logLevel !== undefined && !SDK_LOG_LEVEL_SET.has(logLevel)) {
@@ -727,9 +731,7 @@ function validateSdkUserConfig(
   return errors;
 }
 
-function validateExecutionResolvedConfig(
-  resolved: LionDenResolvedConfig,
-): ConfigValidationError[] {
+function validateExecutionResolvedConfig(resolved: LionDenResolvedConfig): ConfigValidationError[] {
   const errors: ConfigValidationError[] = [];
   for (const [key, refs] of Object.entries(resolved.execution.imports)) {
     refs.forEach((ref, i) => {
@@ -758,8 +760,6 @@ function mergeSdkConfig(
     ...base,
     ...(partial ?? {}),
     logLevel: partial?.logLevel ?? base.logLevel,
-    keyCache: mergedKeyCache.storage === "memory"
-      ? { storage: "memory" }
-      : mergedKeyCache,
+    keyCache: mergedKeyCache.storage === "memory" ? { storage: "memory" } : mergedKeyCache,
   };
 }

@@ -5,8 +5,8 @@
  * lets both import it without creating a cycle.
  */
 
-import type { NetworkConnection } from "@lionden/network";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import type { NetworkConnection } from "@lionden/network";
 import { DeployError } from "./errors.js";
 
 /**

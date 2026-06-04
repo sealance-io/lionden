@@ -2137,7 +2137,4 @@ function isNetworkConfirmationTimeoutError(error: unknown): boolean {
   // require unescaped backticks and ${} that close the outer template).
   // Substitute the marker post-construction with a single-quoted literal
   // that JS does NOT process as a template substitution.
-  .replace(
-    "__LEO_FIELD_SCHEMA_ENTRY__",
-    '`${LeoPrimitiveType}.${LeoVisibility}`',
-  );
+  .replace("__LEO_FIELD_SCHEMA_ENTRY__", "`${LeoPrimitiveType}.${LeoVisibility}`");

@@ -1,11 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-const CONFIG_FILENAMES = [
-  "lionden.config.ts",
-  "lionden.config.js",
-  "lionden.config.mjs",
-];
+const CONFIG_FILENAMES = ["lionden.config.ts", "lionden.config.js", "lionden.config.mjs"];
 
 /**
  * Find the nearest lionden config file by walking up from the given directory.

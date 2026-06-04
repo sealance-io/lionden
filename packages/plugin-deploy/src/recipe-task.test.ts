@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import { createMockConnection } from "@lionden/test-internals";
-import { createCliDeploymentContext } from "./recipe-task.js";
-import { DeployError } from "./errors.js";
+import { describe, expect, it, vi } from "vitest";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { DeploymentRecord } from "./deployment-types.js";
+import { DeployError } from "./errors.js";
+import { createCliDeploymentContext } from "./recipe-task.js";
 
 function completeRecord(programId: string, txId = "at1cached"): DeploymentRecord {
   return {
@@ -51,10 +51,9 @@ function mockDeploymentManager(
   } as unknown as DeploymentManager;
 }
 
-function mockLre(options: {
-  readonly taskResult?: unknown;
-  readonly deployments?: DeploymentManager | null;
-} = {}): LionDenRuntimeEnvironment {
+function mockLre(
+  options: { readonly taskResult?: unknown; readonly deployments?: DeploymentManager | null } = {},
+): LionDenRuntimeEnvironment {
   return {
     namedAccounts: {},
     deployments: options.deployments ?? mockDeploymentManager(),

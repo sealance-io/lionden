@@ -1,12 +1,12 @@
+import type { LionDenResolvedConfig } from "@lionden/config";
 import {
-  type LionDenPlugin,
-  type TestingHookHandlers,
+  ArgumentType,
   type ConfigHookHandlers,
   type ConfigValidationError,
-  ArgumentType,
+  type LionDenPlugin,
+  type TestingHookHandlers,
   task,
 } from "@lionden/core";
-import type { LionDenResolvedConfig } from "@lionden/config";
 import { runTests } from "./test-runner.js";
 
 // ---------------------------------------------------------------------------
@@ -110,9 +110,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
       );
 
       if (!result.success) {
-        throw new Error(
-          `${result.failed} test(s) failed.`,
-        );
+        throw new Error(`${result.failed} test(s) failed.`);
       }
 
       return result;
@@ -139,6 +137,6 @@ const pluginTest: LionDenPlugin = {
 
 export default pluginTest;
 
+export type { TestRunnerOptions, TestRunnerResult } from "./test-runner.js";
 // Re-export test runner for programmatic use
 export { runTests } from "./test-runner.js";
-export type { TestRunnerOptions, TestRunnerResult } from "./test-runner.js";

@@ -1,20 +1,20 @@
 import type {
-  ProgramABI,
-  TransitionABI,
-  StructABI,
-  RecordABI,
-  MappingABI,
-  StorageVariableABI,
-  StorageType,
   AbiInput,
   AbiOutput,
   AleoType,
-  PlaintextType,
-  StructRef,
-  RecordRef,
-  ViewABI,
   ConstParameterABI,
   InterfaceRefABI,
+  MappingABI,
+  PlaintextType,
+  ProgramABI,
+  RecordABI,
+  RecordRef,
+  StorageType,
+  StorageVariableABI,
+  StructABI,
+  StructRef,
+  TransitionABI,
+  ViewABI,
 } from "./abi-types.js";
 
 export class AbiParseError extends Error {
@@ -66,15 +66,15 @@ export function parseAbi(json: string): ProgramABI {
     structs: asArray(obj["structs"], "structs").map(normalizeStruct),
     records: asArray(obj["records"], "records").map(normalizeRecord),
     mappings: asArray(obj["mappings"], "mappings").map(normalizeMapping),
-    storage_variables: asArray(obj["storage_variables"], "storage_variables").map(normalizeStorageVariable),
+    storage_variables: asArray(obj["storage_variables"], "storage_variables").map(
+      normalizeStorageVariable,
+    ),
     transitions: asArray(rawFunctions, "functions/transitions").map((f) =>
       normalizeFunction(f, programId),
     ),
   };
 
-  const views = asArray(obj["views"], "views").map((view) =>
-    normalizeView(view, programId),
-  );
+  const views = asArray(obj["views"], "views").map((view) => normalizeView(view, programId));
   if (views.length > 0) {
     (abi as { views: readonly ViewABI[] }).views = views;
   }
@@ -138,10 +138,7 @@ function normalizeFunction(raw: unknown, programId: string): TransitionABI {
   const obj = raw as Record<string, unknown>;
 
   // Map is_final → is_async (accept either)
-  const isAsync =
-    "is_async" in obj
-      ? Boolean(obj["is_async"])
-      : Boolean(obj["is_final"]);
+  const isAsync = "is_async" in obj ? Boolean(obj["is_async"]) : Boolean(obj["is_final"]);
 
   const rawInputs = obj["inputs"] === undefined ? [] : obj["inputs"];
   const rawOutputs = obj["outputs"] === undefined ? [] : obj["outputs"];
@@ -151,12 +148,15 @@ function normalizeFunction(raw: unknown, programId: string): TransitionABI {
     is_async: isAsync,
     inputs: Array.isArray(rawInputs)
       ? rawInputs.map((i) => normalizeInput(i as Record<string, unknown>, programId))
-      : rawInputs as unknown as AbiInput[],
+      : (rawInputs as unknown as AbiInput[]),
     outputs: Array.isArray(rawOutputs)
       ? rawOutputs.map((o) => normalizeOutput(o as Record<string, unknown>, programId))
-      : rawOutputs as unknown as AbiOutput[],
+      : (rawOutputs as unknown as AbiOutput[]),
   };
-  const constParameters = normalizeConstParameters(obj["const_parameters"], "function.const_parameters");
+  const constParameters = normalizeConstParameters(
+    obj["const_parameters"],
+    "function.const_parameters",
+  );
   if (constParameters.length > 0) {
     (normalized as { const_parameters: readonly ConstParameterABI[] }).const_parameters =
       constParameters;
@@ -174,12 +174,15 @@ function normalizeView(raw: unknown, programId: string): ViewABI {
     name: obj["name"] as string,
     inputs: Array.isArray(rawInputs)
       ? rawInputs.map((i) => normalizeInput(i as Record<string, unknown>, programId))
-      : rawInputs as unknown as AbiInput[],
+      : (rawInputs as unknown as AbiInput[]),
     outputs: Array.isArray(rawOutputs)
       ? rawOutputs.map((o) => normalizeOutput(o as Record<string, unknown>, programId))
-      : rawOutputs as unknown as AbiOutput[],
+      : (rawOutputs as unknown as AbiOutput[]),
   };
-  const constParameters = normalizeConstParameters(obj["const_parameters"], "view.const_parameters");
+  const constParameters = normalizeConstParameters(
+    obj["const_parameters"],
+    "view.const_parameters",
+  );
   if (constParameters.length > 0) {
     (normalized as { const_parameters: readonly ConstParameterABI[] }).const_parameters =
       constParameters;
@@ -268,10 +271,7 @@ function normalizeStorageVariable(raw: unknown): StorageVariableABI {
   };
 }
 
-function normalizeConstParameters(
-  raw: unknown,
-  fieldName: string,
-): readonly ConstParameterABI[] {
+function normalizeConstParameters(raw: unknown, fieldName: string): readonly ConstParameterABI[] {
   return asArray(raw, fieldName) as ConstParameterABI[];
 }
 

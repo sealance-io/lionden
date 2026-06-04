@@ -4,14 +4,13 @@
  * Handles spawning, health-checking, and graceful shutdown.
  */
 
-import { spawn, type ChildProcess, type StdioOptions } from "node:child_process";
+import { type ChildProcess, type StdioOptions, spawn } from "node:child_process";
 import type { DevnodeLogMode, DevnodeProvider, DevnodeStartOptions } from "./types.js";
 
 const DEFAULT_STANDALONE_BINARY = "aleo-devnode";
 
 const DEFAULT_SOCKET_ADDR = "127.0.0.1:3030";
-const DEFAULT_PRIVATE_KEY =
-  "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
+const DEFAULT_PRIVATE_KEY = "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
 const HEALTH_CHECK_INTERVAL_MS = 200;
 const HEALTH_CHECK_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -118,8 +117,7 @@ function resolveLogMode(opts: DevnodeStartOptions): {
   const env = process.env["LIONDEN_DEVNODE_LOGS"];
   if (env === "1" || env === "inherit") return { mode: "inherit" };
   if (env === "forward") {
-    const def = (chunk: Buffer) =>
-      process.stderr.write(`[devnode] ${chunk.toString("utf8")}`);
+    const def = (chunk: Buffer) => process.stderr.write(`[devnode] ${chunk.toString("utf8")}`);
     return { mode: "forward", callbacks: { onStdout: def, onStderr: def } };
   }
   return { mode: "quiet-buffered" };
@@ -223,7 +221,7 @@ export class DevnodeManager {
     this._provider = provider;
     this._storagePath = options.storagePath;
     this._lastStartOptions = options;
-    const network = provider === "standalone" ? "testnet" : options.network ?? "testnet";
+    const network = provider === "standalone" ? "testnet" : (options.network ?? "testnet");
     this._network = network;
 
     const { command, argv } = this.buildSpawn(provider, options);
@@ -311,30 +309,20 @@ export class DevnodeManager {
   }
 
   /** Idempotent: collapse exit/error events into a single terminal state. */
-  private markTerminal(
-    code: number | null,
-    signal: NodeJS.Signals | null,
-  ): void {
+  private markTerminal(code: number | null, signal: NodeJS.Signals | null): void {
     if (this._terminal) return;
     this._terminal = true;
     this._exitInfo = { code, signal };
     this.process = null;
     this._exitResolve?.({ code, signal });
 
-    if (
-      this._startResolved &&
-      !this._shutdownInitiated &&
-      !this._diagnosticEmitted
-    ) {
+    if (this._startResolved && !this._shutdownInitiated && !this._diagnosticEmitted) {
       this._diagnosticEmitted = true;
       this.emitUnexpectedExitDiagnostic(code, signal);
     }
   }
 
-  private emitUnexpectedExitDiagnostic(
-    code: number | null,
-    signal: NodeJS.Signals | null,
-  ): void {
+  private emitUnexpectedExitDiagnostic(code: number | null, signal: NodeJS.Signals | null): void {
     const exitFormatted = formatExit(code, signal);
     if (this._logMode === "inherit") {
       process.stderr.write(
@@ -344,15 +332,10 @@ export class DevnodeManager {
     }
     const tail = this.getLogTail().stderr.slice(-LOG_TAIL_RENDER_BYTES);
     const suffix = tail.length > 0 ? (tail.endsWith("\n") ? tail : `${tail}\n`) : "";
-    process.stderr.write(
-      `[lionden] devnode exited unexpectedly (${exitFormatted}):\n${suffix}`,
-    );
+    process.stderr.write(`[lionden] devnode exited unexpectedly (${exitFormatted}):\n${suffix}`);
   }
 
-  private renderExitError(
-    code: number | null,
-    signal: NodeJS.Signals | null,
-  ): string {
+  private renderExitError(code: number | null, signal: NodeJS.Signals | null): string {
     const exitFormatted = formatExit(code, signal);
     if (this._logMode === "inherit") {
       return `Devnode exited (${exitFormatted}). (logs were inherited to terminal)`;
@@ -529,11 +512,10 @@ export class DevnodeManager {
       const env = { ...process.env };
       // Forward the key via env, never argv (keeps it off the process list).
       if (privateKey) env["PRIVATE_KEY"] = privateKey;
-      const proc = spawn(
-        binary,
-        ["restore", "--snapshot", name, "--storage", storagePath],
-        { stdio: ["ignore", "ignore", "pipe"], env },
-      );
+      const proc = spawn(binary, ["restore", "--snapshot", name, "--storage", storagePath], {
+        stdio: ["ignore", "ignore", "pipe"],
+        env,
+      });
       let stderr = "";
       proc.stderr?.on("data", (chunk: Buffer) => {
         stderr += chunk.toString("utf8");

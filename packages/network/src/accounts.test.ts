@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { DEVNODE_ACCOUNTS, getDefaultAccount } from "./accounts.js";
 
 describe("DEVNODE_ACCOUNTS", () => {

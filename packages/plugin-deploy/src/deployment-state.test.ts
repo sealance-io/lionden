@@ -1,34 +1,34 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import type { ProgramABI } from "@lionden/leo-compiler";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  writeDeploymentRecord,
-  readDeploymentRecord,
-  readAllDeploymentRecords,
-  writeAbiSnapshot,
-  readAbiSnapshot,
   appendHistory,
-  readHistory,
-  writeNetworkMetadata,
-  readNetworkMetadata,
-  writePendingMarker,
-  readPendingMarker,
   deletePendingMarker,
   listPendingMarkers,
-  writeExportBundle,
+  readAbiSnapshot,
+  readAllDeploymentRecords,
+  readDeploymentRecord,
   readExportBundle,
+  readHistory,
+  readNetworkMetadata,
+  readPendingMarker,
+  writeAbiSnapshot,
+  writeDeploymentRecord,
+  writeExportBundle,
+  writeNetworkMetadata,
+  writePendingMarker,
 } from "./deployment-state.js";
 import type {
   CompleteDeploymentRecord,
   DegradedDeploymentRecord,
-  RecoveredDeploymentRecord,
   DeploymentHistoryEntry,
+  ExportBundle,
   NetworkMetadata,
   PendingDeployment,
-  ExportBundle,
+  RecoveredDeploymentRecord,
 } from "./deployment-types.js";
-import type { ProgramABI } from "@lionden/leo-compiler";
 
 let tmpDir: string;
 
@@ -166,7 +166,11 @@ describe("readAllDeploymentRecords", () => {
 
   it("excludes dotfiles like .network.json", () => {
     writeDeploymentRecord(tmpDir, "devnode", makeComplete());
-    writeNetworkMetadata(tmpDir, "devnode", { type: "devnode", networkId: "testnet", endpoint: "http://127.0.0.1:3030" });
+    writeNetworkMetadata(tmpDir, "devnode", {
+      type: "devnode",
+      networkId: "testnet",
+      endpoint: "http://127.0.0.1:3030",
+    });
 
     const records = readAllDeploymentRecords(tmpDir, "devnode");
     expect(records).toHaveLength(1);
