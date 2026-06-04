@@ -1,4 +1,8 @@
 import type { ConfigVariable } from "./config-variable.js";
+import type {
+  LionDenResolvedConfigExtensions,
+  LionDenUserConfigExtensions,
+} from "./declaration-merging.js";
 
 // Re-export for convenience
 export type { ConfigVariable } from "./config-variable.js";
@@ -163,7 +167,7 @@ export interface TaskDefinitionRef {
 // User-facing config (what users write in lionden.config.ts)
 // ---------------------------------------------------------------------------
 
-export interface LionDenUserConfig {
+export interface LionDenUserConfig extends LionDenUserConfigExtensions {
   /**
    * Leo compatibility declaration. Default: "4.1.0".
    * Supported lines are currently 4.1.x, 4.0.x, and 3.5.x.
@@ -527,7 +531,7 @@ export interface ResolvedHttpNetworkConfig {
 
 export type ResolvedNetworkConfig = ResolvedDevnodeNetworkConfig | ResolvedHttpNetworkConfig;
 
-export interface LionDenResolvedConfig {
+export interface LionDenResolvedConfig extends LionDenResolvedConfigExtensions {
   readonly leoVersion: string;
   readonly skipLeoVersionCheck: boolean;
   /** Resolved path to the Leo CLI binary. Default: "leo" */

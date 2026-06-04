@@ -164,7 +164,7 @@ export function findCachedExecutionKeys(options: {
   if (sidecarHit) return sidecarHit;
 
   const dir = runtimeIdentityDir(options.cachePath, options.identity);
-  let metadata;
+  let metadata: ReturnType<typeof readRuntimeKeyCacheMetadata>;
   try {
     metadata = readRuntimeKeyCacheMetadata(path.join(dir, "metadata.json"));
   } catch {
