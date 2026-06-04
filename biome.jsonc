@@ -1,0 +1,78 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json", // matches the pinned CLI version
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "ignoreUnknown": true,
+    // Generated goldens must byte-match generator output (compared via toMatchFileSnapshot);
+    // fixtures are inert test inputs. Exclude both from formatting AND linting.
+    "includes": ["**", "!**/__goldens__", "!**/__fixtures__"]
+  },
+
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" }
+  },
+  "json": { "formatter": { "enabled": true } },
+
+  // Deterministic import ordering — the only stylistic change beyond whitespace.
+  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },
+
+  "linter": {
+    "enabled": true,
+    "domains": { "test": "recommended" }, // vitest-aware: noFocusedTests, noDuplicateTestHooks, test globals
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedImports": "error", // dead-import cleanup the user asked for (applied once in the baseline)
+        "noUnusedVariables": "warn",
+        "noUnusedFunctionParameters": "warn", // ignores `_`-prefixed params
+        "noUnusedPrivateClassMembers": "warn",
+        "noConstantCondition": "warn" // existing `if (false)` compile-time type-assertion tests
+      },
+      "style": {
+        "useImportType": "error" // already the de-facto convention; zero noise
+      },
+      "suspicious": {
+        "noExplicitAny": "warn", // ~15 intentional uses; warn instead of blocking
+        "noShadowRestrictedNames": "warn", // `constructor` is the repo's ARC-0006 domain term
+        "noAssignInExpressions": "warn", // idiomatic `while ((m = re.exec(s)) !== null)` loops
+        "noImplicitAnyLet": "warn" // `let x;`-then-assign-in-try; surface, don't block
+      },
+      "nursery": {
+        "noFloatingPromises": "error", // type-aware bug-catcher (activates the scanner); zero existing hits
+        "noMisusedPromises": "warn" // existing hits are presence-checks on nullable promise fields, not bugs
+      }
+    }
+  },
+
+  "overrides": [
+    {
+      // Examples (incl. 21 aleo-ports): format yes, lint relaxed.
+      "includes": ["examples/**"],
+      "linter": {
+        "rules": {
+          "recommended": true,
+          "suspicious": { "noExplicitAny": "off" },
+          "correctness": { "noUnusedVariables": "warn" },
+          "nursery": { "noFloatingPromises": "off", "noMisusedPromises": "off" }
+        }
+      }
+    },
+    {
+      // Tests + test-internals: allow `any` for mocks/casts.
+      "includes": ["**/*.test.ts", "**/*.contract.test.ts", "packages/test-internals/**"],
+      "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
+    },
+    {
+      // Codegen templates intentionally emit `any`.
+      "includes": ["packages/leo-compiler/src/codegen/**"],
+      "linter": { "rules": { "suspicious": { "noExplicitAny": "off" } } }
+    }
+  ]
+}
