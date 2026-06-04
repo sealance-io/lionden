@@ -745,7 +745,7 @@ export class AleoConnection implements NetworkConnection {
     // Destroy default account if resolved
     if (this.sdkObjects) {
       tryDestroyAccount(this.sdkObjects.account);
-    } else if (this.sdkObjectsPromise) {
+    } else if (this.sdkObjectsPromise !== undefined) {
       // Pending — await and destroy
       try {
         const sdk = await this.sdkObjectsPromise;

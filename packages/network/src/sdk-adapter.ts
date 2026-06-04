@@ -811,7 +811,7 @@ function isCreditsEntryCurrent(
   fingerprint: ReturnType<typeof fingerprintBytes>,
 ): boolean {
   if (!fs.existsSync(paths.prover) || !fs.existsSync(paths.metadata)) return false;
-  let metadata;
+  let metadata: ReturnType<typeof readCreditsKeyCacheMetadata>;
   try {
     metadata = readCreditsKeyCacheMetadata(paths.metadata);
   } catch {
@@ -826,7 +826,7 @@ function isCreditsEntryCurrent(
   // Otherwise a corrupted .prover with intact metadata sneaks past write-back
   // and gets rejected by warmup on the next run, leaving a permanently cold
   // entry.
-  let onDisk;
+  let onDisk: ReturnType<typeof fingerprintFile>;
   try {
     onDisk = fingerprintFile(paths.prover);
   } catch {
