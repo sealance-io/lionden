@@ -114,7 +114,7 @@ jobs:
           cache: npm
       - run: npm run lint:lockfile # lockfile guard runs before any install (matches the build job)
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
-      - run: npm run check:ci -- --reporter=github # biome ci (format + lint + import-order); inline PR annotations
+      - run: npm run check:ci -- --reporter=github --diagnostic-level=error # biome ci; inline annotations only for blocking diagnostics
 
   build:
     needs: detect-changes
