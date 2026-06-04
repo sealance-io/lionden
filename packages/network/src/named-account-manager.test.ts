@@ -222,12 +222,20 @@ describe("NamedAccountManager", () => {
       treasury: { networks: {}, default: { type: "address", address: TREASURY_ADDR } },
     };
     const manager = new NamedAccountManager(config);
-    const result = (await manager.resolveForNetwork(makeOpts())) as Record<string, unknown>;
-    // resolveForNetwork returns a frozen defensive copy, so callers cannot reach the cache.
+    const result = (await manager.resolveForNetwork(makeOpts())) as Record<
+      string,
+      { address: string }
+    >;
+    // resolveForNetwork deeply freezes the result, so callers cannot reach the cache —
+    // neither the top-level map nor the account objects inside it are mutable.
     expect(Object.isFrozen(result)).toBe(true);
-    // In ESM strict mode, writing to a frozen object throws — the mutation never lands.
+    expect(Object.isFrozen(result["treasury"])).toBe(true);
+    // In ESM strict mode, writing through either level throws — the mutation never lands.
     expect(() => {
       result["treasury"] = { address: "aleo1tampered" };
+    }).toThrow();
+    expect(() => {
+      result["treasury"]!.address = "aleo1tampered";
     }).toThrow();
     // The cache is unaffected: the next call still returns the original value.
     const cached = await manager.resolveForNetwork(makeOpts());
