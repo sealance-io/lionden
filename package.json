@@ -21,7 +21,11 @@
     "test:smoke:aleo-ports:prove": "node scripts/run-smoke-examples.mjs --prove aleo-ports",
     "test:smoke:all": "node scripts/run-smoke-examples.mjs all",
     "test:smoke:all:prove": "node scripts/run-smoke-examples.mjs --prove all",
-    "lint": "eslint packages/",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "check:ci": "biome ci .",
     "lint:lockfile": "node scripts/validate-lockfile.mjs",
     "test:lockfile": "node scripts/validate-lockfile.test.mjs",
     "changeset": "changeset",
@@ -29,6 +33,7 @@
     "release": "changeset publish"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.16",
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.0",
     "@types/node": "24.12.0",
