@@ -70,7 +70,11 @@ export class NamedAccountManager {
       }
 
       const account = await this.resolveValue(accountName, value, opts);
-      result[accountName] = account;
+      // Freeze each account too, not just the map. Object.freeze is shallow, so without
+      // this a caller could mutate a nested account (e.g. `accounts.treasury.address = ...`)
+      // and poison the shared cached entry. NamedAccount fields are all primitives, so a
+      // single freeze per account fully seals it.
+      result[accountName] = Object.freeze(account);
     }
 
     const frozen = Object.freeze(result);
