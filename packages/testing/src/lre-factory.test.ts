@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestLre, resetTestLre } from "./lre-factory.js";
 
 describe("lre-factory", () => {
@@ -18,9 +17,7 @@ describe("lre-factory", () => {
     // Point to a dir with no config file
     process.env["LIONDEN_PROJECT_ROOT"] = "/tmp/nonexistent-dir";
 
-    await expect(createTestLre()).rejects.toThrow(
-      /No lionden\.config\.\{ts,js,mjs\} found/,
-    );
+    await expect(createTestLre()).rejects.toThrow(/No lionden\.config\.\{ts,js,mjs\} found/);
   });
 
   it("caches the LRE across multiple calls", async () => {

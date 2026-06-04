@@ -1,9 +1,9 @@
 import type {
-  TaskDefinition,
+  LionDenRuntimeEnvironment,
   TaskAction,
   TaskActionWithSuper,
+  TaskDefinition,
   TaskRunner,
-  LionDenRuntimeEnvironment,
 } from "./types.js";
 
 export class TaskNotFoundError extends Error {
@@ -42,14 +42,10 @@ export class TaskRunnerImpl implements TaskRunner {
         // This is an override — stack on top
         const existing = this.tasks.get(def.overrides);
         if (!existing) {
-          throw new Error(
-            `Cannot override task "${def.overrides}": no such task registered`,
-          );
+          throw new Error(`Cannot override task "${def.overrides}": no such task registered`);
         }
         // Push the current action into the override chain
-        existing.overrideChain.unshift(
-          existing.definition.action as TaskAction,
-        );
+        existing.overrideChain.unshift(existing.definition.action as TaskAction);
         existing.definition = {
           ...existing.definition,
           action: def.action,
@@ -70,10 +66,7 @@ export class TaskRunnerImpl implements TaskRunner {
     }
   }
 
-  async run(
-    taskId: string,
-    args: Record<string, unknown> = {},
-  ): Promise<unknown> {
+  async run(taskId: string, args: Record<string, unknown> = {}): Promise<unknown> {
     const registered = this.tasks.get(taskId);
     if (!registered) {
       throw new TaskNotFoundError(taskId);
@@ -123,9 +116,7 @@ export class TaskRunnerImpl implements TaskRunner {
     return this.tasks.get(taskId)?.definition;
   }
 
-  private async resolveAction(
-    action: TaskDefinition["action"],
-  ): Promise<TaskAction> {
+  private async resolveAction(action: TaskDefinition["action"]): Promise<TaskAction> {
     // Lazy-loaded actions are marked by being a LazyAction wrapper.
     // We detect them by checking if they have a _lionden_lazy property,
     // or if they return a module with a default export.
@@ -149,12 +140,7 @@ export class TaskRunnerImpl implements TaskRunner {
       const mergedArgs = this.mergeDefaults(definition, args);
 
       if (index + 1 < chain.length) {
-        const nextSuper = this.buildRunSuper(
-          chain,
-          index + 1,
-          lre,
-          definition,
-        );
+        const nextSuper = this.buildRunSuper(chain, index + 1, lre, definition);
         return (action as TaskActionWithSuper)(mergedArgs, lre, nextSuper);
       }
 

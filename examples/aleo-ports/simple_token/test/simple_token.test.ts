@@ -5,8 +5,9 @@
 //
 // The chained-record pattern: mint() returns a typed Token, transfer() takes
 // it back as input and returns the [remainder, transferred] pair.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createSimpleToken } from "../typechain/SimpleToken.js";
 
 async function deploySimpleToken() {

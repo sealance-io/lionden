@@ -1,9 +1,5 @@
-import { describe, it, expect } from "vitest";
-import {
-  ArgumentType,
-  type GlobalOptionDefinition,
-  type TaskDefinition,
-} from "@lionden/core";
+import { ArgumentType, type GlobalOptionDefinition, type TaskDefinition } from "@lionden/core";
+import { describe, expect, it } from "vitest";
 import { parseArgs } from "./task-dispatch.js";
 
 describe("parseArgs", () => {
@@ -20,9 +16,7 @@ describe("parseArgs", () => {
   function lookupFor(
     ...definitions: TaskDefinition[]
   ): (taskId: string) => TaskDefinition | undefined {
-    const byId = new Map(
-      definitions.map((definition) => [definition.id, definition]),
-    );
+    const byId = new Map(definitions.map((definition) => [definition.id, definition]));
     return (taskId) => byId.get(taskId);
   }
 
@@ -129,9 +123,7 @@ describe("parseArgs", () => {
       lookupFor(
         defineTask({
           id: "compile",
-          options: [
-            { name: "force", type: "boolean", description: "Force compile" },
-          ],
+          options: [{ name: "force", type: "boolean", description: "Force compile" }],
         }),
       ),
     );
@@ -198,7 +190,13 @@ describe("parseArgs", () => {
 
   it("parses boolean plugin global option", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
-      ["prove", { pluginId: "test", definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN } }],
+      [
+        "prove",
+        {
+          pluginId: "test",
+          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+        },
+      ],
     ]);
 
     const result = parseArgs(["--prove", "test"], pluginOpts);
@@ -208,7 +206,13 @@ describe("parseArgs", () => {
 
   it("parses string plugin global option", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
-      ["env", { pluginId: "core", definition: { name: "env", description: "Environment", type: ArgumentType.STRING } }],
+      [
+        "env",
+        {
+          pluginId: "core",
+          definition: { name: "env", description: "Environment", type: ArgumentType.STRING },
+        },
+      ],
     ]);
 
     const result = parseArgs(["--env", "production", "deploy"], pluginOpts);

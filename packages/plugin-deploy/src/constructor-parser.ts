@@ -12,7 +12,6 @@
  *   constructor() { ... }
  */
 
-import { isValidAleoAddress } from "@lionden/config";
 export { isValidAleoAddress } from "@lionden/config";
 
 // ---------------------------------------------------------------------------
@@ -37,8 +36,7 @@ export interface ConstructorInfo {
 
 // Match @noupgrade annotation followed (possibly after whitespace/comments)
 // by [async] constructor. Leo v3.5 uses `async constructor()`, v4 uses `constructor()`.
-const NOUPGRADE_RE =
-  /@noupgrade\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
+const NOUPGRADE_RE = /@noupgrade\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
 // Match @admin(address="...") followed by [async] constructor
 const ADMIN_RE =
@@ -49,8 +47,7 @@ const CHECKSUM_RE =
   /@checksum\s*\(\s*mapping\s*=\s*"([^"]+)"\s*,\s*key\s*=\s*"([^"]+)"\s*\)\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
 // Match @custom annotation followed by [async] constructor
-const CUSTOM_RE =
-  /@custom\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
+const CUSTOM_RE = /@custom\s+(?:\/\/[^\n]*\n\s*)*(?:async\s+)?constructor\s*\(/;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -101,9 +98,7 @@ export function parseConstructor(leoSource: string): ConstructorInfo | null {
  * Only one constructor should exist per program — returns the first found,
  * or null if none.
  */
-export function parseConstructorFromFiles(
-  sources: readonly string[],
-): ConstructorInfo | null {
+export function parseConstructorFromFiles(sources: readonly string[]): ConstructorInfo | null {
   for (const source of sources) {
     const result = parseConstructor(source);
     if (result) return result;
@@ -147,9 +142,7 @@ export function extractConstructorFingerprint(
 
   // For compiler-managed modes, strip the edition assertion
   // (auto-incremented by the compiler on each upgrade).
-  return lines
-    .filter((l) => !l.startsWith("assert.eq edition"))
-    .join("\n");
+  return lines.filter((l) => !l.startsWith("assert.eq edition")).join("\n");
 }
 
 // ---------------------------------------------------------------------------

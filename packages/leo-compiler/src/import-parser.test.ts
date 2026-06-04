@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { parseImports } from "./import-parser.js";
 
 let tmpDir: string;
@@ -22,34 +22,42 @@ function writeFile(relPath: string, content: string): void {
 
 describe("parseImports", () => {
   it("parses import declarations", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 import credits.aleo;
 import token.aleo;
 
 program hello.aleo {
   fn main() {}
 }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo"]);
     expect(imports.sort()).toEqual(["credits.aleo", "token.aleo"]);
   });
 
   it("parses cross-program calls (Leo v4 :: syntax)", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 program hello.aleo {
   fn bar(a: u64) -> u64 {
     return foo.aleo::safe_add(a, 1u64);
   }
 }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo"]);
     expect(imports).toEqual(["foo.aleo"]);
   });
 
   it("deduplicates imports from declarations and cross-calls", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 import token.aleo;
 
 program hello.aleo {
@@ -57,28 +65,37 @@ program hello.aleo {
     token.aleo::mint(100u64);
   }
 }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo"]);
     expect(imports).toEqual(["token.aleo"]);
   });
 
   it("scans all files in the list", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 import credits.aleo;
 program hello.aleo { fn main() {} }
-`);
-    writeFile("internal/ops.leo", `
+`,
+    );
+    writeFile(
+      "internal/ops.leo",
+      `
 import token.aleo;
 fn helper() { token.aleo::mint(1u64); }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo", "internal/ops.leo"]);
     expect(imports.sort()).toEqual(["credits.aleo", "token.aleo"]);
   });
 
   it("parses cross-program calls (Leo v3.5 / syntax)", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 import math_helpers.aleo;
 
 program calculator.aleo {
@@ -87,14 +104,17 @@ program calculator.aleo {
     return clamped;
   }
 }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo"]);
     expect(imports).toEqual(["math_helpers.aleo"]);
   });
 
   it("deduplicates v3.5 slash-calls with import declarations", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 import token.aleo;
 
 program hello.aleo {
@@ -102,14 +122,17 @@ program hello.aleo {
     token.aleo/mint(100u64);
   }
 }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo"]);
     expect(imports).toEqual(["token.aleo"]);
   });
 
   it("discovers both v4 :: calls and v3.5 / calls in same file", () => {
-    writeFile("main.leo", `
+    writeFile(
+      "main.leo",
+      `
 import v4dep.aleo;
 import v35dep.aleo;
 
@@ -119,7 +142,8 @@ program mixed.aleo {
     v35dep.aleo/bar();
   }
 }
-`);
+`,
+    );
 
     const imports = parseImports(tmpDir, ["main.leo"]);
     expect(imports.sort()).toEqual(["v35dep.aleo", "v4dep.aleo"]);

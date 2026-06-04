@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
-import { createHelloworld } from "../typechain/Helloworld.js";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createHello } from "../typechain/Hello.js";
+import { createHelloworld } from "../typechain/Helloworld.js";
 
 async function deployBoth() {
   const ctx = await setup();

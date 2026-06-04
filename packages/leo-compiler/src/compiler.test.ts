@@ -1,16 +1,13 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import * as fs from "node:fs";
-import * as path from "node:path";
-import * as os from "node:os";
 import * as crypto from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import { keyArtifactsMetadataPath, readKeyArtifactsMetadata } from "@lionden/core";
-import { defaultFetchNetworkDep, compilePipeline } from "./compiler.js";
-import {
-  getCachedNetworkDep,
-  linkNetworkDependency,
-} from "./package-materializer.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computeUnitHash } from "./cache.js";
+import { compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
+import { getCachedNetworkDep, linkNetworkDependency } from "./package-materializer.js";
 
 /** Compute the same cache scope key the pipeline uses. */
 function cacheScope(network: string, endpoint: string): string {
@@ -35,10 +32,7 @@ describe("defaultFetchNetworkDep", () => {
       text: () => Promise.resolve("program credits.aleo;\n"),
     });
 
-    const result = await defaultFetchNetworkDep(
-      "credits.aleo",
-      "http://localhost:3030",
-    );
+    const result = await defaultFetchNetworkDep("credits.aleo", "http://localhost:3030");
     expect(result).toBe("program credits.aleo;\n");
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -55,10 +49,7 @@ describe("defaultFetchNetworkDep", () => {
         text: () => Promise.resolve("program credits.aleo;\n"),
       });
 
-    const result = await defaultFetchNetworkDep(
-      "credits.aleo",
-      "http://localhost:3030",
-    );
+    const result = await defaultFetchNetworkDep("credits.aleo", "http://localhost:3030");
     expect(result).toBe("program credits.aleo;\n");
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
@@ -86,9 +77,7 @@ describe("defaultFetchNetworkDep", () => {
   });
 
   it("includes HTTP status codes in error details", async () => {
-    globalThis.fetch = vi
-      .fn()
-      .mockResolvedValue({ ok: false, status: 404 });
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 });
 
     try {
       await defaultFetchNetworkDep("missing.aleo", "http://localhost:3030");
@@ -111,37 +100,23 @@ describe("defaultFetchNetworkDep", () => {
     });
     globalThis.fetch = mockFetch;
 
-    await defaultFetchNetworkDep(
-      "credits.aleo",
-      "http://localhost:3030",
-      "mainnet",
-    );
+    await defaultFetchNetworkDep("credits.aleo", "http://localhost:3030", "mainnet");
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:3030/mainnet/program/credits.aleo",
-    );
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:3030/mainnet/program/credits.aleo");
   });
 
   it("does not fall back to other networks when hint is provided", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 404 });
+    const mockFetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 404 });
     globalThis.fetch = mockFetch;
 
     await expect(
-      defaultFetchNetworkDep(
-        "credits.aleo",
-        "http://localhost:3030",
-        "mainnet",
-      ),
+      defaultFetchNetworkDep("credits.aleo", "http://localhost:3030", "mainnet"),
     ).rejects.toThrow(/mainnet: HTTP 404/);
 
     // Only the hinted network is tried — no cross-network fallback
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(mockFetch).toHaveBeenCalledWith(
-      "http://localhost:3030/mainnet/program/credits.aleo",
-    );
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:3030/mainnet/program/credits.aleo");
   });
 
   it("falls back across all networks when no hint is given", async () => {
@@ -154,10 +129,7 @@ describe("defaultFetchNetworkDep", () => {
       }); // mainnet
     globalThis.fetch = mockFetch;
 
-    const result = await defaultFetchNetworkDep(
-      "credits.aleo",
-      "http://localhost:3030",
-    );
+    const result = await defaultFetchNetworkDep("credits.aleo", "http://localhost:3030");
     expect(result).toBe("source");
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(mockFetch).toHaveBeenNthCalledWith(
@@ -190,56 +162,32 @@ describe("network dep caching", () => {
     const pkgDir = path.join(tmpDir, "pkg");
     fs.mkdirSync(pkgDir, { recursive: true });
 
-    linkNetworkDependency(
-      pkgDir,
-      "credits.aleo",
-      "program credits.aleo;\n",
-      tmpDir,
-      "testnet",
-    );
+    linkNetworkDependency(pkgDir, "credits.aleo", "program credits.aleo;\n", tmpDir, "testnet");
 
-    expect(getCachedNetworkDep(tmpDir, "credits.aleo", "testnet")).toBe(
-      "program credits.aleo;\n",
-    );
+    expect(getCachedNetworkDep(tmpDir, "credits.aleo", "testnet")).toBe("program credits.aleo;\n");
   });
 
   it("copies dep to package imports/ directory", () => {
     const pkgDir = path.join(tmpDir, "pkg");
     fs.mkdirSync(pkgDir, { recursive: true });
 
-    linkNetworkDependency(
-      pkgDir,
-      "credits.aleo",
-      "program credits.aleo;\n",
-      tmpDir,
-      "testnet",
-    );
+    linkNetworkDependency(pkgDir, "credits.aleo", "program credits.aleo;\n", tmpDir, "testnet");
 
     const importsFile = path.join(pkgDir, "imports", "credits.aleo");
     expect(fs.existsSync(importsFile)).toBe(true);
-    expect(fs.readFileSync(importsFile, "utf-8")).toBe(
-      "program credits.aleo;\n",
-    );
+    expect(fs.readFileSync(importsFile, "utf-8")).toBe("program credits.aleo;\n");
   });
 
   it("scopes cache by network — testnet cache is invisible to mainnet", () => {
     const pkgDir = path.join(tmpDir, "pkg");
     fs.mkdirSync(pkgDir, { recursive: true });
 
-    linkNetworkDependency(
-      pkgDir,
-      "credits.aleo",
-      "program credits.aleo;\n",
-      tmpDir,
-      "testnet",
-    );
+    linkNetworkDependency(pkgDir, "credits.aleo", "program credits.aleo;\n", tmpDir, "testnet");
 
     // Same dep, different network scope → cache miss
     expect(getCachedNetworkDep(tmpDir, "credits.aleo", "mainnet")).toBeNull();
     // Same network scope → cache hit
-    expect(getCachedNetworkDep(tmpDir, "credits.aleo", "testnet")).toBe(
-      "program credits.aleo;\n",
-    );
+    expect(getCachedNetworkDep(tmpDir, "credits.aleo", "testnet")).toBe("program credits.aleo;\n");
   });
 
   it("empty cache file is treated as falsy (triggers re-fetch)", () => {
@@ -413,10 +361,7 @@ describe("compilePipeline network dep handling", () => {
   }
 
   it("passes --disable-update-check before build", async () => {
-    writeProgram(
-      "app",
-      "program app.aleo {\n  fn main() {}\n}\n",
-    );
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
 
     const binDir = path.join(tmpDir, "bin");
     const argsLog = path.join(tmpDir, "leo-args.log");
@@ -425,17 +370,17 @@ describe("compilePipeline network dep handling", () => {
       path.join(binDir, "leo"),
       [
         "#!/bin/sh",
-        "printf '%s\\n' \"$@\" > \"$LIONDEN_LEO_ARGS_LOG\"",
-        "pkg=\"\"",
-        "prev=\"\"",
-        "for arg in \"$@\"; do",
-        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
-        "  prev=\"$arg\"",
+        'printf \'%s\\n\' "$@" > "$LIONDEN_LEO_ARGS_LOG"',
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
         "done",
-        "id=$(basename \"$pkg\")",
-        "mkdir -p \"$pkg/build\"",
-        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$pkg/build/abi.json\"",
-        "printf 'program %s {}\\n' \"$id\" > \"$pkg/build/main.aleo\"",
+        'id=$(basename "$pkg")',
+        'mkdir -p "$pkg/build"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$pkg/build/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$pkg/build/main.aleo"',
       ].join("\n") + "\n",
       { mode: 0o755 },
     );
@@ -450,9 +395,9 @@ describe("compilePipeline network dep handling", () => {
 
       const args = fs.readFileSync(argsLog, "utf-8").trim().split("\n");
       expect(args.slice(0, 2)).toEqual(["--disable-update-check", "build"]);
-      expect(readKeyArtifactsMetadata(
-        keyArtifactsMetadataPath(artifactsDir, "app.aleo"),
-      )).toMatchObject({
+      expect(
+        readKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, "app.aleo")),
+      ).toMatchObject({
         format: "lionden.keyArtifacts.v1",
         programId: "app.aleo",
         sourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
@@ -469,10 +414,7 @@ describe("compilePipeline network dep handling", () => {
   });
 
   it("records unambiguous prover and verifier artifact refs in the sidecar", async () => {
-    writeProgram(
-      "app",
-      "program app.aleo {\n  fn main() {}\n}\n",
-    );
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
 
     const binDir = path.join(tmpDir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
@@ -480,16 +422,16 @@ describe("compilePipeline network dep handling", () => {
       path.join(binDir, "leo"),
       [
         "#!/bin/sh",
-        "pkg=\"\"",
-        "prev=\"\"",
-        "for arg in \"$@\"; do",
-        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
-        "  prev=\"$arg\"",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
         "done",
-        "id=$(basename \"$pkg\")",
-        "mkdir -p \"$pkg/build\"",
-        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[{\"name\":\"main\",\"inputs\":[],\"outputs\":[]}]}\\n' \"$id\" > \"$pkg/build/abi.json\"",
-        "printf 'program %s {}\\n' \"$id\" > \"$pkg/build/main.aleo\"",
+        'id=$(basename "$pkg")',
+        'mkdir -p "$pkg/build"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[{"name":"main","inputs":[],"outputs":[]}]}\\n\' "$id" > "$pkg/build/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$pkg/build/main.aleo"',
         "printf 'prover' > \"$pkg/build/main.prover\"",
         "printf 'verifier' > \"$pkg/build/main.verifier\"",
       ].join("\n") + "\n",
@@ -502,9 +444,7 @@ describe("compilePipeline network dep handling", () => {
     try {
       await compilePipeline(makeConfig());
 
-      const sidecar = readKeyArtifactsMetadata(
-        keyArtifactsMetadataPath(artifactsDir, "app.aleo"),
-      );
+      const sidecar = readKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, "app.aleo"));
       expect(sidecar?.functions).toHaveLength(1);
       expect(sidecar?.functions?.[0]).toMatchObject({
         transition: "main",
@@ -517,10 +457,7 @@ describe("compilePipeline network dep handling", () => {
   });
 
   it("normalizes Leo 4.1 per-unit build layout into LionDen artifacts", async () => {
-    writeProgram(
-      "app",
-      "program app.aleo {\n  fn main() {}\n}\n",
-    );
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
 
     const binDir = path.join(tmpDir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
@@ -528,24 +465,24 @@ describe("compilePipeline network dep handling", () => {
       path.join(binDir, "leo"),
       [
         "#!/bin/sh",
-        "pkg=\"\"",
-        "prev=\"\"",
-        "for arg in \"$@\"; do",
-        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
-        "  prev=\"$arg\"",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
         "done",
-        "id=$(basename \"$pkg\")",
-        "mkdir -p \"$pkg/build\"",
-        "printf '{\"program\":\"stale.aleo\",\"functions\":[]}\\n' > \"$pkg/build/abi.json\"",
+        'id=$(basename "$pkg")',
+        'mkdir -p "$pkg/build"',
+        'printf \'{"program":"stale.aleo","functions":[]}\\n\' > "$pkg/build/abi.json"',
         "printf 'program stale.aleo {}\\n' > \"$pkg/build/main.aleo\"",
-        "touch -t 202001010000 \"$pkg/build/abi.json\" \"$pkg/build/main.aleo\"",
-        "unit=\"$pkg/build/$id\"",
-        "mkdir -p \"$unit/interfaces\"",
-        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[{\"name\":\"main\",\"inputs\":[],\"outputs\":[]}]}\\n' \"$id\" > \"$unit/abi.json\"",
-        "printf 'program %s {}\\n' \"$id\" > \"$unit/$id\"",
+        'touch -t 202001010000 "$pkg/build/abi.json" "$pkg/build/main.aleo"',
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit/interfaces"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[{"name":"main","inputs":[],"outputs":[]}]}\\n\' "$id" > "$unit/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$unit/$id"',
         "printf 'prover' > \"$unit/main.prover\"",
         "printf 'verifier' > \"$unit/main.verifier\"",
-        "printf '{\"program\":\"reader.aleo\"}\\n' > \"$unit/interfaces/reader.abi.json\"",
+        'printf \'{"program":"reader.aleo"}\\n\' > "$unit/interfaces/reader.abi.json"',
       ].join("\n") + "\n",
       { mode: 0o755 },
     );
@@ -558,7 +495,7 @@ describe("compilePipeline network dep handling", () => {
       const artifactDir = path.join(artifactsDir, "app.aleo");
 
       expect(fs.readFileSync(path.join(artifactDir, "abi.json"), "utf-8")).toContain(
-        "\"program\":\"app.aleo\"",
+        '"program":"app.aleo"',
       );
       expect(fs.readFileSync(path.join(artifactDir, "main.aleo"), "utf-8")).toBe(
         "program app.aleo {}\n",
@@ -567,9 +504,7 @@ describe("compilePipeline network dep handling", () => {
       expect(result.results[0]?.unit.kind).toBe("program");
       expect((result.results[0] as any).aleoSource).toBe(path.join(artifactDir, "main.aleo"));
 
-      const sidecar = readKeyArtifactsMetadata(
-        keyArtifactsMetadataPath(artifactsDir, "app.aleo"),
-      );
+      const sidecar = readKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, "app.aleo"));
       expect(sidecar?.functions?.[0]).toMatchObject({
         transition: "main",
         prover: { path: "main.prover" },
@@ -581,10 +516,7 @@ describe("compilePipeline network dep handling", () => {
   });
 
   it("prefers root or exact unit artifacts over newer sibling build directories", async () => {
-    writeProgram(
-      "app",
-      "program app.aleo {\n  fn main() {}\n}\n",
-    );
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
 
     const binDir = path.join(tmpDir, "bin");
     fs.mkdirSync(binDir, { recursive: true });
@@ -592,20 +524,20 @@ describe("compilePipeline network dep handling", () => {
       path.join(binDir, "leo"),
       [
         "#!/bin/sh",
-        "pkg=\"\"",
-        "prev=\"\"",
-        "for arg in \"$@\"; do",
-        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
-        "  prev=\"$arg\"",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
         "done",
-        "id=$(basename \"$pkg\")",
-        "unit=\"$pkg/build/$id\"",
-        "other=\"$pkg/build/other.aleo\"",
-        "mkdir -p \"$unit\" \"$other\"",
-        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$unit/abi.json\"",
-        "printf 'program %s {}\\n' \"$id\" > \"$unit/$id\"",
-        "touch -t 202001010000 \"$unit/abi.json\" \"$unit/$id\"",
-        "printf '{\"program\":\"other.aleo\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' > \"$other/abi.json\"",
+        'id=$(basename "$pkg")',
+        'unit="$pkg/build/$id"',
+        'other="$pkg/build/other.aleo"',
+        'mkdir -p "$unit" "$other"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$unit/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$unit/$id"',
+        'touch -t 202001010000 "$unit/abi.json" "$unit/$id"',
+        'printf \'{"program":"other.aleo","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' > "$other/abi.json"',
         "printf 'program other.aleo {}\\n' > \"$other/other.aleo\"",
       ].join("\n") + "\n",
       { mode: 0o755 },
@@ -619,7 +551,7 @@ describe("compilePipeline network dep handling", () => {
       const artifactDir = path.join(artifactsDir, "app.aleo");
 
       expect(fs.readFileSync(path.join(artifactDir, "abi.json"), "utf-8")).toContain(
-        "\"program\":\"app.aleo\"",
+        '"program":"app.aleo"',
       );
       expect(fs.readFileSync(path.join(artifactDir, "main.aleo"), "utf-8")).toBe(
         "program app.aleo {}\n",
@@ -644,23 +576,23 @@ describe("compilePipeline network dep handling", () => {
       path.join(binDir, "leo"),
       [
         "#!/bin/sh",
-        "pkg=\"\"",
-        "prev=\"\"",
-        "for arg in \"$@\"; do",
-        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
-        "  prev=\"$arg\"",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
         "done",
-        "id=$(basename \"$pkg\")",
-        "if [ \"$id\" = \"app.aleo\" ]; then",
+        'id=$(basename "$pkg")',
+        'if [ "$id" = "app.aleo" ]; then',
         "  grep 'program utils.aleo' \"$pkg/imports/utils.aleo\" >/dev/null || exit 9",
         "fi",
-        "unit=\"$pkg/build/$id\"",
-        "mkdir -p \"$unit\"",
-        "if [ \"$id\" = \"utils\" ]; then",
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit"',
+        'if [ "$id" = "utils" ]; then',
         "  printf 'program utils.aleo {}\\n' > \"$unit/utils.aleo\"",
         "else",
-        "  printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$unit/abi.json\"",
-        "  printf 'program %s {}\\n' \"$id\" > \"$unit/$id\"",
+        '  printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$unit/abi.json"',
+        '  printf \'program %s {}\\n\' "$id" > "$unit/$id"',
         "fi",
       ].join("\n") + "\n",
       { mode: 0o755 },
@@ -685,7 +617,7 @@ describe("compilePipeline network dep handling", () => {
   it("passes config network as hint to fetchNetworkDep", async () => {
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     const fetchSpy = vi.fn().mockResolvedValue("program credits.aleo;\n");
@@ -696,17 +628,13 @@ describe("compilePipeline network dep handling", () => {
       // leo build will fail — we only care about the fetch call
     }
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "credits.aleo",
-      "http://127.0.0.1:3030",
-      "testnet",
-    );
+    expect(fetchSpy).toHaveBeenCalledWith("credits.aleo", "http://127.0.0.1:3030", "testnet");
   });
 
   it("passes http endpoint and network when defaultNetwork is http", async () => {
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     const fetchSpy = vi.fn().mockResolvedValue("program credits.aleo;\n");
@@ -738,17 +666,14 @@ describe("compilePipeline network dep handling", () => {
   it("bypasses cache and calls fetcher when force is true", async () => {
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     // Pre-populate cache at the network+endpoint-scoped path
     const scope = cacheScope("testnet", "http://127.0.0.1:3030");
     const cacheScopeDir = path.join(artifactsDir, ".cache", "network-deps", scope);
     fs.mkdirSync(cacheScopeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cacheScopeDir, "credits.aleo"),
-      "program credits.aleo;\n",
-    );
+    fs.writeFileSync(path.join(cacheScopeDir, "credits.aleo"), "program credits.aleo;\n");
 
     const fetchSpy = vi.fn().mockResolvedValue("program credits.aleo;\n");
 
@@ -759,27 +684,20 @@ describe("compilePipeline network dep handling", () => {
     }
 
     // Fetcher must be called despite cache existing
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "credits.aleo",
-      "http://127.0.0.1:3030",
-      "testnet",
-    );
+    expect(fetchSpy).toHaveBeenCalledWith("credits.aleo", "http://127.0.0.1:3030", "testnet");
   });
 
   it("uses cache and does not call fetcher when force is false", async () => {
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     // Pre-populate cache at the network+endpoint-scoped path
     const scope = cacheScope("testnet", "http://127.0.0.1:3030");
     const cacheScopeDir = path.join(artifactsDir, ".cache", "network-deps", scope);
     fs.mkdirSync(cacheScopeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(cacheScopeDir, "credits.aleo"),
-      "program credits.aleo;\n",
-    );
+    fs.writeFileSync(path.join(cacheScopeDir, "credits.aleo"), "program credits.aleo;\n");
 
     const fetchSpy = vi.fn();
 
@@ -796,7 +714,7 @@ describe("compilePipeline network dep handling", () => {
   it("does not reuse testnet cache when switching to mainnet", async () => {
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     // Pre-populate cache under devnode/testnet scope
@@ -838,7 +756,7 @@ describe("compilePipeline network dep handling", () => {
   it("does not reuse devnode cache when switching to HTTP testnet", async () => {
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     // Pre-populate cache under devnode/testnet scope (localhost)
@@ -878,13 +796,10 @@ describe("compilePipeline network dep handling", () => {
   });
 
   it("does not fetch network deps for unselected programs", async () => {
-    writeProgram(
-      "app_prog",
-      "program app_prog.aleo {\n  fn main() {}\n}\n",
-    );
+    writeProgram("app_prog", "program app_prog.aleo {\n  fn main() {}\n}\n");
     writeProgram(
       "other_prog",
-      'import credits.aleo;\nprogram other_prog.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram other_prog.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     const fetchSpy = vi.fn().mockResolvedValue("program credits.aleo;\n");
@@ -905,7 +820,7 @@ describe("compilePipeline network dep handling", () => {
     // a mainnet scope key (poisoning future mainnet compiles).
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     // Simulate: mainnet fetch fails on first pipeline run
@@ -931,11 +846,9 @@ describe("compilePipeline network dep handling", () => {
 
     // Cache must remain empty for this scope — no cross-network fallback polluted it
     const mainnetScope = cacheScope("mainnet", mainnetEndpoint);
-    expect(getCachedNetworkDep(
-      path.join(artifactsDir, ".cache"),
-      "credits.aleo",
-      mainnetScope,
-    )).toBeNull();
+    expect(
+      getCachedNetworkDep(path.join(artifactsDir, ".cache"), "credits.aleo", mainnetScope),
+    ).toBeNull();
   });
 
   it("invalidates compilation cache when network dep source changes", async () => {
@@ -944,7 +857,7 @@ describe("compilePipeline network dep handling", () => {
     // miss even when local .leo source is unchanged.
     writeProgram(
       "app",
-      'import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n',
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
     );
 
     const binDir = path.join(tmpDir, "bin");
@@ -953,16 +866,16 @@ describe("compilePipeline network dep handling", () => {
       path.join(binDir, "leo"),
       [
         "#!/bin/sh",
-        "pkg=\"\"",
-        "prev=\"\"",
-        "for arg in \"$@\"; do",
-        "  if [ \"$prev\" = \"--path\" ]; then pkg=\"$arg\"; break; fi",
-        "  prev=\"$arg\"",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
         "done",
-        "id=$(basename \"$pkg\")",
-        "mkdir -p \"$pkg/build\"",
-        "printf '{\"program\":\"%s\",\"structs\":[],\"records\":[],\"mappings\":[],\"storage_variables\":[],\"functions\":[]}\\n' \"$id\" > \"$pkg/build/abi.json\"",
-        "printf 'program %s {}\\n' \"$id\" > \"$pkg/build/main.aleo\"",
+        'id=$(basename "$pkg")',
+        'mkdir -p "$pkg/build"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$pkg/build/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$pkg/build/main.aleo"',
       ].join("\n") + "\n",
       { mode: 0o755 },
     );

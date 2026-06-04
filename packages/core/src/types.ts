@@ -1,7 +1,7 @@
 import type {
-  LionDenUserConfig,
-  LionDenResolvedConfig,
   ConfigVariable,
+  LionDenResolvedConfig,
+  LionDenUserConfig,
   NamedAccounts,
 } from "@lionden/config";
 
@@ -22,9 +22,7 @@ export interface ConfigValidationError {
 
 export interface ConfigHookHandlers {
   /** Mutate user config during loading (inject defaults, add networks, etc.) */
-  extendUserConfig?(
-    config: LionDenUserConfig,
-  ): Promise<LionDenUserConfig> | LionDenUserConfig;
+  extendUserConfig?(config: LionDenUserConfig): Promise<LionDenUserConfig> | LionDenUserConfig;
 
   /** Validate user config — return errors for plugin-specific fields */
   validateUserConfig?(
@@ -51,22 +49,13 @@ export interface CompilationHookHandlers {
   compile?(context: CompilationContext): Promise<CompilationResult>;
 
   /** After ABI is generated (programs only), before codegen. Allows ABI transformation. */
-  postAbi?(
-    abi: unknown,
-    context: CompilationContext,
-  ): Promise<unknown> | unknown;
+  postAbi?(abi: unknown, context: CompilationContext): Promise<unknown> | unknown;
 
   /** TypeScript codegen step (programs only). */
-  generateBindings?(
-    abi: unknown,
-    context: CompilationContext,
-  ): Promise<string>;
+  generateBindings?(abi: unknown, context: CompilationContext): Promise<string>;
 
   /** After all compilation is complete. */
-  postBuild?(
-    result: CompilationResult,
-    context: CompilationContext,
-  ): Promise<void> | void;
+  postBuild?(result: CompilationResult, context: CompilationContext): Promise<void> | void;
 }
 
 export interface NetworkHookHandlers {
@@ -214,9 +203,7 @@ export type TaskActionWithSuper = (
 export interface TaskDefinition {
   readonly id: string;
   readonly description: string;
-  readonly action:
-    | TaskAction
-    | (() => Promise<{ default: TaskAction }>);
+  readonly action: TaskAction | (() => Promise<{ default: TaskAction }>);
   readonly options?: readonly TaskOption[];
   readonly flags?: readonly TaskFlag[];
   readonly positionalArguments?: readonly TaskPositionalArgument[];
@@ -322,11 +309,7 @@ export type HookDispatchMode = "serial" | "waterfall" | "parallel";
 
 export interface HookDispatcher {
   /** Dispatch a hook in serial mode — handlers execute sequentially */
-  serial<TContext>(
-    category: HookCategory,
-    hookName: string,
-    context: TContext,
-  ): Promise<void>;
+  serial<TContext>(category: HookCategory, hookName: string, context: TContext): Promise<void>;
 
   /** Dispatch a hook in waterfall mode — each handler transforms previous result */
   waterfall<TValue>(
@@ -337,11 +320,7 @@ export interface HookDispatcher {
   ): Promise<TValue>;
 
   /** Dispatch a hook in parallel mode — all handlers execute concurrently */
-  parallel<TContext>(
-    category: HookCategory,
-    hookName: string,
-    context: TContext,
-  ): Promise<void>;
+  parallel<TContext>(category: HookCategory, hookName: string, context: TContext): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,16 +1,9 @@
-import { describe, it, expect } from "vitest";
-import {
-  resolvePluginOrder,
-  collectGlobalOptions,
-  PluginLoadError,
-} from "./plugin-loader.js";
-import { ArgumentType } from "./types.js";
+import { describe, expect, it } from "vitest";
+import { collectGlobalOptions, resolvePluginOrder } from "./plugin-loader.js";
 import type { LionDenPlugin } from "./types.js";
+import { ArgumentType } from "./types.js";
 
-function plugin(
-  id: string,
-  opts?: Partial<LionDenPlugin>,
-): LionDenPlugin {
+function plugin(id: string, opts?: Partial<LionDenPlugin>): LionDenPlugin {
   return { id, ...opts };
 }
 
@@ -47,17 +40,13 @@ describe("resolvePluginOrder", () => {
     // Create circular ref
     (a as unknown as { dependencies: LionDenPlugin[] }).dependencies = [b];
 
-    expect(() => resolvePluginOrder([a, b])).toThrow(
-      /Circular plugin dependency/,
-    );
+    expect(() => resolvePluginOrder([a, b])).toThrow(/Circular plugin dependency/);
   });
 
   it("detects duplicate plugin IDs", () => {
     const a1 = plugin("a");
     const a2 = plugin("a");
-    expect(() => resolvePluginOrder([a1, a2])).toThrow(
-      /Duplicate plugin ID "a"/,
-    );
+    expect(() => resolvePluginOrder([a1, a2])).toThrow(/Duplicate plugin ID "a"/);
   });
 
   it("includes conditional dependencies that the user listed", () => {
@@ -95,17 +84,11 @@ describe("collectGlobalOptions", () => {
 
   it("detects name collisions", () => {
     const a = plugin("a", {
-      globalOptions: [
-        { name: "opt", description: "", type: ArgumentType.STRING },
-      ],
+      globalOptions: [{ name: "opt", description: "", type: ArgumentType.STRING }],
     });
     const b = plugin("b", {
-      globalOptions: [
-        { name: "opt", description: "", type: ArgumentType.STRING },
-      ],
+      globalOptions: [{ name: "opt", description: "", type: ArgumentType.STRING }],
     });
-    expect(() => collectGlobalOptions([a, b])).toThrow(
-      /Global option "--opt" registered by both/,
-    );
+    expect(() => collectGlobalOptions([a, b])).toThrow(/Global option "--opt" registered by both/);
   });
 });

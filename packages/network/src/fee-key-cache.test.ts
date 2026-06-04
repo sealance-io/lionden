@@ -9,7 +9,7 @@
  * These tests mock the SDK module so they can drive the fingerprint and
  * filesystem-failure branches deterministically without a real WASM load.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -18,10 +18,8 @@ import {
   fingerprintBytes,
   writeCreditsKeyCacheMetadata,
 } from "@lionden/core";
-import {
-  PersistentFunctionKeyProvider,
-  warmupCreditsKeys,
-} from "./sdk-adapter.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PersistentFunctionKeyProvider, warmupCreditsKeys } from "./sdk-adapter.js";
 
 const WASM_HASH_A = "a".repeat(64);
 const WASM_HASH_B = "b".repeat(64);
@@ -90,7 +88,9 @@ function makeMockSdk() {
         transfer_public_as_signer: entry(TRANSFER_PUBLIC_AS_SIGNER_LOCATOR),
         // Helper-style entries that are NOT a warmable key. Mirrors the
         // real SDK's `getKey` accessor — warmupCreditsKeys must skip these.
-        getKey: function (k: string) { return (this as any)[k]; },
+        getKey: function (k: string) {
+          return (this as any)[k];
+        },
       },
     },
     fromBytes,
@@ -210,12 +210,7 @@ describe("warmupCreditsKeys", () => {
     // variant — the Phase C scope is the full CREDITS_PROGRAM_KEYS map,
     // so warmup must hit every one of these locators, not stop at fees.
     const proverBytes = new Uint8Array([1, 2, 3]);
-    const locators = [
-      INCLUSION_LOCATOR,
-      JOIN_LOCATOR,
-      SPLIT_LOCATOR,
-      TRANSFER_PUBLIC_LOCATOR,
-    ];
+    const locators = [INCLUSION_LOCATOR, JOIN_LOCATOR, SPLIT_LOCATOR, TRANSFER_PUBLIC_LOCATOR];
     for (const locator of locators) {
       const p = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
       fs.mkdirSync(p.dir, { recursive: true });
@@ -357,9 +352,7 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     expect(fs.existsSync(paths.metadata)).toBe(true);
     expect([...fs.readFileSync(paths.prover)]).toEqual([7, 7, 7]);
     const metadata = JSON.parse(fs.readFileSync(paths.metadata, "utf-8"));
-    expect(metadata.prover.sha256).toBe(
-      fingerprintBytes(new Uint8Array([7, 7, 7])).sha256,
-    );
+    expect(metadata.prover.sha256).toBe(fingerprintBytes(new Uint8Array([7, 7, 7])).sha256);
   });
 
   it("rewrites both files when metadata is corrupt JSON", async () => {
@@ -373,9 +366,7 @@ describe("PersistentFunctionKeyProvider write-back", () => {
 
     expect([...fs.readFileSync(paths.prover)]).toEqual([7, 7, 7]);
     const metadata = JSON.parse(fs.readFileSync(paths.metadata, "utf-8"));
-    expect(metadata.prover.sha256).toBe(
-      fingerprintBytes(new Uint8Array([7, 7, 7])).sha256,
-    );
+    expect(metadata.prover.sha256).toBe(fingerprintBytes(new Uint8Array([7, 7, 7])).sha256);
   });
 
   it("rewrites when .prover bytes are corrupt even though metadata is current", async () => {
@@ -417,9 +408,7 @@ describe("PersistentFunctionKeyProvider write-back", () => {
 
     expect([...fs.readFileSync(paths.prover)]).toEqual([7, 7, 7]);
     const metadata = JSON.parse(fs.readFileSync(paths.metadata, "utf-8"));
-    expect(metadata.prover.sha256).toBe(
-      fingerprintBytes(new Uint8Array([7, 7, 7])).sha256,
-    );
+    expect(metadata.prover.sha256).toBe(fingerprintBytes(new Uint8Array([7, 7, 7])).sha256);
   });
 
   it("uses a different file for feePrivate vs feePublic", async () => {
@@ -441,16 +430,12 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     fs.writeFileSync(blockingFile, "regular file, not a directory");
     const { sdk } = makeMockSdk();
     const { delegate } = makeDelegate();
-    const provider = new PersistentFunctionKeyProvider(
-      delegate as any,
-      { keys: vi.fn() } as any,
-      {
-        sdk: sdk as any,
-        cachePath: path.join(blockingFile, "nested"), // cannot be created
-        network: NETWORK,
-        wasmHash: WASM_HASH_A,
-      },
-    );
+    const provider = new PersistentFunctionKeyProvider(delegate as any, { keys: vi.fn() } as any, {
+      sdk: sdk as any,
+      cachePath: path.join(blockingFile, "nested"), // cannot be created
+      network: NETWORK,
+      wasmHash: WASM_HASH_A,
+    });
     const result = await provider.feePublicKeys();
     expect(delegate.feePublicKeys).toHaveBeenCalledOnce();
     expect(result).toBeDefined();
@@ -458,10 +443,7 @@ describe("PersistentFunctionKeyProvider write-back", () => {
 
   it("does not persist when creditsPersistence config is omitted", async () => {
     const { delegate } = makeDelegate();
-    const provider = new PersistentFunctionKeyProvider(
-      delegate as any,
-      { keys: vi.fn() } as any,
-    );
+    const provider = new PersistentFunctionKeyProvider(delegate as any, { keys: vi.fn() } as any);
     await provider.feePublicKeys();
     const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, FEE_PUBLIC_LOCATOR);
     expect(fs.existsSync(paths.prover)).toBe(false);
@@ -475,7 +457,7 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     expect(entries.length).toBeGreaterThan(0);
     for (const name of entries) {
       // Filename must not contain raw locator separators.
-      expect(name).not.toMatch(/[\/:]/);
+      expect(name).not.toMatch(/[/:]/);
     }
   });
 
@@ -493,18 +475,15 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     ["bondValidatorKeys", BOND_VALIDATOR_LOCATOR],
     ["claimUnbondPublicKeys", CLAIM_UNBOND_PUBLIC_LOCATOR],
     ["unBondPublicKeys", UNBOND_PUBLIC_LOCATOR],
-  ] as const)(
-    "writes the on-disk entry after %s() is called",
-    async (method, locator) => {
-      const { provider } = makePersistent();
-      await (provider as any)[method]();
+  ] as const)("writes the on-disk entry after %s() is called", async (method, locator) => {
+    const { provider } = makePersistent();
+    await (provider as any)[method]();
 
-      const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
-      expect(fs.existsSync(paths.prover)).toBe(true);
-      expect(fs.existsSync(paths.metadata)).toBe(true);
-      expect([...fs.readFileSync(paths.prover)]).toEqual([7, 7, 7]);
-    },
-  );
+    const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
+    expect(fs.existsSync(paths.prover)).toBe(true);
+    expect(fs.existsSync(paths.metadata)).toBe(true);
+    expect([...fs.readFileSync(paths.prover)]).toEqual([7, 7, 7]);
+  });
 
   it.each([
     ["private", TRANSFER_PRIVATE_LOCATOR],
@@ -519,17 +498,14 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     ["transferPrivateToPublic", TRANSFER_PRIVATE_TO_PUBLIC_LOCATOR],
     ["public_to_private", TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR],
     ["transferPublicToPrivate", TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR],
-  ] as const)(
-    "maps transferKeys(%s) to the correct credits entry and writes it back",
-    async (visibility, locator) => {
-      const { provider } = makePersistent();
-      await provider.transferKeys(visibility);
+  ] as const)("maps transferKeys(%s) to the correct credits entry and writes it back", async (visibility, locator) => {
+    const { provider } = makePersistent();
+    await provider.transferKeys(visibility);
 
-      const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
-      expect(fs.existsSync(paths.prover)).toBe(true);
-      expect(fs.existsSync(paths.metadata)).toBe(true);
-    },
-  );
+    const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
+    expect(fs.existsSync(paths.prover)).toBe(true);
+    expect(fs.existsSync(paths.metadata)).toBe(true);
+  });
 
   it("skips persistence for transferKeys with an unknown visibility but still returns the delegate result", async () => {
     const { provider, delegate } = makePersistent();

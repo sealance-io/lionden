@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DevnodeManager } from "./devnode-manager.js";
 import { EventEmitter } from "node:events";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DevnodeManager } from "./devnode-manager.js";
 
 // Mock child_process.spawn
 vi.mock("node:child_process", () => ({
@@ -189,11 +189,7 @@ describe("DevnodeManager", () => {
     await manager.start();
 
     const args = vi.mocked(spawn).mock.calls[0]![1] as string[];
-    expect(args.slice(0, 3)).toEqual([
-      "--disable-update-check",
-      "devnode",
-      "start",
-    ]);
+    expect(args.slice(0, 3)).toEqual(["--disable-update-check", "devnode", "start"]);
   });
 
   it("start passes --consensus-heights when set", async () => {
@@ -400,9 +396,7 @@ describe("DevnodeManager", () => {
       vi.mocked(spawn).mockReturnValue(mockProc as any);
       mockFetch.mockResolvedValue({ ok: true });
 
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       await manager.start();
       mockProc.stdout.emit("data", Buffer.from("hello-stdout"));
@@ -451,9 +445,7 @@ describe("DevnodeManager", () => {
 
   describe("waitForExit", () => {
     it("throws synchronously before start()", () => {
-      expect(() => manager.waitForExit()).toThrow(
-        "DevnodeManager has not been started",
-      );
+      expect(() => manager.waitForExit()).toThrow("DevnodeManager has not been started");
     });
 
     it("resolves after stop() with exit info", async () => {
@@ -503,9 +495,7 @@ describe("DevnodeManager", () => {
       vi.mocked(spawn).mockReturnValue(mockProc as any);
       mockFetch.mockResolvedValue({ ok: true });
 
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       await manager.start();
       // Emit exit AFTER start resolved, unexpectedly (not via stop()).
@@ -543,9 +533,7 @@ describe("DevnodeManager", () => {
       vi.mocked(spawn).mockReturnValue(mockProc as any);
       mockFetch.mockResolvedValue({ ok: true });
 
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       await manager.start();
       mockProc.stderr.emit("data", Buffer.from("fatal: out of memory\n"));
@@ -566,9 +554,7 @@ describe("DevnodeManager", () => {
       vi.mocked(spawn).mockReturnValue(mockProc as any);
       mockFetch.mockResolvedValue({ ok: true });
 
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       await manager.start();
       await manager.stop();
@@ -586,9 +572,7 @@ describe("DevnodeManager", () => {
       vi.mocked(spawn).mockReturnValue(mockProc as any);
       mockFetch.mockRejectedValue(new Error("connection refused"));
 
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       setTimeout(() => {
         mockProc.exitCode = 1;
@@ -610,9 +594,7 @@ describe("DevnodeManager", () => {
       vi.mocked(spawn).mockReturnValue(mockProc as any);
       mockFetch.mockResolvedValue({ ok: true });
 
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       await manager.start({ logMode: "inherit" });
       mockProc.emit("exit", 1, null);
@@ -633,9 +615,7 @@ describe("DevnodeManager", () => {
 
   describe("restart cycle", () => {
     it("second start() resets exit promise, diagnostic flag, and log buffer", async () => {
-      const writeSpy = vi
-        .spyOn(process.stderr, "write")
-        .mockImplementation(() => true);
+      const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
       // First life: clean stop.
       const proc1 = createMockProcess();
@@ -771,9 +751,9 @@ describe("DevnodeManager standalone backend", () => {
   });
 
   it("rejects a non-testnet network on standalone (no silent coercion)", async () => {
-    await expect(
-      manager.start({ provider: "standalone", network: "mainnet" }),
-    ).rejects.toThrow(/only supports the "testnet"/);
+    await expect(manager.start({ provider: "standalone", network: "mainnet" })).rejects.toThrow(
+      /only supports the "testnet"/,
+    );
     expect(spawn).not.toHaveBeenCalled();
   });
 
@@ -879,9 +859,7 @@ describe("DevnodeManager snapshot/restore", () => {
     expect(restoreCall![1]).toEqual(["restore", "--snapshot", "snap", "--storage", "/tmp/l"]);
     // The default validator key used at start() must be forwarded via env.
     const env = (restoreCall![2] as { env: Record<string, string> }).env;
-    expect(env["PRIVATE_KEY"]).toBe(
-      "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
-    );
+    expect(env["PRIVATE_KEY"]).toBe("APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
     expect(order).toEqual(["start", "restore", "start"]);
     expect(manager.isRunning()).toBe(true);
   });

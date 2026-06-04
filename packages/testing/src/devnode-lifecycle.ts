@@ -5,9 +5,9 @@
  * in afterAll, matching the plan's suite-level isolation model.
  */
 
-import { DevnodeManager, resolveDevnodeBackend, preflightDevnode } from "@lionden/network";
-import type { DevnodeStartOptions } from "@lionden/network";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import type { DevnodeStartOptions } from "@lionden/network";
+import { DevnodeManager, preflightDevnode, resolveDevnodeBackend } from "@lionden/network";
 
 /** State of a managed devnode instance. */
 export interface ManagedDevnode {
@@ -101,10 +101,7 @@ function findDevnodeNetworkConfig(config: LionDenResolvedConfig):
       clearStorage?: boolean;
     }
   | undefined {
-  const pick = (net: Extract<
-    LionDenResolvedConfig["networks"][string],
-    { type: "devnode" }
-  >) => ({
+  const pick = (net: Extract<LionDenResolvedConfig["networks"][string], { type: "devnode" }>) => ({
     autoBlock: net.autoBlock,
     network: net.network,
     privateKey: net.privateKey,

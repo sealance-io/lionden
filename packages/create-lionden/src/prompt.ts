@@ -32,9 +32,7 @@ export function ask(question: string, defaultValue?: string): Promise<string> {
 }
 
 export function choose(question: string, choices: string[], defaultIndex = 0): Promise<string> {
-  const lines = choices.map((c, i) =>
-    `  ${i === defaultIndex ? ">" : " "} ${i + 1}. ${c}`
-  );
+  const lines = choices.map((c, i) => `  ${i === defaultIndex ? ">" : " "} ${i + 1}. ${c}`);
   const prompt = `${question}\n${lines.join("\n")}\n\nChoice (1-${choices.length}) [${defaultIndex + 1}]: `;
 
   return new Promise((resolve) => {

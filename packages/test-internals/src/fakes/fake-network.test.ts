@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { FakeNetworkConnection, FakeNetworkManager } from "./fake-network.js";
 
 describe("FakeNetworkConnection", () => {
@@ -176,9 +176,7 @@ describe("FakeNetworkManager", () => {
 
   it("connect throws for unknown network names", async () => {
     const manager = new FakeNetworkManager({ knownNetworks: ["devnode"] });
-    await expect(manager.connect("testnet")).rejects.toThrow(
-      /Network "testnet" not found/,
-    );
+    await expect(manager.connect("testnet")).rejects.toThrow(/Network "testnet" not found/);
   });
 
   it("connect accepts known network names", async () => {

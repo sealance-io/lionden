@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   devnodeStart: vi.fn(),
@@ -73,7 +73,11 @@ function makeConfig(): LionDenResolvedConfig {
 }
 
 describe("node task devnode preflight", () => {
-  const leoBackend = { provider: "leo" as const, command: "/tmp/leo", capabilities: { snapshot: false } };
+  const leoBackend = {
+    provider: "leo" as const,
+    command: "/tmp/leo",
+    capabilities: { snapshot: false },
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,10 +94,7 @@ describe("node task devnode preflight", () => {
 
     try {
       await expect(
-        nodeTask!.action(
-          { port: 3030, manualBlocks: false, network: "testnet" },
-          lre,
-        ),
+        nodeTask!.action({ port: 3030, manualBlocks: false, network: "testnet" }, lre),
       ).rejects.toThrow("stop after start");
     } finally {
       processOn.mockRestore();

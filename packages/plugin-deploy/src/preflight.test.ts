@@ -1,20 +1,18 @@
-import { describe, it, expect, vi } from "vitest";
-import { createMockConnection } from "@lionden/test-internals";
-import { createMockConfig } from "@lionden/test-internals";
-import type { ProgramABI } from "@lionden/leo-compiler";
-import type { DependencyGraph } from "@lionden/leo-compiler";
-import type { DeploymentRecord } from "./deployment-types.js";
+import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
+import { createMockConfig, createMockConnection } from "@lionden/test-internals";
+import { describe, expect, it, vi } from "vitest";
 import type { ConstructorInfo } from "./constructor-parser.js";
+import type { DeploymentRecord } from "./deployment-types.js";
 import {
+  checkAbiCompatible,
+  checkAdminSigner,
+  checkAlreadyDeployed,
+  checkBalanceSufficient,
+  checkConstructorImmutable,
   checkConstructorPresent,
   checkConstructorValid,
-  checkAlreadyDeployed,
-  checkImportsAvailable,
-  checkBalanceSufficient,
-  checkAbiCompatible,
-  checkConstructorImmutable,
   checkEditionContinuity,
-  checkAdminSigner,
+  checkImportsAvailable,
   runDeployPreflight,
   runUpgradePreflight,
 } from "./preflight.js";
@@ -289,7 +287,12 @@ describe("checkAbiCompatible", () => {
 
 describe("checkConstructorImmutable", () => {
   it("passes when constructor type is unchanged", () => {
-    const err = checkConstructorImmutable(completeRecord, noupgradeConstructor, "fp1", "hello.aleo");
+    const err = checkConstructorImmutable(
+      completeRecord,
+      noupgradeConstructor,
+      "fp1",
+      "hello.aleo",
+    );
     expect(err).toBeNull();
   });
 
@@ -480,7 +483,12 @@ describe("runDeployPreflight", () => {
     // Run twice — no side effects
     const r1 = await runDeployPreflight({
       programs: [
-        { programId: "hello.aleo", constructor: noupgradeConstructor, aleoSource: "program hello.aleo;", existingRecord: null },
+        {
+          programId: "hello.aleo",
+          constructor: noupgradeConstructor,
+          aleoSource: "program hello.aleo;",
+          existingRecord: null,
+        },
       ],
       connection: conn,
       networkConfig: devnodeNetworkConfig,
@@ -492,7 +500,12 @@ describe("runDeployPreflight", () => {
     });
     const r2 = await runDeployPreflight({
       programs: [
-        { programId: "hello.aleo", constructor: noupgradeConstructor, aleoSource: "program hello.aleo;", existingRecord: null },
+        {
+          programId: "hello.aleo",
+          constructor: noupgradeConstructor,
+          aleoSource: "program hello.aleo;",
+          existingRecord: null,
+        },
       ],
       connection: conn,
       networkConfig: devnodeNetworkConfig,
@@ -515,8 +528,18 @@ describe("runDeployPreflight", () => {
     });
     const result = await runDeployPreflight({
       programs: [
-        { programId: "alpha.aleo", constructor: noupgradeConstructor, aleoSource: "program alpha.aleo;", existingRecord: null },
-        { programId: "beta.aleo", constructor: noupgradeConstructor, aleoSource: "program beta.aleo;", existingRecord: null },
+        {
+          programId: "alpha.aleo",
+          constructor: noupgradeConstructor,
+          aleoSource: "program alpha.aleo;",
+          existingRecord: null,
+        },
+        {
+          programId: "beta.aleo",
+          constructor: noupgradeConstructor,
+          aleoSource: "program beta.aleo;",
+          existingRecord: null,
+        },
       ],
       connection: conn,
       networkConfig: httpNetworkConfig,

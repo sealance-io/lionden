@@ -24,59 +24,67 @@ export function sharedFiles(projectName: string): TemplateFile[] {
   return [
     {
       path: "package.json",
-      content: JSON.stringify(
-        {
-          name: projectName,
-          version: "0.1.0",
-          private: true,
-          type: "module",
-          scripts: {
-            compile: "lionden compile",
-            test: "lionden test",
-            deploy: "lionden run scripts/deploy.ts",
-            node: "lionden node",
+      content:
+        JSON.stringify(
+          {
+            name: projectName,
+            version: "0.1.0",
+            private: true,
+            type: "module",
+            scripts: {
+              compile: "lionden compile",
+              test: "lionden test",
+              deploy: "lionden run scripts/deploy.ts",
+              node: "lionden node",
+            },
+            engines: {
+              node: "^20.19.0 || >=22.12.0",
+            },
+            devDependencies: {
+              "@lionden/cli": "^0.1.0",
+              "@lionden/config": "^0.1.0",
+              "@lionden/core": "^0.1.0",
+              "@lionden/network": "^0.1.0",
+              "@lionden/plugin-deploy": "^0.1.0",
+              "@lionden/plugin-leo": "^0.1.0",
+              "@lionden/plugin-network": "^0.1.0",
+              "@lionden/plugin-test": "^0.1.0",
+              "@lionden/testing": "^0.1.0",
+              tsx: "^4.0.0",
+              typescript: "^5.7.0",
+              vitest: "^4.0.0",
+            },
           },
-          engines: {
-            node: "^20.19.0 || >=22.12.0",
-          },
-          devDependencies: {
-            "@lionden/cli": "^0.1.0",
-            "@lionden/config": "^0.1.0",
-            "@lionden/core": "^0.1.0",
-            "@lionden/network": "^0.1.0",
-            "@lionden/plugin-deploy": "^0.1.0",
-            "@lionden/plugin-leo": "^0.1.0",
-            "@lionden/plugin-network": "^0.1.0",
-            "@lionden/plugin-test": "^0.1.0",
-            "@lionden/testing": "^0.1.0",
-            tsx: "^4.0.0",
-            typescript: "^5.7.0",
-            vitest: "^4.0.0",
-          },
-        },
-        null,
-        2,
-      ) + "\n",
+          null,
+          2,
+        ) + "\n",
     },
     {
       path: "tsconfig.json",
-      content: JSON.stringify(
-        {
-          compilerOptions: {
-            target: "ES2024",
-            module: "NodeNext",
-            moduleResolution: "NodeNext",
-            verbatimModuleSyntax: true,
-            strict: true,
-            skipLibCheck: true,
-            outDir: "dist",
-            declaration: true,
+      content:
+        JSON.stringify(
+          {
+            compilerOptions: {
+              target: "ES2024",
+              module: "NodeNext",
+              moduleResolution: "NodeNext",
+              verbatimModuleSyntax: true,
+              strict: true,
+              skipLibCheck: true,
+              outDir: "dist",
+              declaration: true,
+            },
+            include: [
+              "typechain/**/*.ts",
+              "recipes/**/*.ts",
+              "test/**/*.ts",
+              "scripts/**/*.ts",
+              "lionden.config.ts",
+            ],
           },
-          include: ["typechain/**/*.ts", "recipes/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "lionden.config.ts"],
-        },
-        null,
-        2,
-      ) + "\n",
+          null,
+          2,
+        ) + "\n",
     },
     {
       path: ".gitignore",

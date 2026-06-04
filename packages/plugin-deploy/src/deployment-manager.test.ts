@@ -1,28 +1,27 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createMockConfig } from "@lionden/test-internals";
-import { createMockConnection } from "@lionden/test-internals";
 import type { ArtifactStore } from "@lionden/core";
+import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkManager } from "@lionden/network";
+import { createMockConfig, createMockConnection } from "@lionden/test-internals";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
 import {
-  writeDeploymentRecord,
-  readDeploymentRecord,
-  writeAbiSnapshot,
-  readPendingMarker,
   readAbiSnapshot,
-  readNetworkMetadata,
+  readDeploymentRecord,
   readHistory,
+  readNetworkMetadata,
+  readPendingMarker,
+  writeAbiSnapshot,
+  writeDeploymentRecord,
 } from "./deployment-state.js";
 import type {
   CompleteDeploymentRecord,
   DegradedDeploymentRecord,
-  RecoveredDeploymentRecord,
   PendingDeployment,
+  RecoveredDeploymentRecord,
 } from "./deployment-types.js";
-import type { ProgramABI } from "@lionden/leo-compiler";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,14 +109,17 @@ function makeNetworkManager(connection = createMockConnection()): NetworkManager
   };
 }
 
-function makeManager(opts: {
-  networkType?: "devnode" | "http";
-  ephemeral?: boolean;
-  connection?: ReturnType<typeof createMockConnection>;
-  networkManager?: NetworkManager;
-  artifacts?: ArtifactStore;
-} = {}) {
-  const config = opts.networkType === "http" ? makeHttpConfig() : makeConfig({ ephemeral: opts.ephemeral });
+function makeManager(
+  opts: {
+    networkType?: "devnode" | "http";
+    ephemeral?: boolean;
+    connection?: ReturnType<typeof createMockConnection>;
+    networkManager?: NetworkManager;
+    artifacts?: ArtifactStore;
+  } = {},
+) {
+  const config =
+    opts.networkType === "http" ? makeHttpConfig() : makeConfig({ ephemeral: opts.ephemeral });
   const conn = opts.connection ?? createMockConnection();
   const manager = opts.networkManager ?? makeNetworkManager(conn);
   const artifacts = opts.artifacts ?? makeArtifactStore();
@@ -168,7 +170,9 @@ describe("devnode: getDeployment validates on-chain", () => {
 
   it("returns cached record when program is on-chain", async () => {
     const conn = createMockConnection({
-      getProgramSource: vi.fn().mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 1u16;\n"),
+      getProgramSource: vi
+        .fn()
+        .mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 1u16;\n"),
     });
     const { dm, config } = makeManager({ connection: conn });
     // Write disk state
@@ -181,7 +185,9 @@ describe("devnode: getDeployment validates on-chain", () => {
 
   it("creates degraded record when on-chain but no prior state", async () => {
     const conn = createMockConnection({
-      getProgramSource: vi.fn().mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 2u16;\n"),
+      getProgramSource: vi
+        .fn()
+        .mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 2u16;\n"),
     });
     const { dm } = makeManager({ connection: conn });
 
@@ -314,7 +320,11 @@ describe("HTTP: metadata validation", () => {
     const config = makeHttpConfig();
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
 
-    await dm.record({ ...completeRecord, network: "testnet", endpoint: "https://api.example.com" }, "deploy", { abi: mockAbi });
+    await dm.record(
+      { ...completeRecord, network: "testnet", endpoint: "https://api.example.com" },
+      "deploy",
+      { abi: mockAbi },
+    );
 
     const meta = readNetworkMetadata(config.paths.deployments, "testnet");
     expect(meta).not.toBeNull();
@@ -561,7 +571,11 @@ describe("recoverPendingDeployments", () => {
       getProgramSource: vi.fn().mockResolvedValue(source),
     });
     const config = makeConfig({ ephemeral: false });
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(conn), makeArtifactStore());
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
 
     const pending: PendingDeployment = {
       programId: "hello.aleo",
@@ -593,7 +607,11 @@ describe("recoverPendingDeployments", () => {
       getProgramSource: vi.fn().mockResolvedValue(null),
     });
     const config = makeConfig({ ephemeral: false });
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(conn), makeArtifactStore());
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
 
     const pending: PendingDeployment = {
       programId: "hello.aleo",
@@ -699,9 +717,7 @@ describe("getCachedAbi() normalization", () => {
       records: [],
       mappings: [],
       storage_variables: [],
-      functions: [
-        { name: "increment", is_final: true, inputs: [], outputs: [] },
-      ],
+      functions: [{ name: "increment", is_final: true, inputs: [], outputs: [] }],
     } as unknown as ProgramABI; // compiler format — has `functions`, not `transitions`
 
     await dm.record(completeRecord, "deploy", { abi: compilerFormatAbi });

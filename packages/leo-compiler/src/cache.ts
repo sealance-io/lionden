@@ -1,8 +1,7 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as crypto from "node:crypto";
 import type { DiscoveredUnit } from "./types.js";
-import { unitId } from "./types.js";
 
 /**
  * Compute a hash of all inputs that affect compilation of a unit:
@@ -70,11 +69,7 @@ export function computeUnitHash(
 /**
  * Check if a unit's compilation is cached (hash matches).
  */
-export function isCached(
-  cacheDir: string,
-  id: string,
-  currentHash: string,
-): boolean {
+export function isCached(cacheDir: string, id: string, currentHash: string): boolean {
   const hashFile = path.join(cacheDir, `${id}.hash`);
   if (!fs.existsSync(hashFile)) return false;
   const storedHash = fs.readFileSync(hashFile, "utf-8").trim();
@@ -84,11 +79,7 @@ export function isCached(
 /**
  * Write the compilation hash to the cache.
  */
-export function writeCache(
-  cacheDir: string,
-  id: string,
-  hash: string,
-): void {
+export function writeCache(cacheDir: string, id: string, hash: string): void {
   fs.mkdirSync(cacheDir, { recursive: true });
   fs.writeFileSync(path.join(cacheDir, `${id}.hash`), hash + "\n");
 }

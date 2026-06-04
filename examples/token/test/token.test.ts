@@ -1,12 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
-import { createTokenContract, Leo } from "../typechain/index.js";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setupToken } from "../recipes/setup.js";
+import { createTokenContract, Leo } from "../typechain/index.js";
 
 const RECEIVERS = {
   publicTransfer: "aleo1gnkqe9m4f5wdl3q904xsf6ed9kavj0e6fnggtwyt8v8apw05gy9syz34cz",
@@ -68,7 +63,9 @@ describe("token program", () => {
       // withSigner switches the signer to account-1; if signer switching is
       // broken, account-0 would be the sender and the finalize
       // assert(sender_balance >= amount) would fail or debit the wrong account.
-      await token.withSigner(account1).transfer_public.accepted({ receiver: account2, amount: 2000n });
+      await token
+        .withSigner(account1)
+        .transfer_public.accepted({ receiver: account2, amount: 2000n });
 
       // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
       expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { loadFixture, clearFixtures } from "./fixtures.js";
+import { beforeEach, describe, expect, it } from "vitest";
+import { clearFixtures, loadFixture } from "./fixtures.js";
 
 describe("fixtures", () => {
   beforeEach(() => {
@@ -38,8 +38,14 @@ describe("fixtures", () => {
     let callsA = 0;
     let callsB = 0;
 
-    const fixtureA = async () => { callsA++; return "A"; };
-    const fixtureB = async () => { callsB++; return "B"; };
+    const fixtureA = async () => {
+      callsA++;
+      return "A";
+    };
+    const fixtureB = async () => {
+      callsB++;
+      return "B";
+    };
 
     const a = await loadFixture(fixtureA);
     const b = await loadFixture(fixtureB);
@@ -76,10 +82,7 @@ describe("fixtures", () => {
     };
 
     // Fire two concurrent loadFixture calls
-    const [a, b] = await Promise.all([
-      loadFixture(fixture),
-      loadFixture(fixture),
-    ]);
+    const [a, b] = await Promise.all([loadFixture(fixture), loadFixture(fixture)]);
 
     // Both should get the same result; fixture should execute only once
     expect(a).toBe(b);

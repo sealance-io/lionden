@@ -286,11 +286,7 @@ export interface NetworkConnection {
   getBalance(address?: string): Promise<bigint>;
 
   /** Query a mapping value. Returns null if the key has no entry. */
-  getMappingValue(
-    programId: string,
-    mappingName: string,
-    key: string,
-  ): Promise<string | null>;
+  getMappingValue(programId: string, mappingName: string, key: string): Promise<string | null>;
 
   /** Execute a program transition. */
   execute(
@@ -301,10 +297,7 @@ export interface NetworkConnection {
   ): Promise<TransitionCallResult>;
 
   /** Wait for a transaction to be confirmed on-chain. */
-  waitForConfirmation(
-    txId: string,
-    timeout?: number,
-  ): Promise<ConfirmedTransaction>;
+  waitForConfirmation(txId: string, timeout?: number): Promise<ConfirmedTransaction>;
 
   /**
    * Await confirmation of `txId` and return the parsed outputs for the
@@ -389,20 +382,13 @@ export interface NetworkManager {
    * Query a mapping value on the active connection.
    * Convenience method — delegates to getConnection().getMappingValue().
    */
-  getMappingValue(
-    programId: string,
-    mappingName: string,
-    key: string,
-  ): Promise<string | null>;
+  getMappingValue(programId: string, mappingName: string, key: string): Promise<string | null>;
 
   /**
    * Wait for a transaction on the active connection.
    * Convenience method — delegates to getConnection().waitForConfirmation().
    */
-  waitForConfirmation(
-    txId: string,
-    timeout?: number,
-  ): Promise<ConfirmedTransaction>;
+  waitForConfirmation(txId: string, timeout?: number): Promise<ConfirmedTransaction>;
 
   /**
    * Fetch parsed outputs for a confirmed transition on the active connection.

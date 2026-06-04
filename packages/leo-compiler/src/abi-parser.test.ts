@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseAbi, AbiParseError } from "./abi-parser.js";
+import { describe, expect, it } from "vitest";
+import { AbiParseError, parseAbi } from "./abi-parser.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = resolve(__dirname, "__fixtures__/abi");
@@ -47,9 +47,7 @@ const VALID_ABI = JSON.stringify({
         { name: "receiver", ty: { Plaintext: { Primitive: "Address" } }, mode: "None" },
         { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
       ],
-      outputs: [
-        { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
-      ],
+      outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
     },
   ],
 });
@@ -131,9 +129,7 @@ describe("parseAbi — compiler format normalization", () => {
             inputs: [
               { name: "a", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" },
             ],
-            outputs: [
-              { ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" },
-            ],
+            outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" }],
           },
         ],
       }),
@@ -436,9 +432,7 @@ describe("parseAbi — plaintext type normalization", () => {
         structs: [
           {
             path: ["Grid"],
-            fields: [
-              { name: "cells", ty: { Array: [{ Primitive: { UInt: "U32" } }, 9] } },
-            ],
+            fields: [{ name: "cells", ty: { Array: [{ Primitive: { UInt: "U32" } }, 9] } }],
           },
         ],
       }),
@@ -485,9 +479,7 @@ describe("parseAbi — plaintext type normalization", () => {
         structs: [
           {
             path: ["MaybeValue"],
-            fields: [
-              { name: "val", ty: { Optional: { Primitive: { UInt: "U64" } } } },
-            ],
+            fields: [{ name: "val", ty: { Optional: { Primitive: { UInt: "U64" } } } }],
           },
         ],
       }),
@@ -755,9 +747,7 @@ describe("parseAbi — storage variable normalization", () => {
     const abi = parseAbi(
       JSON.stringify({
         program: "test.aleo",
-        storage_variables: [
-          { name: "admin", ty: { Primitive: "Address" } },
-        ],
+        storage_variables: [{ name: "admin", ty: { Primitive: "Address" } }],
       }),
     );
     expect(abi.storage_variables).toHaveLength(1);
@@ -771,9 +761,7 @@ describe("parseAbi — storage variable normalization", () => {
     const abi = parseAbi(
       JSON.stringify({
         program: "test.aleo",
-        storage_variables: [
-          { name: "admin", ty: { Plaintext: { Primitive: "Address" } } },
-        ],
+        storage_variables: [{ name: "admin", ty: { Plaintext: { Primitive: "Address" } } }],
       }),
     );
     expect(abi.storage_variables[0]!.ty).toEqual({
@@ -802,9 +790,7 @@ describe("parseAbi — storage variable normalization", () => {
     const abiPlain = parseAbi(
       JSON.stringify({
         program: "test.aleo",
-        storage_variables: [
-          { name: "val", ty: { Plaintext: { Primitive: "Address" } } },
-        ],
+        storage_variables: [{ name: "val", ty: { Plaintext: { Primitive: "Address" } } }],
       }),
     );
     const abiVec = parseAbi(
@@ -826,14 +812,7 @@ describe("parseAbi — storage variable normalization", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseAbi — all primitive types", () => {
-  const primitives = [
-    "Address",
-    "Boolean",
-    "Field",
-    "Group",
-    "Identifier",
-    "Scalar",
-  ];
+  const primitives = ["Address", "Boolean", "Field", "Group", "Identifier", "Scalar"];
 
   for (const prim of primitives) {
     it(`parses ${prim} primitive`, () => {
@@ -892,9 +871,7 @@ describe("parseAbi — all mode values", () => {
             {
               name: "fn",
               is_final: false,
-              inputs: [
-                { name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode },
-              ],
+              inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode }],
               outputs: [],
             },
           ],
@@ -964,17 +941,23 @@ describe("parseAbi — complex ABI with all features", () => {
             value: { Primitive: { UInt: "U128" } },
           },
         ],
-        storage_variables: [
-          { name: "admin", ty: { Plaintext: { Primitive: "Address" } } },
-        ],
+        storage_variables: [{ name: "admin", ty: { Plaintext: { Primitive: "Address" } } }],
         functions: [
           {
             name: "add_liquidity",
             is_final: true,
             inputs: [
               { name: "pair_id", ty: { Plaintext: { Primitive: "Field" } }, mode: "Public" },
-              { name: "amount_a", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Public" },
-              { name: "amount_b", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Public" },
+              {
+                name: "amount_a",
+                ty: { Plaintext: { Primitive: { UInt: "U128" } } },
+                mode: "Public",
+              },
+              {
+                name: "amount_b",
+                ty: { Plaintext: { Primitive: { UInt: "U128" } } },
+                mode: "Public",
+              },
             ],
             outputs: [
               { ty: { Record: { path: ["LPToken"], program: "dex.aleo" } }, mode: "None" },
@@ -998,11 +981,13 @@ describe("parseAbi — complex ABI with all features", () => {
             is_final: false,
             inputs: [
               { name: "pair_id", ty: { Plaintext: { Primitive: "Field" } }, mode: "None" },
-              { name: "amount_in", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" },
+              {
+                name: "amount_in",
+                ty: { Plaintext: { Primitive: { UInt: "U128" } } },
+                mode: "None",
+              },
             ],
-            outputs: [
-              { ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" },
-            ],
+            outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
           },
         ],
       }),
@@ -1066,10 +1051,7 @@ describe("parseAbi — complex ABI with all features", () => {
 
 describe("parseAbi — fixture files", () => {
   it("parses hello.abi.json fixture", () => {
-    const json = readFileSync(
-      resolve(FIXTURES_DIR, "hello.abi.json"),
-      "utf-8",
-    );
+    const json = readFileSync(resolve(FIXTURES_DIR, "hello.abi.json"), "utf-8");
     const abi = parseAbi(json);
 
     expect(abi.program).toBe("hello.aleo");
@@ -1095,10 +1077,7 @@ describe("parseAbi — fixture files", () => {
   });
 
   it("parses token.abi.json fixture", () => {
-    const json = readFileSync(
-      resolve(FIXTURES_DIR, "token.abi.json"),
-      "utf-8",
-    );
+    const json = readFileSync(resolve(FIXTURES_DIR, "token.abi.json"), "utf-8");
     const abi = parseAbi(json);
 
     expect(abi.program).toBe("token.aleo");
@@ -1151,10 +1130,7 @@ describe("parseAbi — fixture files", () => {
   });
 
   it("parses rewards.abi.json fixture", () => {
-    const json = readFileSync(
-      resolve(FIXTURES_DIR, "rewards.abi.json"),
-      "utf-8",
-    );
+    const json = readFileSync(resolve(FIXTURES_DIR, "rewards.abi.json"), "utf-8");
     const abi = parseAbi(json);
 
     expect(abi.program).toBe("rewards.aleo");
@@ -1173,10 +1149,7 @@ describe("parseAbi — fixture files", () => {
   });
 
   it("parses treasury.abi.json fixture", () => {
-    const json = readFileSync(
-      resolve(FIXTURES_DIR, "treasury.abi.json"),
-      "utf-8",
-    );
+    const json = readFileSync(resolve(FIXTURES_DIR, "treasury.abi.json"), "utf-8");
     const abi = parseAbi(json);
 
     expect(abi.program).toBe("treasury.aleo");

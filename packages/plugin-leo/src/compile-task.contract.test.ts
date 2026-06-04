@@ -5,10 +5,11 @@
  * leo-compiler's compilePipeline(), populates lre.artifacts, and generates
  * TypeScript bindings.
  */
-import { describe, it, expect, vi, afterEach } from "vitest";
+
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
+import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import pluginLeo from "./index.js";
 
 vi.mock("@lionden/core", async (importOriginal) => {
@@ -78,7 +79,12 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
               },
             ],
             structs: [],
-            records: [{ path: ["Token"], fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }] }],
+            records: [
+              {
+                path: ["Token"],
+                fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }],
+              },
+            ],
             mappings: [{ name: "balances", keyType: "address", valueType: "u64" }],
           },
           aleoSource: "",
@@ -88,7 +94,11 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
     generateBindings: vi.fn().mockReturnValue("// generated bindings\n"),
     generateBaseContract: vi.fn().mockReturnValue("// base contract\n"),
     resolveContractClassName: vi.fn(
-      (abi: { program: string; structs?: { path: string[] }[]; records?: { path: string[] }[] }) => {
+      (abi: {
+        program: string;
+        structs?: { path: string[] }[];
+        records?: { path: string[] }[];
+      }) => {
         const base = abi.program
           .replace(/\.aleo$/, "")
           .split(/[_\-.]/)
@@ -205,7 +215,10 @@ describe("compile task contract", () => {
     const lre = createTestLre(true);
     await lre.tasks.run("compile");
 
-    const indexContent = fs.readFileSync(path.join(lre.config.paths.typechain, "index.ts"), "utf-8");
+    const indexContent = fs.readFileSync(
+      path.join(lre.config.paths.typechain, "index.ts"),
+      "utf-8",
+    );
     expect(indexContent).toContain(
       "Omitted duplicate exports: Token, decryptToken, deserializeToken, serializeToken.",
     );

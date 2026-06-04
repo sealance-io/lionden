@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
 import ts from "typescript";
-import { generateBindings, generateBaseContract } from "./typescript-generator.js";
-import type { ProgramABI, StructRef, RecordRef } from "../abi-types.js";
+import { describe, expect, it } from "vitest";
+import type { ProgramABI, RecordRef, StructRef } from "../abi-types.js";
+import { generateBaseContract, generateBindings } from "./typescript-generator.js";
 
 /** Shorthand for creating a StructRef in tests */
 function sref(name: string, program: string | null = null): StructRef {
@@ -20,23 +20,23 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
     [`/virtual/${programName}.ts`]: output,
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
     "/virtual/network.d.ts": [
-      "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
-      "export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
-      "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+      'export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
+      'export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
+      'export declare function deriveViewKey(privateKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
       "export declare function programAddressFromProgramId(programId: string): string;",
       "export declare class LocalVmExecutionError extends Error {",
-      "  readonly kind: \"LocalVmExecutionError\";",
+      '  readonly kind: "LocalVmExecutionError";',
       "  readonly programId: string;",
       "  readonly transitionName: string;",
       "  constructor(message: string, context: { readonly programId: string; readonly transitionName: string; readonly cause?: unknown });",
       "}",
       "export declare class NetworkRecordDecryptionError extends Error {",
-      "  readonly kind: \"NetworkRecordDecryptionError\";",
+      '  readonly kind: "NetworkRecordDecryptionError";',
       "  readonly ciphertextPrefix: string;",
       "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
       "}",
       "export declare class NetworkValueDecryptionError extends Error {",
-      "  readonly kind: \"NetworkValueDecryptionError\";",
+      '  readonly kind: "NetworkValueDecryptionError";',
       "  readonly ciphertextPrefix: string;",
       "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
       "}",
@@ -87,13 +87,14 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
 
   const program = ts.createProgram(Object.keys(files), options, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  const message = diagnostics.length === 0
-    ? ""
-    : ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-        getCurrentDirectory: () => "/virtual",
-        getCanonicalFileName: (fileName) => fileName,
-        getNewLine: () => "\n",
-      });
+  const message =
+    diagnostics.length === 0
+      ? ""
+      : ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+          getCurrentDirectory: () => "/virtual",
+          getCanonicalFileName: (fileName) => fileName,
+          getNewLine: () => "\n",
+        });
 
   expect(message).toBe("");
 }
@@ -131,19 +132,33 @@ const SAMPLE_ABI: ProgramABI = {
       name: "mint",
       is_async: false,
       inputs: [
-        { name: "receiver", ty: { Plaintext: { Primitive: "Address" as const } }, mode: "None" as const },
-        { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" as const },
+        {
+          name: "receiver",
+          ty: { Plaintext: { Primitive: "Address" as const } },
+          mode: "None" as const,
+        },
+        {
+          name: "amount",
+          ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+          mode: "Public" as const,
+        },
       ],
-      outputs: [
-        { ty: { Record: rref("Token") }, mode: "None" as const },
-      ],
+      outputs: [{ ty: { Record: rref("Token") }, mode: "None" as const }],
     },
     {
       name: "transfer",
       is_async: false,
       inputs: [
-        { name: "receiver", ty: { Plaintext: { Primitive: "Address" as const } }, mode: "None" as const },
-        { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" as const },
+        {
+          name: "receiver",
+          ty: { Plaintext: { Primitive: "Address" as const } },
+          mode: "None" as const,
+        },
+        {
+          name: "amount",
+          ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+          mode: "Public" as const,
+        },
       ],
       outputs: [],
     },
@@ -184,9 +199,7 @@ describe("Leo 4.1 ABI extensions", () => {
         {
           name: "balance",
           inputs: [],
-          outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
         },
       ],
     };
@@ -219,7 +232,9 @@ describe("generateBindings", () => {
 
   it("generates record serializers using Leo syntax, not JSON", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("export function serializeToken(value: TokenInput, context?: TransitionInputContext): string");
+    expect(output).toContain(
+      "export function serializeToken(value: TokenInput, context?: TransitionInputContext): string",
+    );
     // Should NOT use JSON.stringify
     expect(output).not.toContain("JSON.stringify");
   });
@@ -276,16 +291,16 @@ describe("generateBindings", () => {
         {
           name: "spend",
           is_async: false,
-          inputs: [
-            { name: "coin", ty: { Record: rref("Coin") }, mode: "None" as const },
-          ],
+          inputs: [{ name: "coin", ty: { Record: rref("Coin") }, mode: "None" as const }],
           outputs: [],
         },
       ],
     };
     const output = generateBindings(abi);
     // The transition method should serialize via serializeCoin(), not JSON.stringify
-    expect(output).toContain('serializeCoin(args.coin as CoinInput, this.inputContext("spend", "coin"))');
+    expect(output).toContain(
+      'serializeCoin(args.coin as CoinInput, this.inputContext("spend", "coin"))',
+    );
     expect(output).not.toContain("JSON.stringify");
   });
 
@@ -298,10 +313,18 @@ describe("generateBindings", () => {
   it("generates typed transition methods", () => {
     const output = generateBindings(SAMPLE_ABI);
     expect(output).toContain("readonly mint = {");
-    expect(output).toContain("locally: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<Token>");
-    expect(output).toContain("failsLocally: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void>");
-    expect(output).toContain("captureLocalFailure: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError>");
-    expect(output).toContain("submitted: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition>");
+    expect(output).toContain(
+      "locally: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<Token>",
+    );
+    expect(output).toContain(
+      "failsLocally: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void>",
+    );
+    expect(output).toContain(
+      "captureLocalFailure: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError>",
+    );
+    expect(output).toContain(
+      "submitted: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition>",
+    );
     expect(output).toContain("): Promise<Token>");
     expect(output).toContain("readonly transfer = {");
     expect(output).toContain("): Promise<void>");
@@ -347,9 +370,7 @@ describe("generateBindings", () => {
             { name: "a", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
             { name: "b", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
           ],
-          outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const }],
         },
       ],
     };
@@ -365,7 +386,9 @@ describe("generateBindings", () => {
     expect(output).toContain("balances: {");
     expect(output).toContain("contains: async (key: AddressInput): Promise<boolean> =>");
     expect(output).toContain("get: async (key: AddressInput): Promise<bigint> =>");
-    expect(output).toContain("getOrUse: async (key: AddressInput, def: bigint): Promise<bigint> =>");
+    expect(output).toContain(
+      "getOrUse: async (key: AddressInput, def: bigint): Promise<bigint> =>",
+    );
     expect(output).toContain("tryGet: async (key: AddressInput): Promise<bigint | null> =>");
     expect(output).toContain('this.mappingContains("balances"');
     expect(output).toContain('this.requireMappingRaw("balances"');
@@ -377,7 +400,9 @@ describe("generateBindings", () => {
 
   it("generates factory function", () => {
     const output = generateBindings(SAMPLE_ABI);
-    expect(output).toContain("export function createTokenContract(options?: BaseContractOptions): TokenContract");
+    expect(output).toContain(
+      "export function createTokenContract(options?: BaseContractOptions): TokenContract",
+    );
   });
 
   it("resolves second-order class name collision", () => {
@@ -394,9 +419,7 @@ describe("generateBindings", () => {
       records: [
         {
           path: ["Token"],
-          fields: [
-            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" as const },
-          ],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" as const }],
         },
       ],
       mappings: [],
@@ -405,7 +428,9 @@ describe("generateBindings", () => {
     };
     const output = generateBindings(abi);
     expect(output).toContain("export class TokenContractContract extends BaseContract");
-    expect(output).toContain("export function createTokenContractContract(options?: BaseContractOptions): TokenContractContract");
+    expect(output).toContain(
+      "export function createTokenContractContract(options?: BaseContractOptions): TokenContractContract",
+    );
     // Interfaces must still use the original names
     expect(output).toContain("export interface Token {");
     expect(output).toContain("export interface TokenContract {");
@@ -507,11 +532,13 @@ describe("async transitions with Future output", () => {
           name: "deposit",
           is_async: true,
           inputs: [
-            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" as const },
+            {
+              name: "amount",
+              ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+              mode: "Public" as const,
+            },
           ],
-          outputs: [
-            { ty: { Future: "vault.aleo" }, mode: "None" as const },
-          ],
+          outputs: [{ ty: { Future: "vault.aleo" }, mode: "None" as const }],
         },
       ],
     };
@@ -540,7 +567,11 @@ describe("async transitions with Future output", () => {
           name: "mint_and_finalize",
           is_async: true,
           inputs: [
-            { name: "receiver", ty: { Plaintext: { Primitive: "Address" as const } }, mode: "Public" as const },
+            {
+              name: "receiver",
+              ty: { Plaintext: { Primitive: "Address" as const } },
+              mode: "Public" as const,
+            },
           ],
           outputs: [
             { ty: { Record: rref("Token") }, mode: "None" as const },
@@ -567,12 +598,8 @@ describe("DynamicRecord handling", () => {
         {
           name: "forward",
           is_async: false,
-          inputs: [
-            { name: "record", ty: "DynamicRecord", mode: "None" as const },
-          ],
-          outputs: [
-            { ty: "DynamicRecord", mode: "None" as const },
-          ],
+          inputs: [{ name: "record", ty: "DynamicRecord", mode: "None" as const }],
+          outputs: [{ ty: "DynamicRecord", mode: "None" as const }],
         },
       ],
     };
@@ -706,7 +733,9 @@ describe("external references", () => {
     expect(output).toContain('from "./Registry.js"');
     expect(output).toContain("readonly info: Registry_TokenInfo");
     expect(output).toContain("Promise<Registry_TokenInfo>");
-    expect(output).toContain('serializeRegistry_TokenInfo(args.info as Registry_TokenInfoInput, this.inputContext("submit", "info"))');
+    expect(output).toContain(
+      'serializeRegistry_TokenInfo(args.info as Registry_TokenInfoInput, this.inputContext("submit", "info"))',
+    );
     expect(output).toContain('deserializeRegistry_TokenInfo(this.outputAt(_result, "submit", 0))');
   });
 
@@ -758,7 +787,9 @@ describe("external references", () => {
     expect(output).toContain('from "./Credits.js"');
     expect(output).toContain("readonly record: Credits_Credit");
     expect(output).toContain("Promise<Credits_Credit>");
-    expect(output).toContain('serializeCredits_Credit(args.record as Credits_CreditInput, this.inputContext("forward", "record"))');
+    expect(output).toContain(
+      'serializeCredits_Credit(args.record as Credits_CreditInput, this.inputContext("forward", "record"))',
+    );
     // Resolved external record bindings carry an `.output` matcher value so
     // callers can write `accepted.outputs.match(Credits_Credit.output.from(...)).decrypt(key)`.
     expect(output).toContain("export const Credits_Credit = {");
@@ -821,9 +852,7 @@ describe("Optional type handling", () => {
       structs: [
         {
           path: ["Settings"],
-          fields: [
-            { name: "backup", ty: { Optional: { Primitive: { UInt: "U64" } } } },
-          ],
+          fields: [{ name: "backup", ty: { Optional: { Primitive: { UInt: "U64" } } } }],
         },
       ],
       records: [],
@@ -844,9 +873,7 @@ describe("Optional type handling", () => {
       structs: [
         {
           path: ["Inner"],
-          fields: [
-            { name: "x", ty: { Primitive: { UInt: "U32" } } },
-          ],
+          fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }],
         },
         {
           path: ["Settings"],
@@ -864,9 +891,11 @@ describe("Optional type handling", () => {
       transitions: [],
     };
     const output = generateBindings(abi);
-    expect(output).toContain('serializeInner(value.backup as InnerInput, BaseContract.childInputContext(context, "backup"))');
-    expect(output).toContain('{ is_some: false, val: { x: 0u32 } }');
-    expect(output).not.toContain('serializeUnsupportedOptionalNone');
+    expect(output).toContain(
+      'serializeInner(value.backup as InnerInput, BaseContract.childInputContext(context, "backup"))',
+    );
+    expect(output).toContain("{ is_some: false, val: { x: 0u32 } }");
+    expect(output).not.toContain("serializeUnsupportedOptionalNone");
   });
 
   it("emits IIFE-throw fallback for non-zeroable Optional inner (external Struct ref)", () => {
@@ -889,9 +918,9 @@ describe("Optional type handling", () => {
       transitions: [],
     };
     const output = generateBindings(abi);
-    expect(output).toContain('readonly external: LeoPlaintext | null;');
-    expect(output).toContain('BaseContract.serializeUnsupportedOptionalNone');
-    expect(output).not.toContain('is_some: false, val:');
+    expect(output).toContain("readonly external: LeoPlaintext | null;");
+    expect(output).toContain("BaseContract.serializeUnsupportedOptionalNone");
+    expect(output).not.toContain("is_some: false, val:");
   });
 });
 
@@ -961,9 +990,7 @@ describe("multiple outputs", () => {
         {
           name: "split",
           is_async: false,
-          inputs: [
-            { name: "coin", ty: { Record: rref("Coin") }, mode: "None" as const },
-          ],
+          inputs: [{ name: "coin", ty: { Record: rref("Coin") }, mode: "None" as const }],
           outputs: [
             { ty: { Record: rref("Coin") }, mode: "None" as const },
             { ty: { Record: rref("Coin") }, mode: "None" as const },
@@ -1204,8 +1231,12 @@ describe("struct with nested types", () => {
     expect(output).toContain("readonly start: Point;");
     expect(output).toContain("readonly end: Point;");
     // Serializer should use serializePoint for nested structs
-    expect(output).toContain('serializePoint(value.start as PointInput, BaseContract.childInputContext(context, "start"))');
-    expect(output).toContain('serializePoint(value.end as PointInput, BaseContract.childInputContext(context, "end"))');
+    expect(output).toContain(
+      'serializePoint(value.start as PointInput, BaseContract.childInputContext(context, "start"))',
+    );
+    expect(output).toContain(
+      'serializePoint(value.end as PointInput, BaseContract.childInputContext(context, "end"))',
+    );
     // Deserializer should use deserializePoint
     expect(output).toContain("deserializePoint(");
   });
@@ -1224,14 +1255,20 @@ describe("serialization of all primitive types", () => {
           name: "send",
           is_async: false,
           inputs: [
-            { name: "to", ty: { Plaintext: { Primitive: "Address" as const } }, mode: "None" as const },
+            {
+              name: "to",
+              ty: { Plaintext: { Primitive: "Address" as const } },
+              mode: "None" as const,
+            },
           ],
           outputs: [],
         },
       ],
     };
     const output = generateBindings(abi);
-    expect(output).toContain('BaseContract.serializeAddress(args.to, this.inputContext("send", "to"))');
+    expect(output).toContain(
+      'BaseContract.serializeAddress(args.to, this.inputContext("send", "to"))',
+    );
   });
 
   it("serializes Boolean with String()", () => {
@@ -1246,14 +1283,20 @@ describe("serialization of all primitive types", () => {
           name: "toggle",
           is_async: false,
           inputs: [
-            { name: "flag", ty: { Plaintext: { Primitive: "Boolean" as const } }, mode: "None" as const },
+            {
+              name: "flag",
+              ty: { Plaintext: { Primitive: "Boolean" as const } },
+              mode: "None" as const,
+            },
           ],
           outputs: [],
         },
       ],
     };
     const output = generateBindings(abi);
-    expect(output).toContain('BaseContract.serializeBoolean(args.flag, this.inputContext("toggle", "flag"))');
+    expect(output).toContain(
+      'BaseContract.serializeBoolean(args.flag, this.inputContext("toggle", "flag"))',
+    );
   });
 
   it("serializes integers with type suffix", () => {
@@ -1276,8 +1319,12 @@ describe("serialization of all primitive types", () => {
       ],
     };
     const output = generateBindings(abi);
-    expect(output).toContain('BaseContract.serializeUInt(args.a, 32, this.inputContext("compute", "a"))');
-    expect(output).toContain('BaseContract.serializeInt(args.b, 64, this.inputContext("compute", "b"))');
+    expect(output).toContain(
+      'BaseContract.serializeUInt(args.a, 32, this.inputContext("compute", "a"))',
+    );
+    expect(output).toContain(
+      'BaseContract.serializeInt(args.b, 64, this.inputContext("compute", "b"))',
+    );
   });
 
   it("serializes and deserializes Identifier primitives", () => {
@@ -1315,7 +1362,11 @@ describe("serialization of all primitive types", () => {
           name: "route",
           is_async: false,
           inputs: [
-            { name: "strategy", ty: { Plaintext: { Primitive: "Identifier" } }, mode: "None" as const },
+            {
+              name: "strategy",
+              ty: { Plaintext: { Primitive: "Identifier" } },
+              mode: "None" as const,
+            },
             {
               name: "maybe_strategy",
               ty: { Plaintext: { Optional: { Primitive: "Identifier" } } },
@@ -1328,9 +1379,7 @@ describe("serialization of all primitive types", () => {
             },
             { name: "vote", ty: { Record: rref("Vote") }, mode: "None" as const },
           ],
-          outputs: [
-            { ty: { Plaintext: { Primitive: "Identifier" } }, mode: "None" as const },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: "Identifier" } }, mode: "None" as const }],
         },
       ],
     };
@@ -1339,15 +1388,23 @@ describe("serialization of all primitive types", () => {
     expect(output).toContain("readonly strategy: IdentifierInput");
     expect(output).toContain("readonly maybe_strategy: IdentifierInput | null");
     expect(output).toContain("readonly strategies: ReadonlyArray<IdentifierInput>");
-    expect(output).toContain('BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy"))');
-    expect(output).toContain('BaseContract.serializeIdentifier(value.strategy, BaseContract.childInputContext(context, "strategy"))');
+    expect(output).toContain(
+      'BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy"))',
+    );
+    expect(output).toContain(
+      'BaseContract.serializeIdentifier(value.strategy, BaseContract.childInputContext(context, "strategy"))',
+    );
     expect(output).toContain("BaseContract.serializeIdentifier(e, context)");
     expect(output).toContain("{ is_some: false, val: 'lionden_zero' }");
     expect(output).toContain('BaseContract.parseIdentifier(this.outputAt(_result, "route", 0))');
     expect(output).toContain("selectedStrategy: {");
     expect(output).toContain("get: async (key: IdentifierInput): Promise<LeoIdentifier> =>");
-    expect(output).toContain("tryGet: async (key: IdentifierInput): Promise<LeoIdentifier | null> =>");
-    expect(output).toContain('this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }))');
+    expect(output).toContain(
+      "tryGet: async (key: IdentifierInput): Promise<LeoIdentifier | null> =>",
+    );
+    expect(output).toContain(
+      'this.queryMapping("selected_strategy", BaseContract.serializeIdentifier(key, { programId: this.programId, input: "selected_strategy key" }))',
+    );
     expect(output).toContain("BaseContract.parseIdentifier(_result)");
     expectGeneratedToTypecheck("Governance", output);
   });
@@ -1370,9 +1427,7 @@ describe("serialization of all primitive types", () => {
               mode: "None" as const,
             },
           ],
-          outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const }],
         },
       ],
     };
@@ -1418,9 +1473,7 @@ describe("deserialization of output types", () => {
           name: "count",
           is_async: false,
           inputs: [],
-          outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const }],
         },
       ],
     };
@@ -1465,9 +1518,7 @@ describe("deserialization of output types", () => {
             name: "get_val",
             is_async: false,
             inputs: [],
-            outputs: [
-              { ty: { Plaintext: { Primitive: prim } }, mode: "None" as const },
-            ],
+            outputs: [{ ty: { Plaintext: { Primitive: prim } }, mode: "None" as const }],
           },
         ],
       };
@@ -1548,7 +1599,11 @@ describe("generated TypeScript validity", () => {
           name: "mint_and_finalize",
           is_async: true,
           inputs: [
-            { name: "receiver", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" as const },
+            {
+              name: "receiver",
+              ty: { Plaintext: { Primitive: "Address" } },
+              mode: "Public" as const,
+            },
             { name: "record", ty: { Record: rref("Coin") }, mode: "None" as const },
             {
               name: "externalInfo",
@@ -1619,7 +1674,9 @@ describe("interface conversion helper emission", () => {
     expect(output).toContain('"group.public"');
     // `Leo` and `createRecordOutputMatcher` are value-imports on this program
     // (helpers emitted); the matcher type is a type-only import.
-    expect(output).toMatch(/import \{ BaseContract, Leo, createRecordOutputMatcher, .*type RecordOutputMatcher/);
+    expect(output).toMatch(
+      /import \{ BaseContract, Leo, createRecordOutputMatcher, .*type RecordOutputMatcher/,
+    );
   });
 
   it("does not import Leo as a value when no helpers are configured", () => {
@@ -1723,9 +1780,7 @@ describe("interface conversion helper emission", () => {
       records: [
         {
           path: ["Token"],
-          fields: [
-            { name: "id", ty: { Primitive: "Identifier" }, mode: "None" },
-          ],
+          fields: [{ name: "id", ty: { Primitive: "Identifier" }, mode: "None" }],
         },
       ],
     };
@@ -1773,9 +1828,7 @@ describe("typed-output projector Future index contract", () => {
       records: [
         {
           path: ["Token"],
-          fields: [
-            { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "None" },
-          ],
+          fields: [{ name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "None" }],
         },
       ],
       mappings: [],
@@ -1799,7 +1852,9 @@ describe("typed-output projector Future index contract", () => {
     const output = generateBindings(abi);
     // Single non-Future output → projector returns a bare value (no tuple).
     expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)');
-    expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)');
+    expect(output).not.toContain(
+      'BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)',
+    );
     expect(output).toContain("Promise<AcceptedTransition<EncryptedRecord<Token>>>");
   });
 
@@ -1814,15 +1869,21 @@ describe("typed-output projector Future index contract", () => {
     const output = generateBindings(abi);
     expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)');
     expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 2)');
-    expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)');
-    expect(output).toContain("Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedValue<bigint>]>>");
+    expect(output).not.toContain(
+      'BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)',
+    );
+    expect(output).toContain(
+      "Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedValue<bigint>]>>",
+    );
   });
 
   it("all-Future outputs project to AcceptedTransition<void>", () => {
     const abi = abiWithOutputs([{ ty: { Future: "demo.aleo" } }]);
     const output = generateBindings(abi);
     expect(output).toContain("Promise<AcceptedTransition<void>>");
-    expect(output).toContain("(_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void");
+    expect(output).toContain(
+      "(_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void",
+    );
     expect(output).not.toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo"');
   });
 });
@@ -1853,9 +1914,7 @@ describe("mode-gated plaintext output emission", () => {
             ty: { Plaintext: { Primitive: { UInt: "U64" } } },
             mode: i.mode,
           })),
-          outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode }],
         },
       ],
     };
@@ -1864,7 +1923,9 @@ describe("mode-gated plaintext output emission", () => {
   it("public plaintext output is eagerly decoded (no EncryptedValue handle)", () => {
     const out = generateBindings(abiOneOutput("Public"));
     expect(out).toContain("Promise<AcceptedTransition<bigint>>");
-    expect(out).toContain('BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0))');
+    expect(out).toContain(
+      'BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0))',
+    );
     // EncryptedValue may appear in the import list, but never as a generic
     // type instantiation in this public-only program.
     expect(out).not.toContain("EncryptedValue<");
@@ -1876,9 +1937,13 @@ describe("mode-gated plaintext output emission", () => {
   it('private plaintext output (mode "None") wraps as EncryptedValue<T>', () => {
     const out = generateBindings(abiOneOutput("None"));
     expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
-    expect(out).toContain('BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)');
+    expect(out).toContain(
+      'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)',
+    );
     // Projector binds `tpk` (no underscore) since at least one private plaintext.
-    expect(out).toMatch(/\(rawOutputs: readonly RawTransitionOutput\[\], tpk: string, _transitions: readonly ConfirmedTransitionRecord\[\]\) =>/);
+    expect(out).toMatch(
+      /\(rawOutputs: readonly RawTransitionOutput\[\], tpk: string, _transitions: readonly ConfirmedTransitionRecord\[\]\) =>/,
+    );
   });
 
   it('explicit "Private" mode behaves the same as "None"', () => {
@@ -1911,7 +1976,9 @@ describe("mode-gated plaintext output emission", () => {
         {
           name: "demo",
           is_async: false,
-          inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+          inputs: [
+            { name: "x", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
+          ],
           outputs: [
             { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
             { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
@@ -1922,8 +1989,12 @@ describe("mode-gated plaintext output emission", () => {
     const out = generateBindings(abi);
     expect(out).toContain("Promise<AcceptedTransition<[bigint, EncryptedValue<bigint>]>>");
     // Public@abi0 → eager parse on rawOutputs[0].
-    expect(out).toContain('BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 0))');
+    expect(out).toContain(
+      'BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 0))',
+    );
     // Private@abi1 → makeEncryptedValue on rawOutputs[1] with globalIndex 1 + 1 = 2.
-    expect(out).toContain('BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 1), tpk, "mixed_mode.aleo", "demo", 2, BaseContract.parseBigInt)');
+    expect(out).toContain(
+      'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 1), tpk, "mixed_mode.aleo", "demo", 2, BaseContract.parseBigInt)',
+    );
   });
 });

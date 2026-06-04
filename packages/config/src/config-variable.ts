@@ -16,10 +16,7 @@ export interface ConfigVariable {
   readonly defaultValue?: string;
 }
 
-export function configVariable(
-  name: string,
-  defaultValue?: string,
-): ConfigVariable {
+export function configVariable(name: string, defaultValue?: string): ConfigVariable {
   return { _type: "ConfigVariable", name, defaultValue };
 }
 

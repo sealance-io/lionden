@@ -1,11 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { HookDispatcherImpl } from "./hook-system.js";
-import type { LionDenPlugin, ConfigHookHandlers } from "./types.js";
+import type { ConfigHookHandlers, LionDenPlugin } from "./types.js";
 
-function pluginWithConfigHooks(
-  id: string,
-  handlers: ConfigHookHandlers,
-): LionDenPlugin {
+function pluginWithConfigHooks(id: string, handlers: ConfigHookHandlers): LionDenPlugin {
   return {
     id,
     hookHandlers: { config: handlers },
@@ -53,11 +50,7 @@ describe("HookDispatcherImpl", () => {
 
       const dispatcher = new HookDispatcherImpl();
       dispatcher.registerPlugins([a, b]);
-      const result = await dispatcher.waterfall(
-        "config",
-        "extendUserConfig",
-        {},
-      );
+      const result = await dispatcher.waterfall("config", "extendUserConfig", {});
       expect(result).toEqual({
         leoVersion: "4.0.0",
         defaultNetwork: "devnode",

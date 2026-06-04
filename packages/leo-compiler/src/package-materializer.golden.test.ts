@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
-import { resolve, dirname } from "node:path";
+import * as path from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { discoverUnits } from "./source-discovery.js";
+import type { LionDenResolvedConfig } from "@lionden/config";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveDependencies } from "./dependency-resolver.js";
 import { materializePackage } from "./package-materializer.js";
+import { discoverUnits } from "./source-discovery.js";
 import { unitId } from "./types.js";
-import type { LionDenResolvedConfig } from "@lionden/config";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -49,7 +49,15 @@ function mockConfig(): LionDenResolvedConfig {
     },
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    deploy: {
+      defaultPriorityFee: 0,
+      privateFee: false,
+      confirmTransactions: true,
+      confirmationTimeout: 60_000,
+      deploymentsDir: "deployments",
+      skipDeployed: true,
+      autoExport: false,
+    },
     sdk: { keyCache: { storage: "memory" } },
     execution: { imports: {} },
     namedAccounts: {},
@@ -81,7 +89,7 @@ function writeFile(relPath: string, content: string): void {
  */
 function normalizePaths(content: string): string {
   return content
-    .replace(/("path": ").*?[/\\]\.build[/\\]/g, '$1<ROOT>/artifacts/.build/')
+    .replace(/("path": ").*?[/\\]\.build[/\\]/g, "$1<ROOT>/artifacts/.build/")
     .replace(/\\\\/g, "/");
 }
 
@@ -116,7 +124,8 @@ describe("materializer goldens", () => {
 
   it("produces expected program.json with dependencies", async () => {
     writeFile("utils/main.leo", "program utils.aleo {\n  fn add() {}\n}\n");
-    writeFile("token/main.leo",
+    writeFile(
+      "token/main.leo",
       "import utils.aleo;\nimport credits.aleo;\nprogram token.aleo { fn mint() { utils.aleo::add(); } }\n",
     );
 

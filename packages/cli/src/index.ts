@@ -1,15 +1,15 @@
 import type { LionDenUserConfig } from "@lionden/config";
 import {
-  resolvePluginOrder,
   collectGlobalOptions,
-  resolveConfig,
   createLre,
   type LionDenPlugin,
+  resolveConfig,
+  resolvePluginOrder,
   type TaskDefinition,
 } from "@lionden/core";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
-import { parseArgs, printHelp, dispatchTask } from "./task-dispatch.js";
 import { logger } from "./output/logger.js";
+import { dispatchTask, parseArgs, printHelp } from "./task-dispatch.js";
 
 const VERSION = "0.1.0";
 
@@ -27,8 +27,7 @@ export async function main(): Promise<void> {
   }
 
   // Find and load config
-  const configPath =
-    parsed.globalArgs.config ?? findConfigFile(process.cwd());
+  const configPath = parsed.globalArgs.config ?? findConfigFile(process.cwd());
 
   if (!configPath) {
     if (parsed.globalArgs.help) {
@@ -62,8 +61,11 @@ export async function main(): Promise<void> {
   }
 
   // Resolve config through the full lifecycle
-  const { resolved: resolvedConfig, extendedUserConfig } =
-    await resolveConfig(userConfig, plugins, projectRoot);
+  const { resolved: resolvedConfig, extendedUserConfig } = await resolveConfig(
+    userConfig,
+    plugins,
+    projectRoot,
+  );
 
   // Override default network from CLI
   const networkOverride = parsed.globalArgs.network;
@@ -84,10 +86,8 @@ export async function main(): Promise<void> {
   // Create LRE — use post-extend config for tasks (plugins may inject tasks via extendUserConfig)
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   const lre = createLre({ config, plugins, globalOptions, configTasks });
-  parsed = parseArgs(
-    process.argv.slice(2),
-    globalOptionDefs,
-    (taskId) => lre.tasks.getTaskDefinition(taskId),
+  parsed = parseArgs(process.argv.slice(2), globalOptionDefs, (taskId) =>
+    lre.tasks.getTaskDefinition(taskId),
   );
 
   // Handle help

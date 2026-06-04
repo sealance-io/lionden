@@ -1,12 +1,12 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, it, expect, vi } from "vitest";
-import { task, overrideTask } from "./task-builder.js";
-import { TaskRunnerImpl } from "./task-runner.js";
-import { createLre } from "./lre.js";
-import type { LionDenRuntimeEnvironment, LionDenPlugin } from "./types.js";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import { describe, expect, it, vi } from "vitest";
+import { createLre } from "./lre.js";
+import { overrideTask, task } from "./task-builder.js";
+import { TaskRunnerImpl } from "./task-runner.js";
+import type { LionDenPlugin, LionDenRuntimeEnvironment } from "./types.js";
 
 const mockLre = {} as LionDenRuntimeEnvironment;
 
@@ -72,18 +72,16 @@ describe("task runner", () => {
   it("throws on unknown task", async () => {
     const runner = new TaskRunnerImpl();
     runner.setLre(mockLre);
-    await expect(runner.run("nonexistent")).rejects.toThrow(
-      'Task "nonexistent" not found',
-    );
+    await expect(runner.run("nonexistent")).rejects.toThrow('Task "nonexistent" not found');
   });
 
   it("throws on duplicate task registration", () => {
-    const def = task("x", "").setAction(async () => {}).build();
+    const def = task("x", "")
+      .setAction(async () => {})
+      .build();
     const runner = new TaskRunnerImpl();
     runner.registerTasks([def]);
-    expect(() => runner.registerTasks([def])).toThrow(
-      'Task "x" is already registered',
-    );
+    expect(() => runner.registerTasks([def])).toThrow('Task "x" is already registered');
   });
 
   it("supports task overrides with runSuper", async () => {
@@ -157,13 +155,28 @@ describe("createLre config-level tasks", () => {
     leoVersion: "4.0.0",
     skipLeoVersionCheck: false,
     leoBinary: "leo",
-    paths: { root: "/tmp", programs: "/tmp/programs", artifacts: "/tmp/artifacts", typechain: "/tmp/typechain", cache: "/tmp/cache", deployments: "/tmp/deployments" },
+    paths: {
+      root: "/tmp",
+      programs: "/tmp/programs",
+      artifacts: "/tmp/artifacts",
+      typechain: "/tmp/typechain",
+      cache: "/tmp/cache",
+      deployments: "/tmp/deployments",
+    },
     networks: {},
     defaultNetwork: "devnode",
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    deploy: {
+      defaultPriorityFee: 0,
+      privateFee: false,
+      confirmTransactions: true,
+      confirmationTimeout: 60_000,
+      deploymentsDir: "deployments",
+      skipDeployed: true,
+      autoExport: false,
+    },
     sdk: { keyCache: { storage: "memory" as const } },
     execution: { imports: {} },
     namedAccounts: {},
@@ -212,7 +225,15 @@ describe("artifact store", () => {
     compiler: { enableDce: true, conditionalBlockMaxDepth: 10, buildTests: false, extraFlags: [] },
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest" as const, timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    deploy: {
+      defaultPriorityFee: 0,
+      privateFee: false,
+      confirmTransactions: true,
+      confirmationTimeout: 60_000,
+      deploymentsDir: "deployments",
+      skipDeployed: true,
+      autoExport: false,
+    },
     sdk: { keyCache: { storage: "memory" as const } },
     execution: { imports: {} },
     namedAccounts: {},
@@ -237,10 +258,7 @@ describe("artifact store", () => {
       path.join(artifactDir, "abi.json"),
       JSON.stringify({ program: "hello.aleo", transitions: ["main"] }),
     );
-    fs.writeFileSync(
-      path.join(artifactDir, "main.aleo"),
-      "program hello.aleo { }",
-    );
+    fs.writeFileSync(path.join(artifactDir, "main.aleo"), "program hello.aleo { }");
 
     const lre = createLre({ config: mockConfig, plugins: [] });
 

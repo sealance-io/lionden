@@ -7,8 +7,9 @@
 // fails, and the non-@should_fail @test script fails outright. The port
 // preserves the meaningful tests (vote_example.aleo::main) and documents the
 // upstream gap rather than reproducing a broken test.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createVoteExample } from "../typechain/VoteExample.js";
 
 async function deployVoteExample() {

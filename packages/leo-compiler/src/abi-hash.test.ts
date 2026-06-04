@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
 import { describe, expect, it } from "vitest";
-import type { ProgramABI } from "./abi-types.js";
 import { computeAbiHash } from "./abi-hash.js";
+import type { ProgramABI } from "./abi-types.js";
 
 const LEGACY_ABI: ProgramABI = {
   program: "plain.aleo",
@@ -62,9 +62,7 @@ describe("computeAbiHash", () => {
         {
           name: "get",
           inputs: [],
-          outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
-          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
         },
       ],
     };

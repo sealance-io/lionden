@@ -1,10 +1,5 @@
-import { describe, it, expect } from "vitest";
-import {
-  TEMPLATES,
-  getTemplate,
-  getTemplateIds,
-  sharedFiles,
-} from "./templates.js";
+import { describe, expect, it } from "vitest";
+import { getTemplate, getTemplateIds, sharedFiles, TEMPLATES } from "./templates.js";
 
 describe("templates", () => {
   it("has at least two templates", () => {
@@ -31,9 +26,7 @@ describe("templates", () => {
 
   it("each template includes a programs/ directory", () => {
     for (const template of TEMPLATES) {
-      const hasProgramFile = template.files.some((f) =>
-        f.path.startsWith("programs/"),
-      );
+      const hasProgramFile = template.files.some((f) => f.path.startsWith("programs/"));
       expect(hasProgramFile).toBe(true);
     }
   });

@@ -20,9 +20,7 @@ describe("makeNetworkTransport()", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("ok", { status: 200 }),
-    );
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok", { status: 200 }));
   });
 
   afterEach(() => {
@@ -35,17 +33,16 @@ describe("makeNetworkTransport()", () => {
     const res = await transport("http://127.0.0.1:3030/testnet/stateRoot/latest");
     expect(res.ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "http://127.0.0.1:3030/testnet/stateRoot/latest",
-      { redirect: "manual" },
-    );
+    expect(fetchSpy).toHaveBeenCalledWith("http://127.0.0.1:3030/testnet/stateRoot/latest", {
+      redirect: "manual",
+    });
   });
 
   it("rejects disallowed hosts in block mode without calling fetch", async () => {
     const transport = makeNetworkTransport(new Set(["127.0.0.1:3030"]), "block");
-    await expect(
-      transport("https://api.provable.com/v2/testnet/statePaths"),
-    ).rejects.toThrow(/LionDen blocked SDK network fetch to host "api.provable.com"/);
+    await expect(transport("https://api.provable.com/v2/testnet/statePaths")).rejects.toThrow(
+      /LionDen blocked SDK network fetch to host "api.provable.com"/,
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -92,17 +89,14 @@ describe("makeNetworkTransport()", () => {
     const transport = makeNetworkTransport(new Set(["127.0.0.1:3030"]), "block");
     const init = { method: "POST", body: '{"x":1}' };
     await transport("http://127.0.0.1:3030/x", init);
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "http://127.0.0.1:3030/x",
-      { ...init, redirect: "manual" },
-    );
+    expect(fetchSpy).toHaveBeenCalledWith("http://127.0.0.1:3030/x", {
+      ...init,
+      redirect: "manual",
+    });
   });
 
   it("lists allowed hosts in the rejection message to aid debugging", async () => {
-    const transport = makeNetworkTransport(
-      new Set(["a.example.com", "b.example.com"]),
-      "block",
-    );
+    const transport = makeNetworkTransport(new Set(["a.example.com", "b.example.com"]), "block");
     await expect(transport("https://blocked.example/x")).rejects.toThrow(
       /Allowed hosts: (a\.example\.com, b\.example\.com|b\.example\.com, a\.example\.com)/,
     );
@@ -116,17 +110,18 @@ describe("makeNetworkTransport()", () => {
   });
 
   it("re-validates redirected targets before following in block mode", async () => {
-    fetchSpy.mockImplementation(async () =>
-      new Response(null, {
-        status: 302,
-        headers: { Location: "https://api.provable.com/v2/testnet/statePaths" },
-      }),
+    fetchSpy.mockImplementation(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: "https://api.provable.com/v2/testnet/statePaths" },
+        }),
     );
 
     const transport = makeNetworkTransport(new Set(["127.0.0.1:3030"]), "block");
-    await expect(
-      transport("http://127.0.0.1:3030/testnet/stateRoot/latest"),
-    ).rejects.toThrow(/LionDen blocked SDK network fetch to host "api\.provable\.com"/);
+    await expect(transport("http://127.0.0.1:3030/testnet/stateRoot/latest")).rejects.toThrow(
+      /LionDen blocked SDK network fetch to host "api\.provable\.com"/,
+    );
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(inputUrl(fetchSpy.mock.calls[0]![0])).toBe(
@@ -145,10 +140,7 @@ describe("makeNetworkTransport()", () => {
       return new Response("ok", { status: 200 });
     });
 
-    const transport = makeNetworkTransport(
-      new Set(["127.0.0.1:3030", "127.0.0.1:4040"]),
-      "block",
-    );
+    const transport = makeNetworkTransport(new Set(["127.0.0.1:3030", "127.0.0.1:4040"]), "block");
     const res = await transport("http://127.0.0.1:3030/testnet/stateRoot/latest");
 
     expect(await res.text()).toBe("ok");
@@ -173,9 +165,7 @@ describe("makeNetworkTransport()", () => {
     await transport("http://127.0.0.1:3030/testnet/stateRoot/latest");
 
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(inputUrl(fetchSpy.mock.calls[1]![0])).toBe(
-      "http://127.0.0.1:3030/testnet/block/1",
-    );
+    expect(inputUrl(fetchSpy.mock.calls[1]![0])).toBe("http://127.0.0.1:3030/testnet/block/1");
   });
 
   it("warns and follows redirected network targets in warn mode", async () => {
@@ -236,9 +226,7 @@ describe("makeNetworkTransport()", () => {
     expect(new Headers(redirectedInit?.headers).get("content-type")).toBeNull();
     expect(new Headers(redirectedInit?.headers).get("content-length")).toBeNull();
     expect(new Headers(redirectedInit?.headers).get("content-encoding")).toBeNull();
-    expect(new Headers(redirectedInit?.headers).get("authorization")).toBe(
-      "Bearer token",
-    );
+    expect(new Headers(redirectedInit?.headers).get("authorization")).toBe("Bearer token");
   });
 
   it("preserves method and body through 307 redirects", async () => {
@@ -266,9 +254,7 @@ describe("makeNetworkTransport()", () => {
     );
     expect(redirectedInit?.method).toBe("POST");
     expect(redirectedInit?.body).toBe("tx");
-    expect(new Headers(redirectedInit?.headers).get("content-type")).toBe(
-      "application/json",
-    );
+    expect(new Headers(redirectedInit?.headers).get("content-type")).toBe("application/json");
   });
 
   it("rewrites non-GET 303 redirects to GET", async () => {
@@ -303,9 +289,9 @@ describe("makeNetworkTransport()", () => {
     );
 
     const transport = makeNetworkTransport(new Set(["127.0.0.1:3030"]), "block");
-    await expect(
-      transport("http://127.0.0.1:3030/testnet/stateRoot/latest"),
-    ).rejects.toThrow(/detected redirect loop/);
+    await expect(transport("http://127.0.0.1:3030/testnet/stateRoot/latest")).rejects.toThrow(
+      /detected redirect loop/,
+    );
 
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
@@ -321,9 +307,9 @@ describe("makeNetworkTransport()", () => {
     });
 
     const transport = makeNetworkTransport(new Set(["127.0.0.1:3030"]), "block");
-    await expect(
-      transport("http://127.0.0.1:3030/testnet/stateRoot/latest?r=0"),
-    ).rejects.toThrow(/exceeded 20 redirects/);
+    await expect(transport("http://127.0.0.1:3030/testnet/stateRoot/latest?r=0")).rejects.toThrow(
+      /exceeded 20 redirects/,
+    );
 
     expect(fetchSpy).toHaveBeenCalledTimes(21);
     expect(inputUrl(fetchSpy.mock.calls[20]![0])).toBe(
@@ -338,9 +324,7 @@ describe("makeParameterTransport()", () => {
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
-    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("ok", { status: 200 }),
-    );
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("ok", { status: 200 }));
   });
 
   afterEach(() => {
@@ -350,9 +334,7 @@ describe("makeParameterTransport()", () => {
 
   it("allows the WASM-baked Provable parameter host", async () => {
     const transport = makeParameterTransport();
-    const res = await transport(
-      "https://parameters.provable.com/testnet/fee_public.prover",
-    );
+    const res = await transport("https://parameters.provable.com/testnet/fee_public.prover");
     expect(res.ok).toBe(true);
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
@@ -375,9 +357,7 @@ describe("makeParameterTransport()", () => {
 
   it("blocks an unknown parameter host with the stale-allowlist wording", async () => {
     const transport = makeParameterTransport();
-    await expect(
-      transport("https://attacker.example/testnet/fee_public.prover"),
-    ).rejects.toThrow(
+    await expect(transport("https://attacker.example/testnet/fee_public.prover")).rejects.toThrow(
       /LionDen does not recognize SDK parameter host "attacker\.example"/,
     );
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -387,9 +367,9 @@ describe("makeParameterTransport()", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const transport = makeParameterTransport();
-      await expect(
-        transport("https://attacker.example/x"),
-      ).rejects.toThrow(/stale LionDen allowlist/);
+      await expect(transport("https://attacker.example/x")).rejects.toThrow(
+        /stale LionDen allowlist/,
+      );
       expect(warnSpy).not.toHaveBeenCalled();
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
@@ -405,19 +385,18 @@ describe("makeParameterTransport()", () => {
   });
 
   it("re-validates redirected parameter targets before following", async () => {
-    fetchSpy.mockImplementation(async () =>
-      new Response(null, {
-        status: 302,
-        headers: { Location: "https://attacker.example/testnet/fee_public.prover" },
-      }),
+    fetchSpy.mockImplementation(
+      async () =>
+        new Response(null, {
+          status: 302,
+          headers: { Location: "https://attacker.example/testnet/fee_public.prover" },
+        }),
     );
 
     const transport = makeParameterTransport();
     await expect(
       transport("https://parameters.provable.com/testnet/fee_public.prover"),
-    ).rejects.toThrow(
-      /LionDen does not recognize SDK parameter host "attacker\.example"/,
-    );
+    ).rejects.toThrow(/LionDen does not recognize SDK parameter host "attacker\.example"/);
 
     expect(fetchSpy).toHaveBeenCalledOnce();
     expect(inputUrl(fetchSpy.mock.calls[0]![0])).toBe(

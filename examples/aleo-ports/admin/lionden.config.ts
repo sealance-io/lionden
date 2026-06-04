@@ -1,7 +1,7 @@
 import { defineConfig } from "@lionden/config";
+import pluginDeploy from "@lionden/plugin-deploy";
 import pluginLeo from "@lionden/plugin-leo";
 import pluginNetwork from "@lionden/plugin-network";
-import pluginDeploy from "@lionden/plugin-deploy";
 import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({

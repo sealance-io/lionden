@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveDependencies, CircularDependencyError } from "./dependency-resolver.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CircularDependencyError, resolveDependencies } from "./dependency-resolver.js";
 import { discoverUnits } from "./source-discovery.js";
 import { unitId } from "./types.js";
 
@@ -37,12 +37,15 @@ describe("resolveDependencies", () => {
 
   it("orders dependencies before dependents", () => {
     writeFile("utils/main.leo", "program utils.aleo {\n  fn add() {}\n}\n");
-    writeFile("token/main.leo", `
+    writeFile(
+      "token/main.leo",
+      `
 import utils.aleo;
 program token.aleo {
   fn mint() { utils.aleo::add(); }
 }
-`);
+`,
+    );
 
     const units = discoverUnits(tmpDir);
     const graph = resolveDependencies(units);
@@ -52,12 +55,15 @@ program token.aleo {
   });
 
   it("classifies network dependencies", () => {
-    writeFile("hello/main.leo", `
+    writeFile(
+      "hello/main.leo",
+      `
 import credits.aleo;
 program hello.aleo {
   fn pay() { credits.aleo::transfer_public(1u64); }
 }
-`);
+`,
+    );
 
     const units = discoverUnits(tmpDir);
     const graph = resolveDependencies(units);
@@ -67,14 +73,20 @@ program hello.aleo {
   });
 
   it("detects circular dependencies", () => {
-    writeFile("a/main.leo", `
+    writeFile(
+      "a/main.leo",
+      `
 import b.aleo;
 program a.aleo { fn x() { b.aleo::y(); } }
-`);
-    writeFile("b/main.leo", `
+`,
+    );
+    writeFile(
+      "b/main.leo",
+      `
 import a.aleo;
 program b.aleo { fn y() { a.aleo::x(); } }
-`);
+`,
+    );
 
     const units = discoverUnits(tmpDir);
     expect(() => resolveDependencies(units)).toThrow(CircularDependencyError);
@@ -82,10 +94,13 @@ program b.aleo { fn y() { a.aleo::x(); } }
 
   it("handles library dependencies", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
-    writeFile("hello/main.leo", `
+    writeFile(
+      "hello/main.leo",
+      `
 import math.aleo;
 program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
-`);
+`,
+    );
 
     const units = discoverUnits(tmpDir);
     const graph = resolveDependencies(units);
@@ -98,14 +113,20 @@ program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
 
   it("handles transitive dependencies", () => {
     writeFile("base/main.leo", "program base.aleo { fn x() {} }\n");
-    writeFile("mid/main.leo", `
+    writeFile(
+      "mid/main.leo",
+      `
 import base.aleo;
 program mid.aleo { fn y() { base.aleo::x(); } }
-`);
-    writeFile("top/main.leo", `
+`,
+    );
+    writeFile(
+      "top/main.leo",
+      `
 import mid.aleo;
 program top.aleo { fn z() { mid.aleo::y(); } }
-`);
+`,
+    );
 
     const units = discoverUnits(tmpDir);
     const graph = resolveDependencies(units);
@@ -117,10 +138,13 @@ program top.aleo { fn z() { mid.aleo::y(); } }
 
   it("normalizes library imports to canonical unitId in imports map", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
-    writeFile("hello/main.leo", `
+    writeFile(
+      "hello/main.leo",
+      `
 import math.aleo;
 program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
-`);
+`,
+    );
 
     const units = discoverUnits(tmpDir);
     const graph = resolveDependencies(units);

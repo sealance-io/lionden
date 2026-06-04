@@ -1,18 +1,18 @@
+import type { AleoNetwork, NamedAccounts } from "@lionden/config";
 import type {
-  NetworkConnection,
-  NetworkManager,
-  TransitionCallResult,
   ConfirmedTransaction,
   ConfirmedTransitionRecord,
-  ExecuteOptions,
   DevnodeAccount,
+  ExecuteOptions,
+  NetworkConnection,
+  NetworkManager,
   SdkEgressPolicy,
+  TransitionCallResult,
 } from "@lionden/network";
-import type { AleoNetwork, NamedAccounts } from "@lionden/config";
 import {
   DEVNODE_ACCOUNTS,
-  TransitionRejectedError,
   selectMatchingTransition,
+  TransitionRejectedError,
 } from "@lionden/network";
 import { TEST_DEVNODE_EGRESS_POLICY } from "../test-egress-policy.js";
 
@@ -86,12 +86,7 @@ export class FakeNetworkConnection implements NetworkConnection {
     this.balances.set(address, balance);
   }
 
-  setMappingValue(
-    programId: string,
-    mappingName: string,
-    key: string,
-    value: string,
-  ): void {
+  setMappingValue(programId: string, mappingName: string, key: string, value: string): void {
     const mapKey = `${programId}:${mappingName}`;
     let mapping = this.mappings.get(mapKey);
     if (!mapping) {
@@ -228,14 +223,8 @@ export class FakeNetworkConnection implements NetworkConnection {
         },
       );
     }
-    const transition = selectMatchingTransition(
-      programId,
-      transitionName,
-      confirmed.transitions,
-    );
-    const outputs = transition.rawOutputs.map((o) =>
-      typeof o === "string" ? o : o.id,
-    );
+    const transition = selectMatchingTransition(programId, transitionName, confirmed.transitions);
+    const outputs = transition.rawOutputs.map((o) => (typeof o === "string" ? o : o.id));
     return {
       outputs,
       rawOutputs: transition.rawOutputs,
@@ -243,10 +232,7 @@ export class FakeNetworkConnection implements NetworkConnection {
     };
   }
 
-  async waitForConfirmation(
-    txId: string,
-    timeout?: number,
-  ): Promise<ConfirmedTransaction> {
+  async waitForConfirmation(txId: string, timeout?: number): Promise<ConfirmedTransaction> {
     this.calls.push({
       method: "waitForConfirmation",
       args: [txId, timeout],
@@ -388,12 +374,7 @@ export class FakeNetworkManager implements NetworkManager {
     transitionName: string,
     timeout?: number,
   ): Promise<TransitionCallResult> {
-    return this.requireConnection().getTransitionOutputs(
-      txId,
-      programId,
-      transitionName,
-      timeout,
-    );
+    return this.requireConnection().getTransitionOutputs(txId, programId, transitionName, timeout);
   }
 
   private requireConnection(): FakeNetworkConnection {

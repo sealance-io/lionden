@@ -1,28 +1,28 @@
 import type {
-  ProgramABI,
-  StructABI,
-  RecordABI,
-  TransitionABI,
-  MappingABI,
-  StorageVariableABI,
-  StorageType,
   AbiInput,
   AbiOutput,
   AleoType,
+  MappingABI,
   PlaintextType,
   PrimitiveType,
-  StructRef,
+  ProgramABI,
+  RecordABI,
   RecordRef,
+  StorageType,
+  StorageVariableABI,
+  StructABI,
+  StructRef,
+  TransitionABI,
 } from "../abi-types.js";
-import {
-  isBigIntType,
-  structRefName,
-  recordRefName,
-  pathToTsName,
-  disambiguateInputName,
-} from "./type-mapper.js";
-import { CONTRACT_WRAPPER_TEMPLATE } from "./contract-wrapper.js";
 import { CodegenError } from "./codegen-error.js";
+import { CONTRACT_WRAPPER_TEMPLATE } from "./contract-wrapper.js";
+import {
+  disambiguateInputName,
+  isBigIntType,
+  pathToTsName,
+  recordRefName,
+  structRefName,
+} from "./type-mapper.js";
 
 /**
  * Options for `generateBindings`. Currently used to thread per-program
@@ -48,9 +48,21 @@ export interface ResolvedDynamicRecordHelperEmit {
 }
 
 const SUPPORTED_DYNAMIC_RECORD_PRIMITIVES = new Set<string>([
-  "address", "boolean", "field", "group", "scalar",
-  "u8", "u16", "u32", "u64", "u128",
-  "i8", "i16", "i32", "i64", "i128",
+  "address",
+  "boolean",
+  "field",
+  "group",
+  "scalar",
+  "u8",
+  "u16",
+  "u32",
+  "u64",
+  "u128",
+  "i8",
+  "i16",
+  "i32",
+  "i64",
+  "i128",
 ]);
 
 /**
@@ -246,7 +258,10 @@ interface GenerationContext {
   readonly widenInputAlias: string;
 }
 
-function createGenerationContext(abi: ProgramABI, allAbis: readonly ProgramABI[]): GenerationContext {
+function createGenerationContext(
+  abi: ProgramABI,
+  allAbis: readonly ProgramABI[],
+): GenerationContext {
   const programsById = new Map<string, ProgramABI>();
   for (const programAbi of allAbis) {
     programsById.set(programAbi.program, programAbi);
@@ -257,7 +272,11 @@ function createGenerationContext(abi: ProgramABI, allAbis: readonly ProgramABI[]
   const externalRecordRefs = new Map<string, RecordRef>();
   collectExternalRefs(abi, programsById, externalStructRefs, externalRecordRefs);
 
-  const { inputNameByKey, widenInputAlias } = resolveInputNames(abi, externalStructRefs, externalRecordRefs);
+  const { inputNameByKey, widenInputAlias } = resolveInputNames(
+    abi,
+    externalStructRefs,
+    externalRecordRefs,
+  );
 
   return {
     programId: abi.program,
@@ -518,7 +537,9 @@ function generateStructSerializer(struct: StructABI, ctx: GenerationContext): st
   const name = pathToTsName(struct.path);
   const inputName = ctx.inputNameByKey.get(pathKey(struct.path)) ?? `${name}Input`;
   const lines: string[] = [];
-  lines.push(`export function serialize${name}(value: ${inputName}, context?: TransitionInputContext): string {`);
+  lines.push(
+    `export function serialize${name}(value: ${inputName}, context?: TransitionInputContext): string {`,
+  );
   lines.push("  BaseContract.assertObject(value, context);");
   lines.push("  const fields: string[] = [];");
 
@@ -541,14 +562,18 @@ function generateRecordSerializer(record: RecordABI, ctx: GenerationContext): st
   const name = pathToTsName(record.path);
   const inputName = ctx.inputNameByKey.get(pathKey(record.path)) ?? `${name}Input`;
   const lines: string[] = [];
-  lines.push(`export function serialize${name}(value: ${inputName}, context?: TransitionInputContext): string {`);
+  lines.push(
+    `export function serialize${name}(value: ${inputName}, context?: TransitionInputContext): string {`,
+  );
   lines.push("  BaseContract.assertObject(value, context);");
   // Round-trip a record returned by a previous transition by replaying the
   // original literal verbatim. Without this, per-field visibility suffixes
   // mismatch on re-serialization and the runtime rejects the input. See
   // BaseContract.RECORD_RAW.
-  lines.push("  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];");
-  lines.push("  if (typeof _raw === \"string\") return _raw;");
+  lines.push(
+    "  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];",
+  );
+  lines.push('  if (typeof _raw === "string") return _raw;');
   lines.push("  const fields: string[] = [];");
 
   for (const field of record.fields) {
@@ -560,7 +585,9 @@ function generateRecordSerializer(record: RecordABI, ctx: GenerationContext): st
     );
     lines.push(`  fields.push("${field.name}: " + ${serialized});`);
   }
-  lines.push('  fields.push("_nonce: " + BaseContract.serializeGroup(value._nonce, BaseContract.childInputContext(context, "_nonce")));');
+  lines.push(
+    '  fields.push("_nonce: " + BaseContract.serializeGroup(value._nonce, BaseContract.childInputContext(context, "_nonce")));',
+  );
 
   lines.push('  return "{ " + fields.join(", ") + " }";');
   lines.push("}");
@@ -715,7 +742,12 @@ function buildExpectedFieldsForHelper(
     if (!SUPPORTED_DYNAMIC_RECORD_PRIMITIVES.has(prim)) {
       throw new CodegenError(
         `codegen.dynamicRecords.${helper.helperName}: record '${helper.sourceRecord}' field '${field.name}' uses unsupported primitive '${prim}'. Leo.dynamicRecord only supports: ${[...SUPPORTED_DYNAMIC_RECORD_PRIMITIVES].join("/")}.`,
-        { helperName: helper.helperName, sourceRecord: helper.sourceRecord, field: field.name, primitive: prim },
+        {
+          helperName: helper.helperName,
+          sourceRecord: helper.sourceRecord,
+          field: field.name,
+          primitive: prim,
+        },
       );
     }
     expectedFields.set(field.name, prim);
@@ -735,12 +767,18 @@ function primitiveOfPlaintext(ty: PlaintextType): string | null {
   const prim = ty.Primitive;
   if (typeof prim === "string") {
     switch (prim) {
-      case "Address": return "address";
-      case "Boolean": return "boolean";
-      case "Field": return "field";
-      case "Group": return "group";
-      case "Scalar": return "scalar";
-      case "Identifier": return "identifier";
+      case "Address":
+        return "address";
+      case "Boolean":
+        return "boolean";
+      case "Field":
+        return "field";
+      case "Group":
+        return "group";
+      case "Scalar":
+        return "scalar";
+      case "Identifier":
+        return "identifier";
     }
     return null;
   }
@@ -816,23 +854,26 @@ function generateContractClass(
   return lines;
 }
 
-function generateTransitionMethod(
-  transition: TransitionABI,
-  ctx: GenerationContext,
-): string[] {
+function generateTransitionMethod(transition: TransitionABI, ctx: GenerationContext): string[] {
   const lines: string[] = [];
   const hasInputs = transition.inputs.length > 0;
   const argsType = formatArgsObjectType(transition.inputs, ctx);
   const returnType = formatReturnType(transition.outputs, ctx);
 
   lines.push(`readonly ${transition.name} = {`);
-  lines.push(`  locally: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<${returnType}> => {`);
+  lines.push(
+    `  locally: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<${returnType}> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
-  lines.push(`    const _result = await this.executeLocal("${transition.name}", _args, options ?? {});`);
+  lines.push(
+    `    const _result = await this.executeLocal("${transition.name}", _args, options ?? {});`,
+  );
 
   if (transition.outputs.length === 1) {
     const output = transition.outputs[0]!;
-    lines.push(`    return ${deserializeOutputExpr(`this.outputAt(_result, "${transition.name}", 0)`, output.ty, ctx)};`);
+    lines.push(
+      `    return ${deserializeOutputExpr(`this.outputAt(_result, "${transition.name}", 0)`, output.ty, ctx)};`,
+    );
   } else if (transition.outputs.length > 1) {
     const tupleType = formatReturnType(transition.outputs, ctx);
     const elems = transition.outputs.map((o, i) =>
@@ -846,12 +887,16 @@ function generateTransitionMethod(
 
   lines.push("  },");
   lines.push("");
-  lines.push(`  failsLocally: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<void> => {`);
+  lines.push(
+    `  failsLocally: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<void> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
   lines.push(`    await this.expectLocalFailure("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
   lines.push("");
-  lines.push(`  captureLocalFailure: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<LocalTransitionError> => {`);
+  lines.push(
+    `  captureLocalFailure: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<LocalTransitionError> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
   lines.push(`    return this.expectLocalFailure("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
@@ -859,22 +904,34 @@ function generateTransitionMethod(
   const typedOutputType = formatTypedOutputType(transition.outputs, ctx);
   const projectorExpr = formatProjectorExpr(transition, ctx.programId, ctx);
 
-  lines.push(`  submitted: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<SubmittedTransition> => {`);
+  lines.push(
+    `  submitted: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<SubmittedTransition> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
   lines.push(`    return this.submitTransition("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
   lines.push("");
-  lines.push(`  settled: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}> | RejectedTransition> => {`);
+  lines.push(
+    `  settled: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}> | RejectedTransition> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
-  lines.push(`    return this.settleTyped("${transition.name}", _args, options ?? {}, ${projectorExpr});`);
+  lines.push(
+    `    return this.settleTyped("${transition.name}", _args, options ?? {}, ${projectorExpr});`,
+  );
   lines.push("  },");
   lines.push("");
-  lines.push(`  accepted: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}>> => {`);
+  lines.push(
+    `  accepted: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}>> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
-  lines.push(`    return this.expectAcceptedTyped("${transition.name}", _args, options ?? {}, ${projectorExpr});`);
+  lines.push(
+    `    return this.expectAcceptedTyped("${transition.name}", _args, options ?? {}, ${projectorExpr});`,
+  );
   lines.push("  },");
   lines.push("");
-  lines.push(`  rejected: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<RejectedTransition> => {`);
+  lines.push(
+    `  rejected: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<RejectedTransition> => {`,
+  );
   lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
   lines.push(`    return this.expectRejected("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
@@ -1002,12 +1059,18 @@ function storageTypeToBindingTs(ty: StorageType, ctx: GenerationContext): string
 function primitiveOutputBindingTs(prim: PrimitiveType): string {
   if (typeof prim === "string") {
     switch (prim) {
-      case "Address": return "LeoAddress";
-      case "Boolean": return "boolean";
-      case "Field": return "LeoField";
-      case "Group": return "LeoGroup";
-      case "Identifier": return "LeoIdentifier";
-      case "Scalar": return "LeoScalar";
+      case "Address":
+        return "LeoAddress";
+      case "Boolean":
+        return "boolean";
+      case "Field":
+        return "LeoField";
+      case "Group":
+        return "LeoGroup";
+      case "Identifier":
+        return "LeoIdentifier";
+      case "Scalar":
+        return "LeoScalar";
     }
   }
   if (isBigIntType(prim)) return "bigint";
@@ -1017,12 +1080,18 @@ function primitiveOutputBindingTs(prim: PrimitiveType): string {
 function primitiveInputBindingTs(prim: PrimitiveType): string {
   if (typeof prim === "string") {
     switch (prim) {
-      case "Address": return "AddressInput";
-      case "Boolean": return "boolean";
-      case "Field": return "FieldInput";
-      case "Group": return "GroupInput";
-      case "Identifier": return "IdentifierInput";
-      case "Scalar": return "ScalarInput";
+      case "Address":
+        return "AddressInput";
+      case "Boolean":
+        return "boolean";
+      case "Field":
+        return "FieldInput";
+      case "Group":
+        return "GroupInput";
+      case "Identifier":
+        return "IdentifierInput";
+      case "Scalar":
+        return "ScalarInput";
     }
   }
   if (isBigIntType(prim)) return "bigint";
@@ -1033,7 +1102,11 @@ function primitiveInputBindingTs(prim: PrimitiveType): string {
 // Serialization expression generators (JS value → Leo string)
 // ---------------------------------------------------------------------------
 
-function serializeInputExpr(input: AbiInput, transitionName: string, ctx: GenerationContext): string {
+function serializeInputExpr(
+  input: AbiInput,
+  transitionName: string,
+  ctx: GenerationContext,
+): string {
   return serializeAleoTypeExpr(
     `args.${input.name}`,
     input.ty,
@@ -1106,7 +1179,9 @@ function deserializeOutputExpr(expr: string, ty: AleoType, ctx: GenerationContex
   if ("Record" in ty) {
     if (isLocalRecordRef(ty.Record, ctx)) return `deserialize${recordRefName(ty.Record)}(${expr})`;
     const external = externalRecordInfo(ty.Record, ctx);
-    return external ? `${external.deserializerName}(${expr})` : `BaseContract.parseDynamicRecord(${expr})`;
+    return external
+      ? `${external.deserializerName}(${expr})`
+      : `BaseContract.parseDynamicRecord(${expr})`;
   }
   if ("Future" in ty) return "undefined as any";
   return expr;
@@ -1124,12 +1199,18 @@ function plaintextDeserializerFn(ty: PlaintextType, ctx: GenerationContext): str
     const prim = ty.Primitive;
     if (typeof prim === "string") {
       switch (prim) {
-        case "Address": return "BaseContract.parseAddress";
-        case "Field": return "BaseContract.parseField";
-        case "Group": return "BaseContract.parseGroup";
-        case "Scalar": return "BaseContract.parseScalar";
-        case "Identifier": return "BaseContract.parseIdentifier";
-        case "Boolean": return "BaseContract.parseBoolean";
+        case "Address":
+          return "BaseContract.parseAddress";
+        case "Field":
+          return "BaseContract.parseField";
+        case "Group":
+          return "BaseContract.parseGroup";
+        case "Scalar":
+          return "BaseContract.parseScalar";
+        case "Identifier":
+          return "BaseContract.parseIdentifier";
+        case "Boolean":
+          return "BaseContract.parseBoolean";
       }
     }
     if (typeof prim === "object" && prim !== null && ("UInt" in prim || "Int" in prim)) {
@@ -1144,7 +1225,9 @@ function deserializePlaintextExpr(expr: string, ty: PlaintextType, ctx: Generati
   if ("Struct" in ty) {
     if (isLocalStructRef(ty.Struct, ctx)) return `deserialize${structRefName(ty.Struct)}(${expr})`;
     const external = externalStructInfo(ty.Struct, ctx);
-    return external ? `${external.deserializerName}(${expr})` : `BaseContract.parsePlaintext(${expr})`;
+    return external
+      ? `${external.deserializerName}(${expr})`
+      : `BaseContract.parsePlaintext(${expr})`;
   }
   if ("Array" in ty) {
     const [elemType] = ty.Array;
@@ -1242,8 +1325,10 @@ function zeroLeoValue(
       }
       return null;
     }
-    if (typeof prim === "object" && prim !== null && "UInt" in prim) return `0${prim.UInt.toLowerCase()}`;
-    if (typeof prim === "object" && prim !== null && "Int" in prim) return `0${prim.Int.toLowerCase()}`;
+    if (typeof prim === "object" && prim !== null && "UInt" in prim)
+      return `0${prim.UInt.toLowerCase()}`;
+    if (typeof prim === "object" && prim !== null && "Int" in prim)
+      return `0${prim.Int.toLowerCase()}`;
   }
 
   if ("Array" in ty) {
@@ -1326,8 +1411,9 @@ function generateExternalImports(ctx: GenerationContext): string[] {
 
   const importLines = [...importsByProgram.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([programId, imports]) =>
-      `import { ${[...imports].sort().join(", ")} } from "./${programIdToClassName(programId)}.js";`,
+    .map(
+      ([programId, imports]) =>
+        `import { ${[...imports].sort().join(", ")} } from "./${programIdToClassName(programId)}.js";`,
     );
 
   // Re-export each external record's type alias publicly, and emit a same-named
@@ -1422,8 +1508,8 @@ function externalRefKey(ref: StructRef | RecordRef): string {
 }
 
 function formatArgsObjectType(inputs: readonly AbiInput[], ctx: GenerationContext): string {
-  const fields = inputs.map((input) =>
-    `readonly ${input.name}: ${aleoTypeToInputBindingTs(input.ty, ctx)}`,
+  const fields = inputs.map(
+    (input) => `readonly ${input.name}: ${aleoTypeToInputBindingTs(input.ty, ctx)}`,
   );
   return `{ ${fields.join("; ")} }`;
 }
@@ -1531,7 +1617,15 @@ function formatProjectorExpr(
   const decodeForIndex = (abiIndex: number): string => {
     const output = transition.outputs[abiIndex]!;
     const access = rawAccess(abiIndex);
-    return projectorElementExpr(access, output, programId, transitionName, abiIndex, inputCount, ctx);
+    return projectorElementExpr(
+      access,
+      output,
+      programId,
+      transitionName,
+      abiIndex,
+      inputCount,
+      ctx,
+    );
   };
 
   if (visibleIndices.length === 1) {
@@ -1665,5 +1759,5 @@ function buildMappingPropKeys(mappings: readonly MappingABI[]): Map<string, stri
 }
 
 function indentLines(lines: readonly string[], indent: string): string[] {
-  return lines.map((line) => line === "" ? "" : `${indent}${line}`);
+  return lines.map((line) => (line === "" ? "" : `${indent}${line}`));
 }

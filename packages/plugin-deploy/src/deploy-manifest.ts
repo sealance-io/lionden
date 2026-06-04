@@ -38,10 +38,7 @@ export interface DeployManifest {
 /**
  * Write a deploy manifest after a successful deployment or upgrade.
  */
-export function writeDeployManifest(
-  artifactsDir: string,
-  manifest: DeployManifest,
-): void {
+export function writeDeployManifest(artifactsDir: string, manifest: DeployManifest): void {
   const dir = path.join(artifactsDir, manifest.programId);
   fs.mkdirSync(dir, { recursive: true });
   const filePath = path.join(dir, "deploy.json");
@@ -51,10 +48,7 @@ export function writeDeployManifest(
 /**
  * Read an existing deploy manifest, or return null if not deployed.
  */
-export function readDeployManifest(
-  artifactsDir: string,
-  programId: string,
-): DeployManifest | null {
+export function readDeployManifest(artifactsDir: string, programId: string): DeployManifest | null {
   const filePath = path.join(artifactsDir, programId, "deploy.json");
   if (!fs.existsSync(filePath)) return null;
 
@@ -65,9 +59,6 @@ export function readDeployManifest(
 /**
  * Get the path to the deploy manifest file.
  */
-export function deployManifestPath(
-  artifactsDir: string,
-  programId: string,
-): string {
+export function deployManifestPath(artifactsDir: string, programId: string): string {
   return path.join(artifactsDir, programId, "deploy.json");
 }

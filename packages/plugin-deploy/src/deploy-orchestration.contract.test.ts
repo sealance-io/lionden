@@ -5,9 +5,10 @@
  * and resolveDependencies() from leo-compiler, resolves deploy targets, parses
  * constructors from Leo source, and broadcasts through a mocked NetworkConnection.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createContractLre, type ContractLreResult } from "@lionden/test-internals";
-import { deployAction, DeployError, type DeployTaskResult } from "./deploy-task.js";
+
+import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DeployError, type DeployTaskResult, deployAction } from "./deploy-task.js";
 
 const mockCreateSdkObjects = vi.hoisted(() => vi.fn());
 const mockBuildDevnodeDeploymentTransaction = vi.hoisted(() => vi.fn());
@@ -92,7 +93,8 @@ describe("deploy orchestration contract", () => {
           storage_variables: [],
           transitions: [],
         },
-        aleoSource: prog.aleoSource ??
+        aleoSource:
+          prog.aleoSource ??
           `program ${prog.name}.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
       })),
     });
@@ -109,10 +111,7 @@ describe("deploy orchestration contract", () => {
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
     ]);
 
-    const taskResult = await deployAction(
-      { program: "hello", noCompile: true },
-      lre,
-    );
+    const taskResult = await deployAction({ program: "hello", noCompile: true }, lre);
     const results = unwrapDeploy(taskResult);
 
     expect(results).toHaveLength(1);
@@ -145,9 +144,7 @@ describe("deploy orchestration contract", () => {
       privateFee: false,
     });
     expect(mockBuildDeploymentTransaction).not.toHaveBeenCalled();
-    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
-      "mock-tx-bytes",
-    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe("mock-tx-bytes");
   });
 
   it("uses the standard deployment builder on devnode when prove is requested", async () => {
@@ -192,9 +189,7 @@ describe("deploy orchestration contract", () => {
       privateFee: false,
     });
     expect(mockBuildDeploymentTransaction).not.toHaveBeenCalled();
-    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
-      "mock-tx-bytes",
-    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe("mock-tx-bytes");
   });
 
   it("uses LIONDEN_PROVE to select the standard deployment builder", async () => {
@@ -253,11 +248,13 @@ describe("deploy orchestration contract", () => {
     );
     expect(result).toEqual({
       mode: "dry-run",
-      results: [{
-        programId: "hello.aleo",
-        transaction: "standard-deploy-tx-bytes",
-        estimatedFee: 0n,
-      }],
+      results: [
+        {
+          programId: "hello.aleo",
+          transaction: "standard-deploy-tx-bytes",
+          estimatedFee: 0n,
+        },
+      ],
     });
   });
 
@@ -287,9 +284,9 @@ describe("deploy orchestration contract", () => {
       { name: "noctor", annotation: "" },
     ]);
 
-    await expect(
-      deployAction({ program: "noctor", noCompile: true }, lre),
-    ).rejects.toThrow(DeployError);
+    await expect(deployAction({ program: "noctor", noCompile: true }, lre)).rejects.toThrow(
+      DeployError,
+    );
   });
 
   it("throws DeployError when confirmation returns rejected status", async () => {
@@ -299,9 +296,9 @@ describe("deploy orchestration contract", () => {
 
     fakeNetwork.setConfirmBehavior("reject");
 
-    await expect(
-      deployAction({ program: "hello", noCompile: true }, lre),
-    ).rejects.toThrow(DeployError);
+    await expect(deployAction({ program: "hello", noCompile: true }, lre)).rejects.toThrow(
+      DeployError,
+    );
   });
 
   it("skips confirmation when skipConfirm is true", async () => {
@@ -309,10 +306,7 @@ describe("deploy orchestration contract", () => {
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
     ]);
 
-    await deployAction(
-      { program: "hello", noCompile: true, skipConfirm: true },
-      lre,
-    );
+    await deployAction({ program: "hello", noCompile: true, skipConfirm: true }, lre);
 
     expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
   });
@@ -404,10 +398,7 @@ describe("deploy orchestration contract", () => {
     ]);
 
     // FakeNetworkConnection.getProgramSource returns null by default → not on-chain → deploys
-    const taskResult = await deployAction(
-      { program: "hello", noCompile: true },
-      lre,
-    );
+    const taskResult = await deployAction({ program: "hello", noCompile: true }, lre);
     const results = unwrapDeploy(taskResult);
     expect(results).toHaveLength(1);
   });
@@ -443,9 +434,7 @@ describe("deploy orchestration contract", () => {
       // deployToNetwork should also carry the resolved keyCache. Filter to
       // the calls that came through the helper (signerKey present + apiKey
       // forwarded) — resolveDeployerAddress doesn't pass keyCache.
-      const helperCalls = mockCreateSdkObjects.mock.calls.filter(
-        (c) => "apiKey" in (c[0] ?? {}),
-      );
+      const helperCalls = mockCreateSdkObjects.mock.calls.filter((c) => "apiKey" in (c[0] ?? {}));
       expect(helperCalls.length).toBeGreaterThanOrEqual(1);
       for (const call of helperCalls) {
         expect(call[0]).toMatchObject({

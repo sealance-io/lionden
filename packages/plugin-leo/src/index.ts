@@ -1,28 +1,29 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { LionDenResolvedConfig, LionDenUserConfig } from "@lionden/config";
 import {
-  type LionDenPlugin,
-  type ConfigHookHandlers,
   type CompilationHookHandlers,
+  type ConfigHookHandlers,
   type ConfigValidationError,
+  type LionDenPlugin,
   preflightLeo,
   task,
 } from "@lionden/core";
-import type { LionDenUserConfig, LionDenResolvedConfig } from "@lionden/config";
 import {
-  compilePipeline,
-  generateBindings,
-  generateBaseContract,
-  resolveContractClassName as resolveGeneratedContractClassName,
-  pathToTsName,
   CodegenError,
   type CompileOptions,
-  type ProgramCompilationResult,
+  compilePipeline,
   type GenerateBindingsOptions,
+  generateBaseContract,
+  generateBindings,
+  type ProgramCompilationResult,
+  pathToTsName,
+  resolveContractClassName as resolveGeneratedContractClassName,
 } from "@lionden/leo-compiler";
 
 const VALID_TS_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const SCHEMA_ENTRY = /^(?:address|boolean|field|group|scalar|u(?:8|16|32|64|128)|i(?:8|16|32|64|128))\.(?:public|private)$/;
+const SCHEMA_ENTRY =
+  /^(?:address|boolean|field|group|scalar|u(?:8|16|32|64|128)|i(?:8|16|32|64|128))\.(?:public|private)$/;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value == null || typeof value !== "object") return false;
@@ -52,9 +53,7 @@ const configHooks: ConfigHookHandlers = {
     const supportedVersion = /^(?:4\.(?:0|1)|3\.5)\.(?:0|[1-9]\d*)$/;
     const plainStableVersion = /^\d+\.\d+\.\d+$/;
     const versionCheckSkipped = config.skipLeoVersionCheck === true;
-    const versionPattern = versionCheckSkipped
-      ? plainStableVersion
-      : supportedVersion;
+    const versionPattern = versionCheckSkipped ? plainStableVersion : supportedVersion;
 
     if (config.leoVersion && !versionPattern.test(config.leoVersion)) {
       const message = versionCheckSkipped
@@ -137,10 +136,7 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       fs.mkdirSync(typechainDir, { recursive: true });
 
       // Write BaseContract.ts
-      fs.writeFileSync(
-        path.join(typechainDir, "BaseContract.ts"),
-        generateBaseContract(),
-      );
+      fs.writeFileSync(path.join(typechainDir, "BaseContract.ts"), generateBaseContract());
 
       // Generate per-program bindings
       const allAbis = programResults.map((result) => result.abi);
@@ -153,10 +149,7 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
           allAbis,
           dynamicRecords ? { dynamicRecords } : {},
         );
-        fs.writeFileSync(
-          path.join(typechainDir, `${className}.ts`),
-          bindings,
-        );
+        fs.writeFileSync(path.join(typechainDir, `${className}.ts`), bindings);
       }
 
       fs.writeFileSync(
@@ -217,10 +210,7 @@ function buildTypechainIndex(
 ): string {
   const modules = programResults.map((result) => ({
     fileName: programIdToClassName(result.unit.programId),
-    exports: getProgramExports(
-      result,
-      helpersByProgram.get(result.unit.programId) ?? [],
-    ),
+    exports: getProgramExports(result, helpersByProgram.get(result.unit.programId) ?? []),
   }));
   const counts = new Map<string, number>();
   for (const module of modules) {
@@ -308,7 +298,8 @@ function validateDynamicRecordsConfig(
   if (!isPlainObject(raw)) {
     errors.push({
       path: "codegen.dynamicRecords",
-      message: "codegen.dynamicRecords must be a plain object mapping helper names to helper configs.",
+      message:
+        "codegen.dynamicRecords must be a plain object mapping helper names to helper configs.",
     });
     return;
   }
@@ -342,10 +333,14 @@ function validateDynamicRecordsConfig(
     }
     const sourceProgram = helper["sourceProgram"];
     if (sourceProgram !== undefined) {
-      if (typeof sourceProgram !== "string" || sourceProgram.length === 0 || !sourceProgram.endsWith(".aleo")) {
+      if (
+        typeof sourceProgram !== "string" ||
+        sourceProgram.length === 0 ||
+        !sourceProgram.endsWith(".aleo")
+      ) {
         errors.push({
           path: `${base}.sourceProgram`,
-          message: "sourceProgram must be a non-empty string ending in \".aleo\".",
+          message: 'sourceProgram must be a non-empty string ending in ".aleo".',
         });
       }
     }
@@ -353,7 +348,8 @@ function validateDynamicRecordsConfig(
     if (!isPlainObject(schema)) {
       errors.push({
         path: `${base}.schema`,
-        message: "schema must be a plain object mapping field names to <type>.<visibility> strings.",
+        message:
+          "schema must be a plain object mapping field names to <type>.<visibility> strings.",
       });
       continue;
     }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock the version probe.
 vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
@@ -6,10 +6,7 @@ vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
 vi.mock("@lionden/core", () => ({ preflightLeo: vi.fn() }));
 
 import { execFile } from "node:child_process";
-import {
-  resolveDevnodeBackend,
-  clearDevnodeBackendProbeCacheForTests,
-} from "./devnode-backend.js";
+import { clearDevnodeBackendProbeCacheForTests, resolveDevnodeBackend } from "./devnode-backend.js";
 
 // execFile is promisified via util.promisify, which uses the callback form.
 function mockProbe(succeeds: boolean): void {
@@ -52,9 +49,9 @@ describe("resolveDevnodeBackend", () => {
 
   it("requiresPersistence throws when standalone is unavailable", async () => {
     mockProbe(false);
-    await expect(
-      resolveDevnodeBackend({ requiresPersistence: true }),
-    ).rejects.toThrow(/could not be found/);
+    await expect(resolveDevnodeBackend({ requiresPersistence: true })).rejects.toThrow(
+      /could not be found/,
+    );
   });
 
   it("requiresPersistence with provider:leo throws (cannot snapshot on leo)", async () => {
@@ -65,9 +62,9 @@ describe("resolveDevnodeBackend", () => {
 
   it("explicit binary probes that path and throws on failure", async () => {
     mockProbe(false);
-    await expect(
-      resolveDevnodeBackend({ binary: "/opt/aleo-devnode" }),
-    ).rejects.toThrow(/\/opt\/aleo-devnode/);
+    await expect(resolveDevnodeBackend({ binary: "/opt/aleo-devnode" })).rejects.toThrow(
+      /\/opt\/aleo-devnode/,
+    );
   });
 
   it("explicit binary selects standalone when runnable", async () => {
@@ -85,8 +82,8 @@ describe("resolveDevnodeBackend", () => {
 
   it("standalone rejects consensusHeights (auto-detected)", async () => {
     mockProbe(true);
-    await expect(
-      resolveDevnodeBackend({ consensusHeights: "0,1,2" }),
-    ).rejects.toThrow(/consensusHeights is not supported/);
+    await expect(resolveDevnodeBackend({ consensusHeights: "0,1,2" })).rejects.toThrow(
+      /consensusHeights is not supported/,
+    );
   });
 });

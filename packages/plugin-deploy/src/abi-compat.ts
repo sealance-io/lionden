@@ -15,21 +15,21 @@
  */
 
 import type {
-  ProgramABI,
-  MappingABI,
-  StructABI,
-  RecordABI,
-  TransitionABI,
-  StorageVariableABI,
-  StorageType,
-  PlaintextType,
-  AleoType,
   AbiInput,
   AbiOutput,
-  ViewABI,
+  AleoType,
   InterfaceRefABI,
-  StructFieldABI,
+  MappingABI,
+  PlaintextType,
+  ProgramABI,
+  RecordABI,
   RecordFieldABI,
+  StorageType,
+  StorageVariableABI,
+  StructABI,
+  StructFieldABI,
+  TransitionABI,
+  ViewABI,
 } from "@lionden/leo-compiler";
 
 // ---------------------------------------------------------------------------
@@ -68,10 +68,7 @@ export interface AbiCompatResult {
 /**
  * Check if a new ABI is upgrade-compatible with the old ABI.
  */
-export function checkAbiCompatibility(
-  oldAbi: ProgramABI,
-  newAbi: ProgramABI,
-): AbiCompatResult {
+export function checkAbiCompatibility(oldAbi: ProgramABI, newAbi: ProgramABI): AbiCompatResult {
   const violations: AbiViolation[] = [];
 
   // Check mappings
@@ -85,23 +82,13 @@ export function checkAbiCompatibility(
   );
 
   // Check structs (keyed by full path to avoid module collisions)
-  checkNamedItems(
-    oldAbi.structs,
-    newAbi.structs,
-    "struct",
-    compareStructs,
-    violations,
-    (s) => s.path.join("::"),
+  checkNamedItems(oldAbi.structs, newAbi.structs, "struct", compareStructs, violations, (s) =>
+    s.path.join("::"),
   );
 
   // Check records (keyed by full path to avoid module collisions)
-  checkNamedItems(
-    oldAbi.records,
-    newAbi.records,
-    "record",
-    compareRecords,
-    violations,
-    (r) => r.path.join("::"),
+  checkNamedItems(oldAbi.records, newAbi.records, "record", compareRecords, violations, (r) =>
+    r.path.join("::"),
   );
 
   // Check transitions (can be added; cannot be deleted or have signature modified)
@@ -187,10 +174,7 @@ function checkNamedItems<T>(
   }
 }
 
-function compareTransitionSignatures(
-  oldT: TransitionABI,
-  newT: TransitionABI,
-): string | null {
+function compareTransitionSignatures(oldT: TransitionABI, newT: TransitionABI): string | null {
   if (oldT.is_async !== newT.is_async) {
     return `transition "${oldT.name}" async mode changed (${oldT.is_async} -> ${newT.is_async})`;
   }
@@ -220,10 +204,7 @@ function compareTransitionSignatures(
   return null;
 }
 
-function compareViewSignatures(
-  oldView: ViewABI,
-  newView: ViewABI,
-): string | null {
+function compareViewSignatures(oldView: ViewABI, newView: ViewABI): string | null {
   if (oldView.inputs.length !== newView.inputs.length) {
     return `view "${oldView.name}" input count changed (${oldView.inputs.length} -> ${newView.inputs.length})`;
   }
@@ -244,17 +225,19 @@ function compareViewSignatures(
       return `view "${oldView.name}" output[${i}] changed`;
     }
   }
-  if (JSON.stringify(oldView.const_parameters ?? []) !== JSON.stringify(newView.const_parameters ?? [])) {
+  if (
+    JSON.stringify(oldView.const_parameters ?? []) !==
+    JSON.stringify(newView.const_parameters ?? [])
+  ) {
     return `view "${oldView.name}" const parameters changed`;
   }
   return null;
 }
 
-function compareInterfaceRefs(
-  oldRef: InterfaceRefABI,
-  newRef: InterfaceRefABI,
-): string | null {
-  if (JSON.stringify(canonicalInterfaceRef(oldRef)) !== JSON.stringify(canonicalInterfaceRef(newRef))) {
+function compareInterfaceRefs(oldRef: InterfaceRefABI, newRef: InterfaceRefABI): string | null {
+  if (
+    JSON.stringify(canonicalInterfaceRef(oldRef)) !== JSON.stringify(canonicalInterfaceRef(newRef))
+  ) {
     return `interface "${interfaceRefKey(oldRef)}" changed`;
   }
   return null;
@@ -265,15 +248,10 @@ function interfaceRefKey(ref: InterfaceRefABI): string {
 }
 
 function canonicalInterfaceRef(ref: InterfaceRefABI): unknown {
-  return typeof ref === "string"
-    ? ref
-    : { path: ref.path, program: ref.program ?? null };
+  return typeof ref === "string" ? ref : { path: ref.path, program: ref.program ?? null };
 }
 
-function compareMappings(
-  oldMapping: MappingABI,
-  newMapping: MappingABI,
-): string | null {
+function compareMappings(oldMapping: MappingABI, newMapping: MappingABI): string | null {
   if (!plaintextTypesEqual(oldMapping.key, newMapping.key)) {
     return `mapping "${oldMapping.name}" key type changed`;
   }
@@ -283,10 +261,7 @@ function compareMappings(
   return null;
 }
 
-function compareStructs(
-  oldStruct: StructABI,
-  newStruct: StructABI,
-): string | null {
+function compareStructs(oldStruct: StructABI, newStruct: StructABI): string | null {
   const key = oldStruct.path.join("::");
   if (oldStruct.fields.length !== newStruct.fields.length) {
     return `struct "${key}" field count changed (${oldStruct.fields.length} -> ${newStruct.fields.length})`;
@@ -303,10 +278,7 @@ function compareStructs(
   return null;
 }
 
-function compareRecords(
-  oldRecord: RecordABI,
-  newRecord: RecordABI,
-): string | null {
+function compareRecords(oldRecord: RecordABI, newRecord: RecordABI): string | null {
   const key = oldRecord.path.join("::");
   if (oldRecord.fields.length !== newRecord.fields.length) {
     return `record "${key}" field count changed (${oldRecord.fields.length} -> ${newRecord.fields.length})`;
@@ -350,11 +322,7 @@ function structFieldsEqual(a: StructFieldABI, b: StructFieldABI): boolean {
 }
 
 function recordFieldsEqual(a: RecordFieldABI, b: RecordFieldABI): boolean {
-  return (
-    a.name === b.name &&
-    a.mode === b.mode &&
-    plaintextTypesEqual(a.ty, b.ty)
-  );
+  return a.name === b.name && a.mode === b.mode && plaintextTypesEqual(a.ty, b.ty);
 }
 
 function aleoTypesEqual(a: AleoType, b: AleoType): boolean {

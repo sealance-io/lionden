@@ -6,24 +6,25 @@
  * These tests load the real @provablehq/sdk WASM module, so they
  * verify actual construction rather than mocked delegation.
  */
-import { describe, it, expect, afterAll, vi } from "vitest";
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import {
+  applySdkLogLevel,
   createSdkObjects,
   createSignerSdkObjects,
-  applySdkLogLevel,
-  PersistentFunctionKeyProvider,
-  synthesizeExecutionKeyBytes,
   decryptRecordCiphertext,
   decryptValueCiphertext,
   deriveViewKey,
-  programAddressFromProgramId,
   NetworkRecordDecryptionError,
   NetworkValueDecryptionError,
-  type SdkObjects,
+  PersistentFunctionKeyProvider,
+  programAddressFromProgramId,
   type SdkEgressPolicy,
+  type SdkObjects,
+  synthesizeExecutionKeyBytes,
 } from "./sdk-adapter.js";
 
 const TEST_EGRESS_POLICY: SdkEgressPolicy = {
@@ -32,23 +33,23 @@ const TEST_EGRESS_POLICY: SdkEgressPolicy = {
 };
 
 // Well-known devnode account-0
-const DEVNODE_KEY =
-  "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
-const DEVNODE_ADDR =
-  "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
+const DEVNODE_KEY = "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
+const DEVNODE_ADDR = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
 
 // Well-known devnode account-1
-const SIGNER_KEY =
-  "APrivateKey1zkp2RWGDcde3efb89rjhME1VYA8QMxcxep5DShNBR6n8Yjh";
-const SIGNER_ADDR =
-  "aleo1s3ws5tra87fjycnjrwsjcrnw2qxr8jfqqdugnf0xzqqw29q9m5pqem2u4t";
+const SIGNER_KEY = "APrivateKey1zkp2RWGDcde3efb89rjhME1VYA8QMxcxep5DShNBR6n8Yjh";
+const SIGNER_ADDR = "aleo1s3ws5tra87fjycnjrwsjcrnw2qxr8jfqqdugnf0xzqqw29q9m5pqem2u4t";
 
 let defaultSdk: SdkObjects;
 
 // Create default SDK objects once — reused across tests
 afterAll(() => {
   // Best-effort cleanup of WASM Account objects
-  try { (defaultSdk?.account as any)?.destroy?.(); } catch { /* */ }
+  try {
+    (defaultSdk?.account as any)?.destroy?.();
+  } catch {
+    /* */
+  }
 });
 
 describe("programAddressFromProgramId()", () => {
@@ -90,9 +91,10 @@ describe("createSdkObjects()", () => {
       egressPolicy: TEST_EGRESS_POLICY,
     });
 
-    const addr = typeof (defaultSdk.account as any).address === "function"
-      ? (defaultSdk.account as any).address().to_string()
-      : String((defaultSdk.account as any).address);
+    const addr =
+      typeof (defaultSdk.account as any).address === "function"
+        ? (defaultSdk.account as any).address().to_string()
+        : String((defaultSdk.account as any).address);
     expect(addr).toBe(DEVNODE_ADDR);
     expect(typeof defaultSdk.programManagerBase.synthesizeKeyPair).toBe("function");
   });
@@ -111,7 +113,11 @@ describe("createSdkObjects()", () => {
     const ncHeaders = pm.networkClient?.headers ?? pm.networkClient?.account?.headers;
     expect(ncHeaders).toBeDefined();
     expect(ncHeaders["Authorization"]).toBe("Bearer test-api-key");
-    try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (sdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("flips hasCustomTransport on the standalone and PM-internal network clients when an egress policy is set", async () => {
@@ -128,9 +134,13 @@ describe("createSdkObjects()", () => {
     // prove path reads at browser.js:5796 to decide whether to use
     // CallbackQuery vs WASM's internal SnapshotQuery. The leak we're
     // closing requires both to carry the transport.
-    expect(((sdk.programManager as any).networkClient).hasCustomTransport).toBe(true);
+    expect((sdk.programManager as any).networkClient.hasCustomTransport).toBe(true);
 
-    try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (sdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("installs the parameter transport on AleoKeyProvider with the internal known-host allowlist", async () => {
@@ -151,9 +161,9 @@ describe("createSdkObjects()", () => {
     // Unknown host must be rejected with the stale-allowlist wording —
     // and never call fetch.
     const originalFetch = globalThis.fetch;
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response("ok", { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("ok", { status: 200 }));
     try {
       await expect(transport("https://blocked.example/x")).rejects.toThrow(
         /LionDen does not recognize SDK parameter host "blocked\.example"/,
@@ -161,9 +171,7 @@ describe("createSdkObjects()", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
 
       // A known parameter host is forwarded (fetch stubbed so no real call).
-      const res = await transport(
-        "https://parameters.provable.com/testnet/fee_public.prover",
-      );
+      const res = await transport("https://parameters.provable.com/testnet/fee_public.prover");
       expect(res.ok).toBe(true);
       expect(fetchSpy).toHaveBeenCalledOnce();
     } finally {
@@ -171,7 +179,11 @@ describe("createSdkObjects()", () => {
       globalThis.fetch = originalFetch;
     }
 
-    try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (sdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("rejects empty or invalid endpoints fast (defensive guard)", async () => {
@@ -208,7 +220,11 @@ describe("createSdkObjects()", () => {
       expect((sdk.programManager as any).keyProvider).toBe(sdk.keyProvider);
       await expect(sdk.keyProvider.keyStore()).resolves.toBeDefined();
 
-      try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+      try {
+        (sdk.account as any)?.destroy?.();
+      } catch {
+        /* */
+      }
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -234,19 +250,25 @@ describe("createSignerSdkObjects()", () => {
       egressPolicy: TEST_EGRESS_POLICY,
     });
 
-    const signerAddr = typeof (signerSdk.account as any).address === "function"
-      ? (signerSdk.account as any).address().to_string()
-      : String((signerSdk.account as any).address);
+    const signerAddr =
+      typeof (signerSdk.account as any).address === "function"
+        ? (signerSdk.account as any).address().to_string()
+        : String((signerSdk.account as any).address);
     expect(signerAddr).toBe(SIGNER_ADDR);
     expect(typeof signerSdk.programManagerBase.synthesizeKeyPair).toBe("function");
 
     // Verify it's not the default account
-    const defaultAddr = typeof (defaultSdk.account as any).address === "function"
-      ? (defaultSdk.account as any).address().to_string()
-      : String((defaultSdk.account as any).address);
+    const defaultAddr =
+      typeof (defaultSdk.account as any).address === "function"
+        ? (defaultSdk.account as any).address().to_string()
+        : String((defaultSdk.account as any).address);
     expect(signerAddr).not.toBe(defaultAddr);
 
-    try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (signerSdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("wires the signer Account into ProgramManager", async () => {
@@ -269,15 +291,20 @@ describe("createSignerSdkObjects()", () => {
 
     // The PM's account must be the signer's, not the default
     const pm = signerSdk.programManager as any;
-    const pmAddr = typeof pm.account?.address === "function"
-      ? pm.account.address().to_string()
-      : String(pm.account?.address);
+    const pmAddr =
+      typeof pm.account?.address === "function"
+        ? pm.account.address().to_string()
+        : String(pm.account?.address);
     expect(pmAddr).toBe(SIGNER_ADDR);
 
     // The PM's recordProvider must be the same instance passed to it
     expect(pm.recordProvider).toBe(signerSdk.recordProvider);
 
-    try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (signerSdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("reuses the shared keyProvider from the default SDK objects", async () => {
@@ -302,7 +329,11 @@ describe("createSignerSdkObjects()", () => {
     const pm = signerSdk.programManager as any;
     expect(pm.keyProvider).toBe(defaultSdk.keyProvider);
 
-    try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (signerSdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("propagates hasCustomTransport to the signer's standalone and PM-internal network clients", async () => {
@@ -331,7 +362,11 @@ describe("createSignerSdkObjects()", () => {
     expect(pm.networkClient.hasCustomTransport).toBe(true);
     expect((signerSdk.recordProvider as any).networkClient.hasCustomTransport).toBe(true);
 
-    try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
+    try {
+      (signerSdk.account as any)?.destroy?.();
+    } catch {
+      /* */
+    }
   });
 
   it("rejects empty or invalid endpoints fast in the signer factory too", async () => {
@@ -375,8 +410,16 @@ describe("createSignerSdkObjects()", () => {
       expect(sdk.keyProvider).toBeInstanceOf(PersistentFunctionKeyProvider);
       expect((signerSdk.programManager as any).keyProvider).toBe(sdk.keyProvider);
 
-      try { (signerSdk.account as any)?.destroy?.(); } catch { /* */ }
-      try { (sdk.account as any)?.destroy?.(); } catch { /* */ }
+      try {
+        (signerSdk.account as any)?.destroy?.();
+      } catch {
+        /* */
+      }
+      try {
+        (sdk.account as any)?.destroy?.();
+      } catch {
+        /* */
+      }
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -473,20 +516,18 @@ describe("deriveViewKey() / decryptRecordCiphertext()", () => {
   });
 
   it("throws NetworkRecordDecryptionError when view key doesn't have AViewKey1 prefix", async () => {
-    await expect(
-      decryptRecordCiphertext("record1abc", "APrivateKey1zkp..."),
-    ).rejects.toMatchObject({
-      kind: "NetworkRecordDecryptionError",
-      message: expect.stringContaining("AViewKey1"),
-    });
+    await expect(decryptRecordCiphertext("record1abc", "APrivateKey1zkp...")).rejects.toMatchObject(
+      {
+        kind: "NetworkRecordDecryptionError",
+        message: expect.stringContaining("AViewKey1"),
+      },
+    );
   });
 
   it("surfaces SDK errors as NetworkRecordDecryptionError with ciphertextPrefix", async () => {
     const vk = await deriveViewKey(DEVNODE_KEY);
     // Garbage ciphertext that passes the prefix check but the SDK rejects.
-    await expect(
-      decryptRecordCiphertext("record1garbagepayload", vk),
-    ).rejects.toMatchObject({
+    await expect(decryptRecordCiphertext("record1garbagepayload", vk)).rejects.toMatchObject({
       kind: "NetworkRecordDecryptionError",
       ciphertextPrefix: "record1garbagepa",
     });
@@ -498,27 +539,39 @@ describe("decryptValueCiphertext()", () => {
   // packages/network/src/__fixtures__/devnode-transition-tpk-sample.json.
   // compare_strategies(balance=10000) on governance.aleo — output[0] (linear,
   // global index = 1 input + abi index 0 = 1) should decrypt to "10000u64".
-  const REAL_TPK = "3744613180382619741435840858040170311327807885111536643678978944748581058812group";
+  const REAL_TPK =
+    "3744613180382619741435840858040170311327807885111536643678978944748581058812group";
   const REAL_CT_LINEAR = "ciphertext1qyqzhjct2nh7a8ajexhyfr9pg3aehxpw5ulvypjleadlx07cpw0ggzgjt5uyj";
-  const REAL_CT_QUADRATIC = "ciphertext1qyqgprwaxfulcpellukavaurqmzk24lrh3qcldjp6nhenq748gjvyyqvw9ek7";
+  const REAL_CT_QUADRATIC =
+    "ciphertext1qyqgprwaxfulcpellukavaurqmzk24lrh3qcldjp6nhenq748gjvyyqvw9ek7";
 
   it("decrypts a real devnode value ciphertext to its plaintext Leo literal", async () => {
     const vk = await deriveViewKey(DEVNODE_KEY);
     const linear = await decryptValueCiphertext(
-      REAL_CT_LINEAR, vk, REAL_TPK, "governance.aleo", "compare_strategies", 1,
+      REAL_CT_LINEAR,
+      vk,
+      REAL_TPK,
+      "governance.aleo",
+      "compare_strategies",
+      1,
     );
     expect(linear).toBe("10000u64");
     const quadratic = await decryptValueCiphertext(
-      REAL_CT_QUADRATIC, vk, REAL_TPK, "governance.aleo", "compare_strategies", 2,
+      REAL_CT_QUADRATIC,
+      vk,
+      REAL_TPK,
+      "governance.aleo",
+      "compare_strategies",
+      2,
     );
     expect(quadratic).toBe("100u64");
   });
 
   it("throws NetworkValueDecryptionError on empty ciphertext", async () => {
     const vk = await deriveViewKey(DEVNODE_KEY);
-    await expect(
-      decryptValueCiphertext("", vk, REAL_TPK, "p.aleo", "t", 0),
-    ).rejects.toMatchObject({ kind: "NetworkValueDecryptionError" });
+    await expect(decryptValueCiphertext("", vk, REAL_TPK, "p.aleo", "t", 0)).rejects.toMatchObject({
+      kind: "NetworkValueDecryptionError",
+    });
   });
 
   it("throws NetworkValueDecryptionError when ciphertext lacks ciphertext1 prefix", async () => {
@@ -554,7 +607,14 @@ describe("decryptValueCiphertext()", () => {
     const vk = await deriveViewKey(DEVNODE_KEY);
     // Wrong global index — SDK rejects.
     await expect(
-      decryptValueCiphertext(REAL_CT_LINEAR, vk, REAL_TPK, "governance.aleo", "compare_strategies", 999),
+      decryptValueCiphertext(
+        REAL_CT_LINEAR,
+        vk,
+        REAL_TPK,
+        "governance.aleo",
+        "compare_strategies",
+        999,
+      ),
     ).rejects.toMatchObject({
       kind: "NetworkValueDecryptionError",
       ciphertextPrefix: "ciphertext1qyqzh",

@@ -1,12 +1,8 @@
 // Port of tmp/leo-examples/example_with_test/tests/test_example_program.leo
 // — the canonical "leo test" demo, translated to lionden's TS testing surface.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createExampleProgram } from "../typechain/ExampleProgram.js";
 
 async function deployExample() {

@@ -12,16 +12,15 @@ import type {
   ResolvedSdkKeyCacheConfig,
   SdkLogLevel,
 } from "@lionden/config";
-import type { ProgramABI } from "@lionden/leo-compiler";
+import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
-import type { DependencyGraph } from "@lionden/leo-compiler";
-import type { DeploymentRecord } from "./deployment-types.js";
+import { checkAbiCompatibility } from "./abi-compat.js";
+import { validateAdminSigner } from "./admin-signer.js";
 import type { ConstructorInfo } from "./constructor-parser.js";
 import { isValidAleoAddress } from "./constructor-parser.js";
+import type { DeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { checkAbiCompatibility } from "./abi-compat.js";
 import { checkProgramOnChain, fetchImportSources } from "./on-chain-check.js";
-import { validateAdminSigner } from "./admin-signer.js";
 
 // ---------------------------------------------------------------------------
 // Output types
@@ -162,7 +161,12 @@ export async function checkAlreadyDeployed(
   // Program exists on-chain
   if (!skipDeployed) {
     return {
-      outcome: { programId, action: "skip", reason: "already-deployed", record: existingRecord ?? undefined },
+      outcome: {
+        programId,
+        action: "skip",
+        reason: "already-deployed",
+        record: existingRecord ?? undefined,
+      },
       error: {
         code: "ALREADY_DEPLOYED",
         message:
@@ -346,9 +350,7 @@ export function checkAbiCompatible(
 ): PreflightError | null {
   const compat = checkAbiCompatibility(oldAbi, newAbi);
   if (!compat.compatible) {
-    const details = compat.violations
-      .map((v) => `  - [${v.kind}] ${v.detail}`)
-      .join("\n");
+    const details = compat.violations.map((v) => `  - [${v.kind}] ${v.detail}`).join("\n");
     return {
       code: "ABI_INCOMPATIBLE",
       message: `Upgrade of "${programId}" is not ABI-compatible with the deployed version:\n${details}`,
@@ -381,11 +383,7 @@ export function checkConstructorImmutable(
     };
   }
 
-  if (
-    newConstructor.type === "admin" &&
-    oldAdmin &&
-    newConstructor.adminAddress !== oldAdmin
-  ) {
+  if (newConstructor.type === "admin" && oldAdmin && newConstructor.adminAddress !== oldAdmin) {
     return {
       code: "CONSTRUCTOR_ADMIN_CHANGED",
       message:
@@ -506,8 +504,7 @@ export async function checkEditionContinuity(
     // Program not found on-chain — can't check edition
     return {
       code: "PROGRAM_NOT_FOUND",
-      message:
-        `Program "${programId}" is not deployed on-chain. Cannot upgrade a program that isn't deployed.`,
+      message: `Program "${programId}" is not deployed on-chain. Cannot upgrade a program that isn't deployed.`,
       recoverable: false,
     };
   }
@@ -597,8 +594,12 @@ export async function runDeployPreflight(
     }
 
     // 3. Check if already deployed
-    const { outcome: deployedOutcome, error: deployedErr } =
-      await checkAlreadyDeployed(connection, programId, existingRecord, skipDeployed);
+    const { outcome: deployedOutcome, error: deployedErr } = await checkAlreadyDeployed(
+      connection,
+      programId,
+      existingRecord,
+      skipDeployed,
+    );
 
     if (deployedErr) {
       errors.push(deployedErr);
@@ -715,8 +716,11 @@ export async function runDeployPreflight(
         // Best-effort; fall back to connection default
       }
     }
-    const { warning: balanceWarning, error: balanceError } =
-      await checkBalanceSufficient(connection, totalFeeEstimate, signerAddress);
+    const { warning: balanceWarning, error: balanceError } = await checkBalanceSufficient(
+      connection,
+      totalFeeEstimate,
+      signerAddress,
+    );
     if (balanceWarning) warnings.push(balanceWarning);
     if (balanceError) errors.push(balanceError);
   }

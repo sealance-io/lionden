@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   DEVNODE_ACCOUNTS,
-  getDefaultAccount,
   getAccount,
-  getAddresses,
   getAccountByAddress,
+  getAddresses,
+  getDefaultAccount,
 } from "./accounts.js";
 
 describe("accounts", () => {

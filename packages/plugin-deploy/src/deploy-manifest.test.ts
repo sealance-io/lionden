@@ -1,12 +1,12 @@
-import { describe, it, expect, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  writeDeployManifest,
-  readDeployManifest,
-  deployManifestPath,
   type DeployManifest,
+  deployManifestPath,
+  readDeployManifest,
+  writeDeployManifest,
 } from "./deploy-manifest.js";
 
 describe("deploy manifest", () => {

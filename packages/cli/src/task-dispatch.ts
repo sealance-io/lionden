@@ -116,10 +116,7 @@ function findTaskArgumentDefinition(
   return undefined;
 }
 
-function matchesTaskArgumentName(
-  definitionName: string,
-  rawName: string,
-): boolean {
+function matchesTaskArgumentName(definitionName: string, rawName: string): boolean {
   return rawName === definitionName || rawName === camelToKebab(definitionName);
 }
 

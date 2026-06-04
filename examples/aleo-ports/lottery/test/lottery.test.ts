@@ -5,8 +5,9 @@
 //   1. play() in local mode always returns a Ticket (finalize skipped).
 //   2. play() onchain either succeeds (mapping num_winners[0u8] = 1) or
 //      aborts (mapping stays empty / null). Both outcomes are valid.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createLottery } from "../typechain/Lottery.js";
 
 async function deployLottery() {

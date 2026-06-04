@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
-import { discoverUnits } from "./source-discovery.js";
+import * as path from "node:path";
+import type { LionDenResolvedConfig } from "@lionden/config";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveDependencies } from "./dependency-resolver.js";
 import { materializePackage } from "./package-materializer.js";
+import { discoverUnits } from "./source-discovery.js";
 import { unitId } from "./types.js";
-import type { LionDenResolvedConfig } from "@lionden/config";
 
 let tmpDir: string;
 let programsDir: string;
@@ -45,7 +45,15 @@ function mockConfig(): LionDenResolvedConfig {
     },
     codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
     testing: { framework: "vitest", timeout: 120_000, autoStartDevnode: true },
-    deploy: { defaultPriorityFee: 0, privateFee: false, confirmTransactions: true, confirmationTimeout: 60_000, deploymentsDir: "deployments", skipDeployed: true, autoExport: false },
+    deploy: {
+      defaultPriorityFee: 0,
+      privateFee: false,
+      confirmTransactions: true,
+      confirmationTimeout: 60_000,
+      deploymentsDir: "deployments",
+      skipDeployed: true,
+      autoExport: false,
+    },
     sdk: { keyCache: { storage: "memory" } },
     execution: { imports: {} },
     namedAccounts: {},
@@ -105,11 +113,14 @@ describe("materializePackage", () => {
 
   it("generates program.json with dependencies", () => {
     writeFile("utils/main.leo", "program utils.aleo {\n  fn add() {}\n}\n");
-    writeFile("token/main.leo", `
+    writeFile(
+      "token/main.leo",
+      `
 import utils.aleo;
 import credits.aleo;
 program token.aleo { fn mint() { utils.aleo::add(); } }
-`);
+`,
+    );
 
     const units = discoverUnits(programsDir);
     const graph = resolveDependencies(units);
@@ -121,10 +132,14 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     const programJson = JSON.parse(fs.readFileSync(path.join(pkgDir, "program.json"), "utf-8"));
     expect(programJson.dependencies).toHaveLength(2);
 
-    const localDep = programJson.dependencies.find((d: { name: string }) => d.name === "utils.aleo");
+    const localDep = programJson.dependencies.find(
+      (d: { name: string }) => d.name === "utils.aleo",
+    );
     expect(localDep.location).toBe("local");
 
-    const networkDep = programJson.dependencies.find((d: { name: string }) => d.name === "credits.aleo");
+    const networkDep = programJson.dependencies.find(
+      (d: { name: string }) => d.name === "credits.aleo",
+    );
     expect(networkDep.location).toBe("network");
   });
 
@@ -151,16 +166,21 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
     expect(env).toContain("NETWORK=testnet");
     expect(env).toContain("ENDPOINT=http://127.0.0.1:3030");
-    expect(env).toContain("PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
+    expect(env).toContain(
+      "PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+    );
     expect(env).toContain("DEVNET=true");
   });
 
   it("materializes library dependency with canonical path", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
-    writeFile("hello/main.leo", `
+    writeFile(
+      "hello/main.leo",
+      `
 import math.aleo;
 program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
-`);
+`,
+    );
 
     const units = discoverUnits(programsDir);
     const graph = resolveDependencies(units);
@@ -180,7 +200,9 @@ program hello.aleo { fn main() { math.aleo::add(1u32, 2u32); } }
     // (matching Leo import syntax) but the path still uses the canonical dir
     const helloUnit = units.find((u) => u.kind === "program")!;
     const helloPkgDir = materializePackage(helloUnit, config, graph);
-    const programJson = JSON.parse(fs.readFileSync(path.join(helloPkgDir, "program.json"), "utf-8"));
+    const programJson = JSON.parse(
+      fs.readFileSync(path.join(helloPkgDir, "program.json"), "utf-8"),
+    );
 
     const mathDep = programJson.dependencies?.find((d: { name: string }) => d.name === "math.aleo");
     expect(mathDep).toBeDefined();
