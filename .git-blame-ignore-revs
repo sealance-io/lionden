@@ -1,0 +1,6 @@
+# Revisions to ignore in `git blame` (bulk, mechanical changes only).
+# GitHub honors this file automatically. Locally, enable it once with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: apply Biome baseline format (one-time whitespace + import-order normalization)
+474eedc3de623df4ed55115b37c75ad972464859
