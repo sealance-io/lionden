@@ -7,49 +7,46 @@
  */
 
 import type { LionDenResolvedConfig } from "@lionden/config";
-import type { ProgramABI } from "@lionden/leo-compiler";
+import type { ArtifactStore } from "@lionden/core";
+import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import {
-  discoverUnits,
-  resolveDependencies,
-  parseAbi,
   type DiscoveredProgram,
+  discoverUnits,
+  parseAbi,
+  resolveDependencies,
 } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
-import type { ArtifactStore } from "@lionden/core";
 import { parseConstructor } from "./constructor-parser.js";
-import { readLeoSourcesFromDir } from "./leo-sources.js";
-import type {
-  DeploymentRecord,
-  CompleteDeploymentRecord,
-  DegradedDeploymentRecord,
-  RecoveredDeploymentRecord,
-  DeploymentHistoryEntry,
-  NetworkMetadata,
-  PendingDeployment,
-  ExportBundle,
-  ExportedProgram,
-} from "./deployment-types.js";
 import {
-  writeDeploymentRecord,
-  readDeploymentRecord,
-  readAllDeploymentRecords,
-  writeAbiSnapshot,
-  deleteAbiSnapshot,
-  readAbiSnapshot,
   appendHistory,
-  readHistory,
-  writeNetworkMetadata,
-  readNetworkMetadata,
-  writePendingMarker,
-  readPendingMarker,
+  deleteAbiSnapshot,
   deletePendingMarker,
   listPendingMarkers,
+  readAbiSnapshot,
+  readAllDeploymentRecords,
+  readDeploymentRecord,
+  readHistory,
+  readNetworkMetadata,
+  readPendingMarker,
+  writeAbiSnapshot,
+  writeDeploymentRecord,
   writeExportBundle,
+  writeNetworkMetadata,
+  writePendingMarker,
 } from "./deployment-state.js";
+import type {
+  DeploymentHistoryEntry,
+  DeploymentRecord,
+  ExportBundle,
+  ExportedProgram,
+  NetworkMetadata,
+  PendingDeployment,
+  RecoveredDeploymentRecord,
+} from "./deployment-types.js";
+import { readLeoSourcesFromDir } from "./leo-sources.js";
 import { checkProgramOnChain, createDegradedRecord } from "./on-chain-check.js";
 import type { DeployPreflightResult } from "./preflight.js";
 import { runDeployPreflight } from "./preflight.js";
-import type { DependencyGraph } from "@lionden/leo-compiler";
 
 // ---------------------------------------------------------------------------
 // DeploymentManager interface
@@ -167,7 +164,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
 
   isEphemeral(network: string): boolean {
     const nc = this.config.networks[network];
-    return nc?.ephemeral ?? (nc?.type === "devnode");
+    return nc?.ephemeral ?? nc?.type === "devnode";
   }
 
   getCachedAbi(programId: string, network?: string): ProgramABI | null {
@@ -204,10 +201,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
       ) {
         throw new Error(
           `Network metadata mismatch for "${network}": ` +
-          `config says type=${networkConfig.type}, networkId=${configNetworkId}, endpoint=${configEndpoint} ` +
-          `but deployments/.network.json says type=${meta.type}, networkId=${meta.networkId}, endpoint=${meta.endpoint}. ` +
-          `This may mean the network was reconfigured. ` +
-          `Delete deployments/${network}/ to reset.`,
+            `config says type=${networkConfig.type}, networkId=${configNetworkId}, endpoint=${configEndpoint} ` +
+            `but deployments/.network.json says type=${meta.type}, networkId=${meta.networkId}, endpoint=${meta.endpoint}. ` +
+            `This may mean the network was reconfigured. ` +
+            `Delete deployments/${network}/ to reset.`,
         );
       }
 
@@ -220,8 +217,8 @@ export class DeploymentManagerImpl implements DeploymentManager {
     if (records.length > 0) {
       throw new Error(
         `Deployment records exist for "${network}" but .network.json is missing. ` +
-        `This state is unverifiable. ` +
-        `Delete deployments/${network}/ and re-deploy, or create .network.json manually.`,
+          `This state is unverifiable. ` +
+          `Delete deployments/${network}/ and re-deploy, or create .network.json manually.`,
       );
     }
 
@@ -259,8 +256,9 @@ export class DeploymentManagerImpl implements DeploymentManager {
       // Disk fallback only for non-ephemeral devnode (ephemeral: false opt-in).
       // When ephemeral (default), disk state is never read — it may be stale from
       // a previous session or process.
-      const existing = nc.get(programId)
-        ?? (this.isEphemeral(net) ? null : readDeploymentRecord(this.deploymentsDir, net, programId));
+      const existing =
+        nc.get(programId) ??
+        (this.isEphemeral(net) ? null : readDeploymentRecord(this.deploymentsDir, net, programId));
       if (existing) {
         nc.set(programId, existing);
         return existing;
@@ -487,7 +485,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
         deletePendingMarker(this.deploymentsDir, network, programId);
         console.info(
           `[DeploymentManager] Pending deployment for "${programId}" not found on-chain. ` +
-          `The transaction may not have been broadcast. Clearing pending marker.`,
+            `The transaction may not have been broadcast. Clearing pending marker.`,
         );
         continue;
       }
@@ -546,7 +544,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
     if (!networkConfig) {
       throw new Error(
         `Network "${network}" not found in config. ` +
-        `Available: ${Object.keys(this.config.networks).join(", ") || "none"}`,
+          `Available: ${Object.keys(this.config.networks).join(", ") || "none"}`,
       );
     }
 
@@ -558,9 +556,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const connection = await manager.connect(network);
 
     // Normalize program IDs
-    const normalizedIds = programIds.map((id) =>
-      id.endsWith(".aleo") ? id : `${id}.aleo`,
-    );
+    const normalizedIds = programIds.map((id) => (id.endsWith(".aleo") ? id : `${id}.aleo`));
 
     // Parse Leo sources for constructor info and build dependency graph.
     // discoverUnits() reads .leo source files without compilation.
@@ -659,7 +655,9 @@ export class DeploymentManagerImpl implements DeploymentManager {
     for (const record of records) {
       // Ephemeral: skip disk ABI snapshot, use memory cache → artifacts
       // Non-ephemeral: disk snapshot → memory cache → artifacts
-      const snapshotAbi = ephemeral ? null : readAbiSnapshot(this.deploymentsDir, net, record.programId);
+      const snapshotAbi = ephemeral
+        ? null
+        : readAbiSnapshot(this.deploymentsDir, net, record.programId);
       const cachedAbi = this.getCachedAbi(record.programId, net);
       const artifactAbi = this.artifacts.getAbi(record.programId);
       const abi = snapshotAbi ?? cachedAbi ?? (artifactAbi as ProgramABI | undefined) ?? null;

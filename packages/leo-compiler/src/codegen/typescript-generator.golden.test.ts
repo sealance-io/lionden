@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
-import ts from "typescript";
 import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { generateBindings, generateBaseContract } from "./typescript-generator.js";
+import ts from "typescript";
+import { describe, expect, it } from "vitest";
 import { parseAbi } from "../abi-parser.js";
+import { generateBaseContract, generateBindings } from "./typescript-generator.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = resolve(__dirname, "../__fixtures__/abi");
@@ -29,17 +29,17 @@ const TS_TYPECHECK_OPTIONS: ts.CompilerOptions = {
 // built dist artifacts. Must match the runtime signatures imported by the
 // generated BaseContract template.
 const VIRTUAL_NETWORK_DTS = [
-  "export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
-  "export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
-  "export declare function deriveViewKey(privateKey: string, options?: { readonly network?: \"testnet\" | \"mainnet\" }): Promise<string>;",
+  'export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
+  'export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
+  'export declare function deriveViewKey(privateKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
   "export declare function programAddressFromProgramId(programId: string): string;",
   "export declare class NetworkRecordDecryptionError extends Error {",
-  "  readonly kind: \"NetworkRecordDecryptionError\";",
+  '  readonly kind: "NetworkRecordDecryptionError";',
   "  readonly ciphertextPrefix: string;",
   "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
   "}",
   "export declare class NetworkValueDecryptionError extends Error {",
-  "  readonly kind: \"NetworkValueDecryptionError\";",
+  '  readonly kind: "NetworkValueDecryptionError";',
   "  readonly ciphertextPrefix: string;",
   "  constructor(message: string, ciphertextPrefix: string, cause?: unknown);",
   "}",
@@ -91,13 +91,14 @@ function runTypecheck(files: Record<string, string>): void {
 
   const program = ts.createProgram(Object.keys(files), options, host);
   const diagnostics = ts.getPreEmitDiagnostics(program);
-  const message = diagnostics.length === 0
-    ? ""
-    : ts.formatDiagnosticsWithColorAndContext(diagnostics, {
-        getCurrentDirectory: () => "/virtual",
-        getCanonicalFileName: (fileName) => fileName,
-        getNewLine: () => "\n",
-      });
+  const message =
+    diagnostics.length === 0
+      ? ""
+      : ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+          getCurrentDirectory: () => "/virtual",
+          getCanonicalFileName: (fileName) => fileName,
+          getNewLine: () => "\n",
+        });
 
   expect(message).toBe("");
 }
@@ -141,17 +142,13 @@ describe("codegen goldens", () => {
     it(`generates expected output for ${fixtureFile}`, async () => {
       const abi = loadAbi(fixtureFile);
       const output = generateBindings(abi);
-      await expect(output).toMatchFileSnapshot(
-        resolve(__dirname, "__goldens__", goldenFile),
-      );
+      await expect(output).toMatchFileSnapshot(resolve(__dirname, "__goldens__", goldenFile));
     });
   }
 
   it("generates expected BaseContract output", async () => {
     const output = generateBaseContract();
-    await expect(output).toMatchFileSnapshot(
-      resolve(__dirname, "__goldens__", "base-contract.ts"),
-    );
+    await expect(output).toMatchFileSnapshot(resolve(__dirname, "__goldens__", "base-contract.ts"));
   });
 });
 
@@ -239,7 +236,11 @@ describe("composite input widening typechecks", () => {
         name: "verify",
         is_async: false,
         inputs: [
-          { name: "proof", ty: { Plaintext: { Struct: { path: ["MerkleProof"], program: null } } }, mode: "None" },
+          {
+            name: "proof",
+            ty: { Plaintext: { Struct: { path: ["MerkleProof"], program: null } } },
+            mode: "None",
+          },
         ],
         outputs: [{ ty: { Plaintext: { Primitive: "Boolean" } }, mode: "None" }],
       },
@@ -274,59 +275,81 @@ describe("composite input widening typechecks", () => {
   });
 
   it("cross-program external struct inputs typecheck against the producer's input interface", () => {
-    const registry = parseAbi(JSON.stringify({
-      program: "registry.aleo",
-      structs: [
-        {
-          path: ["TokenInfo"],
-          fields: [
-            { name: "token_id", ty: { Primitive: "Field" } },
-            { name: "admin", ty: { Primitive: "Address" } },
-          ],
-        },
-      ],
-      records: [],
-      mappings: [],
-      storage_variables: [],
-      transitions: [
-        {
-          name: "make",
-          is_async: false,
-          inputs: [{ name: "id", ty: { Plaintext: { Primitive: "Field" } }, mode: "None" }],
-          outputs: [{ ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: null } } }, mode: "None" }],
-        },
-      ],
-    }));
+    const registry = parseAbi(
+      JSON.stringify({
+        program: "registry.aleo",
+        structs: [
+          {
+            path: ["TokenInfo"],
+            fields: [
+              { name: "token_id", ty: { Primitive: "Field" } },
+              { name: "admin", ty: { Primitive: "Address" } },
+            ],
+          },
+        ],
+        records: [],
+        mappings: [],
+        storage_variables: [],
+        transitions: [
+          {
+            name: "make",
+            is_async: false,
+            inputs: [{ name: "id", ty: { Plaintext: { Primitive: "Field" } }, mode: "None" }],
+            outputs: [
+              {
+                ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: null } } },
+                mode: "None",
+              },
+            ],
+          },
+        ],
+      }),
+    );
     // The consumer also declares a local struct literally named `WidenInput`,
     // which would clash with the `type WidenInput` import the external alias
     // needs (TS2440) unless the import is aliased. The resolver mangles the
     // import to `WidenInput_` here.
-    const consumer = parseAbi(JSON.stringify({
-      program: "consumer.aleo",
-      structs: [
-        { path: ["WidenInput"], fields: [{ name: "n", ty: { Primitive: { UInt: "U64" } } }] },
-      ],
-      records: [],
-      mappings: [],
-      storage_variables: [],
-      transitions: [
-        {
-          name: "submit",
-          is_async: false,
-          inputs: [
-            { name: "info", ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } }, mode: "None" },
-            { name: "extra", ty: { Plaintext: { Struct: { path: ["WidenInput"], program: null } } }, mode: "None" },
-          ],
-          outputs: [
-            { ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } }, mode: "None" },
-          ],
-        },
-      ],
-    }));
+    const consumer = parseAbi(
+      JSON.stringify({
+        program: "consumer.aleo",
+        structs: [
+          { path: ["WidenInput"], fields: [{ name: "n", ty: { Primitive: { UInt: "U64" } } }] },
+        ],
+        records: [],
+        mappings: [],
+        storage_variables: [],
+        transitions: [
+          {
+            name: "submit",
+            is_async: false,
+            inputs: [
+              {
+                name: "info",
+                ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+                mode: "None",
+              },
+              {
+                name: "extra",
+                ty: { Plaintext: { Struct: { path: ["WidenInput"], program: null } } },
+                mode: "None",
+              },
+            ],
+            outputs: [
+              {
+                ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+                mode: "None",
+              },
+            ],
+          },
+        ],
+      }),
+    );
     const consumerOutput = generateBindings(consumer, [consumer, registry]);
     // Import is aliased away from the local `WidenInput` interface…
     expect(consumerOutput).toContain("type WidenInput as WidenInput_");
-    expect(consumerOutput).toContain("export type Registry_TokenInfoInput = WidenInput_<Registry_TokenInfo>;");
+    expect(consumerOutput).toContain(
+      "export type Registry_TokenInfoInput = WidenInput_<Registry_TokenInfo>;",
+    );
     expect(consumerOutput).toContain("export interface WidenInput {");
     expectModulesToTypecheck({
       Registry: generateBindings(registry, [registry, consumer]),

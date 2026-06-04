@@ -3,9 +3,10 @@
 //   1. new() returns an empty Board
 //   2. make_move() chains nested struct outputs back as inputs
 //   3. A 3-move row-1 sweep by player 1 ends with winner = 1
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
-import { createTictactoe, type Board } from "../typechain/Tictactoe.js";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type Board, createTictactoe } from "../typechain/Tictactoe.js";
 
 const EMPTY_BOARD: Board = {
   r1: { c1: 0, c2: 0, c3: 0 },
@@ -49,9 +50,15 @@ describe("tictactoe.aleo", () => {
   it("new() returns an empty board (all 0)", async () => {
     const board = await ttt.new.locally();
     const cells = [
-      board.r1.c1, board.r1.c2, board.r1.c3,
-      board.r2.c1, board.r2.c2, board.r2.c3,
-      board.r3.c1, board.r3.c2, board.r3.c3,
+      board.r1.c1,
+      board.r1.c2,
+      board.r1.c3,
+      board.r2.c1,
+      board.r2.c2,
+      board.r2.c3,
+      board.r3.c1,
+      board.r3.c2,
+      board.r3.c3,
     ];
     expect(cells.every((c) => c === 0)).toBe(true);
   });

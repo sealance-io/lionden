@@ -13,21 +13,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenUserConfig } from "@lionden/config";
-import type {
-  LionDenRuntimeEnvironment,
-  LionDenPlugin,
-  TaskDefinition,
-} from "@lionden/core";
-import { resolvePluginOrder, resolveConfig, createLre } from "@lionden/core";
+import type { LionDenPlugin, LionDenRuntimeEnvironment, TaskDefinition } from "@lionden/core";
+import { createLre, resolveConfig, resolvePluginOrder } from "@lionden/core";
 
 let cachedLre: LionDenRuntimeEnvironment | null = null;
 let cachedPromise: Promise<LionDenRuntimeEnvironment> | null = null;
 
-const CONFIG_FILENAMES = [
-  "lionden.config.ts",
-  "lionden.config.js",
-  "lionden.config.mjs",
-];
+const CONFIG_FILENAMES = ["lionden.config.ts", "lionden.config.js", "lionden.config.mjs"];
 
 function findConfigFile(startDir: string): string | null {
   let dir = path.resolve(startDir);
@@ -65,8 +57,7 @@ export async function createTestLre(): Promise<LionDenRuntimeEnvironment> {
 }
 
 async function buildLre(): Promise<LionDenRuntimeEnvironment> {
-  const projectRoot =
-    process.env["LIONDEN_PROJECT_ROOT"] ?? process.cwd();
+  const projectRoot = process.env["LIONDEN_PROJECT_ROOT"] ?? process.cwd();
   const configPath = findConfigFile(projectRoot);
 
   if (!configPath) {

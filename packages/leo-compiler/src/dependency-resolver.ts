@@ -1,6 +1,6 @@
+import { parseImports } from "./import-parser.js";
 import type { DiscoveredUnit } from "./types.js";
 import { unitId } from "./types.js";
-import { parseImports } from "./import-parser.js";
 
 export class CircularDependencyError extends Error {
   constructor(public readonly cycle: string[]) {
@@ -14,7 +14,9 @@ export class MissingDependencyError extends Error {
     public readonly unitId: string,
     public readonly missingDep: string,
   ) {
-    super(`Unit "${unitId}" depends on "${missingDep}" which is not a local project unit and not a known network dependency`);
+    super(
+      `Unit "${unitId}" depends on "${missingDep}" which is not a local project unit and not a known network dependency`,
+    );
     this.name = "MissingDependencyError";
   }
 }

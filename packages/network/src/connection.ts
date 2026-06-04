@@ -5,39 +5,39 @@
  * transaction broadcasting, and to ProgramManager for transaction building.
  */
 
+import * as fs from "node:fs";
 import type {
   AleoNetwork,
   ResolvedSdkKeyCacheConfig,
-  SdkLogLevel,
   RuntimeImportRef,
+  SdkLogLevel,
 } from "@lionden/config";
 import { normalizeRuntimeImportRef } from "@lionden/config";
-import * as fs from "node:fs";
+import {
+  buildRuntimeKeyIdentity,
+  findCachedExecutionKeys,
+  type ProgramExecutionArtifacts,
+  resolveProgramExecutionArtifacts,
+  transitionHasRecordInput,
+  writeCachedExecutionKeys,
+} from "./execution-key-cache.js";
 import type {
   SdkEgressPolicy,
   SdkObjects,
   SdkProgramManagerBase,
   SignerSdkObjects,
 } from "./sdk-adapter.js";
+import { selectMatchingTransition } from "./transition-selector.js";
 import {
-  buildRuntimeKeyIdentity,
-  findCachedExecutionKeys,
-  resolveProgramExecutionArtifacts,
-  transitionHasRecordInput,
-  writeCachedExecutionKeys,
-  type ProgramExecutionArtifacts,
-} from "./execution-key-cache.js";
-import {
-  NetworkConfirmationTimeoutError,
-  TransitionRejectedError,
-  type NetworkConnection,
-  type TransitionCallResult,
   type ConfirmedTransaction,
   type ConfirmedTransitionRecord,
   type ExecuteOptions,
+  NetworkConfirmationTimeoutError,
+  type NetworkConnection,
   type RawTransitionOutput,
+  type TransitionCallResult,
+  TransitionRejectedError,
 } from "./types.js";
-import { selectMatchingTransition } from "./transition-selector.js";
 
 export interface ConnectionOptions {
   type: "devnode" | "http";
@@ -151,9 +151,7 @@ export class AleoConnection implements NetworkConnection {
             body: JSON.stringify({ num_blocks: 1 }),
           });
           if (!response.ok) {
-            throw new Error(
-              `Failed to advance block: ${response.status} ${response.statusText}`,
-            );
+            throw new Error(`Failed to advance block: ${response.status} ${response.statusText}`);
           }
         }
       };
@@ -263,12 +261,8 @@ export class AleoConnection implements NetworkConnection {
 
   async getBalance(address?: string): Promise<bigint> {
     this.assertOpen();
-    const addr = address ?? await this.getDefaultAddress();
-    const value = await this.getMappingValue(
-      "credits.aleo",
-      "account",
-      addr,
-    );
+    const addr = address ?? (await this.getDefaultAddress());
+    const value = await this.getMappingValue("credits.aleo", "account", addr);
     if (value === null) return 0n;
     // Value looks like "123456u64" — strip the suffix
     return BigInt(value.replace(/u\d+$/i, ""));
@@ -294,12 +288,14 @@ export class AleoConnection implements NetworkConnection {
     } catch (err: unknown) {
       // SDK throws on 404 / missing key — treat as null
       const message = err instanceof Error ? err.message : String(err);
-      if (message.includes("404") || message.includes("not found") || message.includes("Not Found")) {
+      if (
+        message.includes("404") ||
+        message.includes("not found") ||
+        message.includes("Not Found")
+      ) {
         return null;
       }
-      throw new Error(
-        `Failed to query mapping ${programId}/${mappingName}: ${message}`,
-      );
+      throw new Error(`Failed to query mapping ${programId}/${mappingName}: ${message}`);
     }
   }
 
@@ -311,8 +307,7 @@ export class AleoConnection implements NetworkConnection {
   ): Promise<TransitionCallResult> {
     this.assertOpen();
     if (this.type === "devnode") {
-      const { checkDevnodeSdkSupport, initConsensusHeights } =
-        await import("./sdk-adapter.js");
+      const { checkDevnodeSdkSupport, initConsensusHeights } = await import("./sdk-adapter.js");
       // Enforce the SDK baseline for devnode operations.
       await checkDevnodeSdkSupport();
       await initConsensusHeights();
@@ -478,7 +473,10 @@ export class AleoConnection implements NetworkConnection {
   private async getPersistentExecutionOptions(
     pm: any,
     programManagerBase: SdkProgramManagerBase,
-    nc: { getProgram(id: string): Promise<string>; getLatestProgramEdition?: (id: string) => Promise<number> },
+    nc: {
+      getProgram(id: string): Promise<string>;
+      getLatestProgramEdition?: (id: string) => Promise<number>;
+    },
     programId: string,
     transitionName: string,
     args: string[],
@@ -507,7 +505,8 @@ export class AleoConnection implements NetworkConnection {
       artifacts,
     });
 
-    let keyBytes: { provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array } | undefined = cached;
+    let keyBytes: { provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array } | undefined =
+      cached;
     if (!keyBytes) {
       // Cache miss. Eager synthesis runs the WASM `synthesizeKeyPair`, which
       // takes no query parameter: for a record-consuming transition snarkVM
@@ -544,17 +543,15 @@ export class AleoConnection implements NetworkConnection {
     };
   }
 
-  private async synthesizeAndCacheExecutionKeys(
-    options: {
-      pm: any;
-      programManagerBase: SdkProgramManagerBase;
-      artifacts: ProgramExecutionArtifacts;
-      transitionName: string;
-      args: string[];
-      identity: import("@lionden/core").RuntimeKeyIdentity;
-      sdkMetadata: { sdkVersion?: string; wasmVersion?: string };
-    },
-  ): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
+  private async synthesizeAndCacheExecutionKeys(options: {
+    pm: any;
+    programManagerBase: SdkProgramManagerBase;
+    artifacts: ProgramExecutionArtifacts;
+    transitionName: string;
+    args: string[];
+    identity: import("@lionden/core").RuntimeKeyIdentity;
+    sdkMetadata: { sdkVersion?: string; wasmVersion?: string };
+  }): Promise<{ provingKeyBytes: Uint8Array; verifyingKeyBytes: Uint8Array }> {
     const runtime = await import("./sdk-adapter.js");
     const privateKey = getProgramManagerPrivateKey(options.pm);
     const preparedInputs = prepareExecutionInputs(
@@ -563,16 +560,15 @@ export class AleoConnection implements NetworkConnection {
       options.transitionName,
       options.args,
     );
-    const { provingKeyBytes, verifyingKeyBytes } =
-      await runtime.synthesizeExecutionKeyBytes({
-        programManagerBase: options.programManagerBase,
-        privateKey,
-        source: options.artifacts.source,
-        transitionName: options.transitionName,
-        inputs: preparedInputs,
-        ...(options.artifacts.imports === undefined ? {} : { imports: options.artifacts.imports }),
-        ...(options.identity.edition === undefined ? {} : { edition: options.identity.edition }),
-      });
+    const { provingKeyBytes, verifyingKeyBytes } = await runtime.synthesizeExecutionKeyBytes({
+      programManagerBase: options.programManagerBase,
+      privateKey,
+      source: options.artifacts.source,
+      transitionName: options.transitionName,
+      inputs: preparedInputs,
+      ...(options.artifacts.imports === undefined ? {} : { imports: options.artifacts.imports }),
+      ...(options.identity.edition === undefined ? {} : { edition: options.identity.edition }),
+    });
 
     writeCachedExecutionKeys(
       {
@@ -580,8 +576,12 @@ export class AleoConnection implements NetworkConnection {
         provingKeyBytes,
         verifyingKeyBytes,
         diagnostics: {
-          ...(options.sdkMetadata.sdkVersion === undefined ? {} : { sdkVersion: options.sdkMetadata.sdkVersion }),
-          ...(options.sdkMetadata.wasmVersion === undefined ? {} : { wasmVersion: options.sdkMetadata.wasmVersion }),
+          ...(options.sdkMetadata.sdkVersion === undefined
+            ? {}
+            : { sdkVersion: options.sdkMetadata.sdkVersion }),
+          ...(options.sdkMetadata.wasmVersion === undefined
+            ? {}
+            : { wasmVersion: options.sdkMetadata.wasmVersion }),
         },
       },
       this.keyCache!.path!,
@@ -590,10 +590,7 @@ export class AleoConnection implements NetworkConnection {
     return { provingKeyBytes, verifyingKeyBytes };
   }
 
-  async waitForConfirmation(
-    txId: string,
-    timeout?: number,
-  ): Promise<ConfirmedTransaction> {
+  async waitForConfirmation(txId: string, timeout?: number): Promise<ConfirmedTransaction> {
     this.assertOpen();
     const effectiveTimeout = timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
     const deadline = Date.now() + effectiveTimeout;
@@ -645,12 +642,9 @@ export class AleoConnection implements NetworkConnection {
 
     // In Aleo, rejected transactions are confirmed as fee-only.
     // Accepted: transaction.type is "execute" or "deploy". Rejected: "fee".
-    const txData = confirmedBody["transaction"] as
-      | Record<string, unknown>
-      | undefined;
+    const txData = confirmedBody["transaction"] as Record<string, unknown> | undefined;
     const txType = txData?.["type"] ?? confirmedBody["type"];
-    const status: "accepted" | "rejected" =
-      txType === "fee" ? "rejected" : "accepted";
+    const status: "accepted" | "rejected" = txType === "fee" ? "rejected" : "accepted";
 
     // Parse execute transitions. For fee-only rejected txs, the original
     // execute transitions are not carried by the chain, so transitions: [].
@@ -696,12 +690,8 @@ export class AleoConnection implements NetworkConnection {
         const response = await fetch(blockUrl, { headers: fetchHeaders });
         if (response.ok) {
           const block = (await response.json()) as Record<string, unknown>;
-          const header = block["header"] as
-            | Record<string, unknown>
-            | undefined;
-          const metadata = header?.["metadata"] as
-            | Record<string, unknown>
-            | undefined;
+          const header = block["header"] as Record<string, unknown> | undefined;
+          const metadata = header?.["metadata"] as Record<string, unknown> | undefined;
           const h = metadata?.["height"];
           if (typeof h === "number") {
             blockHeight = h;
@@ -716,10 +706,7 @@ export class AleoConnection implements NetworkConnection {
         }
       } catch (err) {
         // Surface the explicit shape-mismatch immediately; only retry transient errors.
-        if (
-          err instanceof Error &&
-          err.message.includes("missing or non-numeric")
-        ) {
+        if (err instanceof Error && err.message.includes("missing or non-numeric")) {
           throw err;
         }
         // retry on network/parse errors
@@ -766,9 +753,7 @@ export class AleoConnection implements NetworkConnection {
       ) {
         return null;
       }
-      throw new Error(
-        `Failed to fetch program source for "${programId}": ${message}`,
-      );
+      throw new Error(`Failed to fetch program source for "${programId}": ${message}`);
     }
   }
 
@@ -877,13 +862,13 @@ function prepareExecutionInputs(
   args: string[],
 ): string[] {
   if (typeof (pm as { prepareInputs?: unknown }).prepareInputs !== "function") {
-    throw new Error(
-      "Filesystem key-cache synthesis requires SDK ProgramManager.prepareInputs().",
-    );
+    throw new Error("Filesystem key-cache synthesis requires SDK ProgramManager.prepareInputs().");
   }
-  const prepared = (pm as {
-    prepareInputs(source: string, transitionName: string, args: string[]): unknown;
-  }).prepareInputs(source, transitionName, args);
+  const prepared = (
+    pm as {
+      prepareInputs(source: string, transitionName: string, args: string[]): unknown;
+    }
+  ).prepareInputs(source, transitionName, args);
   if (!Array.isArray(prepared)) {
     throw new Error("SDK ProgramManager.prepareInputs() returned a non-array value.");
   }
@@ -974,11 +959,7 @@ function parseConfirmedTransitions(
   return rawTransitions.map((entry, index) => parseTransition(entry, txId, index));
 }
 
-function parseTransition(
-  entry: unknown,
-  txId: string,
-  index: number,
-): ConfirmedTransitionRecord {
+function parseTransition(entry: unknown, txId: string, index: number): ConfirmedTransitionRecord {
   const path = `transaction.execution.transitions[${index}]`;
   if (typeof entry !== "object" || entry === null) {
     throw new TransactionShapeParseError(
@@ -1033,7 +1014,7 @@ function parseTransition(
       );
     }
     const outputObject = output as Record<string, unknown>;
-    if (!Object.prototype.hasOwnProperty.call(outputObject, "value")) {
+    if (!Object.hasOwn(outputObject, "value")) {
       const id = outputObject["id"];
       if (typeof id !== "string" || id.length === 0) {
         throw new TransactionShapeParseError(

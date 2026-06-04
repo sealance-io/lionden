@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DiscoveredUnit, DiscoveredProgram, DiscoveredLibrary } from "./types.js";
+import type { DiscoveredLibrary, DiscoveredProgram, DiscoveredUnit } from "./types.js";
 
 /**
  * Recursively scan `programsDir` for Leo program roots (main.leo) and
@@ -57,10 +57,7 @@ export function extractProgramId(mainLeoPath: string): string | null {
   return match ? match[1]! : null;
 }
 
-function discoverProgram(
-  sourceDir: string,
-  entryFile: string,
-): DiscoveredProgram | null {
+function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgram | null {
   const programId = extractProgramId(entryFile);
   if (!programId) return null;
 
@@ -73,11 +70,7 @@ function discoverProgram(
   };
 }
 
-function discoverLibrary(
-  sourceDir: string,
-  entryFile: string,
-  dirName: string,
-): DiscoveredLibrary {
+function discoverLibrary(sourceDir: string, entryFile: string, dirName: string): DiscoveredLibrary {
   return {
     kind: "library",
     name: dirName,

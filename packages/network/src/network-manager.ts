@@ -7,29 +7,32 @@
 
 import type {
   LionDenResolvedConfig,
+  NamedAccounts,
   ResolvedNetworkConfig,
   ResolvedSdkEgressConfig,
-  NamedAccounts,
 } from "@lionden/config";
-import type {
-  NetworkManager,
-  NetworkConnection,
-  DevnodeAccount,
-  TransitionCallResult,
-  ExecuteOptions,
-} from "./types.js";
-import { AleoConnection } from "./connection.js";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
+import { AleoConnection } from "./connection.js";
 import { NamedAccountManager } from "./named-account-manager.js";
 import type { SdkEgressPolicy } from "./sdk-adapter.js";
+import type {
+  DevnodeAccount,
+  ExecuteOptions,
+  NetworkConnection,
+  NetworkManager,
+  TransitionCallResult,
+} from "./types.js";
 
 function resolveEgressPolicy(
   endpoint: string,
   override?: ResolvedSdkEgressConfig,
 ): SdkEgressPolicy {
   const endpointHost = (() => {
-    try { return new URL(endpoint).host; }
-    catch { return ""; }
+    try {
+      return new URL(endpoint).host;
+    } catch {
+      return "";
+    }
   })();
 
   const networkHosts = new Set<string>(endpointHost ? [endpointHost] : []);
@@ -178,10 +181,7 @@ export class NetworkManagerImpl implements NetworkManager {
     return this.activeConnection;
   }
 
-  private createConnection(
-    name: string,
-    config: ResolvedNetworkConfig,
-  ): NetworkConnection {
+  private createConnection(name: string, config: ResolvedNetworkConfig): NetworkConnection {
     const egressOverride = this.config.sdk.egress;
     switch (config.type) {
       case "devnode": {

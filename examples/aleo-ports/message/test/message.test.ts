@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createMessageContract } from "../typechain/Message.js";
 
 async function deployMessage() {
@@ -36,14 +36,18 @@ describe("message.aleo", () => {
   });
 
   it("main returns first + second", async () => {
-    expect(await message.main.locally({
-      m: { first: 2n, second: 3n },
-    })).toBe("5field");
+    expect(
+      await message.main.locally({
+        m: { first: 2n, second: 3n },
+      }),
+    ).toBe("5field");
   });
 
   it("handles zero values", async () => {
-    expect(await message.main.locally({
-      m: { first: 0n, second: 0n },
-    })).toBe("0field");
+    expect(
+      await message.main.locally({
+        m: { first: 0n, second: 0n },
+      }),
+    ).toBe("0field");
   });
 });

@@ -1,9 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import {
-  configVariable,
-  isConfigVariable,
-  resolveConfigVariable,
-} from "./config-variable.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { configVariable, isConfigVariable, resolveConfigVariable } from "./config-variable.js";
 
 describe("configVariable", () => {
   it("creates a ConfigVariable object", () => {

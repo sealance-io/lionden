@@ -14,8 +14,9 @@
 
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
-import * as path from "node:path";
 import { createRequire } from "node:module";
+import * as path from "node:path";
+import type { AleoNetwork, ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
 import {
   CREDITS_KEY_CACHE_FORMAT,
   fingerprintBytes,
@@ -24,10 +25,9 @@ import {
   readCreditsKeyCacheMetadata,
   writeCreditsKeyCacheMetadata,
 } from "@lionden/core";
-import type { AleoNetwork, ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
-import { Address } from "@provablehq/sdk/testnet.js";
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 import type { TransportFunction } from "@provablehq/sdk/testnet.js";
+import { Address } from "@provablehq/sdk/testnet.js";
 
 // ---------------------------------------------------------------------------
 // SDK types
@@ -374,9 +374,7 @@ export interface CreateSdkObjectsOptions {
  * Create SDK objects for a given network and endpoint.
  * Validates that required devnode methods exist (version guard).
  */
-export async function createSdkObjects(
-  opts: CreateSdkObjectsOptions,
-): Promise<SdkObjects> {
+export async function createSdkObjects(opts: CreateSdkObjectsOptions): Promise<SdkObjects> {
   assertValidEndpoint(opts.endpoint, "createSdkObjects");
 
   await initSdk();
@@ -409,9 +407,10 @@ export async function createSdkObjects(
       opts.egressPolicy.violation,
     );
 
-    const networkClientOptions: { headers?: Record<string, string>; transport: TransportFunction } = {
-      transport: networkTransport,
-    };
+    const networkClientOptions: { headers?: Record<string, string>; transport: TransportFunction } =
+      {
+        transport: networkTransport,
+      };
     if (opts.apiKey) {
       networkClientOptions.headers = { Authorization: `Bearer ${opts.apiKey}` };
     }
@@ -532,13 +531,15 @@ function creditsEntryFromFunctionKeysParams(
   params: SdkKeySearchParams | undefined,
 ): string | undefined {
   if (!params || typeof params !== "object") return undefined;
-  const credits = (sdk as unknown as {
-    CREDITS_PROGRAM_KEYS: Record<string, { locator: string; prover: string; verifier: string }>;
-  }).CREDITS_PROGRAM_KEYS;
+  const credits = (
+    sdk as unknown as {
+      CREDITS_PROGRAM_KEYS: Record<string, { locator: string; prover: string; verifier: string }>;
+    }
+  ).CREDITS_PROGRAM_KEYS;
   const p = params as Record<string, unknown>;
 
   const name = typeof p.name === "string" ? p.name : undefined;
-  if (name && Object.prototype.hasOwnProperty.call(credits, name) && name !== "getKey") {
+  if (name && Object.hasOwn(credits, name) && name !== "getKey") {
     return name;
   }
 
@@ -547,7 +548,7 @@ function creditsEntryFromFunctionKeysParams(
     const prefix = "credits.aleo/";
     if (cacheKey.startsWith(prefix)) {
       const entry = cacheKey.slice(prefix.length);
-      if (Object.prototype.hasOwnProperty.call(credits, entry) && entry !== "getKey") {
+      if (Object.hasOwn(credits, entry) && entry !== "getKey") {
         return entry;
       }
     }
@@ -701,14 +702,13 @@ export class PersistentFunctionKeyProvider implements SdkFunctionKeyProvider {
    * parameters host. Performance-only — hermeticity comes from the
    * SDK egress policy, not from caching.
    */
-  private persistCreditsIfMissing(
-    name: CreditsKeyName | string,
-    provingKey: unknown,
-  ): void {
+  private persistCreditsIfMissing(name: CreditsKeyName | string, provingKey: unknown): void {
     const config = this.creditsPersistence;
     if (!config) return;
     try {
-      const credits = (config.sdk as unknown as { CREDITS_PROGRAM_KEYS: Record<string, { locator: string }> }).CREDITS_PROGRAM_KEYS;
+      const credits = (
+        config.sdk as unknown as { CREDITS_PROGRAM_KEYS: Record<string, { locator: string }> }
+      ).CREDITS_PROGRAM_KEYS;
       const locator = credits[name]?.locator;
       if (!locator) return;
       const paths = creditsCachePaths(config.cachePath, config.wasmHash, config.network, locator);
@@ -756,9 +756,11 @@ export async function warmupCreditsKeys(
   network: AleoNetwork,
   wasmHash: string,
 ): Promise<void> {
-  const credits = (sdk as unknown as {
-    CREDITS_PROGRAM_KEYS: Record<string, unknown>;
-  }).CREDITS_PROGRAM_KEYS;
+  const credits = (
+    sdk as unknown as {
+      CREDITS_PROGRAM_KEYS: Record<string, unknown>;
+    }
+  ).CREDITS_PROGRAM_KEYS;
 
   for (const [name, value] of Object.entries(credits)) {
     if (!isWarmableCreditsEntry(value)) continue;
@@ -778,10 +780,9 @@ export async function warmupCreditsKeys(
 
       const provingKey = sdk.ProvingKey.fromBytes(bytes);
       const verifyingKey = key.verifyingKey();
-      keyProvider.cacheKeys(
-        key.locator,
-        [provingKey, verifyingKey] as Parameters<SdkFunctionKeyProvider["cacheKeys"]>[1],
-      );
+      keyProvider.cacheKeys(key.locator, [provingKey, verifyingKey] as Parameters<
+        SdkFunctionKeyProvider["cacheKeys"]
+      >[1]);
     } catch (err) {
       console.debug(
         `LionDen: skipping credits.aleo/${name} warmup: ${
@@ -896,7 +897,9 @@ export function getSdkRuntimeMetadata(network: AleoNetwork): SdkRuntimeMetadata 
   const wasmPath = resolveWasmArtifactPath(network);
   return {
     sdkVersion: readPackageVersion(resolvePackageRoot("@provablehq/sdk/testnet.js")),
-    wasmVersion: readPackageVersion(resolvePackageRoot(`@provablehq/wasm/${normalizeSdkNetwork(network)}.js`)),
+    wasmVersion: readPackageVersion(
+      resolvePackageRoot(`@provablehq/wasm/${normalizeSdkNetwork(network)}.js`),
+    ),
     wasmHash: crypto.createHash("sha256").update(fs.readFileSync(wasmPath)).digest("hex"),
   };
 }
@@ -914,13 +917,8 @@ export async function createSignerSdkObjects(
 
   const sdk = await loadSdkModule(opts.network);
   applySdkLogLevel(sdk, opts.logLevel);
-  const {
-    Account,
-    AleoNetworkClient,
-    NetworkRecordProvider,
-    ProgramManager,
-    ProgramManagerBase,
-  } = sdk;
+  const { Account, AleoNetworkClient, NetworkRecordProvider, ProgramManager, ProgramManagerBase } =
+    sdk;
 
   const account = new Account({ privateKey: opts.privateKey });
 
@@ -1039,9 +1037,7 @@ export async function initConsensusHeights(): Promise<void> {
 }
 
 function resolveWasmArtifactPath(network: AleoNetwork): string {
-  const modulePath = requireFromHere.resolve(
-    `@provablehq/wasm/${normalizeSdkNetwork(network)}.js`,
-  );
+  const modulePath = requireFromHere.resolve(`@provablehq/wasm/${normalizeSdkNetwork(network)}.js`);
   return path.join(path.dirname(modulePath), "aleo_wasm.wasm");
 }
 
@@ -1063,9 +1059,9 @@ function resolvePackageRoot(specifier: string): string | undefined {
 function readPackageVersion(packageRoot: string | undefined): string | undefined {
   if (!packageRoot) return undefined;
   try {
-    const raw = JSON.parse(
-      fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8"),
-    ) as { version?: unknown };
+    const raw = JSON.parse(fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8")) as {
+      version?: unknown;
+    };
     return typeof raw.version === "string" ? raw.version : undefined;
   } catch {
     return undefined;
@@ -1119,10 +1115,7 @@ export async function decryptRecordCiphertext(
 ): Promise<string> {
   const prefix = typeof ciphertext === "string" ? ciphertext.slice(0, 16) : "(non-string)";
   if (typeof ciphertext !== "string" || ciphertext.length === 0) {
-    throw new NetworkRecordDecryptionError(
-      "Record ciphertext must be a non-empty string.",
-      prefix,
-    );
+    throw new NetworkRecordDecryptionError("Record ciphertext must be a non-empty string.", prefix);
   }
   if (!ciphertext.startsWith("record1")) {
     throw new NetworkRecordDecryptionError(
@@ -1132,7 +1125,7 @@ export async function decryptRecordCiphertext(
   }
   if (typeof viewKey !== "string" || !viewKey.startsWith("AViewKey1")) {
     throw new NetworkRecordDecryptionError(
-      "View key must be a string starting with \"AViewKey1\". To pass a private key, call deriveViewKey() first.",
+      'View key must be a string starting with "AViewKey1". To pass a private key, call deriveViewKey() first.',
       prefix,
     );
   }
@@ -1193,10 +1186,7 @@ export async function decryptValueCiphertext(
 ): Promise<string> {
   const prefix = typeof ciphertext === "string" ? ciphertext.slice(0, 16) : "(non-string)";
   if (typeof ciphertext !== "string" || ciphertext.length === 0) {
-    throw new NetworkValueDecryptionError(
-      "Value ciphertext must be a non-empty string.",
-      prefix,
-    );
+    throw new NetworkValueDecryptionError("Value ciphertext must be a non-empty string.", prefix);
   }
   if (!ciphertext.startsWith("ciphertext1")) {
     throw new NetworkValueDecryptionError(
@@ -1206,7 +1196,7 @@ export async function decryptValueCiphertext(
   }
   if (typeof viewKey !== "string" || !viewKey.startsWith("AViewKey1")) {
     throw new NetworkValueDecryptionError(
-      "View key must be a string starting with \"AViewKey1\". To pass a private key, call deriveViewKey() first.",
+      'View key must be a string starting with "AViewKey1". To pass a private key, call deriveViewKey() first.',
       prefix,
     );
   }
@@ -1223,7 +1213,13 @@ export async function decryptValueCiphertext(
     const vk = sdk.ViewKey.from_string(viewKey);
     const tpkGroup = sdk.Group.fromString(tpk);
     const ct = sdk.Ciphertext.fromString(ciphertext);
-    const plaintext = ct.decryptWithTransitionInfo(vk, tpkGroup, programId, transitionName, globalIndex);
+    const plaintext = ct.decryptWithTransitionInfo(
+      vk,
+      tpkGroup,
+      programId,
+      transitionName,
+      globalIndex,
+    );
     return plaintext.toString();
   } catch (cause: unknown) {
     if (cause instanceof NetworkValueDecryptionError) throw cause;
@@ -1240,13 +1236,10 @@ export async function decryptValueCiphertext(
  * Derive a view key string (`AViewKey1...`) from a private key string
  * (`APrivateKey1...`). Used by callers that pass private keys to decrypt.
  */
-export async function deriveViewKey(
-  privateKey: string,
-  options?: DecryptOptions,
-): Promise<string> {
+export async function deriveViewKey(privateKey: string, options?: DecryptOptions): Promise<string> {
   if (typeof privateKey !== "string" || !privateKey.startsWith("APrivateKey1")) {
     throw new NetworkRecordDecryptionError(
-      "Private key must be a string starting with \"APrivateKey1\".",
+      'Private key must be a string starting with "APrivateKey1".',
       typeof privateKey === "string" ? privateKey.slice(0, 16) : "(non-string)",
     );
   }

@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,20 +18,16 @@ const LEO_4_0_BINARY_ENV = "LIONDEN_LEO_4_0_BINARY";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 
-const {
-  listOnly,
-  typecheck,
-  prove,
-  groups,
-  leo40Binary,
-} = parseArgs(process.argv.slice(2));
+const { listOnly, typecheck, prove, groups, leo40Binary } = parseArgs(process.argv.slice(2));
 const requestedGroups = groups.length > 0 ? groups : ["core"];
 if (leo40Binary) {
   process.env[LEO_4_0_BINARY_ENV] = leo40Binary;
 }
 
 function usage() {
-  console.error("Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--leo-4-binary <path>] [core] [aleo-ports] [all]");
+  console.error(
+    "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--leo-4-binary <path>] [core] [aleo-ports] [all]",
+  );
 }
 
 function parseArgs(args) {
@@ -133,8 +129,8 @@ if (listOnly) {
 if (configs.some(isAleoPortConfig) && !process.env[LEO_4_0_BINARY_ENV]) {
   console.warn(
     `\n[smoke] aleo-ports configs are pinned to leoVersion 4.0.0. ` +
-    `If "leo" on PATH is not 4.0.x, rerun with --leo-4-binary <path> ` +
-    `or set ${LEO_4_0_BINARY_ENV}.`,
+      `If "leo" on PATH is not 4.0.x, rerun with --leo-4-binary <path> ` +
+      `or set ${LEO_4_0_BINARY_ENV}.`,
   );
 }
 

@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NetworkManagerImpl } from "./network-manager.js";
 import type { LionDenResolvedConfig, ResolvedNamedAccountsConfig } from "@lionden/config";
-import type { NetworkConnection } from "./types.js";
+import { beforeEach, describe, expect, it } from "vitest";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
+import { NetworkManagerImpl } from "./network-manager.js";
 
 const mockConfig: LionDenResolvedConfig = {
   leoVersion: "4.0.0",
@@ -92,9 +91,7 @@ describe("NetworkManagerImpl", () => {
   });
 
   it("connect throws for unknown network", async () => {
-    await expect(manager.connect("nonexistent")).rejects.toThrow(
-      'Network "nonexistent" not found',
-    );
+    await expect(manager.connect("nonexistent")).rejects.toThrow('Network "nonexistent" not found');
   });
 
   it("connect reuses existing connection", async () => {
@@ -129,15 +126,15 @@ describe("NetworkManagerImpl", () => {
   });
 
   it("execute throws when not connected", async () => {
-    await expect(
-      manager.execute("test.aleo", "foo", []),
-    ).rejects.toThrow("No active network connection");
+    await expect(manager.execute("test.aleo", "foo", [])).rejects.toThrow(
+      "No active network connection",
+    );
   });
 
   it("getMappingValue throws when not connected", async () => {
-    await expect(
-      manager.getMappingValue("test.aleo", "map", "key"),
-    ).rejects.toThrow("No active network connection");
+    await expect(manager.getMappingValue("test.aleo", "map", "key")).rejects.toThrow(
+      "No active network connection",
+    );
   });
 
   it("devnode connection has advanceBlocks method", async () => {
@@ -153,11 +150,9 @@ describe("NetworkManagerImpl", () => {
 
   it("devnode connection falls back to well-known account-0 when no accounts configured", async () => {
     // mockConfig has accounts: [] for devnode
-    const conn = await manager.connect("devnode") as any;
+    const conn = (await manager.connect("devnode")) as any;
     // The AleoConnection stores privateKey — verify it was set
-    expect(conn.privateKey).toBe(
-      "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
-    );
+    expect(conn.privateKey).toBe("APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
   });
 
   it("threads projectRoot and executionImports into devnode and http connections", async () => {
@@ -165,19 +160,17 @@ describe("NetworkManagerImpl", () => {
       ...mockConfig,
       execution: {
         imports: {
-          "governance.aleo": [
-            { kind: "programId" as const, programId: "voting_power.aleo" },
-          ],
+          "governance.aleo": [{ kind: "programId" as const, programId: "voting_power.aleo" }],
         },
       },
     };
     const mgr = new NetworkManagerImpl(importsConfig);
 
-    const devnodeConn = await mgr.connect("devnode") as any;
+    const devnodeConn = (await mgr.connect("devnode")) as any;
     expect(devnodeConn.projectRoot).toBe(mockConfig.paths.root);
     expect(devnodeConn.executionImports).toEqual(importsConfig.execution.imports);
 
-    const httpConn = await mgr.connect("testnet") as any;
+    const httpConn = (await mgr.connect("testnet")) as any;
     expect(httpConn.projectRoot).toBe(mockConfig.paths.root);
     expect(httpConn.executionImports).toEqual(importsConfig.execution.imports);
   });
@@ -205,7 +198,7 @@ describe("NetworkManagerImpl", () => {
       },
     };
     const mgr = new NetworkManagerImpl(configWithAccount as LionDenResolvedConfig);
-    const conn = await mgr.connect("devnode") as any;
+    const conn = (await mgr.connect("devnode")) as any;
     expect(conn.privateKey).toBe("APrivateKey1zkpCustomKey123");
   });
 });
@@ -226,9 +219,7 @@ describe("NetworkManagerImpl — egress policy defaults", () => {
     const mgr = new NetworkManagerImpl(mockConfig);
     const conn = await mgr.connect("testnet");
     expect(conn.egressPolicy.violation).toBe("block");
-    expect([...conn.egressPolicy.allowedNetworkHosts]).toEqual([
-      "api.explorer.provable.com",
-    ]);
+    expect([...conn.egressPolicy.allowedNetworkHosts]).toEqual(["api.explorer.provable.com"]);
   });
 
   it("sdk.egress.networkHosts override EXTENDS the per-connection network host list", async () => {

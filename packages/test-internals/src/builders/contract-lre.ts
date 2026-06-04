@@ -1,17 +1,11 @@
-import { createLre, task } from "@lionden/core";
-import type {
-  LionDenPlugin,
-  LionDenRuntimeEnvironment,
-} from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
-import { createMockConfig } from "../mock-config.js";
-import {
-  FakeNetworkConnection,
-  FakeNetworkManager,
-} from "../fakes/fake-network.js";
+import type { LionDenPlugin, LionDenRuntimeEnvironment } from "@lionden/core";
+import { createLre, task } from "@lionden/core";
 import type { FakeNetworkOptions } from "../fakes/fake-network.js";
-import { TempProjectBuilder } from "./temp-project.js";
+import { FakeNetworkConnection, FakeNetworkManager } from "../fakes/fake-network.js";
+import { createMockConfig } from "../mock-config.js";
 import type { TempProject } from "./temp-project.js";
+import { TempProjectBuilder } from "./temp-project.js";
 
 // ---------------------------------------------------------------------------
 // Options
@@ -63,9 +57,7 @@ export interface ContractLreResult {
  * `createLre()` into a single call. Module-level `vi.mock()` statements
  * remain the test file's responsibility — this helper handles wiring only.
  */
-export function createContractLre(
-  options: ContractLreOptions = {},
-): ContractLreResult {
+export function createContractLre(options: ContractLreOptions = {}): ContractLreResult {
   const {
     plugins: userPlugins = [],
     configOverrides,
@@ -117,8 +109,7 @@ export function createContractLre(
   }
 
   if (withNetwork) {
-    const networkOpts =
-      typeof withNetwork === "object" ? withNetwork : undefined;
+    const networkOpts = typeof withNetwork === "object" ? withNetwork : undefined;
     const conn = new FakeNetworkConnection(networkOpts);
     const manager = new FakeNetworkManager({ connection: conn });
     fakeNetwork = conn;

@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
 import { createMockConnection } from "@lionden/test-internals";
+import { describe, expect, it, vi } from "vitest";
 import {
   checkProgramOnChain,
-  parseEditionFromSource,
   createDegradedRecord,
   fetchImportSources,
+  parseEditionFromSource,
 } from "./on-chain-check.js";
 
 // ---------------------------------------------------------------------------

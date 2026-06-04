@@ -7,13 +7,13 @@
  */
 
 import type {
-  ResolvedNamedAccountsConfig,
-  NamedAccounts,
-  NamedAccount,
-  SignableNamedAccount,
   AddressOnlyNamedAccount,
+  AleoNetwork,
+  NamedAccount,
+  NamedAccounts,
+  ResolvedNamedAccountsConfig,
+  SignableNamedAccount,
 } from "@lionden/config";
-import type { AleoNetwork } from "@lionden/config";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
 import type { SdkEgressPolicy } from "./sdk-adapter.js";
 
@@ -47,9 +47,7 @@ export class NamedAccountManager {
    * Results are cached per network name and returned from cache on repeated calls.
    * Cache is cleared by `invalidate()` (called from `NetworkManagerImpl.disconnectAll()`).
    */
-  async resolveForNetwork(
-    opts: ResolveForNetworkOptions,
-  ): Promise<NamedAccounts> {
+  async resolveForNetwork(opts: ResolveForNetworkOptions): Promise<NamedAccounts> {
     const { networkName } = opts;
 
     const cached = this.cache.get(networkName);
@@ -62,9 +60,7 @@ export class NamedAccountManager {
     for (const [accountName, entry] of Object.entries(this.config)) {
       // Pick value: network-specific override if present, else default, else error
       const value =
-        entry.networks[networkName] !== undefined
-          ? entry.networks[networkName]
-          : entry.default;
+        entry.networks[networkName] !== undefined ? entry.networks[networkName] : entry.default;
 
       if (value === undefined) {
         throw new Error(

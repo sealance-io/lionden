@@ -1,8 +1,8 @@
-import { describe, it, expect, afterEach } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { TempProjectBuilder } from "./temp-project.js";
+import { afterEach, describe, expect, it } from "vitest";
 import type { TempProject } from "./temp-project.js";
+import { TempProjectBuilder } from "./temp-project.js";
 
 describe("TempProjectBuilder", () => {
   let project: TempProject | undefined;
@@ -61,9 +61,7 @@ describe("TempProjectBuilder", () => {
 
   it("addProgram with explicit source writes it verbatim", () => {
     const customSource = "program custom.aleo {\n  transition foo() {}\n}\n";
-    project = new TempProjectBuilder()
-      .addProgram("custom", customSource)
-      .build();
+    project = new TempProjectBuilder().addProgram("custom", customSource).build();
 
     const mainLeo = path.join(project.programsDir, "custom", "main.leo");
     const source = fs.readFileSync(mainLeo, "utf-8");
@@ -94,9 +92,7 @@ describe("TempProjectBuilder", () => {
   });
 
   it("addProgramWithImports with empty annotation produces no constructor", () => {
-    project = new TempProjectBuilder()
-      .addProgramWithImports("bare", [], "")
-      .build();
+    project = new TempProjectBuilder().addProgramWithImports("bare", [], "").build();
 
     const mainLeo = path.join(project.programsDir, "bare", "main.leo");
     const source = fs.readFileSync(mainLeo, "utf-8");

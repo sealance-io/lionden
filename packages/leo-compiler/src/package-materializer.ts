@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
-import type { DiscoveredUnit, DiscoveredProgram, DiscoveredLibrary } from "./types.js";
-import { unitId } from "./types.js";
 import type { DependencyGraph } from "./dependency-resolver.js";
+import type { DiscoveredLibrary, DiscoveredProgram, DiscoveredUnit } from "./types.js";
+import { unitId } from "./types.js";
 
 /**
  * Materialize a Leo CLI package for a discovered unit under
@@ -78,9 +78,10 @@ function buildProgramJson(
 
   // Leo CLI expects the program field to use the .aleo suffix for both
   // programs and libraries (matching import syntax, e.g. "math_utils.aleo").
-  const programName = unit.kind === "program"
-    ? (unit as DiscoveredProgram).programId
-    : `${(unit as DiscoveredLibrary).name}.aleo`;
+  const programName =
+    unit.kind === "program"
+      ? (unit as DiscoveredProgram).programId
+      : `${(unit as DiscoveredLibrary).name}.aleo`;
 
   const dependencies: LeoDepEntry[] = [];
 
@@ -150,7 +151,10 @@ export function linkLocalDependency(
 
   const aleoFile = path.join(depArtifactDir, "main.aleo");
   if (fs.existsSync(aleoFile)) {
-    fs.copyFileSync(aleoFile, path.join(importsDir, depName.endsWith(".aleo") ? depName : `${depName}.aleo`));
+    fs.copyFileSync(
+      aleoFile,
+      path.join(importsDir, depName.endsWith(".aleo") ? depName : `${depName}.aleo`),
+    );
   }
 }
 

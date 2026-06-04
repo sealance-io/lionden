@@ -94,8 +94,7 @@ function standaloneBackend(command: string): DevnodeBackend {
 export async function resolveDevnodeBackend(
   options: ResolveDevnodeBackendOptions = {},
 ): Promise<DevnodeBackend> {
-  const { provider, leoBinary, binary, network, consensusHeights, requiresPersistence } =
-    options;
+  const { provider, leoBinary, binary, network, consensusHeights, requiresPersistence } = options;
 
   const explicitBinary = binary !== undefined;
   const standaloneBinary = binary ?? DEFAULT_STANDALONE_BINARY;
@@ -124,11 +123,11 @@ export async function resolveDevnodeBackend(
       throw new Error(
         explicitBinary
           ? `Configured devnode binary "${standaloneBinary}" could not be executed ` +
-            `("${standaloneBinary} --version" failed). Ensure the standalone aleo-devnode ` +
-            `binary is installed and on PATH.`
+              `("${standaloneBinary} --version" failed). Ensure the standalone aleo-devnode ` +
+              `binary is installed and on PATH.`
           : `Devnode persistence/snapshot features require the standalone "aleo-devnode" ` +
-            `binary, but it could not be found on PATH. Install aleo-devnode or remove the ` +
-            `persistence option.`,
+              `binary, but it could not be found on PATH. Install aleo-devnode or remove the ` +
+              `persistence option.`,
       );
     }
     assertStandaloneNetwork(network, consensusHeights);

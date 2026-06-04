@@ -1,47 +1,31 @@
-/**
- * Deploy task implementation.
- *
- * Deploys compiled Aleo programs to the target network with ARC-0006
- * constructor enforcement. Libraries are excluded (they are compile-only).
- *
- * When --program is specified, transitive local dependencies are included
- * and deployed first in topological order.
- */
-
-import * as fs from "node:fs";
-import * as path from "node:path";
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import type {
   ResolvedNetworkConfig,
   ResolvedSdkKeyCacheConfig,
   SdkLogLevel,
 } from "@lionden/config";
 import { isSignable } from "@lionden/config";
-import type {
-  NetworkManager,
-  NetworkConnection,
-  SdkEgressPolicy,
-} from "@lionden/network";
+import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import {
   computeAbiHash,
-  discoverUnits,
-  resolveDependencies,
-  type DiscoveredProgram,
   type DependencyGraph,
+  type DiscoveredProgram,
+  discoverUnits,
   type ProgramABI,
+  resolveDependencies,
 } from "@lionden/leo-compiler";
+import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
 import {
-  parseConstructor,
-  isValidAleoAddress,
-  extractConstructorFingerprint,
   type ConstructorInfo,
+  extractConstructorFingerprint,
+  isValidAleoAddress,
+  parseConstructor,
 } from "./constructor-parser.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { CompleteDeploymentRecord, PendingDeployment } from "./deployment-types.js";
-import { runDeployPreflight, type DeployPreflightResult } from "./preflight.js";
-import { createDegradedRecord } from "./on-chain-check.js";
 import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
+import { createDegradedRecord } from "./on-chain-check.js";
+import { type DeployPreflightResult, runDeployPreflight } from "./preflight.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -125,9 +109,7 @@ export async function deployAction(
 
   // 2. Discover all units for source-dir mapping and dependency ordering
   const discovered = discoverUnits(programsDir);
-  const programs = discovered.filter(
-    (u): u is DiscoveredProgram => u.kind === "program",
-  );
+  const programs = discovered.filter((u): u is DiscoveredProgram => u.kind === "program");
   const programMap = new Map(programs.map((p) => [p.programId, p]));
   const graph = resolveDependencies(discovered);
 
@@ -137,23 +119,14 @@ export async function deployAction(
   // per program rather than throwing here before any structured result is produced.
   // In normal (deploy/dry-run) mode, only compiled IDs are valid targets.
   const compiledIds = lre.artifacts.getProgramIds();
-  const candidateIds = options.preflight
-    ? programs.map((p) => p.programId)
-    : compiledIds;
+  const candidateIds = options.preflight ? programs.map((p) => p.programId) : compiledIds;
 
   if (!options.preflight && compiledIds.length === 0) {
-    throw new DeployError(
-      "No compiled programs found. Run `lionden compile` first.",
-    );
+    throw new DeployError("No compiled programs found. Run `lionden compile` first.");
   }
 
   // 4. Resolve deploy targets in topological order (deps first)
-  const targetIds = resolveDeployTargets(
-    candidateIds,
-    programMap,
-    graph,
-    options.program,
-  );
+  const targetIds = resolveDeployTargets(candidateIds, programMap, graph, options.program);
 
   // 5. Connect to network
   const networkName = options.network ?? config.defaultNetwork;
@@ -214,7 +187,7 @@ export async function deployAction(
     // HTTP: use async getDeployment() to load validated disk state on a cold-cache process.
     const existingRecord = manager
       ? connection.type === "devnode"
-        ? manager.getCached(programId, networkName) ?? null
+        ? (manager.getCached(programId, networkName) ?? null)
         : await manager.getDeployment(programId, networkName)
       : null;
     preflightPrograms.push({ programId, constructor, aleoSource, existingRecord });
@@ -246,9 +219,7 @@ export async function deployAction(
     const errorMessages = preflightResult.errors
       .map((e) => `  [${e.code}] ${e.message}`)
       .join("\n");
-    throw new DeployError(
-      `Pre-flight validation failed:\n${errorMessages}`,
-    );
+    throw new DeployError(`Pre-flight validation failed:\n${errorMessages}`);
   }
 
   // 12. Filter to programs that need deploying from preflight outcomes
@@ -298,11 +269,7 @@ export async function deployAction(
   // Runs AFTER dry-run check so dry-run never writes deployment state.
   if (manager) {
     for (const outcome of preflightResult.programs) {
-      if (
-        outcome.action === "skip" &&
-        outcome.reason === "already-deployed" &&
-        !outcome.record
-      ) {
+      if (outcome.action === "skip" && outcome.reason === "already-deployed" && !outcome.record) {
         // Fetch source for degraded record creation
         const source = await connection.getProgramSource(outcome.programId);
         if (source) {
@@ -352,7 +319,11 @@ export async function deployAction(
     const abiHash = computeAbiHash(abi);
 
     // Derive deployer address from connection (prefer namedAccounts.deployer key)
-    const deployerAddress = await resolveDeployerAddress(connection, networkConfig, deployerSignerKey);
+    const deployerAddress = await resolveDeployerAddress(
+      connection,
+      networkConfig,
+      deployerSignerKey,
+    );
 
     // Before broadcast: write pending marker
     if (manager) {
@@ -504,14 +475,11 @@ export function resolveDeployTargets(
   }
 
   // Normalize: add .aleo suffix if missing
-  const normalized = targetProgram.endsWith(".aleo")
-    ? targetProgram
-    : `${targetProgram}.aleo`;
+  const normalized = targetProgram.endsWith(".aleo") ? targetProgram : `${targetProgram}.aleo`;
 
   if (!compiledIds.includes(normalized)) {
     throw new DeployError(
-      `Program "${targetProgram}" not found. ` +
-        `Available: ${compiledIds.join(", ") || "none"}`,
+      `Program "${targetProgram}" not found. ` + `Available: ${compiledIds.join(", ") || "none"}`,
     );
   }
 
@@ -564,10 +532,7 @@ function collectTransitiveProgramDeps(
  * - @checksum must specify a mapping reference and key
  * - @custom triggers a warning about on-chain evaluation
  */
-export function validateConstructor(
-  constructor: ConstructorInfo | null,
-  programId: string,
-): void {
+export function validateConstructor(constructor: ConstructorInfo | null, programId: string): void {
   if (!constructor) {
     throw new DeployError(
       `Program "${programId}" has no constructor annotation.\n\n` +
@@ -649,9 +614,7 @@ interface BuildDeployOptions {
  * Build a deployment transaction without broadcasting.
  * Only supported on devnode (HTTP deploy() is atomic).
  */
-export async function buildDeployTransaction(
-  opts: BuildDeployOptions,
-): Promise<unknown> {
+export async function buildDeployTransaction(opts: BuildDeployOptions): Promise<unknown> {
   if (opts.connection.type !== "devnode") {
     throw new DeployError(
       `Dry-run is not supported for HTTP networks in v1. ` +
@@ -659,8 +622,9 @@ export async function buildDeployTransaction(
     );
   }
 
-  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
-    await import("@lionden/network");
+  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } = await import(
+    "@lionden/network"
+  );
 
   await initConsensusHeights();
   if (!opts.prove) {
@@ -704,11 +668,7 @@ async function buildDevnodeDeploymentTransactionForMode(
           `the installed @provablehq/sdk does not expose buildDeploymentTransaction().`,
       );
     }
-    return programManager.buildDeploymentTransaction(
-      opts.aleoSource,
-      opts.fee,
-      opts.privateFee,
-    );
+    return programManager.buildDeploymentTransaction(opts.aleoSource, opts.fee, opts.privateFee);
   }
 
   return programManager.buildDevnodeDeploymentTransaction({
@@ -724,8 +684,9 @@ async function buildDevnodeDeploymentTransactionForMode(
 async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const { aleoSource, connection, fee, privateFee } = opts;
 
-  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } =
-    await import("@lionden/network");
+  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } = await import(
+    "@lionden/network"
+  );
 
   const signerKey = opts.signerPrivateKey ?? connection.privateKey;
 
@@ -745,10 +706,7 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
       egressPolicy: opts.egressPolicy,
     });
 
-    const tx = await buildDevnodeDeploymentTransactionForMode(
-      sdk.programManager,
-      opts,
-    );
+    const tx = await buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts);
 
     return connection.broadcastTransaction(tx);
   }

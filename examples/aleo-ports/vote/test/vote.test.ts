@@ -7,15 +7,11 @@
 // .accepted() call, recovering record outputs (Proposal pid, spendable Ticket)
 // via confirmed.outputs.decrypt(...). Proving needs the on-chain state paths,
 // so we don't pre-run them in local mode.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
-import { createVote } from "../typechain/Vote.js";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Leo, type LeoField } from "../typechain/BaseContract.js";
+import { createVote } from "../typechain/Vote.js";
 
 async function deployVote() {
   const ctx = await setup();

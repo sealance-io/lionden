@@ -6,9 +6,10 @@
 // All transitions are pure (no Final, no mappings) — `mode: "local"`
 // suffices for the whole flow, and the typed wrapper deserializes the Bid
 // record output so callers can chain it back into the next transition.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
-import { createAuction, type Bid } from "../typechain/Auction.js";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type Bid, createAuction } from "../typechain/Auction.js";
 
 async function deployAuction() {
   const ctx = await setup();

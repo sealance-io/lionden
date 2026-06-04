@@ -1,4 +1,4 @@
-import type { AleoType, PlaintextType, PrimitiveType, StructRef, RecordRef } from "../abi-types.js";
+import type { AleoType, PlaintextType, PrimitiveType, RecordRef, StructRef } from "../abi-types.js";
 
 /**
  * Convert a path (from a StructRef, RecordRef, or declaration) to a
@@ -53,12 +53,18 @@ export function disambiguateInputName(base: string, reserved: ReadonlySet<string
 export function primitiveToTs(prim: PrimitiveType): string {
   if (typeof prim === "string") {
     switch (prim) {
-      case "Address": return "string";
-      case "Boolean": return "boolean";
-      case "Field": return "string";
-      case "Group": return "string";
-      case "Identifier": return "string";
-      case "Scalar": return "string";
+      case "Address":
+        return "string";
+      case "Boolean":
+        return "boolean";
+      case "Field":
+        return "string";
+      case "Group":
+        return "string";
+      case "Identifier":
+        return "string";
+      case "Scalar":
+        return "string";
     }
     return "unknown";
   }
@@ -122,12 +128,18 @@ export function aleoTypeToTs(ty: AleoType): string {
 export function primitiveToLeoSuffix(prim: PrimitiveType): string {
   if (typeof prim === "string") {
     switch (prim) {
-      case "Address": return "address";
-      case "Boolean": return "bool";
-      case "Field": return "field";
-      case "Group": return "group";
-      case "Identifier": return "identifier";
-      case "Scalar": return "scalar";
+      case "Address":
+        return "address";
+      case "Boolean":
+        return "bool";
+      case "Field":
+        return "field";
+      case "Group":
+        return "group";
+      case "Identifier":
+        return "identifier";
+      case "Scalar":
+        return "scalar";
     }
     return "unknown";
   }

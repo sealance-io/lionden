@@ -1,6 +1,13 @@
-import { describe, it, expect } from "vitest";
-import { primitiveToTs, plaintextToTs, aleoTypeToTs, primitiveToLeoSuffix, isBigIntType, pathToTsName } from "./type-mapper.js";
-import type { StructRef, RecordRef } from "../abi-types.js";
+import { describe, expect, it } from "vitest";
+import type { RecordRef, StructRef } from "../abi-types.js";
+import {
+  aleoTypeToTs,
+  isBigIntType,
+  pathToTsName,
+  plaintextToTs,
+  primitiveToLeoSuffix,
+  primitiveToTs,
+} from "./type-mapper.js";
 
 /** Shorthand for creating a StructRef in tests */
 function sref(name: string, program: string | null = null): StructRef {
@@ -71,7 +78,9 @@ describe("plaintextToTs", () => {
   });
 
   it("maps module-scoped structs to joined path name", () => {
-    expect(plaintextToTs({ Struct: { path: ["utils", "Vector3"], program: null } })).toBe("Utils_Vector3");
+    expect(plaintextToTs({ Struct: { path: ["utils", "Vector3"], program: null } })).toBe(
+      "Utils_Vector3",
+    );
   });
 
   it("maps arrays", () => {

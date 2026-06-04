@@ -3,11 +3,11 @@ import {
   asSigner,
   createNamedAccountAccessor,
   isSignable,
-  requireNamedAccount,
-  requireSignableNamedAccount,
-  type NamedAccounts,
   type NamedAccount,
   type NamedAccountAccessor,
+  type NamedAccounts,
+  requireNamedAccount,
+  requireSignableNamedAccount,
   type SignableNamedAccount,
 } from "./named-account.js";
 
@@ -43,9 +43,7 @@ describe("named account helpers", () => {
   });
 
   it("returns required signable named accounts", () => {
-    expect(requireSignableNamedAccount(accounts, "deployer")).toBe(
-      accounts["deployer"],
-    );
+    expect(requireSignableNamedAccount(accounts, "deployer")).toBe(accounts["deployer"]);
   });
 
   it("throws a clear error when a required signer is address-only", () => {

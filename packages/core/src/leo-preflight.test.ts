@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import { execFile } from "node:child_process";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearLeoPreflightMemoForTests,
   parseLeoVersionOutput,
@@ -11,9 +11,7 @@ vi.mock("node:child_process", () => ({
   execFile: vi.fn(),
 }));
 
-function makeConfig(
-  overrides: Partial<LionDenResolvedConfig> = {},
-): LionDenResolvedConfig {
+function makeConfig(overrides: Partial<LionDenResolvedConfig> = {}): LionDenResolvedConfig {
   return {
     leoVersion: "4.0.0",
     skipLeoVersionCheck: false,
@@ -54,13 +52,12 @@ function makeConfig(
 
 function mockExecFileSuccess(stdout: string, stderr = ""): void {
   vi.mocked(execFile).mockImplementation((_file, _args, _options, callback) => {
-    (callback as unknown as (
-      error: Error | null,
-      result: { stdout: string; stderr: string },
-    ) => void)(
-      null,
-      { stdout, stderr },
-    );
+    (
+      callback as unknown as (
+        error: Error | null,
+        result: { stdout: string; stderr: string },
+      ) => void
+    )(null, { stdout, stderr });
     return {} as ReturnType<typeof execFile>;
   });
 }
@@ -74,9 +71,9 @@ function mockExecFileFailure(error: Error & { code?: string | number }): void {
 
 describe("parseLeoVersionOutput", () => {
   it("parses Leo version output with commit metadata", () => {
-    expect(
-      parseLeoVersionOutput("leo 4.0.2 (13448848d9 HEAD) features=[noconfig]"),
-    )?.toMatchObject({ major: 4, minor: 0, patch: 2, text: "4.0.2" });
+    expect(parseLeoVersionOutput("leo 4.0.2 (13448848d9 HEAD) features=[noconfig]"))?.toMatchObject(
+      { major: 4, minor: 0, patch: 2, text: "4.0.2" },
+    );
   });
 
   it("takes the first stable version match", () => {
@@ -129,9 +126,7 @@ describe("preflightLeo", () => {
   it("tolerates unparseable output when skipLeoVersionCheck is true", async () => {
     mockExecFileSuccess("leo dev build");
 
-    await expect(
-      preflightLeo(makeConfig({ skipLeoVersionCheck: true })),
-    ).resolves.toBeUndefined();
+    await expect(preflightLeo(makeConfig({ skipLeoVersionCheck: true }))).resolves.toBeUndefined();
   });
 
   it("rejects a binary from a different minor line", async () => {
@@ -154,9 +149,9 @@ describe("preflightLeo", () => {
     const err = Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" });
     mockExecFileFailure(err);
 
-    await expect(
-      preflightLeo(makeConfig({ leoBinary: "/expanded/missing/leo" })),
-    ).rejects.toThrow(/\/expanded\/missing\/leo/);
+    await expect(preflightLeo(makeConfig({ leoBinary: "/expanded/missing/leo" }))).rejects.toThrow(
+      /\/expanded\/missing\/leo/,
+    );
   });
 
   it("does not skip missing binaries when skipLeoVersionCheck is true", async () => {
@@ -164,10 +159,12 @@ describe("preflightLeo", () => {
     mockExecFileFailure(err);
 
     await expect(
-      preflightLeo(makeConfig({
-        leoBinary: "/expanded/inaccessible/leo",
-        skipLeoVersionCheck: true,
-      })),
+      preflightLeo(
+        makeConfig({
+          leoBinary: "/expanded/inaccessible/leo",
+          skipLeoVersionCheck: true,
+        }),
+      ),
     ).rejects.toThrow(/\/expanded\/inaccessible\/leo/);
   });
 

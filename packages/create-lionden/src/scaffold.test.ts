@@ -1,7 +1,7 @@
-import { describe, it, expect, afterEach } from "vitest";
 import { existsSync, readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { scaffold } from "./scaffold.js";
 import { getTemplate } from "./templates.js";
 
@@ -52,7 +52,10 @@ describe("scaffold", () => {
     const template = getTemplate("hello-world")!;
     await scaffold({ projectDir: dir, projectName: "my-cool-project", template });
 
-    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8")) as Record<string, unknown>;
+    const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf-8")) as Record<
+      string,
+      unknown
+    >;
     expect(pkg["name"]).toBe("my-cool-project");
   });
 
@@ -110,9 +113,9 @@ describe("scaffold", () => {
     await scaffold({ projectDir: dir, projectName: "first", template });
 
     // Second scaffold into same dir should fail
-    await expect(
-      scaffold({ projectDir: dir, projectName: "second", template }),
-    ).rejects.toThrow("already exists and is not empty");
+    await expect(scaffold({ projectDir: dir, projectName: "second", template })).rejects.toThrow(
+      "already exists and is not empty",
+    );
   });
 
   it("succeeds on existing empty directory", async () => {

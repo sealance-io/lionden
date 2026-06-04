@@ -34,11 +34,7 @@ export function normalizeProgramId(raw: string): string {
  * suffix does NOT count — `voting_power.aleo` is an id, not a path.
  */
 export function looksLikePath(raw: string): boolean {
-  return (
-    raw.includes("/") ||
-    raw.includes("\\") ||
-    raw.startsWith("~")
-  );
+  return raw.includes("/") || raw.includes("\\") || raw.startsWith("~");
 }
 
 /**
@@ -46,9 +42,7 @@ export function looksLikePath(raw: string): boolean {
  * Returns "invalid" for refs that match neither the program-id nor the
  * path shape (e.g. `foo.bar`, `123`, empty).
  */
-export function classifyRuntimeImportRef(
-  raw: string,
-): "programId" | "path" | "invalid" {
+export function classifyRuntimeImportRef(raw: string): "programId" | "path" | "invalid" {
   if (raw.length === 0) return "invalid";
   if (looksLikePath(raw)) return "path";
   if (PROGRAM_ID_PATTERN.test(raw) || BARE_NAME_PATTERN.test(raw)) {
@@ -74,10 +68,7 @@ export function isValidExecutionImportsMapKey(raw: string): boolean {
  * Throws if the ref does not classify (callers should have filtered with
  * `classifyRuntimeImportRef` first, but this gives a final safety net).
  */
-export function normalizeRuntimeImportRef(
-  raw: string,
-  projectRoot: string,
-): RuntimeImportRef {
+export function normalizeRuntimeImportRef(raw: string, projectRoot: string): RuntimeImportRef {
   const kind = classifyRuntimeImportRef(raw);
   if (kind === "invalid") {
     throw new Error(

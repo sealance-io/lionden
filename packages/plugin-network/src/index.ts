@@ -1,18 +1,18 @@
 import * as path from "node:path";
-import {
-  type LionDenPlugin,
-  type NetworkHookHandlers,
-  type ConfigHookHandlers,
-  type ConfigValidationError,
-  ArgumentType,
-  task,
-} from "@lionden/core";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import {
-  NetworkManagerImpl,
+  ArgumentType,
+  type ConfigHookHandlers,
+  type ConfigValidationError,
+  type LionDenPlugin,
+  type NetworkHookHandlers,
+  task,
+} from "@lionden/core";
+import {
   DevnodeManager,
-  resolveDevnodeBackend,
+  NetworkManagerImpl,
   preflightDevnode,
+  resolveDevnodeBackend,
 } from "@lionden/network";
 
 // ---------------------------------------------------------------------------
@@ -213,9 +213,7 @@ const runTask = task("run", "Execute a TypeScript script with LRE context")
     const scriptPath = positionals?.[0] ?? (args["script"] as string | undefined);
 
     if (!scriptPath) {
-      throw new Error(
-        "Script path is required. Usage: lionden run <script> [--network <name>]",
-      );
+      throw new Error("Script path is required. Usage: lionden run <script> [--network <name>]");
     }
 
     const networkName = args["network"] as string | undefined;

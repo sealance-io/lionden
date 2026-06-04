@@ -1,33 +1,38 @@
+import { execFile } from "node:child_process";
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as crypto from "node:crypto";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import {
   fingerprintFile,
+  type KeyArtifactFunctionRef,
+  type KeyArtifactsMetadata,
+  type KeyFileRef,
   keyArtifactsMetadataPath,
   sha256Json,
   sha256Text,
   writeKeyArtifactsMetadata,
-  type KeyArtifactFunctionRef,
-  type KeyArtifactsMetadata,
-  type KeyFileRef,
 } from "@lionden/core";
+import { parseAbi } from "./abi-parser.js";
+import type { ProgramABI } from "./abi-types.js";
+import { computeUnitHash, isCached, writeCache } from "./cache.js";
+import { type DependencyGraph, resolveDependencies } from "./dependency-resolver.js";
+import {
+  getCachedNetworkDep,
+  linkLocalDependency,
+  linkNetworkDependency,
+  materializePackage,
+} from "./package-materializer.js";
+import { discoverUnits } from "./source-discovery.js";
 import type {
-  DiscoveredUnit,
   CompilationResult,
-  ProgramCompilationResult,
-  LibraryCompilationResult,
   CompileOptions,
+  DiscoveredUnit,
+  LibraryCompilationResult,
+  ProgramCompilationResult,
 } from "./types.js";
 import { unitId } from "./types.js";
-import { discoverUnits } from "./source-discovery.js";
-import { resolveDependencies, type DependencyGraph } from "./dependency-resolver.js";
-import { materializePackage, linkLocalDependency, linkNetworkDependency, getCachedNetworkDep } from "./package-materializer.js";
-import { parseAbi } from "./abi-parser.js";
-import { computeUnitHash, isCached, writeCache } from "./cache.js";
-import type { ProgramABI } from "./abi-types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -73,12 +78,10 @@ export async function defaultFetchNetworkDep(
     }
   }
 
-  const details = errors
-    .map((e) => `  ${e.network}: ${e.reason}`)
-    .join("\n");
+  const details = errors.map((e) => `  ${e.network}: ${e.reason}`).join("\n");
   throw new Error(
     `Failed to fetch network dependency "${programId}" from ${endpoint}:\n${details}\n` +
-    `Ensure the endpoint is reachable and the program is deployed.`,
+      `Ensure the endpoint is reachable and the program is deployed.`,
   );
 }
 
@@ -168,9 +171,7 @@ export async function compilePipeline(
 
     for (const dep of selectedNetworkDeps) {
       // Fetch once per dep; skip cache when --force is set
-      let aleoSource = options.force
-        ? null
-        : getCachedNetworkDep(cacheDir, dep, networkScope);
+      let aleoSource = options.force ? null : getCachedNetworkDep(cacheDir, dep, networkScope);
 
       if (!aleoSource) {
         aleoSource = await fetchNetworkDep(dep, endpoint, networkHint);
@@ -303,10 +304,7 @@ async function runLeoBuild(
 function readProgramAbi(buildDir: string, id: string): ProgramABI {
   const artifacts = resolveBuildArtifacts(buildDir, id);
   if (!artifacts.abiPath) {
-    throw new CompilationError(
-      id,
-      `ABI file not found under ${buildDir}. Did leo build succeed?`,
-    );
+    throw new CompilationError(id, `ABI file not found under ${buildDir}. Did leo build succeed?`);
   }
   return parseAbi(fs.readFileSync(artifacts.abiPath, "utf-8"));
 }
@@ -329,10 +327,7 @@ function copyArtifacts(
 ): NormalizedArtifactPaths {
   const artifacts = resolveBuildArtifacts(buildDir, id);
   if (options.requireAbi && !artifacts.abiPath) {
-    throw new CompilationError(
-      id,
-      `ABI file not found under ${buildDir}. Did leo build succeed?`,
-    );
+    throw new CompilationError(id, `ABI file not found under ${buildDir}. Did leo build succeed?`);
   }
   if (options.requireAleo && !artifacts.aleoPath) {
     throw new CompilationError(
@@ -385,19 +380,19 @@ function resolveBuildArtifacts(buildDir: string, id: string): ResolvedBuildArtif
   const aleoPath = findAleoOutput(unitDir, id);
 
   const keyFiles = fs.existsSync(unitDir)
-    ? fs.readdirSync(unitDir)
-      .filter((file) => file.endsWith(".prover") || file.endsWith(".verifier"))
-      .map((file) => path.join(unitDir, file))
-      .sort((a, b) => a.localeCompare(b))
+    ? fs
+        .readdirSync(unitDir)
+        .filter((file) => file.endsWith(".prover") || file.endsWith(".verifier"))
+        .map((file) => path.join(unitDir, file))
+        .sort((a, b) => a.localeCompare(b))
     : [];
 
   const interfacesDirs = [
     path.join(unitDir, "interfaces"),
     path.join(buildDir, "interfaces"),
-  ].filter((dir, index, dirs) =>
-    fs.existsSync(dir) &&
-    fs.statSync(dir).isDirectory() &&
-    dirs.indexOf(dir) === index
+  ].filter(
+    (dir, index, dirs) =>
+      fs.existsSync(dir) && fs.statSync(dir).isDirectory() && dirs.indexOf(dir) === index,
   );
 
   return { abiPath, aleoPath, keyFiles, interfacesDirs };
@@ -438,9 +433,7 @@ function newestBuildArtifactMatch(dirs: readonly string[], id: string): string |
       const abiPath = existingFile(path.join(dir, "abi.json"));
       const aleoPath = findAleoOutput(dir, id);
       const artifactPath = abiPath ?? aleoPath;
-      return artifactPath
-        ? { dir, index, mtimeMs: fs.statSync(artifactPath).mtimeMs }
-        : null;
+      return artifactPath ? { dir, index, mtimeMs: fs.statSync(artifactPath).mtimeMs } : null;
     })
     .filter((match): match is { dir: string; index: number; mtimeMs: number } => match !== null)
     .sort((a, b) => b.mtimeMs - a.mtimeMs || a.index - b.index);
@@ -448,34 +441,27 @@ function newestBuildArtifactMatch(dirs: readonly string[], id: string): string |
 }
 
 function uniqueExistingDirs(dirs: readonly string[]): string[] {
-  return [...new Set(dirs)].filter((dir) =>
-    fs.existsSync(dir) && fs.statSync(dir).isDirectory()
-  );
+  return [...new Set(dirs)].filter((dir) => fs.existsSync(dir) && fs.statSync(dir).isDirectory());
 }
 
 function findAleoOutput(dir: string, id: string): string | undefined {
   const base = id.endsWith(".aleo") ? id.slice(0, -".aleo".length) : id;
-  const candidateNames = [
-    "main.aleo",
-    id.endsWith(".aleo") ? id : `${id}.aleo`,
-    `${base}.aleo`,
-  ];
+  const candidateNames = ["main.aleo", id.endsWith(".aleo") ? id : `${id}.aleo`, `${base}.aleo`];
   for (const name of [...new Set(candidateNames)]) {
     const file = existingFile(path.join(dir, name));
     if (file) return file;
   }
 
   if (!fs.existsSync(dir)) return undefined;
-  const aleoFiles = fs.readdirSync(dir)
+  const aleoFiles = fs
+    .readdirSync(dir)
     .filter((file) => file.endsWith(".aleo") && fs.statSync(path.join(dir, file)).isFile())
     .sort((a, b) => a.localeCompare(b));
   return aleoFiles.length > 0 ? path.join(dir, aleoFiles[0]!) : undefined;
 }
 
 function existingFile(filePath: string): string | undefined {
-  return fs.existsSync(filePath) && fs.statSync(filePath).isFile()
-    ? filePath
-    : undefined;
+  return fs.existsSync(filePath) && fs.statSync(filePath).isFile() ? filePath : undefined;
 }
 
 function copyDirectory(srcDir: string, destDir: string): void {
@@ -576,11 +562,13 @@ function collectKeyArtifactFunctionRefs(
     const prover = proverByStem.get(stem);
     const verifier = verifierByStem.get(stem);
     if (!prover || !verifier) return [];
-    return [{
-      transition: transition.name,
-      prover: keyFileRef(artifactDir, prover),
-      verifier: keyFileRef(artifactDir, verifier),
-    }];
+    return [
+      {
+        transition: transition.name,
+        prover: keyFileRef(artifactDir, prover),
+        verifier: keyFileRef(artifactDir, verifier),
+      },
+    ];
   });
 }
 
@@ -590,9 +578,7 @@ function findUnambiguousKeyStem(
   transition: string,
   transitionCount: number,
 ): string | undefined {
-  const programBase = programId.endsWith(".aleo")
-    ? programId.slice(0, -".aleo".length)
-    : programId;
+  const programBase = programId.endsWith(".aleo") ? programId.slice(0, -".aleo".length) : programId;
   const candidates = [
     transition,
     `${programBase}.${transition}`,
@@ -602,9 +588,7 @@ function findUnambiguousKeyStem(
   for (const candidate of candidates) {
     if (pairedStems.includes(candidate)) return candidate;
   }
-  return transitionCount === 1 && pairedStems.length === 1
-    ? pairedStems[0]
-    : undefined;
+  return transitionCount === 1 && pairedStems.length === 1 ? pairedStems[0] : undefined;
 }
 
 function keyFileRef(artifactDir: string, file: string): KeyFileRef {

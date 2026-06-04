@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { selectMatchingTransition } from "./transition-selector.js";
-import { TransitionSelectionError } from "./types.js";
 import type { ConfirmedTransitionRecord } from "./types.js";
+import { TransitionSelectionError } from "./types.js";
 
 const record = (
   programId: string,
@@ -29,13 +29,9 @@ describe("selectMatchingTransition", () => {
   });
 
   it("throws TransitionSelectionError with available transitions when nothing matches", () => {
-    const transitions = [
-      record("token.aleo", "approve", []),
-      record("vault.aleo", "deposit", []),
-    ];
+    const transitions = [record("token.aleo", "approve", []), record("vault.aleo", "deposit", [])];
 
-    const callBad = () =>
-      selectMatchingTransition("token.aleo", "transfer_public", transitions);
+    const callBad = () => selectMatchingTransition("token.aleo", "transfer_public", transitions);
 
     expect(callBad).toThrowError(TransitionSelectionError);
     try {
@@ -45,10 +41,7 @@ describe("selectMatchingTransition", () => {
       expect(error.matchCount).toBe(0);
       expect(error.programId).toBe("token.aleo");
       expect(error.transitionName).toBe("transfer_public");
-      expect(error.availableTransitions).toEqual([
-        "token.aleo/approve",
-        "vault.aleo/deposit",
-      ]);
+      expect(error.availableTransitions).toEqual(["token.aleo/approve", "vault.aleo/deposit"]);
       expect(error.message).toContain("did not contain a matching transition");
     }
   });
@@ -59,8 +52,7 @@ describe("selectMatchingTransition", () => {
       record("token.aleo", "transfer_public", ["2u64"]),
     ];
 
-    const callBad = () =>
-      selectMatchingTransition("token.aleo", "transfer_public", transitions);
+    const callBad = () => selectMatchingTransition("token.aleo", "transfer_public", transitions);
 
     expect(callBad).toThrowError(TransitionSelectionError);
     try {
@@ -81,12 +73,7 @@ describe("selectMatchingTransition", () => {
     ];
 
     try {
-      selectMatchingTransition(
-        "token.aleo",
-        "transfer_public",
-        transitions,
-        "at1broadcast",
-      );
+      selectMatchingTransition("token.aleo", "transfer_public", transitions, "at1broadcast");
       throw new Error("expected throw");
     } catch (err) {
       const error = err as TransitionSelectionError;

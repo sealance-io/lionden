@@ -6,8 +6,5 @@
   },
   "include": ["src"],
   "exclude": ["src/**/__goldens__", "src/**/__fixtures__"],
-  "references": [
-    { "path": "../config" },
-    { "path": "../core" }
-  ]
+  "references": [{ "path": "../config" }, { "path": "../core" }]
 }

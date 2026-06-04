@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { checkAbiCompatibility } from "./abi-compat.js";
 import type { ProgramABI } from "@lionden/leo-compiler";
+import { describe, expect, it } from "vitest";
+import { checkAbiCompatibility } from "./abi-compat.js";
 
 function makeAbi(overrides: Partial<ProgramABI> = {}): ProgramABI {
   return {
@@ -21,7 +21,9 @@ describe("checkAbiCompatibility", () => {
 
   it("reports compatible for identical ABIs", () => {
     const abi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
       transitions: [{ name: "transfer", is_async: false, inputs: [], outputs: [] }],
     });
     const result = checkAbiCompatibility(abi, abi);
@@ -35,12 +37,18 @@ describe("checkAbiCompatibility", () => {
 
   it("allows adding new mappings", () => {
     const oldAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
     });
     const newAbi = makeAbi({
       mappings: [
         { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
-        { name: "allowances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+        {
+          name: "allowances",
+          key: { Primitive: "Address" },
+          value: { Primitive: { UInt: "U64" } },
+        },
       ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
@@ -49,7 +57,9 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects deleting a mapping", () => {
     const oldAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
     });
     const newAbi = makeAbi({ mappings: [] });
     const result = checkAbiCompatibility(oldAbi, newAbi);
@@ -61,10 +71,14 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects modifying mapping key type", () => {
     const oldAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
     });
     const newAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Field" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Field" }, value: { Primitive: { UInt: "U64" } } },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -73,10 +87,14 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects modifying mapping value type", () => {
     const oldAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
     });
     const newAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U128" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U128" } } },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -90,7 +108,9 @@ describe("checkAbiCompatibility", () => {
   it("allows adding new structs", () => {
     const oldAbi = makeAbi({ structs: [] });
     const newAbi = makeAbi({
-      structs: [{ path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] }],
+      structs: [
+        { path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(true);
@@ -98,7 +118,9 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects deleting a struct", () => {
     const oldAbi = makeAbi({
-      structs: [{ path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] }],
+      structs: [
+        { path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] },
+      ],
     });
     const newAbi = makeAbi({ structs: [] });
     const result = checkAbiCompatibility(oldAbi, newAbi);
@@ -108,10 +130,14 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects modifying a struct field", () => {
     const oldAbi = makeAbi({
-      structs: [{ path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] }],
+      structs: [
+        { path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] },
+      ],
     });
     const newAbi = makeAbi({
-      structs: [{ path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U128" } } }] }],
+      structs: [
+        { path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U128" } } }] },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -120,16 +146,20 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects adding a field to existing struct", () => {
     const oldAbi = makeAbi({
-      structs: [{ path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] }],
+      structs: [
+        { path: ["TokenInfo"], fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }] },
+      ],
     });
     const newAbi = makeAbi({
-      structs: [{
-        path: ["TokenInfo"],
-        fields: [
-          { name: "supply", ty: { Primitive: { UInt: "U64" } } },
-          { name: "decimals", ty: { Primitive: { UInt: "U8" } } },
-        ],
-      }],
+      structs: [
+        {
+          path: ["TokenInfo"],
+          fields: [
+            { name: "supply", ty: { Primitive: { UInt: "U64" } } },
+            { name: "decimals", ty: { Primitive: { UInt: "U8" } } },
+          ],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -156,13 +186,15 @@ describe("checkAbiCompatibility", () => {
   it("allows adding new records", () => {
     const oldAbi = makeAbi({ records: [] });
     const newAbi = makeAbi({
-      records: [{
-        path: ["Token"],
-        fields: [
-          { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
-          { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
-        ],
-      }],
+      records: [
+        {
+          path: ["Token"],
+          fields: [
+            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+            { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+          ],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(true);
@@ -170,12 +202,12 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects deleting a record", () => {
     const oldAbi = makeAbi({
-      records: [{
-        path: ["Token"],
-        fields: [
-          { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
-        ],
-      }],
+      records: [
+        {
+          path: ["Token"],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" }],
+        },
+      ],
     });
     const newAbi = makeAbi({ records: [] });
     const result = checkAbiCompatibility(oldAbi, newAbi);
@@ -185,20 +217,20 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects modifying record field mode", () => {
     const oldAbi = makeAbi({
-      records: [{
-        path: ["Token"],
-        fields: [
-          { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
-        ],
-      }],
+      records: [
+        {
+          path: ["Token"],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" }],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      records: [{
-        path: ["Token"],
-        fields: [
-          { name: "owner", ty: { Primitive: "Address" }, mode: "Public" },
-        ],
-      }],
+      records: [
+        {
+          path: ["Token"],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Public" }],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -228,12 +260,14 @@ describe("checkAbiCompatibility", () => {
       transitions: [{ name: "transfer", is_async: false, inputs: [], outputs: [] }],
     });
     const newAbi = makeAbi({
-      transitions: [{
-        name: "transfer",
-        is_async: false,
-        inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" }],
-        outputs: [],
-      }],
+      transitions: [
+        {
+          name: "transfer",
+          is_async: false,
+          inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" }],
+          outputs: [],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -242,20 +276,28 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects changing transition from sync to async", () => {
     const oldAbi = makeAbi({
-      transitions: [{
-        name: "transfer",
-        is_async: false,
-        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-      }],
+      transitions: [
+        {
+          name: "transfer",
+          is_async: false,
+          inputs: [
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      transitions: [{
-        name: "transfer",
-        is_async: true,
-        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-      }],
+      transitions: [
+        {
+          name: "transfer",
+          is_async: true,
+          inputs: [
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+          ],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -265,43 +307,55 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects changing transition input type", () => {
     const oldAbi = makeAbi({
-      transitions: [{
-        name: "deposit",
-        is_async: false,
-        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-        outputs: [],
-      }],
+      transitions: [
+        {
+          name: "deposit",
+          is_async: false,
+          inputs: [
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+          ],
+          outputs: [],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      transitions: [{
-        name: "deposit",
-        is_async: false,
-        inputs: [{ name: "amount", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
-        outputs: [],
-      }],
+      transitions: [
+        {
+          name: "deposit",
+          is_async: false,
+          inputs: [
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" },
+          ],
+          outputs: [],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
     expect(result.violations[0]!.kind).toBe("transition_modified");
-    expect(result.violations[0]!.detail).toContain("input \"amount\" changed");
+    expect(result.violations[0]!.detail).toContain('input "amount" changed');
   });
 
   it("rejects changing transition output type", () => {
     const oldAbi = makeAbi({
-      transitions: [{
-        name: "get_balance",
-        is_async: false,
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-      }],
+      transitions: [
+        {
+          name: "get_balance",
+          is_async: false,
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      transitions: [{
-        name: "get_balance",
-        is_async: false,
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
-      }],
+      transitions: [
+        {
+          name: "get_balance",
+          is_async: false,
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -311,20 +365,24 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects removing an output from existing transition", () => {
     const oldAbi = makeAbi({
-      transitions: [{
-        name: "mint",
-        is_async: false,
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
-      }],
+      transitions: [
+        {
+          name: "mint",
+          is_async: false,
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      transitions: [{
-        name: "mint",
-        is_async: false,
-        inputs: [],
-        outputs: [],
-      }],
+      transitions: [
+        {
+          name: "mint",
+          is_async: false,
+          inputs: [],
+          outputs: [],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -334,20 +392,24 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects changing transition input mode", () => {
     const oldAbi = makeAbi({
-      transitions: [{
-        name: "transfer",
-        is_async: false,
-        inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Private" }],
-        outputs: [],
-      }],
+      transitions: [
+        {
+          name: "transfer",
+          is_async: false,
+          inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Private" }],
+          outputs: [],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      transitions: [{
-        name: "transfer",
-        is_async: false,
-        inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" }],
-        outputs: [],
-      }],
+      transitions: [
+        {
+          name: "transfer",
+          is_async: false,
+          inputs: [{ name: "to", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" }],
+          outputs: [],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -377,11 +439,13 @@ describe("checkAbiCompatibility", () => {
   it("allows adding new views", () => {
     const oldAbi = makeAbi({ views: [] });
     const newAbi = makeAbi({
-      views: [{
-        name: "get_balance",
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
-      }],
+      views: [
+        {
+          name: "get_balance",
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(true);
@@ -389,11 +453,13 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects deleting a view", () => {
     const oldAbi = makeAbi({
-      views: [{
-        name: "get_balance",
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
-      }],
+      views: [
+        {
+          name: "get_balance",
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+        },
+      ],
     });
     const newAbi = makeAbi({ views: [] });
     const result = checkAbiCompatibility(oldAbi, newAbi);
@@ -403,18 +469,22 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects modifying a view signature", () => {
     const oldAbi = makeAbi({
-      views: [{
-        name: "get_balance",
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
-      }],
+      views: [
+        {
+          name: "get_balance",
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+        },
+      ],
     });
     const newAbi = makeAbi({
-      views: [{
-        name: "get_balance",
-        inputs: [],
-        outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Public" }],
-      }],
+      views: [
+        {
+          name: "get_balance",
+          inputs: [],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Public" }],
+        },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -464,7 +534,9 @@ describe("checkAbiCompatibility", () => {
   it("allows adding new storage variables", () => {
     const oldAbi = makeAbi({ storage_variables: [] });
     const newAbi = makeAbi({
-      storage_variables: [{ name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U64" } } } }],
+      storage_variables: [
+        { name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U64" } } } },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(true);
@@ -472,7 +544,9 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects deleting a storage variable", () => {
     const oldAbi = makeAbi({
-      storage_variables: [{ name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U64" } } } }],
+      storage_variables: [
+        { name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U64" } } } },
+      ],
     });
     const newAbi = makeAbi({ storage_variables: [] });
     const result = checkAbiCompatibility(oldAbi, newAbi);
@@ -482,10 +556,14 @@ describe("checkAbiCompatibility", () => {
 
   it("rejects modifying a storage variable type", () => {
     const oldAbi = makeAbi({
-      storage_variables: [{ name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U64" } } } }],
+      storage_variables: [
+        { name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U64" } } } },
+      ],
     });
     const newAbi = makeAbi({
-      storage_variables: [{ name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U128" } } } }],
+      storage_variables: [
+        { name: "total_supply", ty: { Plaintext: { Primitive: { UInt: "U128" } } } },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -497,7 +575,9 @@ describe("checkAbiCompatibility", () => {
       storage_variables: [{ name: "whitelist", ty: { Plaintext: { Primitive: "Address" } } }],
     });
     const newAbi = makeAbi({
-      storage_variables: [{ name: "whitelist", ty: { Vector: { Plaintext: { Primitive: "Address" } } } }],
+      storage_variables: [
+        { name: "whitelist", ty: { Vector: { Plaintext: { Primitive: "Address" } } } },
+      ],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
@@ -510,7 +590,9 @@ describe("checkAbiCompatibility", () => {
 
   it("collects multiple violations", () => {
     const oldAbi = makeAbi({
-      mappings: [{ name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } }],
+      mappings: [
+        { name: "balances", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
       transitions: [
         { name: "mint", is_async: false, inputs: [], outputs: [] },
         { name: "burn", is_async: false, inputs: [], outputs: [] },

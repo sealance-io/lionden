@@ -1,9 +1,13 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import type { AleoNetwork, RuntimeImportRef } from "@lionden/config";
 import {
-  fingerprintsEqual,
   fingerprintBytes,
+  fingerprintsEqual,
+  type KeyArtifactsMetadata,
   keyArtifactsMetadataPath,
+  type RuntimeKeyCacheDiagnostics,
+  type RuntimeKeyIdentity,
   readKeyArtifactsMetadata,
   readRuntimeKeyCacheMetadata,
   resolveKeyFileRef,
@@ -11,11 +15,7 @@ import {
   sha256Text,
   verifyKeyFileRef,
   writeRuntimeKeyCacheMetadata,
-  type KeyArtifactsMetadata,
-  type RuntimeKeyCacheDiagnostics,
-  type RuntimeKeyIdentity,
 } from "@lionden/core";
-import type { AleoNetwork, RuntimeImportRef } from "@lionden/config";
 
 export interface ProgramExecutionArtifacts {
   readonly source: string;
@@ -40,22 +40,20 @@ export interface RuntimeKeyCacheWrite {
   readonly diagnostics?: RuntimeKeyCacheDiagnostics;
 }
 
-export async function resolveProgramExecutionArtifacts(
-  options: {
-    artifactsDir?: string;
-    programId: string;
-    networkClient: { getProgram(id: string): Promise<string> };
-    includeSidecar?: boolean;
-    /**
-     * Pre-normalized runtime-import refs. Seeded into the import resolution
-     * graph before the static-import walk, so dynamic-dispatch targets and
-     * their transitive deps are bundled into the resulting `imports` map.
-     */
-    runtimeImports?: readonly RuntimeImportRef[];
-  },
-): Promise<ProgramExecutionArtifacts> {
+export async function resolveProgramExecutionArtifacts(options: {
+  artifactsDir?: string;
+  programId: string;
+  networkClient: { getProgram(id: string): Promise<string> };
+  includeSidecar?: boolean;
+  /**
+   * Pre-normalized runtime-import refs. Seeded into the import resolution
+   * graph before the static-import walk, so dynamic-dispatch targets and
+   * their transitive deps are bundled into the resulting `imports` map.
+   */
+  runtimeImports?: readonly RuntimeImportRef[];
+}): Promise<ProgramExecutionArtifacts> {
   const local = readLocalProgramSource(options.artifactsDir, options.programId);
-  const source = local?.source ?? await options.networkClient.getProgram(options.programId);
+  const source = local?.source ?? (await options.networkClient.getProgram(options.programId));
   const sourceOrigin = local ? "artifact" : "network";
   const imports = await resolveProgramImports({
     artifactsDir: options.artifactsDir,
@@ -64,9 +62,10 @@ export async function resolveProgramExecutionArtifacts(
     runtimeImports: options.runtimeImports,
   });
   const artifactDir = local?.artifactDir;
-  const sidecarPath = options.includeSidecar && options.artifactsDir
-    ? keyArtifactsMetadataPath(options.artifactsDir, options.programId)
-    : undefined;
+  const sidecarPath =
+    options.includeSidecar && options.artifactsDir
+      ? keyArtifactsMetadataPath(options.artifactsDir, options.programId)
+      : undefined;
   const sidecar = sidecarPath ? readKeyArtifactsMetadata(sidecarPath) : undefined;
 
   return {
@@ -118,7 +117,9 @@ export function transitionHasRecordInput(
 
   const fn = functions.find(
     (entry): entry is { name?: unknown; inputs?: unknown } =>
-      typeof entry === "object" && entry !== null && (entry as { name?: unknown }).name === transition,
+      typeof entry === "object" &&
+      entry !== null &&
+      (entry as { name?: unknown }).name === transition,
   );
   if (!fn || !Array.isArray(fn.inputs)) return undefined;
 
@@ -154,13 +155,11 @@ function classifyInputType(ty: unknown): "record" | "safe" | "unknown" {
   return "unknown";
 }
 
-export function findCachedExecutionKeys(
-  options: {
-    cachePath: string;
-    identity: RuntimeKeyIdentity;
-    artifacts?: ProgramExecutionArtifacts;
-  },
-): RuntimeKeyCacheHit | undefined {
+export function findCachedExecutionKeys(options: {
+  cachePath: string;
+  identity: RuntimeKeyIdentity;
+  artifacts?: ProgramExecutionArtifacts;
+}): RuntimeKeyCacheHit | undefined {
   const sidecarHit = readSidecarKeys(options.artifacts, options.identity.transition);
   if (sidecarHit) return sidecarHit;
 
@@ -205,17 +204,15 @@ export function writeCachedExecutionKeys(write: RuntimeKeyCacheWrite, cachePath:
   });
 }
 
-export function buildRuntimeKeyIdentity(
-  options: {
-    network: AleoNetwork;
-    programId: string;
-    transition: string;
-    edition?: number;
-    sourceHash: string;
-    importsHash: string;
-    wasmHash: string;
-  },
-): RuntimeKeyIdentity {
+export function buildRuntimeKeyIdentity(options: {
+  network: AleoNetwork;
+  programId: string;
+  transition: string;
+  edition?: number;
+  sourceHash: string;
+  importsHash: string;
+  wasmHash: string;
+}): RuntimeKeyIdentity {
   return {
     network: options.network,
     programId: options.programId,
@@ -274,14 +271,12 @@ function readLocalProgramSource(
   return { source: fs.readFileSync(sourcePath, "utf-8"), artifactDir };
 }
 
-async function resolveProgramImports(
-  options: {
-    artifactsDir?: string;
-    programSource: string;
-    networkClient: { getProgram(id: string): Promise<string> };
-    runtimeImports?: readonly RuntimeImportRef[];
-  },
-): Promise<Record<string, string> | undefined> {
+async function resolveProgramImports(options: {
+  artifactsDir?: string;
+  programSource: string;
+  networkClient: { getProgram(id: string): Promise<string> };
+  runtimeImports?: readonly RuntimeImportRef[];
+}): Promise<Record<string, string> | undefined> {
   const imports = new Map<string, string>();
   // Tracks where each import id was first sourced from, for clear conflict
   // error messages when a duplicate id arrives with different content.
@@ -308,7 +303,7 @@ async function resolveProgramImports(
       if (imports.has(importId) || ancestry.has(importId)) continue;
 
       const local = readLocalProgramSource(options.artifactsDir, importId);
-      const importSource = local?.source ?? await options.networkClient.getProgram(importId);
+      const importSource = local?.source ?? (await options.networkClient.getProgram(importId));
       const origin = local ? `static import ← artifacts/${importId}` : `static import ← network`;
       addImport(importId, importSource, origin);
 
@@ -340,9 +335,7 @@ async function seedRuntimeImport(
 ): Promise<{ programId: string; source: string; origin: string }> {
   if (ref.kind === "path") {
     if (!fs.existsSync(ref.absolutePath)) {
-      throw new Error(
-        `Runtime import path not found at execute time: ${ref.absolutePath}`,
-      );
+      throw new Error(`Runtime import path not found at execute time: ${ref.absolutePath}`);
     }
     const source = fs.readFileSync(ref.absolutePath, "utf-8");
     const programId = parseProgramIdFromSource(source, ref.absolutePath);
@@ -350,7 +343,7 @@ async function seedRuntimeImport(
   }
 
   const local = readLocalProgramSource(artifactsDir, ref.programId);
-  const source = local?.source ?? await networkClient.getProgram(ref.programId);
+  const source = local?.source ?? (await networkClient.getProgram(ref.programId));
   const origin = local
     ? `runtime import ← artifacts/${ref.programId}`
     : `runtime import ← network (${ref.programId})`;

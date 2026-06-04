@@ -1,16 +1,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-  assertMappingValue,
   assertBalanceAtLeast,
   assertBlockHeightAtLeast,
+  assertMappingValue,
+  clearFixtures,
+  loadFixture,
+  setup,
+  type TestContext,
 } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createCounter } from "../typechain/Counter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -68,13 +68,7 @@ describe("counter v1", () => {
 describe("upgrade to v2", () => {
   const counter = createCounter();
   const signer = () => ctx!.accounts[0]!;
-  const programPath = path.resolve(
-    __dirname,
-    "..",
-    "programs",
-    "counter",
-    "main.leo",
-  );
+  const programPath = path.resolve(__dirname, "..", "programs", "counter", "main.leo");
   const v2FixturePath = path.resolve(__dirname, "fixtures", "counter_v2.leo");
 
   beforeAll(() => {

@@ -12,13 +12,9 @@
 //     accepted() call, recovering record outputs with
 //     confirmed.outputs.decrypt(...). Proving needs the on-chain state paths,
 //     so we don't pre-run them in local mode.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTokenContract } from "../typechain/Token.js";
 
 async function deployToken() {
@@ -62,7 +58,9 @@ describe("token.aleo", () => {
   });
 
   it("mint_private returns a Token record (no mapping side effect)", async () => {
-    const minted = await token.withSigner(bob()).mint_private.locally({ receiver: bob(), amount: 100n });
+    const minted = await token
+      .withSigner(bob())
+      .mint_private.locally({ receiver: bob(), amount: 100n });
     expect(minted.owner).toBe(bob().address);
     expect(minted.amount).toBe(100n);
   });
@@ -76,7 +74,9 @@ describe("token.aleo", () => {
 
   it("transfer_private splits a Token into (remainder, transferred)", async () => {
     // Mint a fresh private token to bob in local mode.
-    const bobToken = await token.withSigner(bob()).mint_private.locally({ receiver: bob(), amount: 100n });
+    const bobToken = await token
+      .withSigner(bob())
+      .mint_private.locally({ receiver: bob(), amount: 100n });
 
     // Bob splits 30 to alice.
     const [remaining, transferred] = await token
@@ -92,7 +92,9 @@ describe("token.aleo", () => {
   it("transfer_private_to_public yields a remainder Token + bumps account[receiver]", async () => {
     // Mint a private Token to bob on chain so the proven transfer below has a
     // record with a valid state path to spend.
-    const minted = await token.withSigner(bob()).mint_private.accepted({ receiver: bob(), amount: 50n });
+    const minted = await token
+      .withSigner(bob())
+      .mint_private.accepted({ receiver: bob(), amount: 50n });
     const bobToken = await minted.outputs.decrypt(bob());
 
     // Broadcast: fire finalize → account[alice] += 20.

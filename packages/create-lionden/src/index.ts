@@ -8,12 +8,12 @@
  */
 
 import { resolve } from "node:path";
-import { TEMPLATES, getTemplate, getTemplateIds } from "./templates.js";
-import { scaffold } from "./scaffold.js";
 import { ask, choose, closeReadline } from "./prompt.js";
+import { scaffold } from "./scaffold.js";
+import { getTemplate, getTemplateIds, TEMPLATES } from "./templates.js";
 
-export { scaffold, type ScaffoldOptions, type ScaffoldResult } from "./scaffold.js";
-export { TEMPLATES, getTemplate, getTemplateIds } from "./templates.js";
+export { type ScaffoldOptions, type ScaffoldResult, scaffold } from "./scaffold.js";
+export { getTemplate, getTemplateIds, TEMPLATES } from "./templates.js";
 
 function parseArgs(argv: string[]): { projectName?: string; template?: string } {
   let projectName: string | undefined;

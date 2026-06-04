@@ -1,11 +1,11 @@
 import {
   ArgumentType,
-  type TaskDefinition,
-  type TaskOption,
-  type TaskFlag,
-  type TaskPositionalArgument,
   type TaskAction,
   type TaskActionWithSuper,
+  type TaskDefinition,
+  type TaskFlag,
+  type TaskOption,
+  type TaskPositionalArgument,
 } from "./types.js";
 
 export { ArgumentType };
@@ -82,11 +82,8 @@ export class TaskBuilder {
       options: this._options.length > 0 ? this._options : undefined,
       flags: this._flags.length > 0 ? this._flags : undefined,
       positionalArguments:
-        this._positionalArguments.length > 0
-          ? this._positionalArguments
-          : undefined,
-      dependencies:
-        this._dependencies.length > 0 ? this._dependencies : undefined,
+        this._positionalArguments.length > 0 ? this._positionalArguments : undefined,
+      dependencies: this._dependencies.length > 0 ? this._dependencies : undefined,
     };
   }
 }

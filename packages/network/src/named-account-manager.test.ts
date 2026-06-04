@@ -5,10 +5,10 @@
  * The address derivation path is mocked; all other logic is tested at full fidelity.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NamedAccountManager } from "./named-account-manager.js";
 import type { ResolvedNamedAccountsConfig } from "@lionden/config";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
+import { NamedAccountManager } from "./named-account-manager.js";
 
 // Mock the dynamic sdk-adapter import used for address derivation
 vi.mock("./sdk-adapter.js", () => ({
@@ -16,6 +16,7 @@ vi.mock("./sdk-adapter.js", () => ({
 }));
 
 import { createSdkObjects } from "./sdk-adapter.js";
+
 const mockCreateSdkObjects = vi.mocked(createSdkObjects);
 
 const DEVNODE_ADDR_0 = DEVNODE_ACCOUNTS[0]!.address;
@@ -92,9 +93,9 @@ describe("NamedAccountManager", () => {
       deployer: { networks: {}, default: { type: "index", index: 0 } },
     };
     const manager = new NamedAccountManager(config);
-    await expect(
-      manager.resolveForNetwork(makeOpts("testnet", "http")),
-    ).rejects.toThrow(/devnode account index 0.*HTTP/i);
+    await expect(manager.resolveForNetwork(makeOpts("testnet", "http"))).rejects.toThrow(
+      /devnode account index 0.*HTTP/i,
+    );
   });
 
   it("throws for out-of-range index", async () => {
@@ -102,9 +103,9 @@ describe("NamedAccountManager", () => {
       deployer: { networks: {}, default: { type: "index", index: 999 } },
     };
     const manager = new NamedAccountManager(config);
-    await expect(
-      manager.resolveForNetwork(makeOpts("devnode", "devnode")),
-    ).rejects.toThrow(/index 999/);
+    await expect(manager.resolveForNetwork(makeOpts("devnode", "devnode"))).rejects.toThrow(
+      /index 999/,
+    );
   });
 
   // ---------------------------------------------------------------------------
@@ -178,9 +179,9 @@ describe("NamedAccountManager", () => {
       },
     };
     const manager = new NamedAccountManager(config);
-    await expect(
-      manager.resolveForNetwork(makeOpts("devnode", "devnode")),
-    ).rejects.toThrow(/no value for network "devnode" and no default/);
+    await expect(manager.resolveForNetwork(makeOpts("devnode", "devnode"))).rejects.toThrow(
+      /no value for network "devnode" and no default/,
+    );
   });
 
   // ---------------------------------------------------------------------------
@@ -221,7 +222,7 @@ describe("NamedAccountManager", () => {
       treasury: { networks: {}, default: { type: "address", address: TREASURY_ADDR } },
     };
     const manager = new NamedAccountManager(config);
-    const result = await manager.resolveForNetwork(makeOpts()) as Record<string, unknown>;
+    const result = (await manager.resolveForNetwork(makeOpts())) as Record<string, unknown>;
     // The result from resolveForNetwork is frozen — writes are silently ignored in strict mode
     // or throw in non-strict. Either way, the internal cache is unaffected.
     // Just verify the second call still returns the original value.

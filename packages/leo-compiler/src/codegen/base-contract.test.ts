@@ -5,11 +5,12 @@
  * this test generates fresh output via generateBaseContract(), transpiles
  * it to JS, writes to a temp .mjs file, and dynamically imports it.
  */
-import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import ts from "typescript";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { generateBaseContract } from "./typescript-generator.js";
 
 // The dynamically loaded BaseContract class
@@ -42,37 +43,40 @@ beforeAll(async () => {
   // Side-load a runtime stub here so the dynamic import resolves; tests that
   // exercise decrypt happy-path mock the stub explicitly.
   const stubPath = join(tmpDir, "network-stub.mjs");
-  writeFileSync(stubPath, [
-    "import { Address } from '@provablehq/sdk/testnet.js';",
-    "export class NetworkRecordDecryptionError extends Error {",
-    "  constructor(message, ciphertextPrefix, cause) {",
-    "    super(message, cause === undefined ? undefined : { cause });",
-    "    this.name = 'NetworkRecordDecryptionError';",
-    "    this.kind = 'NetworkRecordDecryptionError';",
-    "    this.ciphertextPrefix = ciphertextPrefix;",
-    "  }",
-    "}",
-    "export class NetworkValueDecryptionError extends Error {",
-    "  constructor(message, ciphertextPrefix, cause) {",
-    "    super(message, cause === undefined ? undefined : { cause });",
-    "    this.name = 'NetworkValueDecryptionError';",
-    "    this.kind = 'NetworkValueDecryptionError';",
-    "    this.ciphertextPrefix = ciphertextPrefix;",
-    "  }",
-    "}",
-    "export let decryptRecordCiphertext = async () => { throw new NetworkRecordDecryptionError('stub', ''); };",
-    "export let decryptValueCiphertext = async () => { throw new NetworkValueDecryptionError('stub', ''); };",
-    "export let deriveViewKey = async () => { throw new NetworkRecordDecryptionError('stub deriveViewKey', ''); };",
-    "export function programAddressFromProgramId(programId) {",
-    "  const address = Address.fromProgramId(programId);",
-    "  try { return address.to_string(); } finally { address.free(); }",
-    "}",
-    "export function __setDecryptStubs(stubs) {",
-    "  if (stubs.decryptRecordCiphertext) decryptRecordCiphertext = stubs.decryptRecordCiphertext;",
-    "  if (stubs.decryptValueCiphertext) decryptValueCiphertext = stubs.decryptValueCiphertext;",
-    "  if (stubs.deriveViewKey) deriveViewKey = stubs.deriveViewKey;",
-    "}",
-  ].join("\n"));
+  writeFileSync(
+    stubPath,
+    [
+      "import { Address } from '@provablehq/sdk/testnet.js';",
+      "export class NetworkRecordDecryptionError extends Error {",
+      "  constructor(message, ciphertextPrefix, cause) {",
+      "    super(message, cause === undefined ? undefined : { cause });",
+      "    this.name = 'NetworkRecordDecryptionError';",
+      "    this.kind = 'NetworkRecordDecryptionError';",
+      "    this.ciphertextPrefix = ciphertextPrefix;",
+      "  }",
+      "}",
+      "export class NetworkValueDecryptionError extends Error {",
+      "  constructor(message, ciphertextPrefix, cause) {",
+      "    super(message, cause === undefined ? undefined : { cause });",
+      "    this.name = 'NetworkValueDecryptionError';",
+      "    this.kind = 'NetworkValueDecryptionError';",
+      "    this.ciphertextPrefix = ciphertextPrefix;",
+      "  }",
+      "}",
+      "export let decryptRecordCiphertext = async () => { throw new NetworkRecordDecryptionError('stub', ''); };",
+      "export let decryptValueCiphertext = async () => { throw new NetworkValueDecryptionError('stub', ''); };",
+      "export let deriveViewKey = async () => { throw new NetworkRecordDecryptionError('stub deriveViewKey', ''); };",
+      "export function programAddressFromProgramId(programId) {",
+      "  const address = Address.fromProgramId(programId);",
+      "  try { return address.to_string(); } finally { address.free(); }",
+      "}",
+      "export function __setDecryptStubs(stubs) {",
+      "  if (stubs.decryptRecordCiphertext) decryptRecordCiphertext = stubs.decryptRecordCiphertext;",
+      "  if (stubs.decryptValueCiphertext) decryptValueCiphertext = stubs.decryptValueCiphertext;",
+      "  if (stubs.deriveViewKey) deriveViewKey = stubs.deriveViewKey;",
+      "}",
+    ].join("\n"),
+  );
 
   const outPath = join(tmpDir, "BaseContract.mjs");
   // Rewrite the bare-specifier import so Node can resolve it relative to tmpDir.
@@ -104,10 +108,7 @@ afterAll(() => {
 });
 
 /** Create a concrete subclass to access protected methods. */
-function createTestContract(
-  programId = "test.aleo",
-  options?: { imports?: readonly string[] },
-) {
+function createTestContract(programId = "test.aleo", options?: { imports?: readonly string[] }) {
   class TestContract extends BaseContract {
     constructor(ctorOpts: { imports?: readonly string[] } | undefined = options) {
       super(programId, ctorOpts);
@@ -180,9 +181,9 @@ describe("BaseContract runtime", () => {
     it("throws when execution is called without connect()", async () => {
       const contract = createTestContract();
 
-      await expect(
-        contract.testExecuteLocal("main", ["1u32"]),
-      ).rejects.toThrow("Contract test.aleo is not connected to an LRE");
+      await expect(contract.testExecuteLocal("main", ["1u32"])).rejects.toThrow(
+        "Contract test.aleo is not connected to an LRE",
+      );
     });
 
     it("connect() returns this for chaining", () => {
@@ -232,18 +233,18 @@ describe("BaseContract runtime", () => {
       const contract = createTestContract();
       contract.connect({ network: null } as any);
 
-      await expect(
-        contract.testExecuteLocal("main", []),
-      ).rejects.toThrow("Network is not available for test.aleo");
+      await expect(contract.testExecuteLocal("main", [])).rejects.toThrow(
+        "Network is not available for test.aleo",
+      );
     });
 
     it("throws when lre.network.execute is not a function", async () => {
       const contract = createTestContract();
       contract.connect({ network: { execute: "not-a-fn" } } as any);
 
-      await expect(
-        contract.testExecuteLocal("main", []),
-      ).rejects.toThrow("Network is not available for test.aleo");
+      await expect(contract.testExecuteLocal("main", [])).rejects.toThrow(
+        "Network is not available for test.aleo",
+      );
     });
 
     it("passes mode: 'local' merged with other options", async () => {
@@ -292,9 +293,7 @@ describe("BaseContract runtime", () => {
       const contract = createTestContract("hello.aleo");
       contract.connect(mockLre({ execute: async () => ({ outputs: ["1u32"] }) }));
 
-      await expect(
-        contract.testExpectLocalFailure("main", ["1u32"]),
-      ).rejects.toMatchObject({
+      await expect(contract.testExpectLocalFailure("main", ["1u32"])).rejects.toMatchObject({
         kind: "UnexpectedLocalSuccessError",
         phase: "local",
         programId: "hello.aleo",
@@ -329,9 +328,9 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await expect(
-        contract.testSubmit("main", []),
-      ).rejects.toThrow("hello.aleo/main was submitted on-chain but no transaction ID was returned");
+      await expect(contract.testSubmit("main", [])).rejects.toThrow(
+        "hello.aleo/main was submitted on-chain but no transaction ID was returned",
+      );
     });
 
     it("returns result when txId is present", async () => {
@@ -358,7 +357,14 @@ describe("BaseContract runtime", () => {
             txId: "at1ok",
             blockHeight: 12,
             status: "accepted",
-            transitions: [{ programId: "hello.aleo", transitionName: "main", rawOutputs: [], transitionPublicKey: "tpk_test_main" }],
+            transitions: [
+              {
+                programId: "hello.aleo",
+                transitionName: "main",
+                rawOutputs: [],
+                transitionPublicKey: "tpk_test_main",
+              },
+            ],
           }),
         }),
       );
@@ -370,7 +376,12 @@ describe("BaseContract runtime", () => {
         rawOutputs: [],
         transitionPublicKey: "tpk_test_main",
         transitions: [
-          { programId: "hello.aleo", transitionName: "main", rawOutputs: [], transitionPublicKey: "tpk_test_main" },
+          {
+            programId: "hello.aleo",
+            transitionName: "main",
+            rawOutputs: [],
+            transitionPublicKey: "tpk_test_main",
+          },
         ],
       });
     });
@@ -389,19 +400,18 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await expect(
-        contract.testAccepted("main", []),
-      ).rejects.toThrow("confirmed rejected");
-      await expect(
-        contract.testRejected("main", []),
-      ).resolves.toMatchObject({ txId: "at1bad", status: "rejected" });
+      await expect(contract.testAccepted("main", [])).rejects.toThrow("confirmed rejected");
+      await expect(contract.testRejected("main", [])).resolves.toMatchObject({
+        txId: "at1bad",
+        status: "rejected",
+      });
     });
 
     it("wraps typed network confirmation timeouts without string matching", async () => {
-      const timeout = Object.assign(
-        new Error("custom timeout wording"),
-        { name: "NetworkConfirmationTimeoutError", kind: "NetworkConfirmationTimeoutError" },
-      );
+      const timeout = Object.assign(new Error("custom timeout wording"), {
+        name: "NetworkConfirmationTimeoutError",
+        kind: "NetworkConfirmationTimeoutError",
+      });
       const contract = createTestContract("hello.aleo");
       contract.connect(
         mockLre({
@@ -412,9 +422,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await expect(
-        contract.testSettle("main", []),
-      ).rejects.toMatchObject({
+      await expect(contract.testSettle("main", [])).rejects.toMatchObject({
         kind: "TransactionConfirmationTimeoutError",
         phase: "confirm",
         programId: "hello.aleo",
@@ -437,9 +445,7 @@ describe("BaseContract runtime", () => {
         }),
       );
 
-      await expect(
-        contract.testSettle("main", []),
-      ).rejects.toMatchObject({
+      await expect(contract.testSettle("main", [])).rejects.toMatchObject({
         kind: "TransactionShapeError",
         phase: "shape",
         programId: "hello.aleo",
@@ -562,18 +568,18 @@ describe("BaseContract runtime", () => {
       const contract = createTestContract();
       contract.connect({ network: null } as any);
 
-      await expect(
-        contract.testQueryMapping("balances", "aleo1abc"),
-      ).rejects.toThrow("Network is not available for test.aleo");
+      await expect(contract.testQueryMapping("balances", "aleo1abc")).rejects.toThrow(
+        "Network is not available for test.aleo",
+      );
     });
 
     it("throws when getMappingValue is not a function", async () => {
       const contract = createTestContract();
       contract.connect({ network: { getMappingValue: 42 } } as any);
 
-      await expect(
-        contract.testQueryMapping("balances", "aleo1abc"),
-      ).rejects.toThrow("Network is not available for test.aleo");
+      await expect(contract.testQueryMapping("balances", "aleo1abc")).rejects.toThrow(
+        "Network is not available for test.aleo",
+      );
     });
   });
 
@@ -933,10 +939,8 @@ describe("BaseContract runtime", () => {
             [[1, "bad"]],
             { programId: "matrix.aleo", transition: "set", input: "values" },
             (row: unknown, rowContext: any) =>
-              BaseContract.serializeArray(
-                row,
-                rowContext,
-                (cell: unknown, cellContext: any) => BaseContract.serializeUInt(cell, 8, cellContext),
+              BaseContract.serializeArray(row, rowContext, (cell: unknown, cellContext: any) =>
+                BaseContract.serializeUInt(cell, 8, cellContext),
               ),
           ),
         ).toThrow('matrix.aleo/set input "values".0.1 expected u8 number');
@@ -967,15 +971,21 @@ describe("BaseContract runtime", () => {
       });
 
       it("rejects one-sided quoted identifier values", () => {
-        expect(() => BaseContract.serializeIdentifier("'voting_power")).toThrow("expected Identifier matching");
+        expect(() => BaseContract.serializeIdentifier("'voting_power")).toThrow(
+          "expected Identifier matching",
+        );
       });
 
       it("rejects identifier values with embedded quotes", () => {
-        expect(() => BaseContract.serializeIdentifier("voting'power")).toThrow("expected Identifier matching");
+        expect(() => BaseContract.serializeIdentifier("voting'power")).toThrow(
+          "expected Identifier matching",
+        );
       });
 
       it("rejects identifier values that do not start with a letter or underscore", () => {
-        expect(() => BaseContract.serializeIdentifier("1strategy")).toThrow("expected Identifier matching");
+        expect(() => BaseContract.serializeIdentifier("1strategy")).toThrow(
+          "expected Identifier matching",
+        );
       });
 
       it("parses quoted identifier literals to bare names", () => {
@@ -1061,7 +1071,9 @@ describe("BaseContract runtime", () => {
         { _nonce: 0, root: 42, blinding: 7n },
         { _nonce: "group.public", root: "field.public", blinding: "scalar.private" },
       );
-      expect(dyn).toBe("{ _nonce: 0group.public, root: 42field.public, blinding: 7scalar.private }");
+      expect(dyn).toBe(
+        "{ _nonce: 0group.public, root: 42field.public, blinding: 7scalar.private }",
+      );
     });
 
     it("throws when value has missing keys vs schema", () => {
@@ -1075,38 +1087,26 @@ describe("BaseContract runtime", () => {
 
     it("throws when value has extra keys vs schema", () => {
       expect(() =>
-        Leo.dynamicRecord(
-          { owner: Leo.address(ADDR), surprise: 1 },
-          { owner: "address.private" },
-        ),
+        Leo.dynamicRecord({ owner: Leo.address(ADDR), surprise: 1 }, { owner: "address.private" }),
       ).toThrow(/Extra in value: \[surprise\]/);
     });
 
     it("throws on malformed schema entry (missing visibility)", () => {
-      expect(() =>
-        Leo.dynamicRecord(
-          { x: 1 },
-          { x: "u8" } as any,
-        ),
-      ).toThrow(/must be "<type>\.<visibility>"/);
+      expect(() => Leo.dynamicRecord({ x: 1 }, { x: "u8" } as any)).toThrow(
+        /must be "<type>\.<visibility>"/,
+      );
     });
 
     it("throws on invalid visibility", () => {
-      expect(() =>
-        Leo.dynamicRecord(
-          { x: 1 },
-          { x: "u8.weird" } as any,
-        ),
-      ).toThrow(/invalid visibility "weird"/);
+      expect(() => Leo.dynamicRecord({ x: 1 }, { x: "u8.weird" } as any)).toThrow(
+        /invalid visibility "weird"/,
+      );
     });
 
     it("range-checks integer values per bit width", () => {
-      expect(() =>
-        Leo.dynamicRecord(
-          { x: 300 },
-          { x: "u8.public" },
-        ),
-      ).toThrow(/u8 in range 0\.\.255/);
+      expect(() => Leo.dynamicRecord({ x: 300 }, { x: "u8.public" })).toThrow(
+        /u8 in range 0\.\.255/,
+      );
     });
 
     it("rejects non-object value", () => {
@@ -1150,11 +1150,7 @@ describe("BaseContract runtime", () => {
       // The stub at the top of this file throws NetworkRecordDecryptionError;
       // BaseContract.decryptRecord must re-wrap as LocalRecordDecryptionError.
       await expect(
-        BaseContract.decryptRecord(
-          "record1abc",
-          { viewKey: "AViewKey1zz" },
-          (s: string) => s,
-        ),
+        BaseContract.decryptRecord("record1abc", { viewKey: "AViewKey1zz" }, (s: string) => s),
       ).rejects.toMatchObject({
         kind: "LocalRecordDecryptionError",
       });
@@ -1183,11 +1179,7 @@ describe("BaseContract runtime", () => {
 
     it("rejects {viewKey: 'bad'} at the input layer (RecordDecryptionKeyError, not LocalRecordDecryptionError)", async () => {
       await expect(
-        BaseContract.decryptRecord(
-          "record1abc",
-          { viewKey: "deadbeef" },
-          (s: string) => s,
-        ),
+        BaseContract.decryptRecord("record1abc", { viewKey: "deadbeef" }, (s: string) => s),
       ).rejects.toMatchObject({
         kind: "RecordDecryptionKeyError",
         message: expect.stringContaining("AViewKey1"),
@@ -1196,11 +1188,7 @@ describe("BaseContract runtime", () => {
 
     it("rejects {privateKey: 'bad'} at the input layer (RecordDecryptionKeyError)", async () => {
       await expect(
-        BaseContract.decryptRecord(
-          "record1abc",
-          { privateKey: "not-a-pk" },
-          (s: string) => s,
-        ),
+        BaseContract.decryptRecord("record1abc", { privateKey: "not-a-pk" }, (s: string) => s),
       ).rejects.toMatchObject({
         kind: "RecordDecryptionKeyError",
         message: expect.stringContaining("APrivateKey1"),
@@ -1208,7 +1196,8 @@ describe("BaseContract runtime", () => {
     });
 
     it("returns the deserialized record on successful decrypt", async () => {
-      const plaintext = "{ owner: aleo1abc.private, amount: 100u64.private, _nonce: 0group.public }";
+      const plaintext =
+        "{ owner: aleo1abc.private, amount: 100u64.private, _nonce: 0group.public }";
       const restore = networkStub.decryptRecordCiphertext;
       try {
         networkStub.__setDecryptStubs({
@@ -1229,7 +1218,8 @@ describe("BaseContract runtime", () => {
     it("preserves RECORD_RAW cache so the decrypted record round-trips through serialize", async () => {
       // Drive the realistic codegen-emitted deserializer pattern: parseStruct
       // then Object.defineProperty(_record, BaseContract.RECORD_RAW, ...).
-      const plaintext = "{ owner: aleo1abc.private, amount: 100u64.private, _nonce: 0group.public }";
+      const plaintext =
+        "{ owner: aleo1abc.private, amount: 100u64.private, _nonce: 0group.public }";
       const restore = networkStub.decryptRecordCiphertext;
       try {
         networkStub.__setDecryptStubs({
@@ -1281,8 +1271,18 @@ describe("BaseContract runtime", () => {
             blockHeight: 5,
             status: "accepted",
             transitions: [
-              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [], transitionPublicKey: "tpk_test_fee" },
-              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["record1xyz"], transitionPublicKey: "tpk_test_mint" },
+              {
+                programId: "credits.aleo",
+                transitionName: "fee_public",
+                rawOutputs: [],
+                transitionPublicKey: "tpk_test_fee",
+              },
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["record1xyz"],
+                transitionPublicKey: "tpk_test_mint",
+              },
             ],
           }),
         }),
@@ -1303,7 +1303,12 @@ describe("BaseContract runtime", () => {
             blockHeight: 5,
             status: "accepted",
             transitions: [
-              { programId: "credits.aleo", transitionName: "fee_public", rawOutputs: [], transitionPublicKey: "tpk_test_fee" },
+              {
+                programId: "credits.aleo",
+                transitionName: "fee_public",
+                rawOutputs: [],
+                transitionPublicKey: "tpk_test_fee",
+              },
             ],
           }),
         }),
@@ -1311,7 +1316,9 @@ describe("BaseContract runtime", () => {
 
       await expect(contract.testAccepted("mint", [])).rejects.toMatchObject({
         kind: "TransactionShapeError",
-        message: expect.stringContaining("did not contain a matching transition for token.aleo/mint"),
+        message: expect.stringContaining(
+          "did not contain a matching transition for token.aleo/mint",
+        ),
       });
     });
 
@@ -1325,8 +1332,18 @@ describe("BaseContract runtime", () => {
             blockHeight: 5,
             status: "accepted",
             transitions: [
-              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["a"], transitionPublicKey: "tpk_test_a" },
-              { programId: "token.aleo", transitionName: "mint", rawOutputs: ["b"], transitionPublicKey: "tpk_test_b" },
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["a"],
+                transitionPublicKey: "tpk_test_a",
+              },
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["b"],
+                transitionPublicKey: "tpk_test_b",
+              },
             ],
           }),
         }),
@@ -1505,11 +1522,12 @@ describe("BaseContract runtime", () => {
   describe("makeIdOnlyDynamicRecordHandle", () => {
     const SIBLING_CIPHERTEXT = "record1sibling";
     const entry = { kind: "idOnly", type: "record_dynamic", id: "dyn-id" } as const;
-    const calleeMatcher = () => createRecordOutputMatcher({
-      program: "callee.aleo",
-      recordName: "Tok",
-      deserialize: (plaintext: string) => ({ decoded: plaintext }),
-    });
+    const calleeMatcher = () =>
+      createRecordOutputMatcher({
+        program: "callee.aleo",
+        recordName: "Tok",
+        deserialize: (plaintext: string) => ({ decoded: plaintext }),
+      });
     const transitions = [
       {
         programId: "router.aleo",
@@ -1539,7 +1557,9 @@ describe("BaseContract runtime", () => {
         decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
       });
       const handle = BaseContract.makeIdOnlyDynamicRecordHandle(entry, transitions);
-      const result = await handle.match(calleeMatcher().from("transfer", 0)).decrypt("AViewKey1abc");
+      const result = await handle
+        .match(calleeMatcher().from("transfer", 0))
+        .decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
     });
 
@@ -1608,11 +1628,12 @@ describe("BaseContract runtime", () => {
   describe("makeIdOnlyExternalRecordHandle", () => {
     const CALLEE_CIPHERTEXT = "record1callee";
     const entry = { kind: "idOnly", type: "external_record", id: "ext-id" } as const;
-    const calleeMatcher = () => createRecordOutputMatcher({
-      program: "callee.aleo",
-      recordName: "Foo",
-      deserialize: (plaintext: string) => ({ decoded: plaintext }),
-    });
+    const calleeMatcher = () =>
+      createRecordOutputMatcher({
+        program: "callee.aleo",
+        recordName: "Foo",
+        deserialize: (plaintext: string) => ({ decoded: plaintext }),
+      });
     const transitions = [
       {
         programId: "caller.aleo",
@@ -1703,7 +1724,9 @@ describe("BaseContract runtime", () => {
         },
       ];
       const handle = BaseContract.makeIdOnlyExternalRecordHandle(entry, dupTransitions);
-      const result = await handle.match(calleeMatcher().from("mint", 0, { match: 1 })).decrypt("AViewKey1abc");
+      const result = await handle
+        .match(calleeMatcher().from("mint", 0, { match: 1 }))
+        .decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: "[plain record1other]" });
     });
 
@@ -1762,7 +1785,14 @@ describe("BaseContract runtime", () => {
     const TPK = "tpk_test_group";
 
     it("creates a handle wrapping ciphertext + decrypt closure", () => {
-      const handle = BaseContract.makeEncryptedValue(CT, TPK, "p.aleo", "t", 1, BaseContract.parseBigInt);
+      const handle = BaseContract.makeEncryptedValue(
+        CT,
+        TPK,
+        "p.aleo",
+        "t",
+        1,
+        BaseContract.parseBigInt,
+      );
       expect(handle.ciphertext).toBe(CT);
       expect(typeof handle.decrypt).toBe("function");
     });
@@ -1771,14 +1801,25 @@ describe("BaseContract runtime", () => {
       let captured: any = null;
       networkStub.__setDecryptStubs({
         decryptValueCiphertext: async (
-          ciphertext: string, viewKey: string, tpk: string,
-          programId: string, transitionName: string, globalIndex: number,
+          ciphertext: string,
+          viewKey: string,
+          tpk: string,
+          programId: string,
+          transitionName: string,
+          globalIndex: number,
         ) => {
           captured = { ciphertext, viewKey, tpk, programId, transitionName, globalIndex };
           return "10000u64";
         },
       });
-      const handle = BaseContract.makeEncryptedValue(CT, TPK, "governance.aleo", "compare_strategies", 1, BaseContract.parseBigInt);
+      const handle = BaseContract.makeEncryptedValue(
+        CT,
+        TPK,
+        "governance.aleo",
+        "compare_strategies",
+        1,
+        BaseContract.parseBigInt,
+      );
       const value = await handle.decrypt("AViewKey1abc");
       expect(value).toBe(10000n);
       expect(captured).toEqual({
@@ -1793,10 +1834,31 @@ describe("BaseContract runtime", () => {
 
     it("captures ciphertext/tpk/program/function/globalIndex independently per instance", async () => {
       networkStub.__setDecryptStubs({
-        decryptValueCiphertext: async (_ct: string, _vk: string, _tpk: string, _p: string, _t: string, idx: number) => `${idx}u64`,
+        decryptValueCiphertext: async (
+          _ct: string,
+          _vk: string,
+          _tpk: string,
+          _p: string,
+          _t: string,
+          idx: number,
+        ) => `${idx}u64`,
       });
-      const h1 = BaseContract.makeEncryptedValue("ct1", "tpk1", "p.aleo", "t", 1, BaseContract.parseBigInt);
-      const h2 = BaseContract.makeEncryptedValue("ct2", "tpk2", "p.aleo", "t", 2, BaseContract.parseBigInt);
+      const h1 = BaseContract.makeEncryptedValue(
+        "ct1",
+        "tpk1",
+        "p.aleo",
+        "t",
+        1,
+        BaseContract.parseBigInt,
+      );
+      const h2 = BaseContract.makeEncryptedValue(
+        "ct2",
+        "tpk2",
+        "p.aleo",
+        "t",
+        2,
+        BaseContract.parseBigInt,
+      );
       expect(await h1.decrypt("AViewKey1abc")).toBe(1n);
       expect(await h2.decrypt("AViewKey1abc")).toBe(2n);
     });
@@ -1807,7 +1869,14 @@ describe("BaseContract runtime", () => {
           throw new networkStub.NetworkValueDecryptionError("bad ciphertext", CT.slice(0, 16));
         },
       });
-      const handle = BaseContract.makeEncryptedValue(CT, TPK, "p.aleo", "t", 5, BaseContract.parseBigInt);
+      const handle = BaseContract.makeEncryptedValue(
+        CT,
+        TPK,
+        "p.aleo",
+        "t",
+        5,
+        BaseContract.parseBigInt,
+      );
       try {
         await handle.decrypt("AViewKey1abc");
         throw new Error("expected throw");
@@ -1828,7 +1897,11 @@ describe("BaseContract runtime", () => {
       // Deserializer throws TransitionInputError (a LionDenTypechainError) —
       // the narrow pass-through rule must still wrap it (not let it leak).
       const handle = BaseContract.makeEncryptedValue(
-        CT, TPK, "p.aleo", "t", 0,
+        CT,
+        TPK,
+        "p.aleo",
+        "t",
+        0,
         (_plaintext: string) => {
           throw new TransitionInputError("fake input error");
         },
@@ -1844,7 +1917,14 @@ describe("BaseContract runtime", () => {
     });
 
     it("passes RecordDecryptionKeyError through unchanged when the key shape is invalid", async () => {
-      const handle = BaseContract.makeEncryptedValue(CT, TPK, "p.aleo", "t", 0, BaseContract.parseBigInt);
+      const handle = BaseContract.makeEncryptedValue(
+        CT,
+        TPK,
+        "p.aleo",
+        "t",
+        0,
+        BaseContract.parseBigInt,
+      );
       for (const badKey of ["", "junk", {} as any, null as any]) {
         try {
           await handle.decrypt(badKey);
@@ -1867,7 +1947,14 @@ describe("BaseContract runtime", () => {
             txId: "atOk",
             blockHeight: 7,
             status: "accepted",
-            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["42u128"], transitionPublicKey: "tpk_test_mint" }],
+            transitions: [
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["42u128"],
+                transitionPublicKey: "tpk_test_mint",
+              },
+            ],
           }),
         }),
       );
@@ -1924,7 +2011,14 @@ describe("BaseContract runtime", () => {
             txId: "atShape",
             blockHeight: 7,
             status: "accepted",
-            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: [], transitionPublicKey: "tpk_test_mint" }],
+            transitions: [
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: [],
+                transitionPublicKey: "tpk_test_mint",
+              },
+            ],
           }),
         }),
       );
@@ -1951,7 +2045,14 @@ describe("BaseContract runtime", () => {
             txId: "atWrap",
             blockHeight: 7,
             status: "accepted",
-            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["malformed-addr"], transitionPublicKey: "tpk_test_mint" }],
+            transitions: [
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["malformed-addr"],
+                transitionPublicKey: "tpk_test_mint",
+              },
+            ],
           }),
         }),
       );
@@ -1977,7 +2078,14 @@ describe("BaseContract runtime", () => {
             txId: "atLocalDec",
             blockHeight: 7,
             status: "accepted",
-            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["record1abc"], transitionPublicKey: "tpk_test_mint" }],
+            transitions: [
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["record1abc"],
+                transitionPublicKey: "tpk_test_mint",
+              },
+            ],
           }),
         }),
       );
@@ -2006,7 +2114,14 @@ describe("BaseContract runtime", () => {
             txId: "atNative",
             blockHeight: 7,
             status: "accepted",
-            transitions: [{ programId: "token.aleo", transitionName: "mint", rawOutputs: ["x"], transitionPublicKey: "tpk_test_mint" }],
+            transitions: [
+              {
+                programId: "token.aleo",
+                transitionName: "mint",
+                rawOutputs: ["x"],
+                transitionPublicKey: "tpk_test_mint",
+              },
+            ],
           }),
         }),
       );

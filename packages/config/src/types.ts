@@ -123,9 +123,7 @@ export interface HttpNetworkConfig {
   readonly ephemeral?: boolean;
 }
 
-export type NetworkUserConfig =
-  | DevnodeNetworkConfig
-  | HttpNetworkConfig;
+export type NetworkUserConfig = DevnodeNetworkConfig | HttpNetworkConfig;
 
 export type AleoNetwork = "mainnet" | "testnet" | "canary";
 
@@ -349,7 +347,7 @@ export interface SdkConfig {
 }
 
 export const SDK_LOG_LEVELS = ["silent", "error", "warn", "info", "debug"] as const;
-export type SdkLogLevel = typeof SDK_LOG_LEVELS[number];
+export type SdkLogLevel = (typeof SDK_LOG_LEVELS)[number];
 
 export interface SdkKeyCacheConfig {
   /** Cache storage backend. Default: "filesystem" */
@@ -527,9 +525,7 @@ export interface ResolvedHttpNetworkConfig {
   readonly ephemeral: boolean;
 }
 
-export type ResolvedNetworkConfig =
-  | ResolvedDevnodeNetworkConfig
-  | ResolvedHttpNetworkConfig;
+export type ResolvedNetworkConfig = ResolvedDevnodeNetworkConfig | ResolvedHttpNetworkConfig;
 
 export interface LionDenResolvedConfig {
   readonly leoVersion: string;

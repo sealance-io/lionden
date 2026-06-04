@@ -7,8 +7,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAdminExample } from "../typechain/AdminExample.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,18 +52,8 @@ describe("admin_example.aleo", () => {
   });
 
   it("admin can upgrade and the new sub transition is callable", async () => {
-    const programPath = path.resolve(
-      __dirname,
-      "..",
-      "programs",
-      "admin_example",
-      "main.leo",
-    );
-    const v2FixturePath = path.resolve(
-      __dirname,
-      "fixtures",
-      "admin_example_v2.leo",
-    );
+    const programPath = path.resolve(__dirname, "..", "programs", "admin_example", "main.leo");
+    const v2FixturePath = path.resolve(__dirname, "fixtures", "admin_example_v2.leo");
     const v1Source = fs.readFileSync(programPath, "utf-8");
 
     try {
@@ -76,12 +66,9 @@ describe("admin_example.aleo", () => {
       // The v2-only `subtract` transition isn't on the typed wrapper class
       // loaded at suite startup (typechain reflects v1). Use the explicit
       // raw escape hatch for the post-upgrade ABI addition.
-      const sub = await ctx!.raw.execute(
-        "admin_example.aleo",
-        "subtract",
-        ["10u32", "3u32"],
-        { mode: "local" },
-      );
+      const sub = await ctx!.raw.execute("admin_example.aleo", "subtract", ["10u32", "3u32"], {
+        mode: "local",
+      });
       expect(sub.outputs[0]).toBe("7u32");
 
       // Pre-existing transition still works after upgrade — typed wrapper OK.

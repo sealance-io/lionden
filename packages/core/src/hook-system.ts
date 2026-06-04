@@ -1,9 +1,4 @@
-import type {
-  LionDenPlugin,
-  HookCategory,
-  HookHandlerMap,
-  HookDispatcher,
-} from "./types.js";
+import type { HookCategory, HookDispatcher, HookHandlerMap, LionDenPlugin } from "./types.js";
 
 type AnyHandlerMap = HookHandlerMap[HookCategory];
 type HandlerFn = (...args: unknown[]) => unknown;
@@ -35,9 +30,9 @@ export class HookDispatcherImpl implements HookDispatcher {
     for (const plugin of plugins) {
       if (!plugin.hookHandlers) continue;
 
-      for (const [category, handlerOrFactory] of Object.entries(
-        plugin.hookHandlers,
-      ) as Array<[HookCategory, unknown]>) {
+      for (const [category, handlerOrFactory] of Object.entries(plugin.hookHandlers) as Array<
+        [HookCategory, unknown]
+      >) {
         if (!handlerOrFactory) continue;
 
         let entries = this.registry.get(category);
@@ -91,10 +86,7 @@ export class HookDispatcherImpl implements HookDispatcher {
    * Get all resolved handler functions for a specific hook point,
    * in plugin dependency order.
    */
-  private async getHandlers(
-    category: HookCategory,
-    hookName: string,
-  ): Promise<HandlerFn[]> {
+  private async getHandlers(category: HookCategory, hookName: string): Promise<HandlerFn[]> {
     await this.resolveCategory(category);
 
     const entries = this.registry.get(category) ?? [];
@@ -102,9 +94,7 @@ export class HookDispatcherImpl implements HookDispatcher {
 
     for (const entry of entries) {
       if (entry.handlers) {
-        const fn = (entry.handlers as Record<string, HandlerFn | undefined>)[
-          hookName
-        ];
+        const fn = (entry.handlers as Record<string, HandlerFn | undefined>)[hookName];
         if (typeof fn === "function") {
           handlers.push(fn);
         }

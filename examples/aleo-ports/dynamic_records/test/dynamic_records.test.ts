@@ -29,18 +29,14 @@
 //     gives the same uniform API with a program/recordName identity guard.
 //   - `.at(...)` and `createRecordOutputMatcher(...)` are escape hatches for
 //     positional selection, negative tests, or unresolved external ABIs.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import {
-  setup,
-  loadFixture,
-  clearFixtures,
-  type TestContext,
-} from "@lionden/testing";
-import { Leo, createRecordOutputMatcher } from "../typechain/BaseContract.js";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createRecordOutputMatcher, Leo } from "../typechain/BaseContract.js";
+import { createExternalTokenDemo, GoldToken_Token } from "../typechain/ExternalTokenDemo.js";
 import { asGoldToken, createGoldToken } from "../typechain/GoldToken.js";
 import { asSilverToken, createSilverToken } from "../typechain/SilverToken.js";
 import { createTokenRouter } from "../typechain/TokenRouter.js";
-import { createExternalTokenDemo, GoldToken_Token } from "../typechain/ExternalTokenDemo.js";
 
 const RUNTIME_IMPORTS = ["gold_token.aleo", "silver_token.aleo"] as const;
 
@@ -466,12 +462,12 @@ describe("IdOnlyExternalRecordHandle .match negative cases", () => {
       recordName: "Foo",
       deserialize: (s: string) => s,
     });
-    await expect(
-      handle.match(missingMatcher.from("nope", 0)).decrypt(bob()),
-    ).rejects.toMatchObject({
-      kind: "IdOnlyRecordResolutionError",
-      reason: "transition-not-found",
-    });
+    await expect(handle.match(missingMatcher.from("nope", 0)).decrypt(bob())).rejects.toMatchObject(
+      {
+        kind: "IdOnlyRecordResolutionError",
+        reason: "transition-not-found",
+      },
+    );
   });
 
   it("transition-index-out-of-range for .at(...) past the callgraph", async () => {
@@ -630,10 +626,10 @@ describe("EncryptedRecord .match identity guard", () => {
     // The minted output is an EncryptedRecord<Token> for gold_token.aleo/Token.
     // Passing the silver matcher must reject — the deserializer assumes the
     // wrong record layout and the program identity does not match.
-    await expect(
-      minted.outputs.match(asSilverToken.output).decrypt(alice()),
-    ).rejects.toMatchObject({
-      kind: "TransactionShapeError",
-    });
+    await expect(minted.outputs.match(asSilverToken.output).decrypt(alice())).rejects.toMatchObject(
+      {
+        kind: "TransactionShapeError",
+      },
+    );
   });
 });

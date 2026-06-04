@@ -42,9 +42,7 @@ export type AleoType =
   | "DynamicRecord";
 
 // Storage variable type — supports vectors unlike Plaintext
-export type StorageType =
-  | { Plaintext: PlaintextType }
-  | { Vector: StorageType };
+export type StorageType = { Plaintext: PlaintextType } | { Vector: StorageType };
 
 // Input/output mode
 export type Mode = "None" | "Public" | "Private";

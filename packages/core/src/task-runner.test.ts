@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
-import { TaskRunnerImpl, TaskNotFoundError } from "./task-runner.js";
-import type { TaskDefinition, LionDenRuntimeEnvironment } from "./types.js";
+import { describe, expect, it, vi } from "vitest";
+import { TaskNotFoundError, TaskRunnerImpl } from "./task-runner.js";
+import type { LionDenRuntimeEnvironment, TaskDefinition } from "./types.js";
 
 function makeLre(): LionDenRuntimeEnvironment {
   return {
@@ -193,12 +193,14 @@ describe("TaskRunnerImpl", () => {
     it("fills option defaults", async () => {
       const action = vi.fn();
       const runner = new TaskRunnerImpl();
-      runner.registerTasks([{
-        id: "test",
-        description: "test",
-        action,
-        options: [{ name: "port", type: "number", description: "port", defaultValue: 3030 }],
-      }]);
+      runner.registerTasks([
+        {
+          id: "test",
+          description: "test",
+          action,
+          options: [{ name: "port", type: "number", description: "port", defaultValue: 3030 }],
+        },
+      ]);
       runner.setLre(makeLre());
 
       await runner.run("test", {});

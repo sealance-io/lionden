@@ -8,8 +8,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createNoupgradeExample } from "../typechain/NoupgradeExample.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,18 +52,8 @@ describe("noupgrade_example.aleo", () => {
   });
 
   it("upgrade attempt is rejected by @noupgrade constructor", async () => {
-    const programPath = path.resolve(
-      __dirname,
-      "..",
-      "programs",
-      "noupgrade_example",
-      "main.leo",
-    );
-    const v2FixturePath = path.resolve(
-      __dirname,
-      "fixtures",
-      "noupgrade_example_v2.leo",
-    );
+    const programPath = path.resolve(__dirname, "..", "programs", "noupgrade_example", "main.leo");
+    const v2FixturePath = path.resolve(__dirname, "fixtures", "noupgrade_example_v2.leo");
     const v1Source = fs.readFileSync(programPath, "utf-8");
 
     try {

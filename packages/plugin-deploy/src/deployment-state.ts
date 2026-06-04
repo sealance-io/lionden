@@ -21,11 +21,11 @@ import * as path from "node:path";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import { parseAbi } from "@lionden/leo-compiler";
 import type {
-  DeploymentRecord,
   DeploymentHistoryEntry,
+  DeploymentRecord,
+  ExportBundle,
   NetworkMetadata,
   PendingDeployment,
-  ExportBundle,
 } from "./deployment-types.js";
 
 // ---------------------------------------------------------------------------
@@ -84,7 +84,10 @@ export function writeDeploymentRecord(
   network: string,
   record: DeploymentRecord,
 ): void {
-  atomicWrite(recordPath(deploymentsDir, network, record.programId), JSON.stringify(record, null, 2) + "\n");
+  atomicWrite(
+    recordPath(deploymentsDir, network, record.programId),
+    JSON.stringify(record, null, 2) + "\n",
+  );
 }
 
 export function readDeploymentRecord(
@@ -136,7 +139,10 @@ export function writeAbiSnapshot(
   programId: string,
   abi: ProgramABI,
 ): void {
-  atomicWrite(abiSnapshotPath(deploymentsDir, network, programId), JSON.stringify(abi, null, 2) + "\n");
+  atomicWrite(
+    abiSnapshotPath(deploymentsDir, network, programId),
+    JSON.stringify(abi, null, 2) + "\n",
+  );
 }
 
 export function readAbiSnapshot(
@@ -188,7 +194,10 @@ export function readHistory(
   if (!fs.existsSync(dir)) return [];
 
   const entries: DeploymentHistoryEntry[] = [];
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .sort();
   for (const file of files) {
     try {
       const raw = fs.readFileSync(path.join(dir, file), "utf-8");
@@ -234,7 +243,10 @@ export function writePendingMarker(
   network: string,
   pending: PendingDeployment,
 ): void {
-  atomicWrite(pendingPath(deploymentsDir, network, pending.programId), JSON.stringify(pending, null, 2) + "\n");
+  atomicWrite(
+    pendingPath(deploymentsDir, network, pending.programId),
+    JSON.stringify(pending, null, 2) + "\n",
+  );
 }
 
 export function readPendingMarker(
@@ -262,10 +274,7 @@ export function deletePendingMarker(
   }
 }
 
-export function listPendingMarkers(
-  deploymentsDir: string,
-  network: string,
-): string[] {
+export function listPendingMarkers(deploymentsDir: string, network: string): string[] {
   const dir = pendingDir(deploymentsDir, network);
   if (!fs.existsSync(dir)) return [];
   return fs
@@ -286,10 +295,7 @@ export function writeExportBundle(
   atomicWrite(exportPath(deploymentsDir, network), JSON.stringify(bundle, null, 2) + "\n");
 }
 
-export function readExportBundle(
-  deploymentsDir: string,
-  network: string,
-): ExportBundle | null {
+export function readExportBundle(deploymentsDir: string, network: string): ExportBundle | null {
   const p = exportPath(deploymentsDir, network);
   if (!fs.existsSync(p)) return null;
   try {

@@ -17,12 +17,13 @@
 // the typed wrapper a safe value to serialize for the wire.
 // Source: upstream dynamic_dispatch/run.sh:79 and
 // packages/leo-compiler/src/codegen/__goldens__/base-contract.ts.
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { setup, loadFixture, clearFixtures, type TestContext } from "@lionden/testing";
-import { createGovernance } from "../typechain/Governance.js";
-import { createVotingPower } from "../typechain/VotingPower.js";
-import { createQuadraticPower } from "../typechain/QuadraticPower.js";
+
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Leo } from "../typechain/BaseContract.js";
+import { createGovernance } from "../typechain/Governance.js";
+import { createQuadraticPower } from "../typechain/QuadraticPower.js";
+import { createVotingPower } from "../typechain/VotingPower.js";
 
 async function deployDispatch() {
   const ctx = await setup();

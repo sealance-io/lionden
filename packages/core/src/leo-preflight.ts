@@ -28,9 +28,7 @@ export function parseLeoVersionOutput(output: string): ParsedLeoVersion | null {
 
 export async function preflightLeo(config: LionDenResolvedConfig): Promise<void> {
   const expected = parseConfigLeoVersion(config.leoVersion);
-  const expectedLine = expected
-    ? `${expected.major}.${expected.minor}`
-    : config.leoVersion;
+  const expectedLine = expected ? `${expected.major}.${expected.minor}` : config.leoVersion;
   const skip = config.skipLeoVersionCheck;
   const key = `${config.leoBinary}\0${expectedLine}\0${skip ? "skip" : "check"}`;
 
@@ -55,13 +53,9 @@ async function runLeoPreflight(
   let stderr = "";
 
   try {
-    const result = await execFileAsync(
-      binary,
-      ["--disable-update-check", "--version"],
-      {
-        timeout: 30_000,
-      },
-    );
+    const result = await execFileAsync(binary, ["--disable-update-check", "--version"], {
+      timeout: 30_000,
+    });
     stdout = String(result.stdout);
     stderr = String(result.stderr);
   } catch (err) {
@@ -127,7 +121,7 @@ function formatVersionOutput(
   stderr: string | Buffer | undefined,
 ): string {
   const output = [stdout, stderr]
-    .map((value) => value === undefined ? "" : String(value).trim())
+    .map((value) => (value === undefined ? "" : String(value).trim()))
     .filter(Boolean)
     .join("\n")
     .trim();
