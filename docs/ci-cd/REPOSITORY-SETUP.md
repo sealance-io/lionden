@@ -11,7 +11,7 @@ Workflows are version-controlled; these settings are not, so they live here.
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | PRs to `main` | dependency-review (gated), lockfile validation (registry-only + integrity, via `npm run lint:lockfile`), build, unit+contract tests, lint/format placeholder, smoke (Leo devnode, core examples). Rollup: **CI Status**. |
+| `ci.yml` | PRs to `main` | dependency-review (gated), lockfile validation (registry-only + integrity, via `npm run lint:lockfile`), build, unit+contract tests, lint/format (Biome `check:ci`), smoke (Leo devnode, core examples). Rollup: **CI Status**. |
 | `security-audit.yml` | PR/push/weekly | zizmor workflow audit. Rollup: **Security Audit Status**. |
 | `pinact-verify.yml` | PR/push | Action SHA-pin + cooldown verification. Rollup: **pinact Status**. |
 | `release-version.yml` | push to `main` | Opens/updates the "Version Packages" PR (changesets + GitHub App token). |

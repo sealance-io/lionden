@@ -42,7 +42,9 @@ pnpm-debug.log*
 # Editors and local tooling
 .claude/
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
 .vscode-test/
 *.swp
 *.swo

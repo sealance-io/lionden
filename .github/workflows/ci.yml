@@ -96,19 +96,25 @@ jobs:
         with:
           config-file: ./.github/dependency-review-config.yml
 
-  # Placeholder — linting/formatting is intentionally deferred to a follow-up PR.
-  # Always green; does NOT invoke the existing `lint` script yet.
+  # Lint + format + import-order gate (Biome). Hard fails the PR on any violation.
+  # Ungated (runs on every PR) so the ci-status rollup's "lint must succeed" invariant holds.
   lint-format:
     needs: detect-changes
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
-      - name: Lint/format placeholder
-        run: |
-          echo "::notice::Lint/format checks are intentionally deferred."
-          echo "TODO: enable eslint + a formatter in a follow-up PR (wire npm run lint here)."
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm run lint:lockfile # lockfile guard runs before any install (matches the build job)
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run check:ci -- --reporter=github # biome ci (format + lint + import-order); inline PR annotations
 
   build:
     needs: detect-changes
@@ -226,9 +232,9 @@ jobs:
             exit 1
           fi
 
-          # Placeholder must always be green.
+          # lint-format (Biome) is a hard gate — must succeed on every PR.
           if [[ "$LINT" != "success" ]]; then
-            echo "::error::lint-format placeholder did not succeed"
+            echo "::error::lint-format (Biome) did not succeed"
             exit 1
           fi
 
