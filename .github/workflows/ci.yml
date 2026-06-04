@@ -187,6 +187,8 @@ jobs:
           audit-deny-warnings: false
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
       - run: npm run build
+      - name: Prepare Leo home directory
+        run: mkdir -p "$HOME/.aleo"
       - run: npm run test:smoke # core examples, no --prove
 
   # Rollup sentinel: a single stable required check for the branch ruleset.
