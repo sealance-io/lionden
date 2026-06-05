@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const CORE_EXAMPLES = [
@@ -18,7 +18,9 @@ const LEO_4_0_BINARY_ENV = "LIONDEN_LEO_4_0_BINARY";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 
-const { listOnly, typecheck, prove, groups, leo40Binary } = parseArgs(process.argv.slice(2));
+const { listOnly, typecheck, prove, coverage, groups, leo40Binary } = parseArgs(
+  process.argv.slice(2),
+);
 const requestedGroups = groups.length > 0 ? groups : ["core"];
 if (leo40Binary) {
   process.env[LEO_4_0_BINARY_ENV] = leo40Binary;
@@ -26,7 +28,7 @@ if (leo40Binary) {
 
 function usage() {
   console.error(
-    "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--leo-4-binary <path>] [core] [aleo-ports] [all]",
+    "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--coverage] [--leo-4-binary <path>] [core] [aleo-ports] [all]",
   );
 }
 
@@ -35,6 +37,7 @@ function parseArgs(args) {
     listOnly: false,
     typecheck: true,
     prove: false,
+    coverage: false,
     groups: [],
     leo40Binary: process.env[LEO_4_0_BINARY_ENV],
   };
@@ -50,6 +53,9 @@ function parseArgs(args) {
         break;
       case "--prove":
         parsed.prove = true;
+        break;
+      case "--coverage":
+        parsed.coverage = true;
         break;
       case "--leo-4-binary": {
         const value = args[++i];
@@ -126,6 +132,8 @@ if (listOnly) {
   process.exit(0);
 }
 
+const coverageContext = coverage ? createCoverageContext(requestedGroups) : undefined;
+
 if (configs.some(isAleoPortConfig) && !process.env[LEO_4_0_BINARY_ENV]) {
   console.warn(
     `\n[smoke] aleo-ports configs are pinned to leoVersion 4.0.0. ` +
@@ -149,14 +157,29 @@ for (const config of configs) {
     ]);
   }
 
-  run("test", [
-    "--import",
-    "tsx",
-    "packages/cli/src/bin.ts",
-    "--config",
-    config,
+  run(
     "test",
-    ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
+    [
+      "--import",
+      "tsx",
+      "packages/cli/src/bin.ts",
+      "--config",
+      config,
+      "test",
+      ...(coverage ? ["--coverage"] : []),
+      ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
+    ],
+    coverageContext ? coverageEnv(coverageContext, config) : undefined,
+  );
+}
+
+if (coverageContext) {
+  run("merge coverage", [
+    join(repoRoot, "node_modules", "vitest", "vitest.mjs"),
+    "run",
+    `--merge-reports=${coverageContext.blobDir}`,
+    "--coverage",
+    `--coverage.reportsDirectory=${coverageContext.finalReportsDirectory}`,
   ]);
 }
 
@@ -164,10 +187,50 @@ function isAleoPortConfig(config) {
   return config.split(/[\\/]/).includes("aleo-ports");
 }
 
-function run(label, commandArgs) {
+function createCoverageContext(groups) {
+  const lane = coverageLane(groups);
+  const root = join(repoRoot, ".vitest", "smoke-coverage", lane);
+  const blobDir = join(root, "blobs");
+  const runsDir = join(root, "runs");
+  const finalReportsDirectory = join(repoRoot, "coverage", "smoke", lane);
+
+  rmSync(root, { recursive: true, force: true });
+  mkdirSync(blobDir, { recursive: true });
+  mkdirSync(runsDir, { recursive: true });
+
+  return { lane, blobDir, runsDir, finalReportsDirectory };
+}
+
+function coverageLane(groups) {
+  if (groups.includes("all") || groups.length > 1) return "all";
+  return groups[0] ?? "core";
+}
+
+function coverageEnv(context, config) {
+  const id = coverageExampleId(config);
+  const reportsDirectory = join(context.runsDir, id);
+  const blobOutputFile = join(context.blobDir, `${id}.json`);
+
+  mkdirSync(reportsDirectory, { recursive: true });
+
+  return {
+    LIONDEN_TEST_COVERAGE_SOURCE_ROOT: repoRoot,
+    LIONDEN_TEST_COVERAGE_REPORTS_DIRECTORY: reportsDirectory,
+    LIONDEN_TEST_COVERAGE_BLOB_OUTPUT_FILE: blobOutputFile,
+  };
+}
+
+function coverageExampleId(config) {
+  const exampleDir = dirname(config);
+  if (isAleoPortConfig(config)) return `aleo-ports-${basename(exampleDir)}`;
+  return basename(exampleDir);
+}
+
+function run(label, commandArgs, env = undefined) {
   console.log(`--> ${label}`);
   const result = spawnSync(process.execPath, commandArgs, {
     cwd: repoRoot,
+    env: env ? { ...process.env, ...env } : process.env,
     stdio: "inherit",
   });
 

@@ -122,10 +122,13 @@ Current task options:
 - `--no-compile`
 - `--prove`
 - `--parallel`
+- `--coverage`
 
 `--prove` is forwarded through `LIONDEN_PROVE=true` so tests force proof generation. On managed devnode this also makes `ctx.deploy()` and direct `upgrade` task calls use the standard ProgramManager builders instead of the devnode fast-path builders.
 
 Cold-cache prove runs succeed on first use: the SDK transparently downloads credits proving keys (and KZG SRS files for circuits that require them) from the known parameter hosts, written through to the filesystem cache. Subsequent runs hit the cache and skip the network. The egress policy in [`network.md`](network.md) § Egress Policy applies to **network-host** fetches only — chain state and transaction submission — and does not gate parameter downloads. For hermetic / offline test runs, pre-warm the cache and then isolate the test process at the container / CI / firewall level.
+
+`--coverage` is opt-in and enables Vitest V8 coverage for package implementation source. LionDen configures the report to include `packages/*/src/**/*.ts` and exclude package test files, `.d.ts` files, `packages/test-internals`, and checked-in `__goldens__` fixtures. `@vitest/coverage-v8` must be available in the project when this flag is used.
 
 Use `lionden test [files...]` to run a managed Vitest subset while keeping LionDen's compile step, suite hooks, and managed devnode lifecycle:
 
@@ -146,6 +149,7 @@ The programmatic Vitest runner currently:
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
 - scopes test discovery to `test/**/*.test.ts` by default, or to the provided `lionden test [files...]` include patterns
 - applies timeout overrides from task args or config
+- optionally enables V8 coverage for package source when `--coverage` is set
 - returns summarized pass/fail counts
 
 Vitest remains a peer dependency of `@lionden/plugin-test`. Running `npx vitest` directly is still available, but it bypasses LionDen's compile step, testing hooks, and managed devnode lifecycle.
