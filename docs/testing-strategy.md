@@ -589,17 +589,24 @@ The current root scripts are:
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
     "test:smoke": "node scripts/run-smoke-examples.mjs core",
+    "test:smoke:coverage": "node scripts/run-smoke-examples.mjs --coverage core",
     "test:smoke:prove": "node scripts/run-smoke-examples.mjs --prove core",
+    "test:smoke:prove:coverage": "node scripts/run-smoke-examples.mjs --prove --coverage core",
     "test:smoke:aleo-ports": "node scripts/run-smoke-examples.mjs aleo-ports",
+    "test:smoke:aleo-ports:coverage": "node scripts/run-smoke-examples.mjs --coverage aleo-ports",
     "test:smoke:aleo-ports:prove": "node scripts/run-smoke-examples.mjs --prove aleo-ports",
+    "test:smoke:aleo-ports:prove:coverage": "node scripts/run-smoke-examples.mjs --prove --coverage aleo-ports",
     "test:smoke:all": "node scripts/run-smoke-examples.mjs all",
-    "test:smoke:all:prove": "node scripts/run-smoke-examples.mjs --prove all"
+    "test:smoke:all:coverage": "node scripts/run-smoke-examples.mjs --coverage all",
+    "test:smoke:all:prove": "node scripts/run-smoke-examples.mjs --prove all",
+    "test:smoke:all:prove:coverage": "node scripts/run-smoke-examples.mjs --prove --coverage all"
   }
 }
 ```
 
 The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Coverage is opt-in through `test:coverage` so default local and CI test runs stay fast and avoid generating coverage artifacts. Smoke tests delegate to `scripts/run-smoke-examples.mjs`, which invokes the CLI with `--config` for each example because the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. For each example, the runner compiles, runs `tsc -p <example>/tsconfig.json --noEmit`, then runs `lionden test`; pass `--no-typecheck` to skip the TypeScript check during local debugging. The runner keeps the curated core example list explicit and discovers `examples/aleo-ports/*/lionden.config.ts` dynamically. The aleo-ports configs are pinned to `leoVersion: "4.0.0"` as the explicit 4.0 regression lane; when `leo` on `PATH` is a different line, run `npm run test:smoke:aleo-ports -- --leo-4-binary <path-to-leo-4.0>` or set `LIONDEN_LEO_4_0_BINARY=<path-to-leo-4.0>`. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`.
 Pass `--prove` to the smoke runner, or use one of the `*:prove` scripts, to forward `lionden test --prove --timeout 900000` into every selected example.
+Pass `--coverage` to the smoke runner, or use one of the `*:coverage` scripts, to forward `lionden test --coverage` into each selected example. Each example emits a Vitest blob report under `.vitest/smoke-coverage/<lane>/blobs/` and temporary per-run coverage under `.vitest/smoke-coverage/<lane>/runs/`; after every selected example passes, the runner merges the blobs from the repo root into `coverage/smoke/<lane>/`. The merge is skipped when any example fails, preserving the smoke runner's fail-fast behavior.
 
 Smoke lanes intentionally typecheck generated `typechain/**/*.ts` alongside example tests so wrapper API drift is caught before runtime-only tests can mask it.
 
@@ -623,6 +630,7 @@ Recommended policy:
 - enforce coverage thresholds only for Tier 1 and selected Tier 2 suites
 - do not block on coverage percentages for smoke or proof lanes
 - keep root Vitest coverage scoped to package source under `packages/*/src/**/*.ts`, excluding test files, `packages/test-internals`, and checked-in `__goldens__` fixtures
+- keep smoke coverage opt-in and reporting-only; use it to see which package implementation paths the real examples drive
 - track smoke lane count, duration, and flake rate instead
 
 Suggested initial targets:

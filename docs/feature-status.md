@@ -1,6 +1,6 @@
 # LionDen Feature Status
 
-**Last verified:** 2026-05-17
+**Last verified:** 2026-06-05
 
 A snapshot of what currently works in LionDen, what's still missing for a 1.0, and what's deferred past V1. This doc is anchored to **shipped behavior** in the codebase, the working examples under `examples/`, and the bug-hunt probes that have been run against the deploy/upgrade subsystem during development.
 
@@ -104,7 +104,8 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Devnode account utilities: `DEVNODE_ACCOUNTS`, `getDefaultAccount`, `getAccount`, `getAddresses`, `getAccountByAddress` | `packages/testing/src/index.ts` line 36-42 |
 | Typed broadcast results: `AcceptedTransition<T>` carries decoded `outputs` parsed from the confirmed transaction (records → `EncryptedRecord<T>`, private plaintext → `EncryptedValue<T>`, public plaintext → decoded eagerly) | base contract `expectAcceptedTyped` |
 | `ctx.raw.execute(programId, transitionName, args[])` escape hatch for post-upgrade transitions and dynamic ABI calls. Awaits confirmation and returns parsed `outputs` (and `rawOutputs` for id-only dynamic-record entries) by default; reentrant flows opt out via `{ awaitConfirmation: false }` + `ctx.connection.waitForConfirmation(txId)` | `packages/testing/src/test-context.ts` |
-| `test` task: `--grep`, `--timeout`, `--no-compile`, `--prove` (sets `LIONDEN_PROVE=true`) | `packages/plugin-test/src/index.ts` |
+| `test` task: `--grep`, `--timeout`, `--no-compile`, `--prove` (sets `LIONDEN_PROVE=true`), `--parallel` | `packages/plugin-test/src/index.ts` |
+| `test` task opt-in coverage: `--coverage` configures V8 coverage for package implementation source and keeps smoke coverage reporting-only through blob merge reports | `packages/plugin-test/src/index.ts`, `packages/plugin-test/src/test-runner.ts`, `scripts/run-smoke-examples.mjs` |
 | Vitest integration sets `LIONDEN_PROJECT_ROOT`, scopes discovery to `test/**/*.test.ts`, returns summarized counts | `packages/plugin-test/src/test-runner.ts` |
 | Vitest `agent` reporter usage convention (`npm run test:agent`) for low-noise agent runs | repo root `package.json` |
 

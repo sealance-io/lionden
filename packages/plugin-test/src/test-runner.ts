@@ -10,6 +10,27 @@
  * - `LIONDEN_PROVE` — "true" when `--prove` flag is set
  */
 
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
+import type { startVitest as startVitestType } from "vitest/node";
+
+type VitestStartOptions = NonNullable<Parameters<typeof startVitestType>[2]>;
+
+export interface TestCoverageOptions {
+  /**
+   * Root used for package-source coverage globs. Defaults to the LionDen
+   * project root, but repo smoke coverage passes the monorepo root explicitly.
+   */
+  sourceRoot?: string;
+  /** Directory where Vitest writes coverage artifacts for this run. */
+  reportsDirectory?: string;
+  /**
+   * Optional blob reporter path for later `vitest --merge-reports`.
+   * When set, Vitest uses only the blob reporter for test results.
+   */
+  blobOutputFile?: string;
+}
+
 export interface TestRunnerOptions {
   /** Grep pattern to filter tests by name. */
   grep?: string;
@@ -22,8 +43,8 @@ export interface TestRunnerOptions {
   /**
    * Test file or glob patterns to include. Defaults to the standard test glob.
    *
-   * Patterns are passed directly to Vitest with the project root configured
-   * as Vitest's root.
+   * Patterns are resolved relative to the LionDen project root. Coverage runs
+   * may use a separate Vitest root so package source can be transformed.
    */
   files?: string[];
   /**
@@ -35,6 +56,8 @@ export interface TestRunnerOptions {
    * can opt in via `--parallel` on the `test` task.
    */
   parallel?: boolean;
+  /** Collect package-source coverage. Default: false. */
+  coverage?: boolean | TestCoverageOptions;
   /** Project root directory. */
   root: string;
 }
@@ -50,6 +73,11 @@ export interface TestRunnerResult {
   readonly failed: number;
   /** Number of skipped tests. */
   readonly skipped: number;
+}
+
+interface VitestTaskLike {
+  readonly result?: { readonly state?: string };
+  readonly tasks?: readonly VitestTaskLike[];
 }
 
 /**
@@ -70,21 +98,31 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   }
 
   const { startVitest } = await import("vitest/node");
+  const coverageOptions = normalizeCoverageOptions(options.coverage);
+  const vitestRoot = coverageOptions?.sourceRoot ?? options.root;
+  const coverage = resolveCoverageOptions(options, coverageOptions);
+  const reporters = resolveReporters(coverageOptions);
+  const alias = coverageOptions ? resolveCoverageAliases(vitestRoot) : undefined;
 
-  const vitest = await startVitest("test", [], {
-    root: options.root,
+  const vitestOptions: VitestStartOptions = {
+    root: vitestRoot,
     // Force one-shot mode; Vitest defaults to watch in TTY sessions.
     run: true,
     watch: false,
     // Run against the LionDen project only; repo-level Vitest workspace
     // config should not leak into scaffolded/example project execution.
     config: false,
-    include: options.files ?? ["test/**/*.test.ts"],
+    include: resolveIncludePatterns(options.root, vitestRoot, options.files),
     testTimeout: options.timeout ?? 120_000,
     hookTimeout: options.timeout ?? 120_000,
     fileParallelism: options.parallel === true,
+    ...(coverage ? { coverage } : {}),
+    ...(reporters ? { reporters } : {}),
+    ...(alias ? { alias } : {}),
     ...(options.grep ? { testNamePattern: options.grep } : {}),
-  });
+  };
+
+  const vitest = await startVitest("test", [], vitestOptions);
 
   if (!vitest) {
     return { success: false, testFiles: 0, passed: 0, failed: 0, skipped: 0 };
@@ -102,12 +140,10 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   let skipped = 0;
 
   for (const file of files) {
-    const tasks = file.tasks;
-    for (const t of tasks) {
-      if (t.result?.state === "pass") passed++;
-      else if (t.result?.state === "fail") failed++;
-      else skipped++;
-    }
+    const counts = countTasks(file.tasks as readonly VitestTaskLike[]);
+    passed += counts.passed;
+    failed += counts.failed;
+    skipped += counts.skipped;
   }
 
   return {
@@ -117,4 +153,112 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
     failed,
     skipped,
   };
+}
+
+function countTasks(tasks: readonly VitestTaskLike[]): {
+  passed: number;
+  failed: number;
+  skipped: number;
+} {
+  let passed = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const task of tasks) {
+    if (task.tasks && task.tasks.length > 0) {
+      if (task.result?.state === "fail") failed++;
+      const childCounts = countTasks(task.tasks);
+      passed += childCounts.passed;
+      failed += childCounts.failed;
+      skipped += childCounts.skipped;
+      continue;
+    }
+
+    if (task.result?.state === "pass") passed++;
+    else if (task.result?.state === "fail") failed++;
+    else skipped++;
+  }
+
+  return { passed, failed, skipped };
+}
+
+const coverageInclude = ["packages/*/src/**/*.ts"];
+const coverageExclude = [
+  "packages/*/src/**/*.test.ts",
+  "packages/*/src/**/*.contract.test.ts",
+  "packages/*/src/**/*.d.ts",
+  "packages/test-internals/src/**/*.ts",
+  "packages/*/src/**/__goldens__/**",
+];
+
+function normalizeCoverageOptions(
+  coverage: TestRunnerOptions["coverage"],
+): TestCoverageOptions | undefined {
+  if (!coverage) return undefined;
+  return coverage === true ? {} : coverage;
+}
+
+function resolveCoverageOptions(
+  options: TestRunnerOptions,
+  coverageOptions: TestCoverageOptions | undefined,
+): VitestStartOptions["coverage"] {
+  if (!coverageOptions) return undefined;
+
+  const sourceRoot = coverageOptions.sourceRoot ?? options.root;
+
+  return {
+    provider: "v8" as const,
+    enabled: true,
+    allowExternal: true,
+    include: coverageInclude.map((pattern) => toCoverageGlob(sourceRoot, pattern)),
+    exclude: coverageExclude.map((pattern) => toCoverageGlob(sourceRoot, pattern)),
+    reportsDirectory: coverageOptions.reportsDirectory ?? join(sourceRoot, "coverage"),
+    reporter: ["text-summary", "html", "lcov"],
+  };
+}
+
+function resolveReporters(
+  coverage: TestCoverageOptions | undefined,
+): VitestStartOptions["reporters"] {
+  if (!coverage?.blobOutputFile) return undefined;
+
+  return [["blob", { outputFile: coverage.blobOutputFile }]];
+}
+
+function resolveIncludePatterns(
+  projectRoot: string,
+  vitestRoot: string,
+  files: string[] | undefined,
+) {
+  const patterns = files ?? ["test/**/*.test.ts"];
+  return patterns.map((pattern) => {
+    const absolutePattern = isAbsolute(pattern) ? pattern : join(projectRoot, pattern);
+    return relative(vitestRoot, absolutePattern).replaceAll("\\", "/");
+  });
+}
+
+function resolveCoverageAliases(sourceRoot: string): VitestStartOptions["alias"] {
+  const packagesDir = join(sourceRoot, "packages");
+  if (!existsSync(packagesDir)) return undefined;
+
+  const aliases: Record<string, string> = {};
+  for (const entry of readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const packageRoot = join(packagesDir, entry.name);
+    const packageJsonPath = join(packageRoot, "package.json");
+    const sourceEntrypoint = join(packageRoot, "src", "index.ts");
+    if (!existsSync(packageJsonPath) || !existsSync(sourceEntrypoint)) continue;
+
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { name?: unknown };
+    if (typeof packageJson.name === "string") {
+      aliases[packageJson.name] = sourceEntrypoint;
+    }
+  }
+
+  return Object.keys(aliases).length > 0 ? aliases : undefined;
+}
+
+function toCoverageGlob(root: string, pattern: string): string {
+  return join(root, pattern).replaceAll("\\", "/");
 }

@@ -7,6 +7,7 @@ import {
   type TestingHookHandlers,
   task,
 } from "@lionden/core";
+import type { TestCoverageOptions } from "./test-runner.js";
 import { runTests } from "./test-runner.js";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,10 @@ const configHooks: ConfigHookHandlers = {
 
 const testingHooks: TestingHookHandlers = {};
 
+const coverageSourceRootEnv = "LIONDEN_TEST_COVERAGE_SOURCE_ROOT";
+const coverageReportsDirectoryEnv = "LIONDEN_TEST_COVERAGE_REPORTS_DIRECTORY";
+const coverageBlobOutputFileEnv = "LIONDEN_TEST_COVERAGE_BLOB_OUTPUT_FILE";
+
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
@@ -69,6 +74,10 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     name: "parallel",
     description: "Run test files in parallel (default: serial, to avoid devnode contention)",
   })
+  .addFlag({
+    name: "coverage",
+    description: "Collect package-source coverage for the test run",
+  })
   .addPositionalArgument({
     name: "files",
     type: ArgumentType.FILE,
@@ -80,6 +89,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     const noCompile = args["noCompile"] as boolean | undefined;
     const prove = args["prove"] as boolean | undefined;
     const parallel = args["parallel"] as boolean | undefined;
+    const coverage = args["coverage"] as boolean | undefined;
     const positionals = args["_positional"] as string[] | undefined;
     const files = positionals && positionals.length > 0 ? positionals : undefined;
 
@@ -101,6 +111,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
         compile: !noCompile,
         prove: prove ?? false,
         parallel: parallel ?? false,
+        coverage: resolveCoverageOptions(coverage ?? false),
         files,
       });
 
@@ -137,6 +148,16 @@ const pluginTest: LionDenPlugin = {
 
 export default pluginTest;
 
-export type { TestRunnerOptions, TestRunnerResult } from "./test-runner.js";
+export type { TestCoverageOptions, TestRunnerOptions, TestRunnerResult } from "./test-runner.js";
 // Re-export test runner for programmatic use
 export { runTests } from "./test-runner.js";
+
+function resolveCoverageOptions(enabled: boolean): false | TestCoverageOptions {
+  if (!enabled) return false;
+
+  return {
+    sourceRoot: process.env[coverageSourceRootEnv] ?? process.cwd(),
+    reportsDirectory: process.env[coverageReportsDirectoryEnv],
+    blobOutputFile: process.env[coverageBlobOutputFileEnv],
+  };
+}
