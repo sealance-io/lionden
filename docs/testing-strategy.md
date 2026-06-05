@@ -585,6 +585,7 @@ The current root scripts are:
     "test": "vitest run",
     "test:unit": "vitest run --project unit",
     "test:contract": "vitest run --project contract",
+    "test:coverage": "vitest run --coverage",
     "test:agent": "vitest run --reporter=agent",
     "test:watch": "vitest",
     "test:smoke": "node scripts/run-smoke-examples.mjs core",
@@ -597,7 +598,7 @@ The current root scripts are:
 }
 ```
 
-The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Smoke tests delegate to `scripts/run-smoke-examples.mjs`, which invokes the CLI with `--config` for each example because the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. For each example, the runner compiles, runs `tsc -p <example>/tsconfig.json --noEmit`, then runs `lionden test`; pass `--no-typecheck` to skip the TypeScript check during local debugging. The runner keeps the curated core example list explicit and discovers `examples/aleo-ports/*/lionden.config.ts` dynamically. The aleo-ports configs are pinned to `leoVersion: "4.0.0"` as the explicit 4.0 regression lane; when `leo` on `PATH` is a different line, run `npm run test:smoke:aleo-ports -- --leo-4-binary <path-to-leo-4.0>` or set `LIONDEN_LEO_4_0_BINARY=<path-to-leo-4.0>`. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`.
+The existing `test` script is preserved as an alias for the full Vitest run (unit + contract). Lane-specific scripts (`test:unit`, `test:contract`) use Vitest named projects. Coverage is opt-in through `test:coverage` so default local and CI test runs stay fast and avoid generating coverage artifacts. Smoke tests delegate to `scripts/run-smoke-examples.mjs`, which invokes the CLI with `--config` for each example because the CLI discovers config from `process.cwd()` and the examples live outside the repo root's config scope. For each example, the runner compiles, runs `tsc -p <example>/tsconfig.json --noEmit`, then runs `lionden test`; pass `--no-typecheck` to skip the TypeScript check during local debugging. The runner keeps the curated core example list explicit and discovers `examples/aleo-ports/*/lionden.config.ts` dynamically. The aleo-ports configs are pinned to `leoVersion: "4.0.0"` as the explicit 4.0 regression lane; when `leo` on `PATH` is a different line, run `npm run test:smoke:aleo-ports -- --leo-4-binary <path-to-leo-4.0>` or set `LIONDEN_LEO_4_0_BINARY=<path-to-leo-4.0>`. The `test:agent` and `test:watch` scripts are already in use and documented in `AGENTS.md`.
 Pass `--prove` to the smoke runner, or use one of the `*:prove` scripts, to forward `lionden test --prove --timeout 900000` into every selected example.
 
 Smoke lanes intentionally typecheck generated `typechain/**/*.ts` alongside example tests so wrapper API drift is caught before runtime-only tests can mask it.
@@ -621,6 +622,7 @@ Recommended policy:
 
 - enforce coverage thresholds only for Tier 1 and selected Tier 2 suites
 - do not block on coverage percentages for smoke or proof lanes
+- keep root Vitest coverage scoped to package source under `packages/*/src/**/*.ts`, excluding test files, `packages/test-internals`, and checked-in `__goldens__` fixtures
 - track smoke lane count, duration, and flake rate instead
 
 Suggested initial targets:
