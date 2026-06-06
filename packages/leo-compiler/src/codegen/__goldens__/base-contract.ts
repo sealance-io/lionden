@@ -324,10 +324,9 @@ export interface CapturedRecord<T> {
  * does NOT dereference the \`record_dynamic\` id; it selects an explicit
  * sibling concrete output in the same callgraph (typically the materialized
  * static record that a V15-compliant callee emitted alongside the dynamic
- * handle, per snarkVM's \`ensure_records_exist\` rule) and decrypts that
- * ciphertext via the matcher's deserializer. See
- * \`docs/research/snarkvm-record-existence.md\` for the upstream rule and
- * \`docs/network.md\` § Id-only record outputs for the recovery flow.
+ * handle, per snarkVM's V15 record-existence rule) and decrypts that
+ * ciphertext via the matcher's deserializer. See \`docs/network.md\` §
+ * Id-only record outputs for the recovery flow.
  */
 export interface IdOnlyDynamicRecordHandle extends IdOnlyRecordHandleBase {
   readonly kind: "idOnlyDynamicRecord";
@@ -1327,10 +1326,9 @@ export abstract class BaseContract {
    * chain never exposes a ciphertext for the dynamic-record id itself, so
    * \`.match(matcher.from(...)|.at(...)).decrypt(key)\` does NOT dereference
    * the id — it selects an explicit sibling concrete output in the same
-   * callgraph and decrypts that. See the type's docstring and
-   * \`docs/research/snarkvm-record-existence.md\` for the V15
-   * \`ensure_records_exist\` rule that makes a sibling concrete output
-   * guaranteed to exist in compliant programs.
+   * callgraph and decrypts that. See the type's docstring for the V15
+   * record-existence rule that makes a sibling concrete output available in
+   * compliant programs.
    */
   static makeIdOnlyDynamicRecordHandle(
     entry: IdOnlyRawOutput,

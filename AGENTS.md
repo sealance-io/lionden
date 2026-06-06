@@ -46,6 +46,7 @@ Open the smallest relevant doc first:
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](docs/testing.md) |
 | Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](docs/testing-strategy.md) |
 | JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](docs/json-abi.md) |
+| Leo v4 `dyn record`, V15 record-existence, id-only dynamic record recovery, dynamic-record example maintenance | [`docs/research/dynamic-records-v15.md`](docs/research/dynamic-records-v15.md) |
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](docs/project-layout.md) |
 | Leo version support, v3.5 compatibility, `leoBinary`, devnode consensus heights, `lib.leo` limitations | [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md) |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) |

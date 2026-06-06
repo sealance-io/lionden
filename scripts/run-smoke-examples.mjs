@@ -136,7 +136,8 @@ const coverageContext = coverage ? createCoverageContext(requestedGroups) : unde
 
 if (configs.some(isAleoPortConfig) && !process.env[LEO_4_0_BINARY_ENV]) {
   console.warn(
-    `\n[smoke] aleo-ports configs are pinned to leoVersion 4.0.0. ` +
+    `\n[smoke] most aleo-ports configs are pinned to leoVersion 4.0.0. ` +
+      `dynamic_records targets 4.1.0 for V15 coverage. ` +
       `If "leo" on PATH is not 4.0.x, rerun with --leo-4-binary <path> ` +
       `or set ${LEO_4_0_BINARY_ENV}.`,
   );
