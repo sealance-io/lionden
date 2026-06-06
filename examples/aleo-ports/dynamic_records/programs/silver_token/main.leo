@@ -3,8 +3,13 @@
 // Its Token record adds a `grade` field instead of gold_token's `purity`.
 // Both record shapes satisfy the same interface and can be routed uniformly.
 //
-// `transfer` returns `(Token, dyn record)` to satisfy snarkVM V15's
-// `ensure_records_exist` rule. See docs/research/snarkvm-record-existence.md.
+// `transfer` consumes a concrete Token so a root dynamic input passed through
+// the interface is materialized under the V15 record-existence rule, and also
+// emits a dynamic handle for routers. `balance_of` is a pure read of a
+// `dyn record`: under V15 it cannot be a root transition on a held token (a
+// non-static root input must be consumed as a static record in the same
+// execution), so callers read it on a dynamic record produced inside the
+// execution (e.g. a mint or transfer output).
 interface TokenStandard {
     record Token {
         owner: address,
@@ -12,7 +17,7 @@ interface TokenStandard {
         ..
     }
     fn mint(owner: address, amount: u64) -> Token;
-    fn transfer(token: dyn record, to: address) -> (Token, dyn record);
+    fn transfer(token: Token, to: address) -> (Token, dyn record);
     fn balance_of(token: dyn record) -> u64;
 }
 
@@ -32,7 +37,7 @@ program silver_token.aleo : TokenStandard {
         return Token { owner, amount, grade };
     }
 
-    fn transfer(token: dyn record, to: address) -> (Token, dyn record) {
+    fn transfer(token: Token, to: address) -> (Token, dyn record) {
         let amount: u64 = token.amount;
         let grade: u64 = token.grade;
         let new_token: Token = Token { owner: to, amount, grade };
