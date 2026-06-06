@@ -123,7 +123,7 @@ For those record-free identities, the only scenario where a compile-time pre-war
 
 An upstream SDK API that decouples synthesis from input materialization — for example, a content-hash-keyed `synthesizeKeyPairFromSource(source, functionId, imports?, edition?)` that derives the circuit from the program text alone and returns cacheable bytes. The cache identity LionDen already computes (`sourceHash` + `importsHash` + circuit-relevant fields) is the natural key.
 
-The deferred `_docs/research/leo_keys_caching.md` (local-only research notes from the original SDK survey) outlines the upstream gap; the recommended action is an upstream issue/PR on `ProvableHQ/sdk` rather than a downstream workaround. Until that lands, the runtime path is the right level of abstraction.
+The original SDK survey outlined the upstream gap; the recommended action is an upstream issue/PR on `ProvableHQ/sdk` rather than a downstream workaround. Until that lands, the runtime path is the right level of abstraction.
 
 ## Summary
 

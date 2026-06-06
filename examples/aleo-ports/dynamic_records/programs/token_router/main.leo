@@ -6,7 +6,7 @@
 //   TokenStandard@(token_program)::transfer(token, to)
 //
 // The upstream branch used the older `/transfer` spelling. This port
-// normalizes to the v4 `::transfer` form used by local leo 4.0.x.
+// normalizes to the Leo v4 `::transfer` form.
 interface TokenStandard {
     record Token {
         owner: address,
@@ -14,7 +14,7 @@ interface TokenStandard {
         ..
     }
     fn mint(owner: address, amount: u64) -> Token;
-    fn transfer(token: dyn record, to: address) -> (Token, dyn record);
+    fn transfer(token: Token, to: address) -> (Token, dyn record);
     fn balance_of(token: dyn record) -> u64;
 }
 
@@ -28,7 +28,14 @@ program token_router.aleo {
         return result.1;
     }
 
-    fn read_balance(token_program: identifier, token: dyn record) -> u64 {
+    // Mints a token internally and reads its balance via the interface's
+    // pure-read `balance_of`. Under V15, `balance_of` cannot be a root
+    // transition on a held token (a non-static root input must be consumed as
+    // a static record within the same execution), so the record it reads is
+    // produced inside this execution (the `mint` output) and never enters as a
+    // root input.
+    fn read_balance(token_program: identifier, owner: address, amount: u64) -> u64 {
+        let token: dyn record = TokenStandard@(token_program)::mint(owner, amount);
         return TokenStandard@(token_program)::balance_of(token);
     }
 
@@ -44,9 +51,12 @@ program token_router.aleo {
     }
 
     fn gold_beats_silver(
-        gold_tok: dyn record,
-        silver_tok: dyn record,
+        owner: address,
+        gold_amount: u64,
+        silver_amount: u64,
     ) -> bool {
+        let gold_tok: dyn record = TokenStandard@('gold_token')::mint(owner, gold_amount);
+        let silver_tok: dyn record = TokenStandard@('silver_token')::mint(owner, silver_amount);
         let gold_bal: u64 = TokenStandard@('gold_token')::balance_of(gold_tok);
         let silver_bal: u64 = TokenStandard@('silver_token')::balance_of(silver_tok);
         return gold_bal > silver_bal;
@@ -54,10 +64,13 @@ program token_router.aleo {
 
     fn has_more(
         prog_a: identifier,
-        tok_a: dyn record,
         prog_b: identifier,
-        tok_b: dyn record,
+        owner: address,
+        amount_a: u64,
+        amount_b: u64,
     ) -> bool {
+        let tok_a: dyn record = TokenStandard@(prog_a)::mint(owner, amount_a);
+        let tok_b: dyn record = TokenStandard@(prog_b)::mint(owner, amount_b);
         let bal_a: u64 = TokenStandard@(prog_a)::balance_of(tok_a);
         let bal_b: u64 = TokenStandard@(prog_b)::balance_of(tok_b);
         return bal_a > bal_b;

@@ -3,11 +3,14 @@
 // with `dyn record` inputs and outputs, plus an `external_token_demo` program
 // that exercises external `Record` outputs and nested-call-graph flows.
 //
-// The token implementations' `transfer` returns `(Token, dyn record)` to
-// satisfy snarkVM ConsensusVersion::V15's `ensure_records_exist` rule (see
-// `docs/research/snarkvm-record-existence.md`): the static record is
-// materialized alongside the dynamic handle so the spendable token is
-// recoverable from the callee transition.
+// The token implementations' `transfer` takes a concrete `Token` and returns
+// `(Token, dyn record)` to satisfy snarkVM ConsensusVersion::V15's
+// record-existence rule: the root input is consumed as a static record and the
+// transferred static record is materialized alongside the dynamic handle so
+// the spendable token is recoverable from the callee transition. `balance_of`
+// is a pure read of a `dyn record` — under V15 it cannot be a root transition
+// on a held token, so it is exercised on dynamic records produced inside the
+// execution (mint/transfer outputs) via the router and the receipt flows.
 //
 // Output-side typing:
 //   - Idiomatic call sites use generated helpers for both directions:
@@ -117,7 +120,7 @@ describe("V15-compliant transfer materialization", () => {
     silver.connect(ctx!.lre);
   });
 
-  it("gold_token.transfer.accepted emits [EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]", async () => {
+  it("gold_token.transfer.accepted consumes Token and emits [EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]", async () => {
     const minted = await gold.withSigner(alice()).mint_custom.accepted({
       owner: alice(),
       amount: 555n,
@@ -125,7 +128,7 @@ describe("V15-compliant transfer materialization", () => {
     });
 
     const accepted = await gold.withSigner(alice()).transfer.accepted({
-      token: asGoldToken(await minted.outputs.decrypt(alice())),
+      token: await minted.outputs.decrypt(alice()),
       to: bob(),
     });
 
@@ -139,7 +142,7 @@ describe("V15-compliant transfer materialization", () => {
     expect(accepted.outputs[1].id).toMatch(/^[0-9]+field$/);
   });
 
-  it("silver_token.transfer.accepted emits [EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]", async () => {
+  it("silver_token.transfer.accepted consumes Token and emits [EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]", async () => {
     const minted = await silver.withSigner(alice()).mint_custom.accepted({
       owner: alice(),
       amount: 800n,
@@ -147,7 +150,7 @@ describe("V15-compliant transfer materialization", () => {
     });
 
     const accepted = await silver.withSigner(alice()).transfer.accepted({
-      token: asSilverToken(await minted.outputs.decrypt(alice())),
+      token: await minted.outputs.decrypt(alice()),
       to: bob(),
     });
 
@@ -157,6 +160,28 @@ describe("V15-compliant transfer materialization", () => {
     expect(concrete.grade).toBe(2n);
 
     expect(accepted.outputs[1].kind).toBe("idOnlyDynamicRecord");
+  });
+
+  // Negative guard: locks in the intentional V15 contract that `balance_of`
+  // (a pure `dyn record` read) cannot be a root transition on a held token.
+  // The input is a non-static root record that is never consumed as a static
+  // record, so snarkVM's V15 `ensure_records_exist` rejects the execution at
+  // posting time. A held token's balance can only be read on-chain by first
+  // producing the record inside the execution (see read_balance /
+  // issue_receipt, which mint internally) or client-side by decrypting it.
+  it("direct balance_of on a held token is rejected by the V15 record-existence check", async () => {
+    const minted = await gold.withSigner(alice()).mint_custom.accepted({
+      owner: alice(),
+      amount: 111n,
+      purity: 5n,
+    });
+    const held = await minted.outputs.decrypt(alice());
+
+    await expect(
+      gold.withSigner(alice()).balance_of.accepted({ token: asGoldToken(held) }),
+    ).rejects.toThrow(
+      /Non-static record input at r0 of the root function gold_token\.aleo\/balance_of is not known to correspond to a record on the ledger/,
+    );
   });
 });
 
@@ -214,19 +239,21 @@ describe("dynamic_records runtime dispatch", () => {
     expect(transferred.amount).toBe(2000n);
   });
 
-  it("typed dynamic-record helpers feed read_balance", async () => {
-    const minted = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 777n,
-      purity: 21n,
-    });
-
+  it("read_balance reads an internally minted dynamic record via pure-read balance_of", async () => {
     const result = await router.read_balance.accepted({
       token_program: Leo.identifier("gold_token"),
-      token: asGoldToken(await minted.outputs.decrypt(alice())),
+      owner: alice(),
+      amount: 777n,
     });
 
     expect(await result.outputs.decrypt(alice())).toBe(777n);
+    // balance_of is a pure read now: its callee transition emits a single u64
+    // output (no reissued Token alongside it).
+    const callee = result.transitions.find(
+      (t: { readonly programId: string; readonly transitionName: string }) =>
+        t.programId === "gold_token.aleo" && t.transitionName === "balance_of",
+    );
+    expect(callee?.rawOutputs).toHaveLength(1);
   });
 
   it("route_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling", async () => {
@@ -253,44 +280,24 @@ describe("dynamic_records runtime dispatch", () => {
     expect(transferred.grade).toBe(2n);
   });
 
-  it("typed dynamic-record helpers feed gold_beats_silver", async () => {
-    const goldMint = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 900n,
-      purity: 18n,
-    });
-    const silverMint = await silver.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 300n,
-      grade: 3n,
-    });
-
+  it("gold_beats_silver mints both sides internally and compares balances", async () => {
     const result = await router.gold_beats_silver.accepted({
-      gold_tok: asGoldToken(await goldMint.outputs.decrypt(alice())),
-      silver_tok: asSilverToken(await silverMint.outputs.decrypt(alice())),
+      owner: alice(),
+      gold_amount: 900n,
+      silver_amount: 300n,
     });
 
     expect(await result.outputs.decrypt(alice())).toBe(true);
   });
 
   it("per-call runtime imports feed has_more without router constructor imports", async () => {
-    const goldMint = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 250n,
-      purity: 22n,
-    });
-    const silverMint = await silver.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 400n,
-      grade: 2n,
-    });
-
     const result = await perCallRouter.has_more.accepted(
       {
         prog_a: Leo.identifier("gold_token"),
-        tok_a: asGoldToken(await goldMint.outputs.decrypt(alice())),
         prog_b: Leo.identifier("silver_token"),
-        tok_b: asSilverToken(await silverMint.outputs.decrypt(alice())),
+        owner: alice(),
+        amount_a: 250n,
+        amount_b: 400n,
       },
       { imports: RUNTIME_IMPORTS },
     );
@@ -303,8 +310,8 @@ describe("dynamic_records runtime dispatch", () => {
       token_program: Leo.identifier("gold_token"),
       owner: alice(),
       amount: 1000n,
-      to_a: bob(),
-      to_b: alice(),
+      to_a: alice(),
+      to_b: bob(),
     });
 
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
@@ -319,18 +326,20 @@ describe("dynamic_records runtime dispatch", () => {
       reason: "transition-not-unique",
     });
 
-    // First transfer materialized a Token for bob.
+    // First transfer materialized a Token for alice. Under V15 the
+    // intermediate record is consumed by the second transfer, so it must still
+    // belong to the root signer.
     const recoveredFirst = await accepted.outputs
       .match(asGoldToken.output.from("transfer", 0, { match: 0 }))
-      .decrypt(bob());
-    expect(recoveredFirst.owner).toBe(bob().address);
+      .decrypt(alice());
+    expect(recoveredFirst.owner).toBe(alice().address);
     expect(recoveredFirst.amount).toBe(1000n);
 
-    // Second transfer materialized a Token for alice (passed as to_b).
+    // Second transfer materialized a Token for bob (passed as to_b).
     const recoveredSecond = await accepted.outputs
       .match(asGoldToken.output.from("transfer", 0, { match: 1 }))
-      .decrypt(alice());
-    expect(recoveredSecond.owner).toBe(alice().address);
+      .decrypt(bob());
+    expect(recoveredSecond.owner).toBe(bob().address);
     expect(recoveredSecond.amount).toBe(1000n);
   });
 });
@@ -385,22 +394,22 @@ describe("external_token_demo external + nested record outputs", () => {
     expect(token.amount).toBe(50n);
   });
 
-  it("issue_receipt: concrete Receipt output is decryptable even though inputs are dyn record", async () => {
-    const minted = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 500n,
-      purity: 12n,
-    });
-
+  it("issue_receipt: mints internally, reads via pure-read balance_of, emits a concrete Receipt", async () => {
     const accepted = await demo.withSigner(alice()).issue_receipt.accepted({
       token_program: Leo.identifier("gold_token"),
-      token: asGoldToken(await minted.outputs.decrypt(alice())),
+      owner: alice(),
+      amount: 500n,
       to: bob(),
     });
 
     const receipt = await accepted.outputs.decrypt(bob());
     expect(receipt.owner).toBe(bob().address);
     expect(receipt.balance).toBe(500n);
+    const callee = accepted.transitions.find(
+      (t: { readonly programId: string; readonly transitionName: string }) =>
+        t.programId === "gold_token.aleo" && t.transitionName === "balance_of",
+    );
+    expect(callee?.rawOutputs).toHaveLength(1);
   });
 
   it("dispatch_and_receipt: intermediate dyn-record dispatch does not poison the concrete final output", async () => {

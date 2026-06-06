@@ -5,15 +5,18 @@
 // - `wrap_mint_gold` returns an imported `gold_token.aleo::Token` directly,
 //   surfacing the external-record id-only output shape on the caller and the
 //   recoverable ciphertext on the callee transition.
-// - `issue_receipt` accepts a `dyn record` input and emits a concrete local
-//   `Receipt` record (decryptable via the standard `EncryptedRecord<T>` path).
-// - `dispatch_and_receipt` calls the token interface's `transfer` (which
-//   returns `(Token, dyn record)` under V15-compliant materialization) and
-//   then `balance_of` against the dynamic handle before emitting a Receipt.
+// - `issue_receipt` mints a token internally, reads its balance via the
+//   interface's pure-read `balance_of`, and emits a concrete local `Receipt`
+//   record (decryptable via the standard `EncryptedRecord<T>` path).
+// - `dispatch_and_receipt` accepts a root `dyn record`, calls the token
+//   interface's `transfer` to materialize it (a real spend), then reads the
+//   transferred handle's balance field before emitting a Receipt.
 //
-// Under snarkVM ConsensusVersion::V15 (`ensure_records_exist`), the token
-// programs' `transfer` must materialize the static record alongside the
-// dynamic handle. See docs/research/snarkvm-record-existence.md for the rule.
+// Under snarkVM ConsensusVersion::V15 (`ensure_records_exist`), a non-static
+// root input must be consumed as a static record within the same execution.
+// `transfer` does this (concrete `Token` input); `balance_of` is a pure read,
+// so it is only ever applied to a dynamic record produced inside the execution
+// (a mint or transfer output), never to a root input.
 
 import gold_token.aleo;
 import silver_token.aleo;
@@ -25,7 +28,7 @@ interface TokenStandard {
         ..
     }
     fn mint(owner: address, amount: u64) -> Token;
-    fn transfer(token: dyn record, to: address) -> (Token, dyn record);
+    fn transfer(token: Token, to: address) -> (Token, dyn record);
     fn balance_of(token: dyn record) -> u64;
 }
 
@@ -42,22 +45,26 @@ program external_token_demo.aleo {
         return gold_token.aleo::mint(to, amount);
     }
 
-    // Dyn record input, concrete local record output. Receipt carries a
-    // ciphertext (ordinary record).
+    // Mints a token internally, reads it with the pure-read `balance_of`, and
+    // emits a concrete local Receipt (ordinary record carrying a ciphertext).
+    // The minted dynamic record is produced inside this execution, so it is
+    // not a root input and needs no static materialization under V15.
     fn issue_receipt(
         token_program: identifier,
-        token: dyn record,
+        owner: address,
+        amount: u64,
         to: address,
     ) -> Receipt {
+        let token: dyn record = TokenStandard@(token_program)::mint(owner, amount);
         let balance: u64 = TokenStandard@(token_program)::balance_of(token);
         return Receipt { owner: to, balance };
     }
 
     // Nested call graph: dispatch produces a `(Token, dyn record)` tuple,
-    // we forward the dynamic member to `balance_of`, and emit a concrete
-    // final Receipt. Intermediate dyn-record dispatch doesn't poison the
-    // concrete output, and the callee's materialized Token is recoverable
-    // from `confirmed.transitions` via the matcher API
+    // materializing the root dynamic input, then the dynamic member's balance
+    // field is read directly before emitting a concrete final Receipt. The
+    // callee's materialized Token is recoverable from `confirmed.transitions`
+    // via the matcher API
     // (`.match(matcher.from(...)|.at(...)).decrypt(key)`).
     fn dispatch_and_receipt(
         token_program: identifier,
@@ -65,7 +72,7 @@ program external_token_demo.aleo {
         to: address,
     ) -> Receipt {
         let result: (dyn record, dyn record) = TokenStandard@(token_program)::transfer(token, to);
-        let balance: u64 = TokenStandard@(token_program)::balance_of(result.1);
+        let balance: u64 = result.1.amount;
         return Receipt { owner: to, balance };
     }
 
