@@ -34,15 +34,7 @@ export default defineConfig({
 
 Install both Leo versions side-by-side with `leo update --name v3.5.0` (available since Leo v3.2.0). The default `leo` on `PATH` remains v4; point `leoBinary` at the named v3.5 installation.
 
-Most of the `examples/aleo-ports` smoke lane is intentionally pinned to Leo 4.0.x as a regression lane. If your default `leo` is 4.1.x, provide a side-by-side 4.0 binary when running it:
-
-```bash
-npm run test:smoke:aleo-ports -- --leo-4-binary /path/to/leo-4.0
-# or:
-LIONDEN_LEO_4_0_BINARY=/path/to/leo-4.0 npm run test:smoke:aleo-ports
-```
-
-`examples/aleo-ports/dynamic_records` is the exception: it targets Leo 4.1.x for V15 dynamic-record coverage. If your default `leo` is not 4.1.x, set `LIONDEN_LEO_4_1_BINARY=/path/to/leo-4.1` for that example.
+The `examples/aleo-ports` smoke lane targets the default Leo 4.1.x line. Those configs pin `leoVersion: "4.1.0"` and use the `leo` binary resolved from `PATH`.
 
 Before LionDen-managed compilation or devnode startup, LionDen runs the configured Leo binary with update checks disabled:
 

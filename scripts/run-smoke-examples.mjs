@@ -13,22 +13,16 @@ const CORE_EXAMPLES = [
 ];
 
 const PROVE_TEST_TIMEOUT_MS = 900_000;
-const LEO_4_0_BINARY_ENV = "LIONDEN_LEO_4_0_BINARY";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 
-const { listOnly, typecheck, prove, coverage, groups, leo40Binary } = parseArgs(
-  process.argv.slice(2),
-);
+const { listOnly, typecheck, prove, coverage, groups } = parseArgs(process.argv.slice(2));
 const requestedGroups = groups.length > 0 ? groups : ["core"];
-if (leo40Binary) {
-  process.env[LEO_4_0_BINARY_ENV] = leo40Binary;
-}
 
 function usage() {
   console.error(
-    "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--coverage] [--leo-4-binary <path>] [core] [aleo-ports] [all]",
+    "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--coverage] [core] [aleo-ports] [all]",
   );
 }
 
@@ -39,7 +33,6 @@ function parseArgs(args) {
     prove: false,
     coverage: false,
     groups: [],
-    leo40Binary: process.env[LEO_4_0_BINARY_ENV],
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -57,15 +50,6 @@ function parseArgs(args) {
       case "--coverage":
         parsed.coverage = true;
         break;
-      case "--leo-4-binary": {
-        const value = args[++i];
-        if (!value) {
-          usage();
-          throw new Error("--leo-4-binary requires a path");
-        }
-        parsed.leo40Binary = value;
-        break;
-      }
       default:
         parsed.groups.push(arg);
         break;
@@ -133,15 +117,6 @@ if (listOnly) {
 }
 
 const coverageContext = coverage ? createCoverageContext(requestedGroups) : undefined;
-
-if (configs.some(isAleoPortConfig) && !process.env[LEO_4_0_BINARY_ENV]) {
-  console.warn(
-    `\n[smoke] most aleo-ports configs are pinned to leoVersion 4.0.0. ` +
-      `dynamic_records targets 4.1.0 for V15 coverage. ` +
-      `If "leo" on PATH is not 4.0.x, rerun with --leo-4-binary <path> ` +
-      `or set ${LEO_4_0_BINARY_ENV}.`,
-  );
-}
 
 for (const config of configs) {
   const exampleName = dirname(config);
