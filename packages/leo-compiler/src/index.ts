@@ -1,6 +1,6 @@
 // Types
 
-export { canonicalizeAbiForHash, computeAbiHash } from "./abi-hash.js";
+export { computeAbiHash } from "./abi-hash.js";
 // ABI parser
 export { AbiParseError, parseAbi } from "./abi-parser.js";
 

@@ -5,7 +5,6 @@ import {
   isBigIntType,
   pathToTsName,
   plaintextToTs,
-  primitiveToLeoSuffix,
   primitiveToTs,
 } from "./type-mapper.js";
 
@@ -107,21 +106,6 @@ describe("aleoTypeToTs", () => {
 
   it("maps DynamicRecord to string (pre-encoded)", () => {
     expect(aleoTypeToTs("DynamicRecord")).toBe("string");
-  });
-});
-
-describe("primitiveToLeoSuffix", () => {
-  it("returns correct suffixes", () => {
-    expect(primitiveToLeoSuffix("Address")).toBe("address");
-    expect(primitiveToLeoSuffix("Boolean")).toBe("bool");
-    expect(primitiveToLeoSuffix("Field")).toBe("field");
-    expect(primitiveToLeoSuffix("Identifier")).toBe("identifier");
-    expect(primitiveToLeoSuffix({ UInt: "U64" })).toBe("u64");
-    expect(primitiveToLeoSuffix({ Int: "I32" })).toBe("i32");
-  });
-
-  it("does not throw when suffix mapping sees unsupported string primitives", () => {
-    expect(primitiveToLeoSuffix("Signature" as any)).toBe("unknown");
   });
 });
 
