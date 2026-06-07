@@ -41,6 +41,13 @@ function main:
     output r0 as u32.public;
 `;
 
+const ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE = `
+program admin_only.aleo;
+
+constructor:
+    assert.eq program_owner aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px;
+`;
+
 // ---------------------------------------------------------------------------
 // checkProgramOnChain
 // ---------------------------------------------------------------------------
@@ -74,6 +81,18 @@ describe("checkProgramOnChain", () => {
     expect(result.exists).toBe(true);
     expect(result.edition).toBeNull();
   });
+
+  it("returns exists=true with null edition for @admin source without edition assertion", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE),
+    });
+    const result = await checkProgramOnChain(conn, "admin_only.aleo");
+    expect(result).toEqual({
+      exists: true,
+      edition: null,
+      source: ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE,
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -87,6 +106,10 @@ describe("parseEditionFromSource", () => {
 
   it("returns null when no edition assertion", () => {
     expect(parseEditionFromSource(SOURCE_NO_CONSTRUCTOR)).toBeNull();
+  });
+
+  it("returns null for @admin source without edition assertion", () => {
+    expect(parseEditionFromSource(ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE)).toBeNull();
   });
 
   it("parses edition 0", () => {
