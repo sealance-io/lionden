@@ -31,8 +31,7 @@ vi.mock("@lionden/network", async (importOriginal) => {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const DEVNODE_ACCOUNT_0_ADDRESS =
-  "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
+const DEVNODE_ACCOUNT_0_ADDRESS = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
 const DEVNODE_ACCOUNT_0_PRIVATE_KEY = "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
 
 const noupgradeConstructor: ConstructorInfo = { type: "noupgrade" };
@@ -138,6 +137,23 @@ describe("checkConstructorValid", () => {
     const err = checkConstructorValid(bad, "hello.aleo");
     expect(err).not.toBeNull();
     expect(err!.code).toBe("INVALID_CONSTRUCTOR");
+  });
+
+  it("returns error for @checksum without key", () => {
+    const bad: ConstructorInfo = { type: "checksum", checksumMapping: "hello.aleo::checksums" };
+    const err = checkConstructorValid(bad, "hello.aleo");
+    expect(err).not.toBeNull();
+    expect(err!.code).toBe("INVALID_CONSTRUCTOR");
+  });
+
+  it("does not emit console warnings for @custom constructor validation", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(checkConstructorValid({ type: "custom" }, "hello.aleo")).toBeNull();
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 
@@ -462,6 +478,43 @@ describe("runDeployPreflight", () => {
 
     expect(result.passed).toBe(true);
     expect(result.programs[0]!.action).toBe("deploy");
+  });
+
+  it("returns structured warning for @custom constructor deploy preflight", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(null),
+    });
+    try {
+      const result = await runDeployPreflight({
+        programs: [
+          {
+            programId: "dao.aleo",
+            constructor: { type: "custom" },
+            aleoSource: "program dao.aleo;",
+            existingRecord: null,
+          },
+        ],
+        connection: conn,
+        networkConfig: devnodeNetworkConfig,
+        config,
+        skipDeployed: true,
+        deployTargets: new Set(["dao.aleo"]),
+        localSources: new Map(),
+        graph: makeGraph(),
+      });
+
+      expect(result.passed).toBe(true);
+      expect(result.warnings).toContainEqual({
+        code: "CUSTOM_CONSTRUCTOR",
+        message:
+          `Program "dao.aleo" uses @custom constructor. ` +
+          `Custom constructor logic will be evaluated on-chain during deployment.`,
+      });
+      expect(warnSpy).not.toHaveBeenCalled();
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   it("fails when constructor is missing", async () => {

@@ -1,9 +1,8 @@
 import { collectGlobalOptions, createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
-import { describe, expect, it } from "vitest";
-import { DeployError, validateConstructor } from "./deploy-task.js";
+import { describe, expect, it, vi } from "vitest";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
-import pluginDeploy from "./index.js";
+import pluginDeploy, { DeployError, validateConstructor } from "./index.js";
 import { UpgradeCompatibilityError, validateUpgradePermission } from "./upgrade-task.js";
 
 const mockConfig = createMockConfig();
@@ -159,8 +158,17 @@ describe("validateConstructor", () => {
     ).toThrow("invalid address");
   });
 
-  it("accepts @custom constructor (warns but does not throw)", () => {
-    expect(() => validateConstructor({ type: "custom" }, "dao.aleo")).not.toThrow();
+  it("accepts @custom constructor and emits the legacy warning", () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(() => validateConstructor({ type: "custom" }, "dao.aleo")).not.toThrow();
+      expect(warnSpy).toHaveBeenCalledWith(
+        `Warning: Program "dao.aleo" uses @custom constructor. ` +
+          `Custom constructor logic will be evaluated on-chain during deployment.`,
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
 

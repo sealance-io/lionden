@@ -17,9 +17,11 @@ import type { NetworkConnection } from "@lionden/network";
 import { checkAbiCompatibility } from "./abi-compat.js";
 import { validateAdminSigner } from "./admin-signer.js";
 import type { ConstructorInfo } from "./constructor-parser.js";
-import { isValidAleoAddress } from "./constructor-parser.js";
+import {
+  createCustomConstructorWarning,
+  validateConstructorAnnotation,
+} from "./constructor-validation.js";
 import type { DeploymentRecord } from "./deployment-types.js";
-import { DeployError } from "./errors.js";
 import { checkProgramOnChain, fetchImportSources } from "./on-chain-check.js";
 
 // ---------------------------------------------------------------------------
@@ -86,7 +88,7 @@ export function checkConstructorPresent(
 
 /**
  * Check that the constructor annotation is fully valid (address format, etc.).
- * Delegates to validateConstructor, converting DeployError to PreflightError.
+ * Delegates to the shared constructor validator, converting errors to PreflightError.
  */
 export function checkConstructorValid(
   constructor: ConstructorInfo | null,
@@ -95,35 +97,7 @@ export function checkConstructorValid(
   if (!constructor) return null; // already caught by checkConstructorPresent
 
   try {
-    if (constructor.type === "admin") {
-      if (!constructor.adminAddress) {
-        throw new DeployError(
-          `Program "${programId}" has @admin constructor but no address specified. ` +
-            `Usage: @admin(address="aleo1...")`,
-        );
-      }
-      if (!isValidAleoAddress(constructor.adminAddress)) {
-        throw new DeployError(
-          `Program "${programId}" has @admin constructor with invalid address: ` +
-            `"${constructor.adminAddress}". ` +
-            `Aleo addresses must start with "aleo1" and be 63 characters long.`,
-        );
-      }
-    }
-    if (constructor.type === "checksum") {
-      if (!constructor.checksumMapping) {
-        throw new DeployError(
-          `Program "${programId}" has @checksum constructor but no mapping specified. ` +
-            `Usage: @checksum(mapping="prog.aleo::map_name", key="value")`,
-        );
-      }
-      if (!constructor.checksumKey) {
-        throw new DeployError(
-          `Program "${programId}" has @checksum constructor but no key specified. ` +
-            `Usage: @checksum(mapping="prog.aleo::map_name", key="value")`,
-        );
-      }
-    }
+    validateConstructorAnnotation(constructor, programId, { emitCustomWarning: false });
     return null;
   } catch (err: unknown) {
     return {
@@ -595,6 +569,10 @@ export async function runDeployPreflight(
       continue;
     }
 
+    if (constructor?.type === "custom") {
+      warnings.push(createCustomConstructorWarning(programId, "deployment"));
+    }
+
     // 3. Check if already deployed
     const { outcome: deployedOutcome, error: deployedErr } = await checkAlreadyDeployed(
       connection,
@@ -809,12 +787,7 @@ export async function runUpgradePreflight(
 
   // Custom constructor warning
   if (newConstructor.type === "custom") {
-    warnings.push({
-      code: "CUSTOM_CONSTRUCTOR",
-      message:
-        `Program "${programId}" uses @custom constructor. ` +
-        `Custom constructor logic will be evaluated on-chain during upgrade.`,
-    });
+    warnings.push(createCustomConstructorWarning(programId, "upgrade"));
   }
 
   return {
