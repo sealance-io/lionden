@@ -92,6 +92,74 @@ program b.aleo { fn y() { a.aleo::x(); } }
     expect(() => resolveDependencies(units)).toThrow(CircularDependencyError);
   });
 
+  it("does not treat a self-reference in a comment as a circular dependency", () => {
+    writeFile(
+      "token/main.leo",
+      `
+program token.aleo {
+  // see token.aleo::helper
+  fn mint() {}
+}
+`,
+    );
+
+    const units = discoverUnits(tmpDir);
+    let graph: ReturnType<typeof resolveDependencies>;
+    expect(() => {
+      graph = resolveDependencies(units);
+    }).not.toThrow();
+
+    const ids = graph!.order.map(unitId);
+    expect(ids).toContain("token.aleo");
+    expect(graph!.imports.get("token.aleo")).not.toContain("token.aleo");
+    expect(graph!.networkDeps.has("token.aleo")).toBe(false);
+  });
+
+  it("does not treat a real self-qualified call as a circular dependency", () => {
+    writeFile(
+      "token/main.leo",
+      `
+program token.aleo {
+  fn mint() { token.aleo::other(); }
+  fn other() {}
+}
+`,
+    );
+
+    const units = discoverUnits(tmpDir);
+    let graph: ReturnType<typeof resolveDependencies>;
+    expect(() => {
+      graph = resolveDependencies(units);
+    }).not.toThrow();
+
+    const ids = graph!.order.map(unitId);
+    expect(ids).toContain("token.aleo");
+    expect(graph!.imports.get("token.aleo")).not.toContain("token.aleo");
+    expect(graph!.networkDeps.has("token.aleo")).toBe(false);
+  });
+
+  it("does not treat a library self-reference as a circular dependency", () => {
+    writeFile(
+      "math/lib.leo",
+      `
+// math.aleo::add
+fn add(a: u32, b: u32) -> u32 { return a + b; }
+`,
+    );
+
+    const units = discoverUnits(tmpDir);
+    let graph: ReturnType<typeof resolveDependencies>;
+    expect(() => {
+      graph = resolveDependencies(units);
+    }).not.toThrow();
+
+    const ids = graph!.order.map(unitId);
+    expect(ids).toContain("math");
+    expect(graph!.imports.get("math")).not.toContain("math");
+    expect(graph!.imports.get("math")).not.toContain("math.aleo");
+    expect(graph!.networkDeps.has("math.aleo")).toBe(false);
+  });
+
   it("handles library dependencies", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
     writeFile(
