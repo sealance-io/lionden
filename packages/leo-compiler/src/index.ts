@@ -58,7 +58,6 @@ export { parseImports } from "./import-parser.js";
 // Package materializer
 export {
   getCachedNetworkDep,
-  linkLocalDependency,
   linkNetworkDependency,
   materializePackage,
 } from "./package-materializer.js";

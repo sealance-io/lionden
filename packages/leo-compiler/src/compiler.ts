@@ -20,7 +20,6 @@ import { computeUnitHash, isCached, writeCache } from "./cache.js";
 import { type DependencyGraph, resolveDependencies } from "./dependency-resolver.js";
 import {
   getCachedNetworkDep,
-  linkLocalDependency,
   linkNetworkDependency,
   materializePackage,
 } from "./package-materializer.js";
@@ -190,14 +189,17 @@ export async function compilePipeline(
   // 5. Compile in topological order
   const results: CompilationResult[] = [];
   const depHashes = new Map<string, string>();
-  const normalizedArtifactDirs = new Map<string, string>();
 
   for (const unit of compileOrder) {
     const id = unitId(unit);
     const pkgDir = packageDirs.get(id)!;
     const buildDir = path.join(pkgDir, "build");
 
-    // Link local dependencies (their compiled .aleo output)
+    // Partition imports into local vs network deps for cache hashing.
+    // Local deps need no staging: `leo build` resolves them from the `path`
+    // entry in the dependent's program.json (written by materializePackage)
+    // and re-emits each dependency's bytecode under the dependent's own
+    // build/ dir. Network deps are staged into imports/ by linkNetworkDependency.
     const imports = graph.imports.get(id) ?? [];
     const localDepIds: string[] = [];
     const networkDepIds: string[] = [];
@@ -206,10 +208,6 @@ export async function compilePipeline(
         networkDepIds.push(dep);
       } else {
         localDepIds.push(dep);
-        const depArtifactDir = normalizedArtifactDirs.get(dep);
-        if (depArtifactDir) {
-          linkLocalDependency(pkgDir, dep, depArtifactDir);
-        }
       }
     }
 
@@ -239,7 +237,6 @@ export async function compilePipeline(
         requireAbi: true,
         requireAleo: true,
       });
-      normalizedArtifactDirs.set(id, artifactDir);
       writeKeyArtifactsMetadata(
         keyArtifactsMetadataPath(config.paths.artifacts, unit.programId),
         buildKeyArtifactsMetadata(pkgDir, artifactDir, unit.programId, abi),
@@ -254,16 +251,10 @@ export async function compilePipeline(
         aleoSource: normalized.aleoPath!,
       } satisfies ProgramCompilationResult);
     } else {
-      const normalizedDir = path.join(config.paths.artifacts, ".build", id, ".normalized");
       // Libraries are inline `fn` helpers: `leo build` emits no .aleo for them,
-      // and dependents inline the source via their local-dependency package
-      // path, not a linked .aleo. So normalization must not require .aleo.
-      copyArtifacts(buildDir, normalizedDir, id, {
-        requireAbi: false,
-        requireAleo: false,
-      });
-      normalizedArtifactDirs.set(id, normalizedDir);
-
+      // and dependents inline the source from the library's package `path` in
+      // program.json — never from a staged .aleo. So there is nothing to
+      // normalize or stage for a library.
       results.push({
         unit,
         cached,
@@ -512,6 +503,28 @@ function buildKeyArtifactsMetadata(
   };
 }
 
+/**
+ * Hash the materialized package `imports/` directory for the key-artifacts
+ * sidecar. This now only ever sees NETWORK dependency sources: local program
+ * deps are no longer staged here (`leo build` resolves them from the `path`
+ * entry in program.json), so for a program whose only deps are local it returns
+ * the empty-imports hash.
+ *
+ * NOTE — intentional, pre-existing divergence from the runtime import hash
+ * (`hashImports` in `@lionden/network`'s execution-key-cache): the two never
+ * agreed for programs that have imports, because they hash different shapes
+ * (`{ path, sourceHash }` over the imports/ dir here vs `{ programId, sourceHash }`
+ * over the bytecode-resolved import set at runtime). As a result the sidecar
+ * key-cache fast-path (`readSidecarKeys`, gated on `sidecar.importsHash ===
+ * runtime.importsHash`) only matches for import-LESS programs; import-having
+ * programs fall through to the runtime key cache. Removing local-dep staging
+ * did not change that gate outcome — it was verified identical (reject → runtime
+ * cache) before and after, on both a synthetic probe and multi-program
+ * rewards→treasury. Making the sidecar fast-path work for program→program would
+ * require reconstructing the runtime import set at compile time (parse compiled
+ * bytecode imports, resolve from artifacts, hash by programId) — a deliberate
+ * enhancement deferred as a follow-up, not a regression introduced here.
+ */
 function hashPackageImports(importsDir: string): string {
   if (!fs.existsSync(importsDir)) {
     return sha256Json({ imports: [] });
