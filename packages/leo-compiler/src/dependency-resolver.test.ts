@@ -115,6 +115,25 @@ program token.aleo {
     expect(graph!.networkDeps.has("token.aleo")).toBe(false);
   });
 
+  it("does not treat a commented mention of another program as a dependency", () => {
+    writeFile(
+      "hello/main.leo",
+      `
+program hello.aleo {
+  // related: other.aleo::x — see docs, not a real call
+  fn main() {}
+}
+`,
+    );
+
+    const units = discoverUnits(tmpDir);
+    const graph = resolveDependencies(units);
+
+    expect(graph.order.map(unitId)).toEqual(["hello.aleo"]);
+    expect(graph.imports.get("hello.aleo")).toEqual([]);
+    expect(graph.networkDeps.size).toBe(0);
+  });
+
   it("does not treat a real self-qualified call as a circular dependency", () => {
     writeFile(
       "token/main.leo",
