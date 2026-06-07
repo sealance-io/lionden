@@ -25,11 +25,3 @@ rules:
     conditions:
       - expr: |
           ActionRepoOwner in ["ProvableHQ", "AleoHQ", "AleoNet"]
-  # TEMPORARY: setup-leo-action is pinned to the unreleased PR #19 head (Leo 4.1.0
-  # source-tag support). That commit has no release tag, so `--verify` cannot resolve a
-  # version annotation for it — skip this action entirely until the release ships, then
-  # re-pin to the tagged SHA (# vX.Y.Z) in ci.yml + leo-cache-warmup.yml and delete this rule.
-  - ignore: true
-    conditions:
-      - expr: |
-          ActionRepoFullName == "sealance-io/setup-leo-action"
