@@ -171,13 +171,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # TEMPORARY pin to the PR #19 head (unreleased) — adds Leo 4.1.0 source-tag support
-      # (leo-lang-v4.1.0), which the v1.1.0 release cannot resolve. sealance-io is a
-      # first-party publisher, so this is exempt from the pinact/Dependabot cooldown (see
-      # .pinact.yaml ignore rule). Re-pin to the tagged release SHA (# vX.Y.Z) and drop the
-      # ignore rule once PR #19 ships: https://github.com/sealance-io/setup-leo-action/pull/19
+      # v1.1.1 adds Leo 4.1.0 source-tag support (leo-lang-v4.1.0).
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@1a751b63289e0475d09058db0cbc18e88abc7048 # PR #19 head (unreleased)
+        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
         with:
           version: "4.1.0" # semver-only; must match core examples' leoVersion (preflight checks major.minor)
           rust-version: "1.96.0" # Leo v4.1.0 minimum toolchain
