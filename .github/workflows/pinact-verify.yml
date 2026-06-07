@@ -37,10 +37,14 @@ jobs:
       - name: Check for workflow/pinact changes
         id: filter
         run: |
-          # Fail-safe: on any fetch/diff failure, default to verifying rather than silently
-          # treating it as "no changes".
+          # Fail-safe: on any missing push range or fetch/diff failure, default to
+          # verifying rather than silently treating it as "no changes".
           if [[ "$EVENT_NAME" == "push" ]]; then
-            if ! CHANGED=$(git diff --name-only HEAD~1 HEAD); then
+            if [[ -z "$BEFORE_SHA" || -z "$AFTER_SHA" || "$BEFORE_SHA" =~ ^0+$ || "$AFTER_SHA" =~ ^0+$ ]]; then
+              echo "::warning::Push range unavailable — verifying"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if ! CHANGED=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA"); then
               echo "::warning::Could not diff push range — verifying"
               echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
             fi
@@ -69,6 +73,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
 
   # Assert every action is pinned to a SHA, its version comment matches, and the pinned
   # release satisfies the cooldown (min_age: 21 in .pinact.yaml). --check = read-only.

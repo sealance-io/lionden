@@ -41,10 +41,14 @@ jobs:
       - name: Check for workflow/security changes
         id: filter
         run: |
-          # Fail-safe: on any fetch/diff failure, default to auditing rather than silently
-          # treating it as "no changes".
+          # Fail-safe: on any missing push range or fetch/diff failure, default to
+          # auditing rather than silently treating it as "no changes".
           if [[ "$EVENT_NAME" == "push" ]]; then
-            if ! CHANGED=$(git diff --name-only HEAD~1 HEAD); then
+            if [[ -z "$BEFORE_SHA" || -z "$AFTER_SHA" || "$BEFORE_SHA" =~ ^0+$ || "$AFTER_SHA" =~ ^0+$ ]]; then
+              echo "::warning::Push range unavailable — auditing"
+              echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
+            fi
+            if ! CHANGED=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA"); then
               echo "::warning::Could not diff push range — auditing"
               echo "workflows=true" >> "$GITHUB_OUTPUT"; exit 0
             fi
@@ -73,6 +77,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
 
   zizmor-audit:
     name: Workflow Security Audit
