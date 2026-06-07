@@ -567,7 +567,13 @@ describe("compilePipeline network dep handling", () => {
     }
   });
 
-  it("links local dependencies from normalized artifacts", async () => {
+  it("compiles a program that depends on a lib.leo library without staging it into imports/", async () => {
+    // Inline-`fn` libraries emit no `.aleo`: `leo build` inlines their source
+    // (resolved from the library's package `path` in program.json) into the
+    // dependent's bytecode. LionDen stages nothing into the dependent's
+    // imports/ for a local dependency. This asserts the honest behavior:
+    // the library's build/ is empty, the dependent still compiles, and its
+    // imports/ never receives a library file.
     const libDir = path.join(programsDir, "utils");
     fs.mkdirSync(libDir, { recursive: true });
     fs.writeFileSync(path.join(libDir, "lib.leo"), "fn helper() {}\n");
@@ -589,17 +595,16 @@ describe("compilePipeline network dep handling", () => {
         '  prev="$arg"',
         "done",
         'id=$(basename "$pkg")',
-        'if [ "$id" = "app.aleo" ]; then',
-        "  grep 'program utils.aleo' \"$pkg/imports/utils.aleo\" >/dev/null || exit 9",
-        "fi",
         'unit="$pkg/build/$id"',
         'mkdir -p "$unit"',
         'if [ "$id" = "utils" ]; then',
-        "  printf 'program utils.aleo {}\\n' > \"$unit/utils.aleo\"",
-        "else",
+        "  # Inline-fn library: leo emits no .aleo; build/ stays empty.",
+        "  exit 0",
+        "fi",
+        // The dependent compiles regardless of imports/ contents — leo resolves
+        // the library from its program.json `path`, not from a staged file.
         '  printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$unit/abi.json"',
         '  printf \'program %s {}\\n\' "$id" > "$unit/$id"',
-        "fi",
       ].join("\n") + "\n",
       { mode: 0o755 },
     );
@@ -609,12 +614,18 @@ describe("compilePipeline network dep handling", () => {
 
     try {
       await compilePipeline(makeConfig());
-      expect(
-        fs.readFileSync(
-          path.join(artifactsDir, ".build", "app.aleo", "imports", "utils.aleo"),
-          "utf-8",
-        ),
-      ).toBe("program utils.aleo {}\n");
+
+      // The dependent program compiled even though the library emitted no .aleo.
+      const artifactDir = path.join(artifactsDir, "app.aleo");
+      expect(fs.readFileSync(path.join(artifactDir, "main.aleo"), "utf-8")).toBe(
+        "program app.aleo {}\n",
+      );
+
+      // No library file was staged into the dependent package's imports/.
+      // materializePackage still mkdirs imports/, so it exists but is empty.
+      const appImportsDir = path.join(artifactsDir, ".build", "app.aleo", "imports");
+      expect(fs.existsSync(path.join(appImportsDir, "utils.aleo"))).toBe(false);
+      expect(fs.readdirSync(appImportsDir)).toEqual([]);
     } finally {
       process.env.PATH = originalPath;
     }
