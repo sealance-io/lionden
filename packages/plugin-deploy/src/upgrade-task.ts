@@ -379,8 +379,10 @@ export async function upgradeAction(
 // ---------------------------------------------------------------------------
 
 /**
- * Check that the existing deployment's constructor permits upgrade.
- * @deprecated Use runUpgradePreflight() — it now includes this check.
+ * Check that the recorded deployment's constructor permits upgrade.
+ *
+ * Rejects deployed `@noupgrade` programs before upgrade preflight and fails
+ * closed for persisted constructor types that LionDen does not recognize.
  */
 export function validateUpgradePermission(record: DeploymentRecord, programId: string): void {
   const type = record.constructor.type;
