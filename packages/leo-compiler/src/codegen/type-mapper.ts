@@ -122,48 +122,6 @@ export function aleoTypeToTs(ty: AleoType): string {
 }
 
 /**
- * Get the Leo type suffix for a primitive (used in serialization).
- * e.g. "u64", "field", "address", "bool"
- */
-export function primitiveToLeoSuffix(prim: PrimitiveType): string {
-  if (typeof prim === "string") {
-    switch (prim) {
-      case "Address":
-        return "address";
-      case "Boolean":
-        return "bool";
-      case "Field":
-        return "field";
-      case "Group":
-        return "group";
-      case "Identifier":
-        return "identifier";
-      case "Scalar":
-        return "scalar";
-    }
-    return "unknown";
-  }
-
-  if (typeof prim === "object" && prim !== null && "UInt" in prim) return prim.UInt.toLowerCase();
-  if (typeof prim === "object" && prim !== null && "Int" in prim) return prim.Int.toLowerCase();
-
-  return "unknown";
-}
-
-/**
- * Check if a primitive type should be serialized with a suffix.
- * Address, Field, Group, Scalar are passed as raw strings.
- * Integers need the suffix (e.g., "100u64").
- * Boolean needs no suffix in Leo string form.
- */
-export function needsSuffix(prim: PrimitiveType): boolean {
-  if (typeof prim === "string") {
-    return prim === "Boolean"; // "true" / "false" — no suffix needed
-  }
-  return true; // integers always need suffix
-}
-
-/**
  * Check if a type uses bigint in TS (needs BigInt serialization).
  */
 export function isBigIntType(prim: PrimitiveType): boolean {
