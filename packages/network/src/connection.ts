@@ -621,51 +621,30 @@ export class AleoConnection implements NetworkConnection {
     this.assertOpen();
     const effectiveTimeout = timeout ?? DEFAULT_CONFIRMATION_TIMEOUT_MS;
     const deadline = Date.now() + effectiveTimeout;
-    const fetchHeaders: Record<string, string> = {};
+    const headers: Record<string, string> = {};
     if (this.apiKey) {
-      fetchHeaders["Authorization"] = `Bearer ${this.apiKey}`;
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
 
     const base = `${this.endpoint}/${this.networkId}`;
 
     // Phase 1: poll /transaction/confirmed/<txId> until the tx is in a block.
-    // This response no longer carries block_height; the height is fetched in
-    // phase 2 via the two-step find/blockHash + block/<hash> lookup.
-    const confirmUrl = `${base}/transaction/confirmed/${txId}`;
-    let confirmedBody: Record<string, unknown> | null = null;
-    while (Date.now() < deadline && confirmedBody === null) {
-      let response: Response | null = null;
-      try {
-        response = await fetch(confirmUrl, { headers: fetchHeaders });
-      } catch (err) {
-        // Transient transport errors — retry until deadline.
-        void err;
-      }
-      if (response?.ok) {
-        // Body parse is fail-fast: a malformed JSON body after a 200 OK is a
-        // protocol-level shape mismatch, not a transient retry. (A 200 OK
-        // with parseable JSON but wrong shape is caught below by
-        // parseConfirmedTransitions and also surfaces immediately.)
-        try {
-          confirmedBody = (await response.json()) as Record<string, unknown>;
-        } catch (cause) {
-          throw new TransactionShapeParseError(
-            `Transaction ${txId} confirmed body is not valid JSON`,
-            txId,
-            "body",
-            cause,
-          );
-        }
-        break;
-      }
-      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
-    }
-    if (confirmedBody === null) {
-      throw new NetworkConfirmationTimeoutError(
-        `Transaction ${txId} not confirmed within ${effectiveTimeout}ms`,
-        { txId, timeout: effectiveTimeout, stage: "confirmed" },
-      );
-    }
+    // This response no longer carries block_height; the height is resolved in
+    // phases 2–3 via the two-step find/blockHash + block/<hash> lookup. Each
+    // phase delegates its per-poll verdict to a named classifier so the error
+    // policy is uniform and separately testable (see classify* below).
+    const confirmedBody = await pollPhase(
+      `${base}/transaction/confirmed/${txId}`,
+      headers,
+      deadline,
+      (response) => classifyConfirmedBody(response, txId),
+      () => {
+        throw new NetworkConfirmationTimeoutError(
+          `Transaction ${txId} not confirmed within ${effectiveTimeout}ms`,
+          { txId, timeout: effectiveTimeout, stage: "confirmed" },
+        );
+      },
+    );
 
     // In Aleo, rejected transactions are confirmed as fee-only.
     // Accepted: transaction.type is "execute" or "deploy". Rejected: "fee".
@@ -679,76 +658,35 @@ export class AleoConnection implements NetworkConnection {
     // fast (TransactionShapeParseError) rather than silently returning [].
     const transitions = parseConfirmedTransitions(txData, txId, txType);
 
-    // Phase 2: resolve the containing block's height.
-    //   step a: GET /<network>/find/blockHash/<txId>  -> JSON-encoded block hash
-    //   step b: GET /<network>/block/<blockHash>      -> header.metadata.height
-    // Both calls are bounded by the same deadline; transient errors retry.
-    const blockHashUrl = `${base}/find/blockHash/${txId}`;
-    let blockHash: string | null = null;
-    while (Date.now() < deadline && blockHash === null) {
-      try {
-        const response = await fetch(blockHashUrl, { headers: fetchHeaders });
-        if (response.ok) {
-          const raw = (await response.text()).trim();
-          // Body is a JSON-encoded string: `"ab1...."`
-          if (raw.startsWith('"') && raw.endsWith('"')) {
-            blockHash = JSON.parse(raw) as string;
-          } else {
-            blockHash = raw;
-          }
-          break;
-        }
-      } catch {
-        // retry
-      }
-      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
-    }
-    if (blockHash === null) {
-      throw new NetworkConfirmationTimeoutError(
-        `Transaction ${txId} confirmed but block-hash lookup did not resolve within ${effectiveTimeout}ms`,
-        { txId, timeout: effectiveTimeout, stage: "blockHash" },
-      );
-    }
+    // Phase 2: resolve the containing block's hash.
+    //   GET /<network>/find/blockHash/<txId>  -> JSON-encoded block-hash string
+    const blockHash = await pollPhase(
+      `${base}/find/blockHash/${txId}`,
+      headers,
+      deadline,
+      (response) => classifyBlockHash(response),
+      () => {
+        throw new NetworkConfirmationTimeoutError(
+          `Transaction ${txId} confirmed but block-hash lookup did not resolve within ${effectiveTimeout}ms`,
+          { txId, timeout: effectiveTimeout, stage: "blockHash" },
+        );
+      },
+    );
 
-    const blockUrl = `${base}/block/${blockHash}`;
-    let blockHeight: number | null = null;
-    while (Date.now() < deadline && blockHeight === null) {
-      try {
-        const response = await fetch(blockUrl, { headers: fetchHeaders });
-        if (response.ok) {
-          const block = (await response.json()) as Record<string, unknown>;
-          const header = block["header"] as Record<string, unknown> | undefined;
-          const metadata = header?.["metadata"] as Record<string, unknown> | undefined;
-          const h = metadata?.["height"];
-          if (typeof h === "number") {
-            blockHeight = h;
-            break;
-          }
-          // Block returned 200 but no numeric header.metadata.height. This is
-          // a hard parser disagreement, not transient — fail fast rather than
-          // burning the deadline on a shape that won't change. Typed so the
-          // catch below classifies it by `instanceof`, not message text.
-          throw new TransactionShapeParseError(
-            `Transaction ${txId} confirmed at block ${blockHash} but header.metadata.height is missing or non-numeric`,
-            txId,
-            "header.metadata.height",
-          );
-        }
-      } catch (err) {
-        // Surface the explicit shape-mismatch immediately; only retry transient errors.
-        if (err instanceof TransactionShapeParseError) {
-          throw err;
-        }
-        // retry on network/parse errors
-      }
-      await sleep(CONFIRMATION_POLL_INTERVAL_MS);
-    }
-    if (blockHeight === null) {
-      throw new NetworkConfirmationTimeoutError(
-        `Transaction ${txId} confirmed but block height could not be resolved within ${effectiveTimeout}ms`,
-        { txId, timeout: effectiveTimeout, stage: "blockHeight" },
-      );
-    }
+    // Phase 3: resolve the block's height.
+    //   GET /<network>/block/<blockHash>  -> header.metadata.height (number)
+    const blockHeight = await pollPhase(
+      `${base}/block/${blockHash}`,
+      headers,
+      deadline,
+      (response) => classifyBlockHeight(response, txId, blockHash),
+      () => {
+        throw new NetworkConfirmationTimeoutError(
+          `Transaction ${txId} confirmed but block height could not be resolved within ${effectiveTimeout}ms`,
+          { txId, timeout: effectiveTimeout, stage: "blockHeight" },
+        );
+      },
+    );
 
     return { txId, blockHeight, status, transitions };
   }
@@ -1059,6 +997,168 @@ function tryDestroyAccount(account: unknown): void {
       // Non-fatal — some SDK versions may not support destroy
     }
   }
+}
+
+/**
+ * One poll attempt's verdict for a confirmation phase. Explicit and testable —
+ * replaces the divergent inline error handling that previously lived in each of
+ * the three polling loops inside `waitForConfirmation`.
+ *
+ *   confirmed  — got the value; stop polling.
+ *   retryable  — not ready yet / transient transport error; keep polling.
+ *   fatalShape — a 2xx response with an unparseable/wrong-shape body; stop and
+ *                throw, because it will not self-heal and retrying it merely
+ *                burns the deadline into a misleading timeout.
+ */
+type PhaseOutcome<T> =
+  | { readonly kind: "confirmed"; readonly value: T }
+  | { readonly kind: "retryable" }
+  | { readonly kind: "fatalShape"; readonly error: TransactionShapeParseError };
+
+/**
+ * Run a bounded poll loop for one confirmation phase. `fetch` transport errors
+ * are surfaced to `classify` as a `null` response (which classifiers treat as
+ * `retryable`). A `fatalShape` verdict throws its error immediately; exhausting
+ * the deadline calls `onTimeout()`, which throws the staged
+ * `NetworkConfirmationTimeoutError`.
+ */
+async function pollPhase<T>(
+  url: string,
+  headers: Record<string, string>,
+  deadline: number,
+  classify: (response: Response | null) => Promise<PhaseOutcome<T>>,
+  onTimeout: () => never,
+): Promise<T> {
+  while (Date.now() < deadline) {
+    let response: Response | null = null;
+    try {
+      response = await fetch(url, { headers });
+    } catch {
+      response = null; // transient transport error — classify as retryable
+    }
+    const outcome = await classify(response);
+    if (outcome.kind === "confirmed") return outcome.value;
+    if (outcome.kind === "fatalShape") throw outcome.error;
+    await sleep(CONFIRMATION_POLL_INTERVAL_MS);
+  }
+  onTimeout();
+}
+
+/**
+ * Phase 1 classifier — /transaction/confirmed/<txId>.
+ * non-ok → retryable; 2xx + valid JSON → confirmed; 2xx + unparseable JSON →
+ * fatalShape. A malformed JSON body after a 200 OK is a protocol-level shape
+ * mismatch, not a transient retry. (A 2xx with parseable JSON but wrong shape
+ * is caught downstream by parseConfirmedTransitions and also surfaces fast.)
+ */
+async function classifyConfirmedBody(
+  response: Response | null,
+  txId: string,
+): Promise<PhaseOutcome<Record<string, unknown>>> {
+  if (!response?.ok) return { kind: "retryable" };
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (cause) {
+    return {
+      kind: "fatalShape",
+      error: new TransactionShapeParseError(
+        `Transaction ${txId} confirmed body is not valid JSON`,
+        txId,
+        "body",
+        cause,
+      ),
+    };
+  }
+  // Valid JSON that isn't an object (e.g. `null`, a number) is a deterministic
+  // 2xx shape failure — fail fast rather than confirming a value that makes the
+  // orchestrator throw a raw TypeError on property access downstream.
+  if (parsed === null || typeof parsed !== "object") {
+    return {
+      kind: "fatalShape",
+      error: new TransactionShapeParseError(
+        `Transaction ${txId} confirmed body is not a JSON object`,
+        txId,
+        "body",
+      ),
+    };
+  }
+  return { kind: "confirmed", value: parsed as Record<string, unknown> };
+}
+
+/**
+ * Phase 2 classifier — /find/blockHash/<txId>.
+ * non-ok → retryable; 2xx → unquote the JSON-string body → confirmed. A
+ * read/parse failure on a 2xx body is treated as transient (retryable),
+ * preserving the prior bare-catch behavior — but now as an explicit verdict.
+ */
+async function classifyBlockHash(response: Response | null): Promise<PhaseOutcome<string>> {
+  if (!response?.ok) return { kind: "retryable" };
+  try {
+    const raw = (await response.text()).trim();
+    // Body is a JSON-encoded string: `"ab1...."`
+    const blockHash = raw.startsWith('"') && raw.endsWith('"') ? (JSON.parse(raw) as string) : raw;
+    return { kind: "confirmed", value: blockHash };
+  } catch {
+    return { kind: "retryable" };
+  }
+}
+
+/**
+ * Phase 3 classifier — /block/<blockHash>.
+ * non-ok → retryable; 2xx + numeric header.metadata.height → confirmed;
+ * 2xx + unparseable JSON OR missing/non-numeric height → fatalShape. Both are
+ * hard parser disagreements that won't change on retry, so fail fast rather
+ * than burning the deadline.
+ */
+async function classifyBlockHeight(
+  response: Response | null,
+  txId: string,
+  blockHash: string,
+): Promise<PhaseOutcome<number>> {
+  if (!response?.ok) return { kind: "retryable" };
+  let parsed: unknown;
+  try {
+    parsed = await response.json();
+  } catch (cause) {
+    return {
+      kind: "fatalShape",
+      error: new TransactionShapeParseError(
+        `Transaction ${txId} confirmed at block ${blockHash} but the block body is not valid JSON`,
+        txId,
+        "body",
+        cause,
+      ),
+    };
+  }
+  // Valid JSON that isn't an object (e.g. `null`) is a deterministic shape
+  // failure — guard before indexing so it surfaces as a typed shape error
+  // rather than a raw TypeError on `block["header"]`.
+  if (parsed === null || typeof parsed !== "object") {
+    return {
+      kind: "fatalShape",
+      error: new TransactionShapeParseError(
+        `Transaction ${txId} confirmed at block ${blockHash} but the block body is not a JSON object`,
+        txId,
+        "body",
+      ),
+    };
+  }
+  const block = parsed as Record<string, unknown>;
+  const header = block["header"] as Record<string, unknown> | undefined;
+  const metadata = header?.["metadata"] as Record<string, unknown> | undefined;
+  const h = metadata?.["height"];
+  if (typeof h === "number") {
+    return { kind: "confirmed", value: h };
+  }
+  return {
+    kind: "fatalShape",
+    error: new TransactionShapeParseError(
+      `Transaction ${txId} confirmed at block ${blockHash} but header.metadata.height is missing or non-numeric`,
+      txId,
+      "header.metadata.height",
+    ),
+  };
 }
 
 /**

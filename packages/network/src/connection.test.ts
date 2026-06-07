@@ -2146,6 +2146,106 @@ describe("AleoConnection", () => {
       expect(confirmedCalls).toHaveLength(1);
     });
 
+    it("fails fast on malformed JSON body in 200 OK block lookup (Phase 3, unified policy)", async () => {
+      // Mirrors the Phase-1 bad-body policy: a 2xx /block/<hash> response whose
+      // JSON won't parse is a deterministic shape error that won't self-heal, so
+      // it must fail fast rather than retry into a misleading timeout.
+      const happyTxBody = {
+        type: "execute",
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => happyTxBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(TEST_BLOCK_HASH) };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return {
+            ok: true,
+            json: async () => {
+              throw new SyntaxError("Unexpected token < in JSON at position 0");
+            },
+          };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        txId: "at1test",
+      });
+      // Exactly one /block/<hash> call — no retry loop on a deterministic shape error.
+      const blockCalls = fetchMock.mock.calls.filter((c) =>
+        (c[0] as string).includes(`/block/${TEST_BLOCK_HASH}`),
+      );
+      expect(blockCalls).toHaveLength(1);
+    });
+
+    it("fails fast when the 200 OK confirmation body is valid JSON null (Phase 1)", async () => {
+      // A 2xx body of valid JSON `null` must surface as a typed shape error, not
+      // a raw TypeError when the orchestrator indexes confirmedBody["transaction"].
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => null };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(TEST_BLOCK_HASH) };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return {
+            ok: true,
+            json: async () => ({ header: { metadata: { network: 1, round: 1, height: 1 } } }),
+          };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "body",
+        txId: "at1test",
+      });
+      // Exactly one /transaction/confirmed/ call — fail fast, no retry loop.
+      const confirmedCalls = fetchMock.mock.calls.filter((c) =>
+        (c[0] as string).includes("/transaction/confirmed/"),
+      );
+      expect(confirmedCalls).toHaveLength(1);
+    });
+
+    it("fails fast when the 200 OK block body is valid JSON null (Phase 3)", async () => {
+      // A 2xx /block/<hash> body of valid JSON `null` must surface as a typed
+      // shape error, not a raw TypeError when the classifier indexes block["header"].
+      const happyTxBody = {
+        type: "execute",
+        transaction: { type: "execute", id: "at1test", execution: { transitions: [] } },
+      };
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.includes("/transaction/confirmed/")) {
+          return { ok: true, json: async () => happyTxBody };
+        }
+        if (url.includes("/find/blockHash/")) {
+          return { ok: true, text: async () => JSON.stringify(TEST_BLOCK_HASH) };
+        }
+        if (url.includes(`/block/${TEST_BLOCK_HASH}`)) {
+          return { ok: true, json: async () => null };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      });
+
+      await expect(createDevnodeConnection().waitForConfirmation("at1test")).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "body",
+        txId: "at1test",
+      });
+      // Exactly one /block/<hash> call — fail fast, no retry loop.
+      const blockCalls = fetchMock.mock.calls.filter((c) =>
+        (c[0] as string).includes(`/block/${TEST_BLOCK_HASH}`),
+      );
+      expect(blockCalls).toHaveLength(1);
+    });
+
     it("does retry on transport error from fetch() (regression guard)", async () => {
       // First call throws (transport), second call succeeds — confirms the
       // split-try preserves transient-retry behavior for non-200 paths.
