@@ -294,13 +294,3 @@ export function writeExportBundle(
 ): void {
   atomicWrite(exportPath(deploymentsDir, network), JSON.stringify(bundle, null, 2) + "\n");
 }
-
-export function readExportBundle(deploymentsDir: string, network: string): ExportBundle | null {
-  const p = exportPath(deploymentsDir, network);
-  if (!fs.existsSync(p)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf-8")) as ExportBundle;
-  } catch {
-    return null;
-  }
-}

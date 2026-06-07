@@ -10,7 +10,6 @@ import {
   readAbiSnapshot,
   readAllDeploymentRecords,
   readDeploymentRecord,
-  readExportBundle,
   readHistory,
   readNetworkMetadata,
   readPendingMarker,
@@ -320,8 +319,8 @@ describe("listPendingMarkers", () => {
 // Export bundles
 // ---------------------------------------------------------------------------
 
-describe("writeExportBundle / readExportBundle", () => {
-  it("round-trips an export bundle", () => {
+describe("writeExportBundle", () => {
+  it("writes an export bundle to deployments/_exports/<network>.json", () => {
     const bundle: ExportBundle = {
       network: "devnode",
       networkInfo: { type: "devnode", networkId: "testnet", endpoint: "http://127.0.0.1:3030" },
@@ -338,11 +337,8 @@ describe("writeExportBundle / readExportBundle", () => {
       },
     };
     writeExportBundle(tmpDir, "devnode", bundle);
-    const got = readExportBundle(tmpDir, "devnode");
-    expect(got).toEqual(bundle);
-  });
 
-  it("returns null when bundle does not exist", () => {
-    expect(readExportBundle(tmpDir, "devnode")).toBeNull();
+    const exportBundlePath = path.join(tmpDir, "_exports", "devnode.json");
+    expect(fs.readFileSync(exportBundlePath, "utf-8")).toBe(JSON.stringify(bundle, null, 2) + "\n");
   });
 });
