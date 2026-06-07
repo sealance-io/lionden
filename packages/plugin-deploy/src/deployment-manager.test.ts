@@ -46,6 +46,10 @@ const mockAbi: ProgramABI = {
   transitions: [],
 };
 
+function compiledSource(programId = "hello.aleo", edition = 1): string {
+  return `program ${programId};\nconstructor:\n    assert.eq edition ${edition}u16;\n`;
+}
+
 function makeConfig(opts: { networkType?: "devnode" | "http"; ephemeral?: boolean } = {}) {
   const { networkType = "devnode", ephemeral } = opts;
   if (networkType === "devnode") {
@@ -109,6 +113,20 @@ function makeNetworkManager(connection = createMockConnection()): NetworkManager
   };
 }
 
+function makeDisconnectedNetworkManager(): NetworkManager {
+  return {
+    connect: vi.fn(),
+    getConnection: vi.fn().mockReturnValue(null),
+    disconnectAll: vi.fn(),
+    getAccounts: vi.fn().mockReturnValue([]),
+    getNamedAccounts: vi.fn().mockReturnValue({}),
+    execute: vi.fn(),
+    getMappingValue: vi.fn(),
+    waitForConfirmation: vi.fn(),
+    getTransitionOutputs: vi.fn(),
+  };
+}
+
 function makeManager(
   opts: {
     networkType?: "devnode" | "http";
@@ -147,6 +165,14 @@ const completeRecord: CompleteDeploymentRecord = {
   deployedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const secondCompleteRecord: CompleteDeploymentRecord = {
+  ...completeRecord,
+  programId: "goodbye.aleo",
+  abiHash: "def456",
+  txId: "at1def",
+  blockHeight: 43,
+};
+
 // ---------------------------------------------------------------------------
 // Devnode session policy
 // ---------------------------------------------------------------------------
@@ -170,9 +196,7 @@ describe("devnode: getDeployment validates on-chain", () => {
 
   it("returns cached record when program is on-chain", async () => {
     const conn = createMockConnection({
-      getProgramSource: vi
-        .fn()
-        .mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 1u16;\n"),
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
     });
     const { dm, config } = makeManager({ connection: conn });
     // Write disk state
@@ -185,9 +209,7 @@ describe("devnode: getDeployment validates on-chain", () => {
 
   it("creates degraded record when on-chain but no prior state", async () => {
     const conn = createMockConnection({
-      getProgramSource: vi
-        .fn()
-        .mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 2u16;\n"),
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource("hello.aleo", 2)),
     });
     const { dm } = makeManager({ connection: conn });
 
@@ -200,17 +222,7 @@ describe("devnode: getDeployment validates on-chain", () => {
   it("returns cache-only when no connection available", async () => {
     const { dm } = makeManager();
     // networkManager.getConnection() returns null
-    const managerWithNull: NetworkManager = {
-      connect: vi.fn(),
-      getConnection: vi.fn().mockReturnValue(null),
-      disconnectAll: vi.fn(),
-      getAccounts: vi.fn().mockReturnValue([]),
-      getNamedAccounts: vi.fn().mockReturnValue({}),
-      execute: vi.fn(),
-      getMappingValue: vi.fn(),
-      waitForConfirmation: vi.fn(),
-      getTransitionOutputs: vi.fn(),
-    };
+    const managerWithNull = makeDisconnectedNetworkManager();
     const dm2 = new DeploymentManagerImpl(makeConfig(), () => managerWithNull, makeArtifactStore());
 
     // Nothing in cache
@@ -218,31 +230,94 @@ describe("devnode: getDeployment validates on-chain", () => {
     expect(result).toBeNull();
   });
 
-  it("getAllDeployments returns cache-only for devnode", async () => {
+  it("getAllDeployments validates cache before non-ephemeral disk records for devnode", async () => {
+    const getProgramSource = vi.fn(async (programId: string) =>
+      compiledSource(programId, programId === "hello.aleo" ? 1 : 2),
+    );
+    const conn = createMockConnection({ getProgramSource });
+    const config = makeConfig({ ephemeral: false });
+    const manager = makeNetworkManager(conn);
+    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
+
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+    writeDeploymentRecord(config.paths.deployments, "devnode", secondCompleteRecord);
+
+    const records = await dm.getAllDeployments();
+    expect(records.map((record) => record.programId)).toEqual(["hello.aleo", "goodbye.aleo"]);
+    expect(getProgramSource.mock.calls.map(([programId]) => programId)).toEqual([
+      "hello.aleo",
+      "goodbye.aleo",
+    ]);
+  });
+
+  it("getAllDeployments returns cache-only when no devnode connection is available", async () => {
+    const config = makeConfig();
+    const manager = makeDisconnectedNetworkManager();
+    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
+
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+    writeDeploymentRecord(config.paths.deployments, "devnode", secondCompleteRecord);
+
+    const records = await dm.getAllDeployments();
+    expect(records.map((record) => record.programId)).toEqual(["hello.aleo"]);
+  });
+
+  it("filters cached devnode records missing on-chain and clears cache", async () => {
+    const getProgramSource = vi.fn().mockResolvedValue(null);
+    const conn = createMockConnection({ getProgramSource });
+    const config = makeConfig({ ephemeral: false });
+    const manager = makeNetworkManager(conn);
+    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
+
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+
+    const records = await dm.getAllDeployments();
+    expect(records).toHaveLength(0);
+    expect(dm.getCached("hello.aleo")).toBeNull();
+    expect(readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo")).not.toBeNull();
+  });
+
+  it("filters non-ephemeral devnode disk records missing on-chain without deleting disk", async () => {
+    const getProgramSource = vi.fn().mockResolvedValue(null);
+    const conn = createMockConnection({ getProgramSource });
+    const config = makeConfig({ ephemeral: false });
+    const manager = makeNetworkManager(conn);
+    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
+
+    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
+
+    const records = await dm.getAllDeployments();
+    expect(records).toHaveLength(0);
+    expect(dm.getCached("hello.aleo")).toBeNull();
+    expect(readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo")).not.toBeNull();
+  });
+
+  it("export returns validated programs for devnode", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+    });
+    const config = makeConfig();
+    const manager = makeNetworkManager(conn);
+    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
+
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+    const bundle = await dm.export("devnode");
+
+    expect(Object.keys(bundle.programs)).toHaveLength(1);
+    expect(bundle.programs["hello.aleo"]).toBeDefined();
+  });
+
+  it("export omits stale cached devnode records", async () => {
     const conn = createMockConnection({ getProgramSource: vi.fn().mockResolvedValue(null) });
     const config = makeConfig();
     const manager = makeNetworkManager(conn);
     const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
 
-    // Write disk state (should be ignored)
-    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
-
-    // Nothing in cache
-    const records = await dm.getAllDeployments();
-    expect(records).toHaveLength(0);
-  });
-
-  it("export returns cache-only programs for devnode", async () => {
-    const config = makeConfig();
-    const manager = makeNetworkManager();
-    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
-
-    // Record something to populate cache
-    await dm.record({ ...completeRecord, network: "devnode" }, "deploy", { abi: mockAbi });
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
     const bundle = await dm.export("devnode");
 
-    expect(Object.keys(bundle.programs)).toHaveLength(1);
-    expect(bundle.programs["hello.aleo"]).toBeDefined();
+    expect(bundle.programs).toEqual({});
+    expect(dm.getCached("hello.aleo")).toBeNull();
   });
 });
 
@@ -642,8 +717,15 @@ describe("recoverPendingDeployments", () => {
 
 describe("export()", () => {
   it("includes ABI from snapshot when available", async () => {
-    const config = makeConfig();
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
 
     await dm.record(completeRecord, "deploy", { abi: mockAbi });
     const bundle = await dm.export("devnode");
