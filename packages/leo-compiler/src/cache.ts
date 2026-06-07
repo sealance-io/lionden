@@ -9,8 +9,10 @@ import type { DiscoveredUnit } from "./types.js";
  * - Generated program.json content
  * - Hashes of this unit's direct local dependencies (transitivity is automatic
  *   since each dep's hash includes its own deps)
- * - Contents of linked network dependency .aleo files (so that switching
- *   network/endpoint or an on-chain program update invalidates the cache)
+ * - Contents of linked network dependency .aleo files. This invalidates the
+ *   compile cache only after a fresh source is linked, such as when switching
+ *   network/endpoint scope or running `lionden compile --force`; same-scope
+ *   on-chain updates are otherwise served from the network-dep cache.
  *
  * @param localDepIds - the canonical IDs of this unit's direct local dependencies
  * @param depHashes - map of already-computed hashes (populated as units compile in topo order)
