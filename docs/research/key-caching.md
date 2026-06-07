@@ -47,8 +47,12 @@ The sidecar is written per program under `artifacts/<programId>/lionden-key-arti
 
 - `programId`
 - `sourceHash` (SHA-256 of `main.aleo`)
-- `importsHash` (SHA-256 over the sorted, hashed imports tree)
+- `importsHash` (SHA-256 over the sorted, hashed materialized package `imports/` tree)
 - `functions[]` — optional per-transition `prover` / `verifier` refs, populated **only** when Leo emits a `.prover` + `.verifier` pair that can be unambiguously associated with the transition (`findUnambiguousKeyStem` in the compiler).
+
+This compile-time sidecar `importsHash` is intentionally documented separately from the runtime execution-key `importsHash`. The compiler hashes files staged under the package `imports/` directory, which currently means materialized network dependency sources. Local program dependencies are not staged there; Leo resolves them through the `path` entries in `program.json`. At runtime, `packages/network/src/execution-key-cache.ts` reconstructs import identity from the resolved program import graph and hashes `{ programId, sourceHash }` entries.
+
+Current consequence: the sidecar key-reference fast path can only match the runtime identity for import-less programs. Programs with imports fall through to the runtime execution-key cache, where eligible keys are synthesized, persisted, and reused after the first eligible call. If LionDen later needs sidecar hits for program-to-program imports, the compiler side would need to reconstruct the runtime-style import identity during compile, for example by reading compiled bytecode imports, resolving those imported programs from artifacts or network sources, and hashing by program id. That is a deferred enhancement, not a schema or runtime-cache change in the current design.
 
 Today Leo v4 does not emit key files alongside `leo build`, so in practice `functions[]` is empty for current Leo versions. The sidecar is still emitted because (a) it pins identity for downstream consumers and (b) the field is forward-compatible: if a future Leo version emits paired key files, they flow into the cache through this channel with no LionDen code change.
 

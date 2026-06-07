@@ -262,7 +262,7 @@ The compiler treats `artifacts/<programId>/` as compiler-owned output and recrea
 
 Deploy state is tracked separately by the deploy plugin.
 
-The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records the program id, compiled source hash, import hash, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. Compile-time proving-key synthesis is intentionally deferred — see [`research/key-caching.md`](research/key-caching.md) for the design rationale and the SDK gap that would unblock it.
+The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records the program id, compiled source hash, a compiler-side import hash over the materialized package `imports/` directory, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. The sidecar import hash currently represents materialized network dependency sources; local program dependencies are resolved by Leo through `program.json` dependency paths and are not staged into that `imports/` directory. Compile-time proving-key synthesis is intentionally deferred — see [`research/key-caching.md`](research/key-caching.md) for the design rationale, the sidecar/runtime `importsHash` distinction, and the SDK gap that would unblock pre-warm.
 
 ## Design Direction
 
