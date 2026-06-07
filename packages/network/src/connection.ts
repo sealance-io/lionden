@@ -650,7 +650,7 @@ export class AleoConnection implements NetworkConnection {
     // execute transitions are not carried by the chain, so transitions: [].
     // For accepted execute txs, missing/malformed transition data fails
     // fast (TransactionShapeParseError) rather than silently returning [].
-    const transitions = parseConfirmedTransitions(txData, txId, txType);
+    const transitions = parseConfirmedTransitions(txData, txId);
 
     // Phase 2: resolve the containing block's height.
     //   step a: GET /<network>/find/blockHash/<txId>  -> JSON-encoded block hash
@@ -915,13 +915,11 @@ function tryDestroyAccount(account: unknown): void {
 function parseConfirmedTransitions(
   txData: Record<string, unknown> | undefined,
   txId: string,
-  outerTxType: unknown,
 ): ConfirmedTransitionRecord[] {
   // Strictness signal: the txData object itself self-identifies as
   // "execute". If only the outer body claims "execute" (legacy fallback) or
   // there's no transaction object at all, stay tolerant — there's nothing
   // to validate against.
-  void outerTxType;
   if (!txData) return [];
   const isExecute = txData["type"] === "execute";
 

@@ -801,10 +801,8 @@ export async function runUpgradePreflight(
 
   // 4. Edition continuity (HTTP only)
   if (!isDevnode && oldRecord.status === "complete") {
-    const expectedEdition = oldRecord.edition + 1;
     const editionErr = await checkEditionContinuity(connection, programId, oldRecord.edition);
     if (editionErr) errors.push(editionErr);
-    void expectedEdition;
   }
 
   // Custom constructor warning
