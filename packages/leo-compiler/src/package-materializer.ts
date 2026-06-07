@@ -139,27 +139,6 @@ function buildDotEnv(config: LionDenResolvedConfig, network?: string): string {
 }
 
 /**
- * Copy a normalized compiled dependency .aleo output into the dependent
- * package's imports/ directory. Called after the dependency has been compiled.
- */
-export function linkLocalDependency(
-  dependentPackageDir: string,
-  depName: string,
-  depArtifactDir: string,
-): void {
-  const importsDir = path.join(dependentPackageDir, "imports");
-  fs.mkdirSync(importsDir, { recursive: true });
-
-  const aleoFile = path.join(depArtifactDir, "main.aleo");
-  if (fs.existsSync(aleoFile)) {
-    fs.copyFileSync(
-      aleoFile,
-      path.join(importsDir, depName.endsWith(".aleo") ? depName : `${depName}.aleo`),
-    );
-  }
-}
-
-/**
  * Cache a network dependency's .aleo source into the cache directory
  * and copy it into the package's imports/ directory.
  *
