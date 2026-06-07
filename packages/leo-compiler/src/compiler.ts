@@ -505,25 +505,9 @@ function buildKeyArtifactsMetadata(
 
 /**
  * Hash the materialized package `imports/` directory for the key-artifacts
- * sidecar. This now only ever sees NETWORK dependency sources: local program
- * deps are no longer staged here (`leo build` resolves them from the `path`
- * entry in program.json), so for a program whose only deps are local it returns
- * the empty-imports hash.
- *
- * NOTE — intentional, pre-existing divergence from the runtime import hash
- * (`hashImports` in `@lionden/network`'s execution-key-cache): the two never
- * agreed for programs that have imports, because they hash different shapes
- * (`{ path, sourceHash }` over the imports/ dir here vs `{ programId, sourceHash }`
- * over the bytecode-resolved import set at runtime). As a result the sidecar
- * key-cache fast-path (`readSidecarKeys`, gated on `sidecar.importsHash ===
- * runtime.importsHash`) only matches for import-LESS programs; import-having
- * programs fall through to the runtime key cache. Removing local-dep staging
- * did not change that gate outcome — it was verified identical (reject → runtime
- * cache) before and after, on both a synthetic probe and multi-program
- * rewards→treasury. Making the sidecar fast-path work for program→program would
- * require reconstructing the runtime import set at compile time (parse compiled
- * bytecode imports, resolve from artifacts, hash by programId) — a deliberate
- * enhancement deferred as a follow-up, not a regression introduced here.
+ * sidecar. Local program deps are not staged here; Leo resolves them through
+ * the `path` entries in program.json. See docs/research/key-caching.md for the
+ * distinction between this compile-time hash and the runtime key-cache hash.
  */
 function hashPackageImports(importsDir: string): string {
   if (!fs.existsSync(importsDir)) {
