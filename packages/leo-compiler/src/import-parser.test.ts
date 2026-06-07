@@ -153,4 +153,118 @@ program mixed.aleo {
     writeFile("main.leo", "program hello.aleo {\n  fn main() {}\n}\n");
     expect(parseImports(tmpDir, ["main.leo"])).toEqual([]);
   });
+
+  it("ignores a .aleo mention in a line comment", () => {
+    writeFile(
+      "main.leo",
+      `
+program hello.aleo {
+  // see token.aleo::helper
+  fn main() {}
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual([]);
+  });
+
+  it("ignores a .aleo mention in a block comment", () => {
+    writeFile(
+      "main.leo",
+      `
+/* uses other.aleo::x for reference */
+program hello.aleo {
+  fn main() {}
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual([]);
+  });
+
+  it("ignores a slash-form .aleo mention inside a URL comment", () => {
+    writeFile(
+      "main.leo",
+      `
+program hello.aleo {
+  // docs at https://foo.aleo/bar
+  fn main() {}
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual([]);
+  });
+
+  it("detects real imports while ignoring a commented mention", () => {
+    writeFile(
+      "main.leo",
+      `
+import x.aleo;
+
+program hello.aleo {
+  // unrelated: z.aleo::w is just a note
+  fn use() { y.aleo::call(); }
+}
+`,
+    );
+    const imports = parseImports(tmpDir, ["main.leo"]);
+    expect(imports.sort()).toEqual(["x.aleo", "y.aleo"]);
+  });
+
+  it("ignores a @checksum mapping string when there is no import", () => {
+    writeFile(
+      "main.leo",
+      `
+@checksum(mapping="basic_voting.aleo::approved_checksum", key="true")
+program vote_example.aleo {
+  fn main() {}
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual([]);
+  });
+
+  it("still detects the dep when @checksum is paired with a real import", () => {
+    writeFile(
+      "main.leo",
+      `
+import basic_voting.aleo;
+
+@checksum(mapping="basic_voting.aleo::approved_checksum", key="true")
+program vote_example.aleo {
+  fn main() {}
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual(["basic_voting.aleo"]);
+  });
+
+  it("handles // inside a string and quotes inside a comment without false detection", () => {
+    writeFile(
+      "main.leo",
+      `
+@admin(address="aleo1abc//notacomment.aleo::x")
+program hello.aleo {
+  // the "real.aleo::x" call lives only here
+  fn main() {}
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual([]);
+  });
+
+  it("preserves real imports adjacent to comment and string noise", () => {
+    writeFile(
+      "main.leo",
+      `
+import dep.aleo; // dep.aleo also mentioned: ignored.aleo::x
+@checksum(mapping="phantom.aleo::m", key="true")
+program hello.aleo {
+  fn use() {
+    /* commented.aleo::y */
+    dep.aleo::run();
+  }
+}
+`,
+    );
+    expect(parseImports(tmpDir, ["main.leo"])).toEqual(["dep.aleo"]);
+  });
 });
