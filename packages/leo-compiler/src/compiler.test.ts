@@ -360,6 +360,12 @@ describe("compilePipeline network dep handling", () => {
     };
   }
 
+  function readLogLines(logPath: string): string[] {
+    return fs.existsSync(logPath)
+      ? fs.readFileSync(logPath, "utf-8").trim().split("\n").filter(Boolean)
+      : [];
+  }
+
   it("passes --disable-update-check before build", async () => {
     writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
 
@@ -612,6 +618,103 @@ describe("compilePipeline network dep handling", () => {
     } finally {
       process.env.PATH = originalPath;
     }
+  });
+
+  it("rebuilds a cached program when preserved build artifacts are missing", async () => {
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const leoPath = path.join(binDir, "leo");
+    const buildLog = path.join(tmpDir, "leo-build.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      leoPath,
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        'printf \'%s\\n\' "$id" >> "$LIONDEN_LEO_BUILD_LOG"',
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$unit/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$unit/$id"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalLog = process.env.LIONDEN_LEO_BUILD_LOG;
+    process.env.LIONDEN_LEO_BUILD_LOG = buildLog;
+
+    try {
+      const config = makeConfig({ leoBinary: leoPath });
+
+      const first = await compilePipeline(config);
+      expect(first.results[0]?.cached).toBe(false);
+      expect(readLogLines(buildLog)).toEqual(["app.aleo"]);
+
+      fs.rmSync(path.join(artifactsDir, ".build", "app.aleo", "build"), {
+        recursive: true,
+        force: true,
+      });
+
+      const second = await compilePipeline(config);
+
+      expect(second.results[0]?.cached).toBe(false);
+      expect(readLogLines(buildLog)).toEqual(["app.aleo", "app.aleo"]);
+      expect(fs.existsSync(path.join(artifactsDir, "app.aleo", "main.aleo"))).toBe(true);
+    } finally {
+      if (originalLog === undefined) {
+        delete process.env.LIONDEN_LEO_BUILD_LOG;
+      } else {
+        process.env.LIONDEN_LEO_BUILD_LOG = originalLog;
+      }
+    }
+  });
+
+  it("compiles an inline-fn library that emits no build artifacts and caches it", async () => {
+    // Real libraries (e.g. examples/multi-program math_utils) are inline `fn`
+    // helpers with no `program` block, so `leo build` produces an empty build/
+    // dir with no .aleo. The pipeline must not require .aleo output for
+    // libraries, and a hash hit must serve them from cache (nothing to
+    // revalidate) rather than erroring on a missing artifact.
+    const libDir = path.join(programsDir, "utils");
+    fs.mkdirSync(libDir, { recursive: true });
+    fs.writeFileSync(path.join(libDir, "lib.leo"), "fn helper() {}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const leoPath = path.join(binDir, "leo");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      leoPath,
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        // Inline-fn libraries compile to an empty build/ unit dir — no .aleo.
+        'mkdir -p "$pkg/build/$id"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const config = makeConfig({ leoBinary: leoPath });
+
+    const first = await compilePipeline(config);
+    const firstLib = first.results.find((result) => result.unit.kind === "library");
+    expect(firstLib?.cached).toBe(false);
+
+    const second = await compilePipeline(config);
+    const secondLib = second.results.find((result) => result.unit.kind === "library");
+    expect(secondLib?.cached).toBe(true);
   });
 
   it("passes config network as hint to fetchNetworkDep", async () => {

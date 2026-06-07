@@ -232,7 +232,13 @@ export async function compilePipeline(
     const hash = computeUnitHash(unit, pkgDir, localDepIds, depHashes, networkDepIds);
     depHashes.set(id, hash);
 
-    const cached = !options.force && isCached(cacheDir, id, hash);
+    const hashMatches = !options.force && isCached(cacheDir, id, hash);
+    // A program hash hit only counts if the build output it still needs (ABI +
+    // compiled .aleo) survived in the preserved build/ dir; otherwise the later
+    // ABI read / artifact copy would fail. Libraries are inline `fn` helpers
+    // that emit no build artifacts, so there is nothing to revalidate.
+    const cached =
+      hashMatches && (unit.kind !== "program" || hasRequiredProgramArtifacts(buildDir, id));
 
     if (!cached) {
       await runLeoBuild(pkgDir, id, config);
@@ -264,6 +270,9 @@ export async function compilePipeline(
       } satisfies ProgramCompilationResult);
     } else {
       const normalizedDir = path.join(config.paths.artifacts, ".build", id, ".normalized");
+      // Libraries are inline `fn` helpers: `leo build` emits no .aleo for them,
+      // and dependents inline the source via their local-dependency package
+      // path, not a linked .aleo. So normalization must not require .aleo.
       copyArtifacts(buildDir, normalizedDir, id, {
         requireAbi: false,
         requireAleo: false,
@@ -322,6 +331,11 @@ function readProgramAbi(buildDir: string, id: string): ProgramABI {
     throw new CompilationError(id, `ABI file not found under ${buildDir}. Did leo build succeed?`);
   }
   return parseAbi(fs.readFileSync(artifacts.abiPath, "utf-8"));
+}
+
+function hasRequiredProgramArtifacts(buildDir: string, id: string): boolean {
+  const artifacts = resolveBuildArtifacts(buildDir, id);
+  return Boolean(artifacts.abiPath && artifacts.aleoPath);
 }
 
 interface CopyArtifactOptions {
