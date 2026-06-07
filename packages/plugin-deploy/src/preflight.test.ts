@@ -1,6 +1,6 @@
 import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import { createMockConfig, createMockConnection } from "@lionden/test-internals";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConstructorInfo } from "./constructor-parser.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import {
@@ -17,9 +17,23 @@ import {
   runUpgradePreflight,
 } from "./preflight.js";
 
+const mockCreateSdkObjects = vi.hoisted(() => vi.fn());
+
+vi.mock("@lionden/network", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@lionden/network")>();
+  return {
+    ...original,
+    createSdkObjects: mockCreateSdkObjects,
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
+
+const DEVNODE_ACCOUNT_0_ADDRESS =
+  "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
+const DEVNODE_ACCOUNT_0_PRIVATE_KEY = "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH";
 
 const noupgradeConstructor: ConstructorInfo = { type: "noupgrade" };
 const adminConstructor: ConstructorInfo = {
@@ -52,6 +66,13 @@ const completeRecord: DeploymentRecord = {
   deployedAt: "2026-01-01T00:00:00.000Z",
 };
 
+const adminConstructorNoEditionSource = `
+program hello.aleo;
+
+constructor:
+    assert.eq program_owner ${DEVNODE_ACCOUNT_0_ADDRESS};
+`;
+
 function makeGraph(
   imports: Record<string, string[]> = {},
   networkDeps: string[] = [],
@@ -62,6 +83,18 @@ function makeGraph(
     order: [],
   };
 }
+
+beforeEach(() => {
+  mockCreateSdkObjects.mockReset();
+  mockCreateSdkObjects.mockResolvedValue({
+    programManager: {},
+    account: {
+      address: () => ({
+        to_string: () => DEVNODE_ACCOUNT_0_ADDRESS,
+      }),
+    },
+  });
+});
 
 // ---------------------------------------------------------------------------
 // checkConstructorPresent
@@ -336,6 +369,14 @@ describe("checkEditionContinuity", () => {
     expect(err).toBeNull();
   });
 
+  it("passes when program exists but on-chain edition is unknown", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(adminConstructorNoEditionSource),
+    });
+    const err = await checkEditionContinuity(conn, "hello.aleo", 1);
+    expect(err).toBeNull();
+  });
+
   it("fails when on-chain edition differs from expected", async () => {
     const source = `constructor:\n    assert.eq edition 5u16;\n`;
     const conn = createMockConnection({
@@ -579,6 +620,51 @@ describe("runUpgradePreflight", () => {
     });
     expect(result.passed).toBe(true);
     expect(result.errors).toHaveLength(0);
+  });
+
+  it("passes HTTP @admin upgrade preflight when source exists but edition is unknown", async () => {
+    const httpConfig = createMockConfig({
+      networks: {
+        ...config.networks,
+        testnet: {
+          type: "http",
+          endpoint: "https://api.example.com",
+          network: "testnet",
+          privateKey: DEVNODE_ACCOUNT_0_PRIVATE_KEY,
+          ephemeral: false,
+        },
+      },
+      defaultNetwork: "testnet",
+    });
+    const conn = createMockConnection({
+      type: "http",
+      name: "testnet",
+      endpoint: "https://api.example.com",
+      networkId: "testnet",
+      privateKey: DEVNODE_ACCOUNT_0_PRIVATE_KEY,
+      getProgramSource: vi.fn().mockResolvedValue(adminConstructorNoEditionSource),
+    });
+    const adminRecord: DeploymentRecord = {
+      ...completeRecord,
+      network: "testnet",
+      endpoint: "https://api.example.com",
+      constructor: { type: "admin", adminAddress: DEVNODE_ACCOUNT_0_ADDRESS },
+    };
+    const result = await runUpgradePreflight({
+      programId: "hello.aleo",
+      oldRecord: adminRecord,
+      oldAbi: mockAbi,
+      newConstructor: { type: "admin", adminAddress: DEVNODE_ACCOUNT_0_ADDRESS },
+      newAbi: mockAbi,
+      newFingerprint: "",
+      connection: conn,
+      config: httpConfig,
+      networkName: "testnet",
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.errors).toHaveLength(0);
+    expect(result.errors.some((e) => e.code === "PROGRAM_NOT_FOUND")).toBe(false);
   });
 
   it("fails for ABI-incompatible upgrade", async () => {
