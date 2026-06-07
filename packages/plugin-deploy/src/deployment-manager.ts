@@ -296,8 +296,35 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const networkConfig = this.config.networks[net];
     const nc = this.networkCache(net);
 
+    if (networkConfig?.type === "devnode") {
+      const manager = this.networkAccessor();
+      const connection = manager?.getConnection();
+
+      if (!connection) {
+        return [...nc.values()];
+      }
+
+      const candidateIds = new Set<string>(nc.keys());
+      if (!this.isEphemeral(net)) {
+        for (const record of readAllDeploymentRecords(this.deploymentsDir, net)) {
+          if (!candidateIds.has(record.programId)) {
+            candidateIds.add(record.programId);
+          }
+        }
+      }
+
+      const records: DeploymentRecord[] = [];
+      for (const programId of candidateIds) {
+        const record = await this.getDeployment(programId, net);
+        if (record) {
+          records.push(record);
+        }
+      }
+      return records;
+    }
+
     if (this.isEphemeral(net)) {
-      // Ephemeral (devnode default, or any network with ephemeral: true): cache-only
+      // Ephemeral HTTP: cache-only
       return [...nc.values()];
     }
 
@@ -637,18 +664,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const networkConfig = this.config.networks[net];
     const ephemeral = this.isEphemeral(net);
 
-    let records: DeploymentRecord[];
-
-    if (ephemeral) {
-      // Ephemeral: cache-only
-      records = [...this.networkCache(net).values()];
-    } else {
-      // Non-ephemeral: disk-backed
-      if (networkConfig?.type === "http") {
-        await this.validateHttpMetadata(net);
-      }
-      records = await this.getAllDeployments(net);
-    }
+    const records = await this.getAllDeployments(net);
 
     const programs: Record<string, ExportedProgram> = {};
 

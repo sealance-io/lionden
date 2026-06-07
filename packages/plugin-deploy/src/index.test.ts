@@ -1,6 +1,11 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { collectGlobalOptions, createLre } from "@lionden/core";
-import { createMockConfig } from "@lionden/test-internals";
+import type { NetworkManager } from "@lionden/network";
+import { createMockConfig, createMockConnection } from "@lionden/test-internals";
 import { describe, expect, it, vi } from "vitest";
+import { writeDeploymentRecord } from "./deployment-state.js";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
 import pluginDeploy, { DeployError, validateConstructor } from "./index.js";
 import { UpgradeCompatibilityError, validateUpgradePermission } from "./upgrade-task.js";
@@ -105,6 +110,85 @@ describe("plugin-deploy", () => {
     expect(lre.tasks.has("deploy")).toBe(true);
     expect(lre.tasks.has("upgrade")).toBe(true);
     expect(lre.tasks.has("export")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Export task tests
+// ---------------------------------------------------------------------------
+
+describe("export task", () => {
+  it("connects before exporting non-ephemeral devnode disk records", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-export-task-test-"));
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      const config = createMockConfig({
+        root: tmpDir,
+        networks: {
+          devnode: {
+            type: "devnode",
+            socketAddr: "127.0.0.1:3030",
+            autoBlock: true,
+            verbosity: 0,
+            accounts: [],
+            network: "testnet",
+            ephemeral: false,
+          },
+        },
+        defaultNetwork: "devnode",
+      });
+      const record: CompleteDeploymentRecord = {
+        status: "complete",
+        programId: "hello.aleo",
+        edition: 1,
+        constructor: { type: "noupgrade" },
+        abiHash: "abc123",
+        network: "devnode",
+        endpoint: "http://127.0.0.1:3030",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        historyCount: 1,
+        txId: "at1abc",
+        blockHeight: 42,
+        deployerAddress: "aleo1abc",
+        deployedAt: "2026-01-01T00:00:00.000Z",
+      };
+      writeDeploymentRecord(config.paths.deployments, "devnode", record);
+
+      const connection = createMockConnection({
+        getProgramSource: vi
+          .fn()
+          .mockResolvedValue("program hello.aleo;\nconstructor:\n    assert.eq edition 1u16;\n"),
+      });
+      let activeConnection: typeof connection | null = null;
+      const networkManager: NetworkManager = {
+        connect: vi.fn(async () => {
+          activeConnection = connection;
+          return connection;
+        }),
+        getConnection: vi.fn(() => activeConnection),
+        disconnectAll: vi.fn().mockResolvedValue(undefined),
+        getAccounts: vi.fn().mockReturnValue([]),
+        getNamedAccounts: vi.fn().mockReturnValue({}),
+        execute: vi.fn(),
+        getMappingValue: vi.fn(),
+        waitForConfirmation: vi.fn(),
+        getTransitionOutputs: vi.fn(),
+      };
+
+      const lre = createLre({ config, plugins: [pluginDeploy] });
+      (lre as unknown as { network: NetworkManager }).network = networkManager;
+
+      const bundle = (await lre.tasks.run("export")) as {
+        programs: Record<string, unknown>;
+      };
+
+      expect(networkManager.connect).toHaveBeenCalledWith("devnode");
+      expect(Object.keys(bundle.programs)).toEqual(["hello.aleo"]);
+    } finally {
+      logSpy.mockRestore();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 
