@@ -52,6 +52,7 @@ export function resolveDependencies(units: DiscoveredUnit[]): DependencyGraph {
       if (resolved) {
         // Normalize to canonical unitId (e.g. "math.aleo" → "math" for libraries)
         const canonicalId = unitId(resolved);
+        if (canonicalId === id) continue; // a unit never depends on itself
         normalizedImports.push(canonicalId);
         localDeps.push(canonicalId);
       } else {
