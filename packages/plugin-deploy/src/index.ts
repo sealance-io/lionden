@@ -166,6 +166,12 @@ async function exportAction(
     );
   }
 
+  const networkConfig = lre.config.networks[networkName];
+  if (networkConfig?.type === "devnode") {
+    const networkManager = lre.network as NetworkManager;
+    await networkManager.connect(networkName);
+  }
+
   const bundle = await manager.export(networkName);
 
   if (outPath) {
