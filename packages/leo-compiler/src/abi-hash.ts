@@ -17,7 +17,7 @@ export function computeAbiHash(abi: ProgramABI): string {
     .digest("hex");
 }
 
-export function canonicalizeAbiForHash(abi: ProgramABI): ProgramABI {
+function canonicalizeAbiForHash(abi: ProgramABI): ProgramABI {
   const canonical: ProgramABI = {
     program: abi.program,
     structs: abi.structs,
