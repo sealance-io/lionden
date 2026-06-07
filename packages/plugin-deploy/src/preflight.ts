@@ -499,14 +499,16 @@ export async function checkEditionContinuity(
   programId: string,
   expectedEdition: number,
 ): Promise<PreflightError | null> {
-  const { edition: onChainEdition } = await checkProgramOnChain(connection, programId);
-  if (onChainEdition === null) {
-    // Program not found on-chain — can't check edition
+  const { exists, edition: onChainEdition } = await checkProgramOnChain(connection, programId);
+  if (!exists) {
     return {
       code: "PROGRAM_NOT_FOUND",
       message: `Program "${programId}" is not deployed on-chain. Cannot upgrade a program that isn't deployed.`,
       recoverable: false,
     };
+  }
+  if (onChainEdition === null) {
+    return null;
   }
   if (onChainEdition !== expectedEdition) {
     return {
