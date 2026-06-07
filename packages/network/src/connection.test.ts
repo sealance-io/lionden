@@ -1360,6 +1360,10 @@ describe("AleoConnection", () => {
       await expect(connection.waitForConfirmation("at1test")).rejects.toThrow(
         "header.metadata.height is missing or non-numeric",
       );
+      await expect(connection.waitForConfirmation("at1test")).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "header.metadata.height",
+      });
     });
 
     it("throws if /block/<hash> returns 200 but header.metadata.height is non-numeric", async () => {
@@ -1392,6 +1396,10 @@ describe("AleoConnection", () => {
       await expect(connection.waitForConfirmation("at1test")).rejects.toThrow(
         "header.metadata.height is missing or non-numeric",
       );
+      await expect(connection.waitForConfirmation("at1test")).rejects.toMatchObject({
+        kind: "TransactionShapeParseError",
+        field: "header.metadata.height",
+      });
     });
 
     it("returns blockHeight 0 when the block JSON explicitly reports height 0 (genesis-adjacent)", async () => {

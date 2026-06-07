@@ -699,14 +699,17 @@ export class AleoConnection implements NetworkConnection {
           }
           // Block returned 200 but no numeric header.metadata.height. This is
           // a hard parser disagreement, not transient — fail fast rather than
-          // burning the deadline on a shape that won't change.
-          throw new Error(
+          // burning the deadline on a shape that won't change. Typed so the
+          // catch below classifies it by `instanceof`, not message text.
+          throw new TransactionShapeParseError(
             `Transaction ${txId} confirmed at block ${blockHash} but header.metadata.height is missing or non-numeric`,
+            txId,
+            "header.metadata.height",
           );
         }
       } catch (err) {
         // Surface the explicit shape-mismatch immediately; only retry transient errors.
-        if (err instanceof Error && err.message.includes("missing or non-numeric")) {
+        if (err instanceof TransactionShapeParseError) {
           throw err;
         }
         // retry on network/parse errors
