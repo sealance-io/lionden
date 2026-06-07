@@ -17,9 +17,9 @@ import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionde
 import {
   type ConstructorInfo,
   extractConstructorFingerprint,
-  isValidAleoAddress,
   parseConstructor,
 } from "./constructor-parser.js";
+import { validateConstructorAnnotation } from "./constructor-validation.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { CompleteDeploymentRecord, PendingDeployment } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
@@ -219,6 +219,12 @@ export async function deployAction(
       .map((e) => `  [${e.code}] ${e.message}`)
       .join("\n");
     throw new DeployError(`Pre-flight validation failed:\n${errorMessages}`);
+  }
+
+  // Log any warnings after validation passes. --preflight returns the structured
+  // result without side effects so callers can decide how to display it.
+  for (const w of preflightResult.warnings) {
+    console.warn(`Warning [${w.code}]: ${w.message}`);
   }
 
   // 12. Filter to programs that need deploying from preflight outcomes
@@ -525,66 +531,11 @@ function collectTransitiveProgramDeps(
 // ---------------------------------------------------------------------------
 
 /**
- * Validate the constructor annotation. Per ARC-0006:
- * - ALL deployments MUST have a constructor — hard error if missing
- * - @admin addresses must be valid Aleo addresses
- * - @checksum must specify a mapping reference and key
- * - @custom triggers a warning about on-chain evaluation
+ * Validate the constructor annotation via the shared internal validator.
+ * Kept as a public legacy export from @lionden/plugin-deploy.
  */
 export function validateConstructor(constructor: ConstructorInfo | null, programId: string): void {
-  if (!constructor) {
-    throw new DeployError(
-      `Program "${programId}" has no constructor annotation.\n\n` +
-        `Per ARC-0006, all deployments require a constructor. ` +
-        `Add one of the following to your program:\n\n` +
-        `  @noupgrade\n` +
-        `  constructor() { ... }\n\n` +
-        `  @admin(address="aleo1...")\n` +
-        `  constructor() { ... }\n\n` +
-        `  @checksum(mapping="prog.aleo::map_name", key="value")\n` +
-        `  constructor() { ... }\n\n` +
-        `  @custom\n` +
-        `  constructor() { ... }\n`,
-    );
-  }
-
-  if (constructor.type === "admin") {
-    if (!constructor.adminAddress) {
-      throw new DeployError(
-        `Program "${programId}" has @admin constructor but no address specified.\n` +
-          `Usage: @admin(address="aleo1...")`,
-      );
-    }
-    if (!isValidAleoAddress(constructor.adminAddress)) {
-      throw new DeployError(
-        `Program "${programId}" has @admin constructor with invalid address: ` +
-          `"${constructor.adminAddress}"\n` +
-          `Aleo addresses must start with "aleo1" and be 63 characters long.`,
-      );
-    }
-  }
-
-  if (constructor.type === "checksum") {
-    if (!constructor.checksumMapping) {
-      throw new DeployError(
-        `Program "${programId}" has @checksum constructor but no mapping specified.\n` +
-          `Usage: @checksum(mapping="prog.aleo::map_name", key="value")`,
-      );
-    }
-    if (!constructor.checksumKey) {
-      throw new DeployError(
-        `Program "${programId}" has @checksum constructor but no key specified.\n` +
-          `Usage: @checksum(mapping="prog.aleo::map_name", key="value")`,
-      );
-    }
-  }
-
-  if (constructor.type === "custom") {
-    console.warn(
-      `Warning: Program "${programId}" uses @custom constructor. ` +
-        `Custom constructor logic will be evaluated on-chain during deployment.`,
-    );
-  }
+  validateConstructorAnnotation(constructor, programId);
 }
 
 // ---------------------------------------------------------------------------
