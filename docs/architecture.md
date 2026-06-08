@@ -50,7 +50,7 @@ Config variables are supported through `configVariable()` and resolved during co
 3. `resolveConfig`
 4. `validateResolvedConfig`
 
-The current implementation resolves all config hook handlers from plugins up front, runs extension as a waterfall, aggregates validation errors, merges plugin-provided partial resolved config, and throws `ConfigResolutionError` with collected validation failures.
+The current implementation routes config hooks through a standalone `HookDispatcherImpl` (the LRE does not exist yet at this boot phase): `extendUserConfig` runs as a waterfall, `validateUserConfig`/`validateResolvedConfig` aggregate via `collect`, and plugin-provided partial resolved configs are merged from a `collect` pass. It throws `ConfigResolutionError` with collected validation failures. Lazy hook factories resolve once and are shared across all four stages via the dispatcher's single-flight cache.
 
 Both `validateUserConfig` and `validateResolvedConfig` run two passes: core-owned built-in validators first (for fields like `execution.imports` that belong to the core config schema rather than to any plugin), then plugin-contributed handlers. Built-in validators sit inline in `resolveConfig()` and accumulate `ConfigValidationError`s alongside handler results — there is no separate hook surface for them. Path-existence checks on `execution.imports` happen in the resolved-config pass, where `paths.root` is available to anchor relative refs.
 
@@ -61,13 +61,12 @@ Both `validateUserConfig` and `validateResolvedConfig` run two passes: core-owne
 - `id`
 - `name`
 - `dependencies`
-- `conditionalDependencies`
 - `hookHandlers`
 - `tasks`
 - `globalOptions`
 - `extendLre`
 
-`packages/core/src/plugin-loader.ts` performs dependency-first plugin ordering with cycle detection. Conditional dependencies are only included when the user already listed them.
+`packages/core/src/plugin-loader.ts` performs dependency-first plugin ordering with cycle detection.
 
 Global option names are also validated centrally to prevent collisions between plugins.
 
@@ -76,12 +75,10 @@ Global option names are also validated centrally to prevent collisions between p
 Hook categories currently defined in core are:
 
 - `config`
-- `compilation`
-- `network`
 - `testing`
 - `deployment`
 
-`HookDispatcherImpl` is responsible for plugin hook registration and lazy handler loading. The config lifecycle resolves config hooks directly during config resolution; the runtime dispatcher handles the broader hook categories once the LRE exists.
+`HookDispatcherImpl` is responsible for plugin hook registration and lazy handler loading, and exposes three dispatch modes: `serial`, `waterfall`, and `collect`. The config lifecycle drives its category through a standalone dispatcher during config resolution (before the LRE exists); the LRE's dispatcher handles `testing` and `deployment` (both via `serial`) once the LRE is created.
 
 ## Tasks
 
@@ -95,6 +92,7 @@ Key current behaviors:
 - CLI arguments are normalized from kebab-case to canonical option names
 - numeric option values are coerced from strings when possible
 - option defaults and flag defaults are filled before execution
+- positional arguments are bound by index to their declared names (`_positional` stays populated for back-compat), and a missing `required` positional throws before the action runs
 
 This is the basis for the repo's built-in tasks such as `compile`, `node`, `deploy`, and `test`.
 

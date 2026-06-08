@@ -78,6 +78,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | --- | --- |
 | `deploy` task: compile → preflight → broadcast → record state → fire hook → optional export | `packages/plugin-deploy/src/deploy-task.ts` |
 | Deploy flags: `--program`, `--priority-fee`, `--skip-confirm`, `--network`, `--no-compile`, `--preflight`, `--dry-run` (devnode), `--no-skip-deployed`, `--export` | `packages/plugin-deploy/src/index.ts` |
+| `--prove` global option (registered by plugin-deploy): `lionden --prove deploy`/`upgrade` forces standard/proven transactions on devnode; also honoured via `LIONDEN_PROVE=true` or an explicit task arg | `packages/plugin-deploy/src/index.ts` (`globalOptions`), `deploy-task.ts`/`upgrade-task.ts` (`resolveProveOption`) |
 | Constructor parser recognises `@noupgrade`, `@admin(address=...)`, `@checksum(...)`, `@custom(...)` (also accepts optional `async constructor` for v3.5) | `packages/plugin-deploy/src/constructor-parser.ts` |
 | Deploy preflight: constructor presence/validity, on-chain status, HTTP fee estimation, HTTP balance check, imported program availability | `packages/plugin-deploy/src/preflight.ts` |
 | Multi-program topological deploy order; targeted `--program` pulls transitive local deps | `packages/plugin-deploy/src/deploy-task.ts` |
