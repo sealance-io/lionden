@@ -29,7 +29,6 @@ export class TaskBuilder {
   private readonly _options: TaskOption[] = [];
   private readonly _flags: TaskFlag[] = [];
   private readonly _positionalArguments: TaskPositionalArgument[] = [];
-  private readonly _dependencies: string[] = [];
 
   constructor(id: string, description: string) {
     this._id = id;
@@ -48,11 +47,6 @@ export class TaskBuilder {
 
   addPositionalArgument(arg: TaskPositionalArgument): this {
     this._positionalArguments.push(arg);
-    return this;
-  }
-
-  addDependency(taskId: string): this {
-    this._dependencies.push(taskId);
     return this;
   }
 
@@ -83,7 +77,6 @@ export class TaskBuilder {
       flags: this._flags.length > 0 ? this._flags : undefined,
       positionalArguments:
         this._positionalArguments.length > 0 ? this._positionalArguments : undefined,
-      dependencies: this._dependencies.length > 0 ? this._dependencies : undefined,
     };
   }
 }

@@ -90,7 +90,6 @@ Tasks are defined through the builder API in `packages/core/src/task-builder.ts`
 Key current behaviors:
 
 - plugin tasks are registered first, then config-level tasks
-- tasks may declare dependencies on other tasks
 - task overrides stack on top of earlier tasks
 - `runSuper` invokes the immediately preceding implementation chain
 - CLI arguments are normalized from kebab-case to canonical option names
