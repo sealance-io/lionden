@@ -203,7 +203,7 @@ export type TaskActionWithSuper = (
 export interface TaskDefinition {
   readonly id: string;
   readonly description: string;
-  readonly action: TaskAction | (() => Promise<{ default: TaskAction }>);
+  readonly action: TaskAction;
   readonly options?: readonly TaskOption[];
   readonly flags?: readonly TaskFlag[];
   readonly positionalArguments?: readonly TaskPositionalArgument[];

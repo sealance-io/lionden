@@ -64,14 +64,6 @@ export class TaskBuilder {
     return this;
   }
 
-  /** Set a lazy-loaded action that will be resolved at dispatch time */
-  setLazyAction(factory: () => Promise<{ default: TaskAction }>): this {
-    const lazyFactory = factory as unknown as TaskAction & { _liondenLazy: true };
-    lazyFactory._liondenLazy = true;
-    this._action = lazyFactory;
-    return this;
-  }
-
   build(): TaskDefinition {
     if (!this._action) {
       throw new Error(`Task "${this._id}" has no action set`);
