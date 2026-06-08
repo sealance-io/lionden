@@ -21,7 +21,6 @@ interface RegisteredTask {
 
 /**
  * Manages task registration and execution with support for overrides
- * and dependency tasks.
  */
 export class TaskRunnerImpl implements TaskRunner {
   private readonly tasks = new Map<string, RegisteredTask>();
@@ -74,11 +73,6 @@ export class TaskRunnerImpl implements TaskRunner {
 
     if (!this.lre) {
       throw new Error("TaskRunner: LRE not initialized");
-    }
-
-    // Run dependency tasks first
-    for (const depId of registered.definition.dependencies ?? []) {
-      await this.run(depId);
     }
 
     // Resolve the action (may be lazy-loaded)

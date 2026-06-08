@@ -209,8 +209,6 @@ export interface TaskDefinition {
   readonly positionalArguments?: readonly TaskPositionalArgument[];
   /** If set, this task overrides a task with this id */
   readonly overrides?: string;
-  /** Tasks that must run before this task */
-  readonly dependencies?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
