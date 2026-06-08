@@ -17,6 +17,12 @@ describe("resolvePluginOrder", () => {
     expect(resolvePluginOrder([p])).toEqual([p]);
   });
 
+  it("preserves user order for unrelated root plugins", () => {
+    const a = plugin("a");
+    const b = plugin("b");
+    expect(resolvePluginOrder([a, b])).toEqual([a, b]);
+  });
+
   it("respects dependency ordering", () => {
     const a = plugin("a");
     const b = plugin("b", { dependencies: [a] });
@@ -32,6 +38,15 @@ describe("resolvePluginOrder", () => {
     // User only provides c — a and b are pulled in
     const result = resolvePluginOrder([c]);
     expect(result.map((p) => p.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("injects transitive dependencies before dependents while keeping unrelated roots ordered", () => {
+    const root = plugin("root");
+    const a = plugin("a");
+    const b = plugin("b", { dependencies: [a] });
+    const c = plugin("c", { dependencies: [b] });
+    const result = resolvePluginOrder([root, c]);
+    expect(result.map((p) => p.id)).toEqual(["root", "a", "b", "c"]);
   });
 
   it("detects circular dependencies", () => {
