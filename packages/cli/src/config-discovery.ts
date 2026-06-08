@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const CONFIG_FILENAMES = ["lionden.config.ts", "lionden.config.js", "lionden.config.mjs"];
 
@@ -39,7 +40,7 @@ export async function loadConfigFile(
   const projectRoot = path.dirname(absolutePath);
 
   // Dynamic import — tsx handles .ts transpilation
-  const module = (await import(absolutePath)) as {
+  const module = (await import(configPathToImportSpecifier(absolutePath))) as {
     default: unknown;
   };
 
@@ -51,4 +52,9 @@ export async function loadConfigFile(
   }
 
   return { config, projectRoot };
+}
+
+// Internal helper exported for testing
+export function configPathToImportSpecifier(configPath: string): string {
+  return pathToFileURL(path.resolve(configPath)).href;
 }
