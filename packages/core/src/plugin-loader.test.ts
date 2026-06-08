@@ -63,32 +63,6 @@ describe("resolvePluginOrder", () => {
     const a2 = plugin("a");
     expect(() => resolvePluginOrder([a1, a2])).toThrow(/Duplicate plugin ID "a"/);
   });
-
-  it("includes conditional dependencies that the user listed", () => {
-    const optional = plugin("optional");
-    const a = plugin("a", { conditionalDependencies: [optional] });
-    const result = resolvePluginOrder([a, optional]);
-    const ids = result.map((p) => p.id);
-    expect(ids).toContain("optional");
-    expect(ids.indexOf("optional")).toBeLessThan(ids.indexOf("a"));
-  });
-
-  it("excludes conditional dependencies not in user list", () => {
-    const optional = plugin("optional");
-    const a = plugin("a", { conditionalDependencies: [optional] });
-    const result = resolvePluginOrder([a]);
-    expect(result.map((p) => p.id)).toEqual(["a"]);
-  });
-
-  it("preserves unrelated root order when conditional dependencies are injected", () => {
-    const x = plugin("x");
-    const optional = plugin("optional");
-    const a = plugin("a", { conditionalDependencies: [optional] });
-    const y = plugin("y");
-    const result = resolvePluginOrder([x, a, optional, y]);
-    // x/y stay in declared order; the conditional dep is injected before its dependent.
-    expect(result.map((p) => p.id)).toEqual(["x", "optional", "a", "y"]);
-  });
 });
 
 describe("collectGlobalOptions", () => {

@@ -9,13 +9,11 @@ export class PluginLoadError extends Error {
 
 /**
  * Resolves plugin load order using topological sort.
- * Handles dependencies and conditional dependencies.
  *
  * @param plugins - The user-provided plugin list
- * @returns Plugins in dependency-first order, with conditional deps injected
+ * @returns Plugins in dependency-first order
  */
 export function resolvePluginOrder(plugins: readonly LionDenPlugin[]): LionDenPlugin[] {
-  const userPluginIds = new Set(plugins.map((p) => p.id));
   const allPlugins = new Map<string, LionDenPlugin>();
 
   // Reverse once so LIFO pop() seeds the plugin map in declared order. Only the
@@ -37,13 +35,6 @@ export function resolvePluginOrder(plugins: readonly LionDenPlugin[]): LionDenPl
     // Hard dependencies must all be included
     for (const dep of plugin.dependencies ?? []) {
       toVisit.push(dep);
-    }
-
-    // Conditional dependencies: include only if the user already listed them
-    for (const condDep of plugin.conditionalDependencies ?? []) {
-      if (userPluginIds.has(condDep.id)) {
-        toVisit.push(condDep);
-      }
     }
   }
 
@@ -69,13 +60,6 @@ export function resolvePluginOrder(plugins: readonly LionDenPlugin[]): LionDenPl
         );
       }
       visit(resolved);
-    }
-
-    // Visit conditional dependencies that are present
-    for (const condDep of plugin.conditionalDependencies ?? []) {
-      if (allPlugins.has(condDep.id)) {
-        visit(allPlugins.get(condDep.id)!);
-      }
     }
 
     visiting.delete(plugin.id);
