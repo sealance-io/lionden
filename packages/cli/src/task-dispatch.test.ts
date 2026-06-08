@@ -215,6 +215,86 @@ describe("parseArgs", () => {
     expect(result.taskId).toBe("test");
   });
 
+  it("routes a boolean plugin global option placed AFTER the task into globalArgs without swallowing the next token", () => {
+    const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "prove",
+        {
+          pluginId: "@lionden/plugin-deploy",
+          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+        },
+      ],
+    ]);
+
+    const result = parseArgs(
+      ["deploy", "--prove", "hello"],
+      pluginOpts,
+      lookupFor(
+        defineTask({
+          id: "deploy",
+          options: [{ name: "program", type: "string", description: "Program name" }],
+        }),
+      ),
+    );
+
+    // --prove is recorded as a global (like its pre-task form), NOT as a task arg…
+    expect(result.globalArgs["prove"]).toBe(true);
+    expect(result.taskArgs["prove"]).toBeUndefined();
+    // …and "hello" survives as a positional instead of being eaten as prove's value.
+    expect(result.taskArgs["_positional"]).toEqual(["hello"]);
+  });
+
+  it("lets a same-named task flag take precedence over a boolean global in task position", () => {
+    const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "prove",
+        {
+          pluginId: "@lionden/plugin-deploy",
+          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+        },
+      ],
+    ]);
+
+    const result = parseArgs(
+      ["test", "--prove", "extra"],
+      pluginOpts,
+      lookupFor(
+        defineTask({
+          id: "test",
+          flags: [{ name: "prove", description: "Enable proofs" }],
+        }),
+      ),
+    );
+
+    // Task flag wins: prove lands in taskArgs, the global is not set, "extra" is a positional.
+    expect(result.taskArgs["prove"]).toBe(true);
+    expect(result.globalArgs["prove"]).toBeUndefined();
+    expect(result.taskArgs["_positional"]).toEqual(["extra"]);
+  });
+
+  it("does not special-case valued (non-boolean) globals after the task — they stay greedy", () => {
+    const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "env",
+        {
+          pluginId: "core",
+          definition: { name: "env", description: "Environment", type: ArgumentType.STRING },
+        },
+      ],
+    ]);
+
+    const result = parseArgs(
+      ["deploy", "--env", "prod"],
+      pluginOpts,
+      lookupFor(defineTask({ id: "deploy" })),
+    );
+
+    // Only boolean globals are rerouted; a string global after the task keeps
+    // the pre-existing greedy task-arg behavior (no scope creep).
+    expect(result.globalArgs["env"]).toBeUndefined();
+    expect(result.taskArgs["env"]).toBe("prod");
+  });
+
   it("parses string plugin global option", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [

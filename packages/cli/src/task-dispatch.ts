@@ -78,6 +78,16 @@ export function parseArgs(
         const next = argv[i + 1];
         if (taskArg?.type === "boolean") {
           taskArgs[name] = true;
+        } else if (
+          taskArg === undefined &&
+          pluginGlobalOptions?.get(name)?.definition.type === "BOOLEAN"
+        ) {
+          // A known boolean GLOBAL option placed after the task name. Record it
+          // like its pre-task form (globalArgs → lre.globalOptions) rather than
+          // letting the greedy fallback below swallow the following token as a
+          // bogus string value. Task-defined args of the same name still win,
+          // since `taskArg === undefined` gates this branch.
+          globalArgs[name] = true;
         } else if (next && !next.startsWith("--")) {
           taskArgs[name] = next;
           i++;

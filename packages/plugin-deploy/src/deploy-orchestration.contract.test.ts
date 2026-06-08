@@ -211,6 +211,28 @@ describe("deploy orchestration contract", () => {
     );
   });
 
+  it("uses lre.globalOptions.prove (the --prove global option) to select the standard deployment builder", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    // Simulates `lionden --prove deploy` AND `lionden deploy --prove`: the CLI
+    // parser records --prove into lre.globalOptions in either position, with no
+    // task arg set. resolveProveOption must honor it.
+    lre.globalOptions["prove"] = true;
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
+      expect.stringContaining("program hello.aleo"),
+      0,
+      false,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-deploy-tx-bytes",
+    );
+  });
+
   it("throws when proving is requested but the standard deployment builder is unavailable", async () => {
     mockCreateSdkObjects.mockResolvedValue({
       programManager: {
