@@ -351,6 +351,26 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
+  it("uses lre.globalOptions.prove (the --prove global option) to select the standard upgrade builder", async () => {
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+    // Simulates `lionden --prove upgrade` AND `lionden upgrade --prove`: the CLI
+    // parser records --prove into lre.globalOptions in either position, with no
+    // task arg set. resolveProveOption must honor it.
+    lre.globalOptions["prove"] = true;
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-upgrade-tx-bytes",
+    );
+  });
+
   it("throws when proving is requested but the standard upgrade builder is unavailable", async () => {
     mockCreateSdkObjects.mockResolvedValue({
       programManager: {

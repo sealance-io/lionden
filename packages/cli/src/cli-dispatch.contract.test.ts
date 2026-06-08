@@ -249,4 +249,100 @@ describe("CLI dispatch contract", () => {
     const lre = createLre({ config: resolved, plugins, globalOptions });
     expect(lre.globalOptions["prove"]).toBe(true);
   });
+
+  it("does not promote a task-local boolean flag into lre.globalOptions (task-aware seeding)", async () => {
+    // A deploy-like plugin contributes `prove` as a GLOBAL boolean option…
+    const deployPlugin: LionDenPlugin = {
+      id: "@lionden/plugin-deploy",
+      name: "Deploy",
+      globalOptions: [{ name: "prove", description: "Prove", type: ArgumentType.BOOLEAN }],
+      tasks: [
+        task("deploy", "Deploy")
+          .setAction(async () => undefined)
+          .build(),
+      ],
+    };
+    // …while a test-like plugin owns `prove` as a TASK FLAG on its own task.
+    const testPlugin: LionDenPlugin = {
+      id: "@lionden/plugin-test",
+      name: "Test",
+      tasks: [
+        task("test", "Test")
+          .addFlag({ name: "prove", description: "Prove" })
+          .setAction(async () => undefined)
+          .build(),
+      ],
+    };
+
+    const projectDir = createTempProject(`export default {};`);
+    const configPath = findConfigFile(projectDir)!;
+    const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
+    const plugins = resolvePluginOrder([deployPlugin, testPlugin]);
+    const globalOptionDefs = collectGlobalOptions(plugins);
+    const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
+
+    const argv = ["test", "--prove"];
+
+    // Sanity: the task-UNAWARE parse (what index.ts must NOT seed from) misclassifies
+    // the test task's own --prove as a global — this is exactly the leak the fix avoids.
+    const taskUnaware = parseArgs(argv, globalOptionDefs);
+    expect(taskUnaware.globalArgs["prove"]).toBe(true);
+
+    // The fix mirrors index.ts: create the LRE first (empty globalOptions, held by
+    // reference), parse WITH task metadata, then seed from that task-aware parse.
+    const globalOptions: Record<string, unknown> = {};
+    const lre = createLre({ config: resolved, plugins, globalOptions });
+    const parsed = parseArgs(argv, globalOptionDefs, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+    for (const [name, { definition }] of globalOptionDefs) {
+      if (name in parsed.globalArgs) {
+        globalOptions[name] = (parsed.globalArgs as Record<string, unknown>)[name];
+      } else if (definition.defaultValue !== undefined) {
+        globalOptions[name] = definition.defaultValue;
+      }
+    }
+
+    // Task flag wins: prove is a task arg and is NOT promoted into global state.
+    expect(parsed.taskArgs["prove"]).toBe(true);
+    expect(parsed.globalArgs["prove"]).toBeUndefined();
+    expect(lre.globalOptions["prove"]).toBeUndefined();
+  });
+
+  it("still seeds lre.globalOptions for a boolean global placed after a task that does not define it", async () => {
+    const deployPlugin: LionDenPlugin = {
+      id: "@lionden/plugin-deploy",
+      name: "Deploy",
+      globalOptions: [{ name: "prove", description: "Prove", type: ArgumentType.BOOLEAN }],
+      tasks: [
+        task("deploy", "Deploy")
+          .setAction(async () => undefined)
+          .build(),
+      ],
+    };
+
+    const projectDir = createTempProject(`export default {};`);
+    const configPath = findConfigFile(projectDir)!;
+    const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
+    const plugins = resolvePluginOrder([deployPlugin]);
+    const globalOptionDefs = collectGlobalOptions(plugins);
+    const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
+
+    const globalOptions: Record<string, unknown> = {};
+    const lre = createLre({ config: resolved, plugins, globalOptions });
+    const parsed = parseArgs(["deploy", "--prove"], globalOptionDefs, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+    for (const [name, { definition }] of globalOptionDefs) {
+      if (name in parsed.globalArgs) {
+        globalOptions[name] = (parsed.globalArgs as Record<string, unknown>)[name];
+      } else if (definition.defaultValue !== undefined) {
+        globalOptions[name] = definition.defaultValue;
+      }
+    }
+
+    // deploy defines no `prove` flag, so the boolean global is recorded as global state.
+    expect(parsed.taskArgs["prove"]).toBeUndefined();
+    expect(lre.globalOptions["prove"]).toBe(true);
+  });
 });

@@ -129,7 +129,14 @@ export function createLre(options: CreateLreOptions): LionDenRuntimeEnvironment 
     namedAccounts: {}, // Overridden by @lionden/plugin-network via extendLre getter
   };
 
-  // Allow plugins to inject services (e.g., network manager)
+  // Allow plugins to inject services (e.g., network manager).
+  //
+  // NOTE: `globalOptions` may not be populated yet at this point. The CLI boot
+  // path (packages/cli/src/index.ts) constructs the LRE with an empty
+  // globalOptions object and fills it (by reference) only after a task-aware
+  // argv parse — so the parse can decide whether `--prove` is a task flag or a
+  // global. Plugins must therefore read CLI global option values lazily during
+  // task execution, not synchronously here in extendLre.
   for (const plugin of plugins) {
     if (plugin.extendLre) {
       plugin.extendLre(lre);

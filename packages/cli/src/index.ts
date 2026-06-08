@@ -75,8 +75,25 @@ export async function main(): Promise<void> {
     ? { ...resolvedConfig, defaultNetwork: networkOverride }
     : resolvedConfig;
 
-  // Collect global option values for LRE
+  // Create LRE — use post-extend config for tasks (plugins may inject tasks via extendUserConfig).
+  // globalOptions starts empty and is populated AFTER the task-aware parse below.
+  // createLre stores it by reference, so filling it later flows through to
+  // lre.globalOptions without re-touching the LRE.
+  const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   const globalOptions: Record<string, unknown> = {};
+  const lre = createLre({ config, plugins, globalOptions, configTasks });
+
+  // Re-parse WITH task metadata so a boolean global placed after a task name is
+  // classified against that task's own flags/options first.
+  parsed = parseArgs(process.argv.slice(2), globalOptionDefs, (taskId) =>
+    lre.tasks.getTaskDefinition(taskId),
+  );
+
+  // Seed global option values from the task-aware parse. Seeding from the earlier
+  // task-unaware parse would misclassify a task-local boolean flag — e.g.
+  // `lionden test --prove`, where `prove` is the test task's own flag — as a
+  // global, wrongly populating lre.globalOptions and forcing deploy/upgrade prove
+  // behavior. See cli-dispatch.contract.test.ts.
   for (const [name, { definition }] of globalOptionDefs) {
     if (name in parsed.globalArgs) {
       globalOptions[name] = (parsed.globalArgs as Record<string, unknown>)[name];
@@ -84,13 +101,6 @@ export async function main(): Promise<void> {
       globalOptions[name] = definition.defaultValue;
     }
   }
-
-  // Create LRE — use post-extend config for tasks (plugins may inject tasks via extendUserConfig)
-  const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
-  const lre = createLre({ config, plugins, globalOptions, configTasks });
-  parsed = parseArgs(process.argv.slice(2), globalOptionDefs, (taskId) =>
-    lre.tasks.getTaskDefinition(taskId),
-  );
 
   // Handle help
   if (parsed.globalArgs.help) {
