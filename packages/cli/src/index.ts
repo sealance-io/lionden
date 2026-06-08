@@ -67,8 +67,10 @@ export async function main(): Promise<void> {
     projectRoot,
   );
 
-  // Override default network from CLI
-  const networkOverride = parsed.globalArgs.network || (parsed.taskArgs.network as string);
+  // Override default network from CLI (accepts --network before or after the task)
+  const taskNetwork =
+    typeof parsed.taskArgs.network === "string" ? parsed.taskArgs.network : undefined;
+  const networkOverride = parsed.globalArgs.network || taskNetwork;
   const config = networkOverride
     ? { ...resolvedConfig, defaultNetwork: networkOverride }
     : resolvedConfig;
