@@ -23,7 +23,11 @@ export class HookDispatcherImpl implements HookDispatcher {
   /** Track which categories have been fully resolved */
   private readonly resolved = new Set<HookCategory>();
 
-  /** Track in-flight category resolution so concurrent dispatches share work */
+  /**
+   * Track in-flight category resolution so concurrent dispatches share work.
+   * A factory must not dispatch its own category while resolving — that would
+   * await the very promise it is inside and deadlock.
+   */
   private readonly resolving = new Map<HookCategory, Promise<void>>();
 
   /**
