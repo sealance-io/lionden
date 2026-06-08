@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findConfigFile } from "./config-discovery.js";
+import { configPathToImportSpecifier, findConfigFile } from "./config-discovery.js";
 
 describe("findConfigFile", () => {
   let tmpDir: string;
@@ -59,5 +59,16 @@ describe("findConfigFile", () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-test-"));
 
     expect(findConfigFile(tmpDir)).toBeNull();
+  });
+
+  it("converts config paths to file URL import specifiers", () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-test-#"));
+    const configPath = path.join(tmpDir, "lionden.config.mjs");
+
+    const specifier = configPathToImportSpecifier(configPath);
+
+    expect(specifier).toMatch(/^file:\/\//);
+    expect(specifier).toContain("lionden-test-%23");
+    expect(specifier).not.toContain("lionden-test-#");
   });
 });
