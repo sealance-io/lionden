@@ -70,7 +70,10 @@ describe("HookDispatcherImpl", () => {
       const dispatcher = new HookDispatcherImpl();
       dispatcher.registerPlugins([a, b]);
       const results = await dispatcher.collect("config", "validateUserConfig", {});
-      expect(results).toEqual([[{ path: "a", message: "from a" }], [{ path: "b", message: "from b" }]]);
+      expect(results).toEqual([
+        [{ path: "a", message: "from a" }],
+        [{ path: "b", message: "from b" }],
+      ]);
       expect(results.flat()).toEqual([
         { path: "a", message: "from a" },
         { path: "b", message: "from b" },

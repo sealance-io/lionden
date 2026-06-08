@@ -72,17 +72,15 @@ export async function resolveConfig(
   hooks.registerPlugins(plugins);
 
   // 1. Extend user config (waterfall — an undefined return keeps the prior value)
-  const config = await hooks.waterfall<LionDenUserConfig>(
-    "config",
-    "extendUserConfig",
-    userConfig,
-  );
+  const config = await hooks.waterfall<LionDenUserConfig>("config", "extendUserConfig", userConfig);
 
   // 2. Validate user config (built-in core passes first, then plugin handlers)
   const userErrors = [
     ...validateSdkUserConfig(config),
     ...validateExecutionUserConfig(config),
-    ...(await hooks.collect<ConfigValidationError[]>("config", "validateUserConfig", config)).flat(),
+    ...(
+      await hooks.collect<ConfigValidationError[]>("config", "validateUserConfig", config)
+    ).flat(),
   ];
   if (userErrors.length > 0) {
     throw new ConfigResolutionError(
