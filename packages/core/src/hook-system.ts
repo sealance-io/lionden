@@ -183,17 +183,4 @@ export class HookDispatcherImpl implements HookDispatcher {
     }
     return results;
   }
-
-  /**
-   * Parallel dispatch: all handlers execute concurrently.
-   * Return values are ignored. Errors from any handler propagate.
-   */
-  async parallel<TContext>(
-    category: HookCategory,
-    hookName: string,
-    context: TContext,
-  ): Promise<void> {
-    const handlers = await this.getHandlers(category, hookName);
-    await Promise.all(handlers.map((h) => h(context)));
-  }
 }
