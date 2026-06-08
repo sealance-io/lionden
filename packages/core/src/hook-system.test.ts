@@ -58,6 +58,82 @@ describe("HookDispatcherImpl", () => {
     });
   });
 
+  describe("collect", () => {
+    it("gathers handler return values in plugin order", async () => {
+      const a = pluginWithConfigHooks("a", {
+        validateUserConfig: () => [{ path: "a", message: "from a" }],
+      });
+      const b = pluginWithConfigHooks("b", {
+        validateUserConfig: () => [{ path: "b", message: "from b" }],
+      });
+
+      const dispatcher = new HookDispatcherImpl();
+      dispatcher.registerPlugins([a, b]);
+      const results = await dispatcher.collect("config", "validateUserConfig", {});
+      expect(results).toEqual([[{ path: "a", message: "from a" }], [{ path: "b", message: "from b" }]]);
+      expect(results.flat()).toEqual([
+        { path: "a", message: "from a" },
+        { path: "b", message: "from b" },
+      ]);
+    });
+
+    it("forwards extra args to every handler", async () => {
+      const seen: unknown[] = [];
+      const a = pluginWithConfigHooks("a", {
+        resolveConfig: (config, resolveVar) => {
+          seen.push(resolveVar);
+          return { leoVersion: "4.0.0" };
+        },
+      });
+
+      const dispatcher = new HookDispatcherImpl();
+      dispatcher.registerPlugins([a]);
+      const resolveVar = async () => "resolved";
+      const results = await dispatcher.collect("config", "resolveConfig", {}, resolveVar);
+      expect(results).toEqual([{ leoVersion: "4.0.0" }]);
+      expect(seen).toEqual([resolveVar]);
+    });
+
+    it("returns an empty array for a category with no handlers", async () => {
+      const dispatcher = new HookDispatcherImpl();
+      const results = await dispatcher.collect("config", "validateUserConfig", {});
+      expect(results).toEqual([]);
+    });
+
+    it("shares lazy category resolution across concurrent collect calls", async () => {
+      let releaseFactory!: () => void;
+      const factoryGate = new Promise<void>((resolve) => {
+        releaseFactory = resolve;
+      });
+      const handler = vi.fn(() => [] as never[]);
+      const factory = vi.fn(async () => {
+        await factoryGate;
+        return { validateUserConfig: handler };
+      });
+
+      const plugin: LionDenPlugin = {
+        id: "lazy",
+        hookHandlers: {
+          config: factory as unknown as () => Promise<ConfigHookHandlers>,
+        },
+      };
+
+      const dispatcher = new HookDispatcherImpl();
+      dispatcher.registerPlugins([plugin]);
+
+      const first = dispatcher.collect("config", "validateUserConfig", {});
+      const second = dispatcher.collect("config", "validateUserConfig", {});
+
+      expect(factory).toHaveBeenCalledOnce();
+
+      releaseFactory();
+      await Promise.all([first, second]);
+
+      expect(factory).toHaveBeenCalledOnce();
+      expect(handler).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe("parallel", () => {
     it("calls all handlers concurrently", async () => {
       const called: string[] = [];

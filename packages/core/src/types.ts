@@ -300,7 +300,7 @@ export interface TaskRunner {
   getTaskDefinition(taskId: string): TaskDefinition | undefined;
 }
 
-export type HookDispatchMode = "serial" | "waterfall" | "parallel";
+export type HookDispatchMode = "serial" | "waterfall" | "collect" | "parallel";
 
 export interface HookDispatcher {
   /** Dispatch a hook in serial mode — handlers execute sequentially */
@@ -313,6 +313,14 @@ export interface HookDispatcher {
     initialValue: TValue,
     ...extraArgs: unknown[]
   ): Promise<TValue>;
+
+  /** Dispatch a hook in collect mode — gather each handler's return value in plugin order */
+  collect<TResult>(
+    category: HookCategory,
+    hookName: string,
+    context: unknown,
+    ...extraArgs: unknown[]
+  ): Promise<TResult[]>;
 
   /** Dispatch a hook in parallel mode — all handlers execute concurrently */
   parallel<TContext>(category: HookCategory, hookName: string, context: TContext): Promise<void>;

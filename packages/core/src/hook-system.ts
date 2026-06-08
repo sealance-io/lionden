@@ -164,6 +164,27 @@ export class HookDispatcherImpl implements HookDispatcher {
   }
 
   /**
+   * Collect dispatch: handlers execute sequentially in plugin order and each
+   * handler's return value is gathered into the result array (in the same
+   * order). Extra args are forwarded to every handler after the context.
+   * Used by the config lifecycle to aggregate validation errors and partial
+   * config resolutions.
+   */
+  async collect<TResult>(
+    category: HookCategory,
+    hookName: string,
+    context: unknown,
+    ...extraArgs: unknown[]
+  ): Promise<TResult[]> {
+    const handlers = await this.getHandlers(category, hookName);
+    const results: TResult[] = [];
+    for (const handler of handlers) {
+      results.push((await handler(context, ...extraArgs)) as TResult);
+    }
+    return results;
+  }
+
+  /**
    * Parallel dispatch: all handlers execute concurrently.
    * Return values are ignored. Errors from any handler propagate.
    */
