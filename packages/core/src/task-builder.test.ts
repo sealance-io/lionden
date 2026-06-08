@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import { describe, expect, it, vi } from "vitest";
 import { createLre } from "./lre.js";
-import { overrideTask, task } from "./task-builder.js";
+import { ArgumentType, overrideTask, task } from "./task-builder.js";
 import { TaskRunnerImpl } from "./task-runner.js";
 import type { LionDenPlugin, LionDenRuntimeEnvironment } from "./types.js";
 
@@ -31,6 +31,57 @@ describe("task builder", () => {
 
   it("throws if no action set", () => {
     expect(() => task("x", "").build()).toThrow('Task "x" has no action set');
+  });
+
+  it("throws on duplicate option names", () => {
+    expect(() =>
+      task("deploy", "")
+        .addOption({ name: "force", type: "boolean", description: "" })
+        .addOption({ name: "force", type: "string", description: "" }),
+    ).toThrow('Task "deploy" option "force" conflicts with existing option "force"');
+  });
+
+  it("throws on conflicting option and flag names", () => {
+    expect(() =>
+      task("deploy", "")
+        .addOption({ name: "force", type: "boolean", description: "" })
+        .addFlag({ name: "force", description: "" }),
+    ).toThrow('Task "deploy" flag "force" conflicts with existing option "force"');
+  });
+
+  it("throws on conflicting kebab and camel argument aliases", () => {
+    expect(() =>
+      task("deploy", "")
+        .addFlag({ name: "skipConfirm", description: "" })
+        .addOption({ name: "skip-confirm", type: "boolean", description: "" }),
+    ).toThrow('Task "deploy" option "skip-confirm" conflicts with existing flag "skipConfirm"');
+  });
+
+  it("throws on conflicting positional and named argument names", () => {
+    expect(() =>
+      task("run", "")
+        .addPositionalArgument({ name: "script", type: ArgumentType.FILE })
+        .addOption({ name: "script", type: "string", description: "" }),
+    ).toThrow('Task "run" option "script" conflicts with existing positional argument "script"');
+  });
+
+  it("snapshots parameter arrays when building task definitions", () => {
+    const builder = task("compile", "")
+      .addOption({ name: "force", type: "boolean", description: "" })
+      .addFlag({ name: "verbose", description: "" })
+      .addPositionalArgument({ name: "program", type: ArgumentType.STRING })
+      .setAction(async () => {});
+
+    const firstDef = builder.build();
+
+    builder
+      .addOption({ name: "timeout", type: "number", description: "" })
+      .addFlag({ name: "quiet", description: "" })
+      .addPositionalArgument({ name: "profile", type: ArgumentType.STRING });
+
+    expect(firstDef.options?.map((option) => option.name)).toEqual(["force"]);
+    expect(firstDef.flags?.map((flag) => flag.name)).toEqual(["verbose"]);
+    expect(firstDef.positionalArguments?.map((arg) => arg.name)).toEqual(["program"]);
   });
 });
 
@@ -94,7 +145,7 @@ describe("task runner", () => {
       .build();
 
     const override = overrideTask("compile")
-      .setAction(async (args, lre, runSuper) => {
+      .setAction(async (args, _lre, runSuper) => {
         order.push("before");
         await runSuper(args);
         order.push("after");
