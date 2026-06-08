@@ -23,6 +23,9 @@ export class HookDispatcherImpl implements HookDispatcher {
   /** Track which categories have been fully resolved */
   private readonly resolved = new Set<HookCategory>();
 
+  /** Track in-flight category resolution so concurrent dispatches share work */
+  private readonly resolving = new Map<HookCategory, Promise<void>>();
+
   /**
    * Register all hook handlers from a list of plugins (already in load order).
    */
@@ -66,20 +69,36 @@ export class HookDispatcherImpl implements HookDispatcher {
   private async resolveCategory(category: HookCategory): Promise<void> {
     if (this.resolved.has(category)) return;
 
-    const entries = this.registry.get(category);
-    if (!entries) {
-      this.resolved.add(category);
+    const existing = this.resolving.get(category);
+    if (existing) {
+      await existing;
       return;
     }
 
-    for (const entry of entries) {
-      if (entry.handlers === null && entry.factory !== null) {
-        entry.handlers = await entry.factory();
-        entry.factory = null;
+    const resolution = (async () => {
+      const entries = this.registry.get(category);
+      if (!entries) {
+        this.resolved.add(category);
+        return;
       }
-    }
 
-    this.resolved.add(category);
+      for (const entry of entries) {
+        if (entry.handlers === null && entry.factory !== null) {
+          entry.handlers = await entry.factory();
+          entry.factory = null;
+        }
+      }
+
+      this.resolved.add(category);
+    })();
+
+    this.resolving.set(category, resolution);
+
+    try {
+      await resolution;
+    } finally {
+      this.resolving.delete(category);
+    }
   }
 
   /**
