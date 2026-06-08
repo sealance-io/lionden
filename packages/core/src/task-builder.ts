@@ -1,3 +1,4 @@
+import { camelToKebab } from "./arg-names.js";
 import {
   ArgumentType,
   type TaskAction,
@@ -91,6 +92,8 @@ export class TaskBuilder {
     kind: "option" | "flag" | "positional argument",
     name: string,
   ): void {
+    // Validate all aliases before committing any, so a conflict on a later
+    // alias never leaves an earlier alias half-registered.
     for (const publicName of getPublicArgumentNames(name)) {
       const existing = this._argumentNames.get(publicName);
       if (existing) {
@@ -98,7 +101,6 @@ export class TaskBuilder {
           `Task "${this._id}" ${kind} "${name}" conflicts with existing ${existing.kind} "${existing.name}"`,
         );
       }
-      this._argumentNames.set(publicName, { kind, name });
     }
 
     for (const publicName of getPublicArgumentNames(name)) {
@@ -110,11 +112,6 @@ export class TaskBuilder {
 function getPublicArgumentNames(name: string): string[] {
   const names = new Set([name, camelToKebab(name)]);
   return [...names];
-}
-
-/** Convert camelCase to kebab-case (e.g., "noCompile" -> "no-compile"). */
-function camelToKebab(name: string): string {
-  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
 }
 
 /**

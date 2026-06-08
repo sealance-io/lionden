@@ -1,3 +1,4 @@
+import { camelToKebab } from "./arg-names.js";
 import type {
   LionDenRuntimeEnvironment,
   TaskAction,
@@ -211,9 +212,4 @@ export class TaskRunnerImpl implements TaskRunner {
 
     return merged;
   }
-}
-
-/** Convert camelCase to kebab-case (e.g., "noCompile" → "no-compile"). */
-function camelToKebab(name: string): string {
-  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
 }
