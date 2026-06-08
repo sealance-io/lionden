@@ -29,6 +29,10 @@ export class TaskBuilder {
   private readonly _options: TaskOption[] = [];
   private readonly _flags: TaskFlag[] = [];
   private readonly _positionalArguments: TaskPositionalArgument[] = [];
+  private readonly _argumentNames = new Map<
+    string,
+    { readonly kind: "option" | "flag" | "positional argument"; readonly name: string }
+  >();
 
   constructor(id: string, description: string) {
     this._id = id;
@@ -36,16 +40,19 @@ export class TaskBuilder {
   }
 
   addOption(option: TaskOption): this {
+    this.registerArgumentName("option", option.name);
     this._options.push(option);
     return this;
   }
 
   addFlag(flag: TaskFlag): this {
+    this.registerArgumentName("flag", flag.name);
     this._flags.push(flag);
     return this;
   }
 
   addPositionalArgument(arg: TaskPositionalArgument): this {
+    this.registerArgumentName("positional argument", arg.name);
     this._positionalArguments.push(arg);
     return this;
   }
@@ -73,12 +80,41 @@ export class TaskBuilder {
       id: this._id,
       description: this._description,
       action: this._action,
-      options: this._options.length > 0 ? this._options : undefined,
-      flags: this._flags.length > 0 ? this._flags : undefined,
+      options: this._options.length > 0 ? [...this._options] : undefined,
+      flags: this._flags.length > 0 ? [...this._flags] : undefined,
       positionalArguments:
-        this._positionalArguments.length > 0 ? this._positionalArguments : undefined,
+        this._positionalArguments.length > 0 ? [...this._positionalArguments] : undefined,
     };
   }
+
+  private registerArgumentName(
+    kind: "option" | "flag" | "positional argument",
+    name: string,
+  ): void {
+    for (const publicName of getPublicArgumentNames(name)) {
+      const existing = this._argumentNames.get(publicName);
+      if (existing) {
+        throw new Error(
+          `Task "${this._id}" ${kind} "${name}" conflicts with existing ${existing.kind} "${existing.name}"`,
+        );
+      }
+      this._argumentNames.set(publicName, { kind, name });
+    }
+
+    for (const publicName of getPublicArgumentNames(name)) {
+      this._argumentNames.set(publicName, { kind, name });
+    }
+  }
+}
+
+function getPublicArgumentNames(name: string): string[] {
+  const names = new Set([name, camelToKebab(name)]);
+  return [...names];
+}
+
+/** Convert camelCase to kebab-case (e.g., "noCompile" -> "no-compile"). */
+function camelToKebab(name: string): string {
+  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
 }
 
 /**
