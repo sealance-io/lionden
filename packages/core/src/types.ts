@@ -225,9 +225,6 @@ export interface LionDenPlugin {
   /** Plugins that MUST be loaded before this one */
   readonly dependencies?: readonly LionDenPlugin[];
 
-  /** Plugins loaded only if the user already includes them */
-  readonly conditionalDependencies?: readonly LionDenPlugin[];
-
   /** Hook handlers by category — lazy-loaded via () => import() or eager objects */
   readonly hookHandlers?: Partial<{
     [C in HookCategory]: HookHandlerProvider<C>;
