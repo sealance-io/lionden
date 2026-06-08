@@ -109,6 +109,41 @@ describe("HookDispatcherImpl", () => {
       await dispatcher.serial("config", "extendUserConfig", {});
       expect(factory).toHaveBeenCalledOnce();
     });
+
+    it("shares lazy category resolution across concurrent dispatches", async () => {
+      let releaseFactory!: () => void;
+      const factoryGate = new Promise<void>((resolve) => {
+        releaseFactory = resolve;
+      });
+      const handler = vi.fn((config: unknown) => config);
+      const factory = vi.fn(async () => {
+        await factoryGate;
+        return {
+          extendUserConfig: handler,
+        };
+      });
+
+      const plugin: LionDenPlugin = {
+        id: "lazy",
+        hookHandlers: {
+          config: factory as unknown as () => Promise<ConfigHookHandlers>,
+        },
+      };
+
+      const dispatcher = new HookDispatcherImpl();
+      dispatcher.registerPlugins([plugin]);
+
+      const first = dispatcher.serial("config", "extendUserConfig", {});
+      const second = dispatcher.serial("config", "extendUserConfig", {});
+
+      expect(factory).toHaveBeenCalledOnce();
+
+      releaseFactory();
+      await Promise.all([first, second]);
+
+      expect(factory).toHaveBeenCalledOnce();
+      expect(handler).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("ignores hooks with no handlers for the given name", async () => {
