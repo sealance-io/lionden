@@ -18,7 +18,9 @@ export function resolvePluginOrder(plugins: readonly LionDenPlugin[]): LionDenPl
   const userPluginIds = new Set(plugins.map((p) => p.id));
   const allPlugins = new Map<string, LionDenPlugin>();
 
-  // Reverse once so LIFO pop() processes user-listed root plugins in their declared order.
+  // Reverse once so LIFO pop() seeds the plugin map in declared order. Only the
+  // relative order of independent roots depends on this — the DFS below already
+  // places every dependency before its dependents regardless of insertion order.
   const toVisit = [...plugins].reverse();
   // Collect all plugins including transitive dependencies
   while (toVisit.length > 0) {

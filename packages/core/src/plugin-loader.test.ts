@@ -79,6 +79,16 @@ describe("resolvePluginOrder", () => {
     const result = resolvePluginOrder([a]);
     expect(result.map((p) => p.id)).toEqual(["a"]);
   });
+
+  it("preserves unrelated root order when conditional dependencies are injected", () => {
+    const x = plugin("x");
+    const optional = plugin("optional");
+    const a = plugin("a", { conditionalDependencies: [optional] });
+    const y = plugin("y");
+    const result = resolvePluginOrder([x, a, optional, y]);
+    // x/y stay in declared order; the conditional dep is injected before its dependent.
+    expect(result.map((p) => p.id)).toEqual(["x", "optional", "a", "y"]);
+  });
 });
 
 describe("collectGlobalOptions", () => {
