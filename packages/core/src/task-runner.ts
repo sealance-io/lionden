@@ -76,8 +76,7 @@ export class TaskRunnerImpl implements TaskRunner {
       throw new Error("TaskRunner: LRE not initialized");
     }
 
-    // Resolve the action (may be lazy-loaded)
-    const action = await this.resolveAction(registered.definition.action);
+    const action = registered.definition.action;
 
     // Normalize CLI args (kebab-case → camelCase, string → number coercion)
     // then fill default values for options/flags
@@ -111,19 +110,6 @@ export class TaskRunnerImpl implements TaskRunner {
     return this.tasks.get(taskId)?.definition;
   }
 
-  private async resolveAction(action: TaskDefinition["action"]): Promise<TaskAction> {
-    // Lazy-loaded actions are marked by being a LazyAction wrapper.
-    // We detect them by checking if they have a _lionden_lazy property,
-    // or if they return a module with a default export.
-    // For safety, we only treat it as a factory if it was created via
-    // the task builder's lazy import pattern (returns { default: fn }).
-    if (typeof action === "function" && "_liondenLazy" in action) {
-      const module = await (action as () => Promise<{ default: TaskAction }>)();
-      return module.default;
-    }
-    return action as TaskAction;
-  }
-
   private buildRunSuper(
     chain: TaskAction[],
     index: number,
@@ -131,7 +117,7 @@ export class TaskRunnerImpl implements TaskRunner {
     definition: TaskDefinition,
   ): (args: Record<string, unknown>) => Promise<unknown> {
     return async (args: Record<string, unknown>) => {
-      const action = await this.resolveAction(chain[index]!);
+      const action = chain[index]!;
       const mergedArgs = this.mergeDefaults(definition, args);
 
       if (index + 1 < chain.length) {

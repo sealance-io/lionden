@@ -160,21 +160,6 @@ describe("task runner", () => {
     await runner.run("compile");
     expect(order).toEqual(["before", "original", "after"]);
   });
-
-  it("runs lazy task actions via setLazyAction", async () => {
-    const action = vi.fn(async () => "lazy-result");
-    const def = task("lazy", "")
-      .setLazyAction(async () => ({ default: action }))
-      .build();
-
-    const runner = new TaskRunnerImpl();
-    runner.registerTasks([def]);
-    runner.setLre(mockLre);
-
-    const result = await runner.run("lazy");
-    expect(action).toHaveBeenCalledOnce();
-    expect(result).toBe("lazy-result");
-  });
 });
 
 describe("createLre config-level tasks", () => {
