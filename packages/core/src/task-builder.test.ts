@@ -160,6 +160,58 @@ describe("task runner", () => {
     await runner.run("compile");
     expect(order).toEqual(["before", "original", "after"]);
   });
+
+  it("binds positional arguments to their declared names", async () => {
+    const action = vi.fn(async (args: Record<string, unknown>) => args);
+    const def = task("run", "")
+      .addPositionalArgument({ name: "script", type: ArgumentType.FILE })
+      .setAction(action)
+      .build();
+
+    const runner = new TaskRunnerImpl();
+    runner.registerTasks([def]);
+    runner.setLre(mockLre);
+
+    const result = (await runner.run("run", { _positional: ["deploy.ts"] })) as Record<
+      string,
+      unknown
+    >;
+    // Named value is bound, and _positional stays populated for back-compat.
+    expect(result["script"]).toBe("deploy.ts");
+    expect(result["_positional"]).toEqual(["deploy.ts"]);
+  });
+
+  it("throws when a required positional argument is missing", async () => {
+    const action = vi.fn(async () => "ran");
+    const def = task("run", "")
+      .addPositionalArgument({ name: "script", type: ArgumentType.FILE, required: true })
+      .setAction(action)
+      .build();
+
+    const runner = new TaskRunnerImpl();
+    runner.registerTasks([def]);
+    runner.setLre(mockLre);
+
+    await expect(runner.run("run")).rejects.toThrow(
+      'Task "run" is missing required positional argument "script".',
+    );
+    expect(action).not.toHaveBeenCalled();
+  });
+
+  it("accepts a required positional supplied by name", async () => {
+    const action = vi.fn(async (args: Record<string, unknown>) => args);
+    const def = task("run", "")
+      .addPositionalArgument({ name: "script", type: ArgumentType.FILE, required: true })
+      .setAction(action)
+      .build();
+
+    const runner = new TaskRunnerImpl();
+    runner.registerTasks([def]);
+    runner.setLre(mockLre);
+
+    const result = (await runner.run("run", { script: "deploy.ts" })) as Record<string, unknown>;
+    expect(result["script"]).toBe("deploy.ts");
+  });
 });
 
 describe("createLre config-level tasks", () => {
