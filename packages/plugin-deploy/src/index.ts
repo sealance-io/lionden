@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import {
+  ArgumentType,
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
@@ -211,6 +212,16 @@ const pluginDeploy: LionDenPlugin = {
   hookHandlers: {
     config: configHooks,
   },
+  // Registers --prove as a global option so `lionden --prove deploy/upgrade`
+  // populates lre.globalOptions["prove"], consumed by resolveProveOption() in
+  // the deploy and upgrade actions to force standard/proven transactions.
+  globalOptions: [
+    {
+      name: "prove",
+      type: ArgumentType.BOOLEAN,
+      description: "Build standard/proven transactions even on devnode (slower)",
+    },
+  ],
   tasks: [deployTask, upgradeTask, exportTask, recipeTask],
   extendLre(lre: LionDenRuntimeEnvironment): void {
     const networkAccessor = () => lre.network as NetworkManager | null;
