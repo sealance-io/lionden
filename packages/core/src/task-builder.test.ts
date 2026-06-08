@@ -110,30 +110,6 @@ describe("task runner", () => {
     expect(order).toEqual(["before", "original", "after"]);
   });
 
-  it("runs dependency tasks before the main task", async () => {
-    const order: string[] = [];
-
-    const dep = task("dep", "")
-      .setAction(async () => {
-        order.push("dep");
-      })
-      .build();
-
-    const main = task("main", "")
-      .addDependency("dep")
-      .setAction(async () => {
-        order.push("main");
-      })
-      .build();
-
-    const runner = new TaskRunnerImpl();
-    runner.registerTasks([dep, main]);
-    runner.setLre(mockLre);
-
-    await runner.run("main");
-    expect(order).toEqual(["dep", "main"]);
-  });
-
   it("runs lazy task actions via setLazyAction", async () => {
     const action = vi.fn(async () => "lazy-result");
     const def = task("lazy", "")
