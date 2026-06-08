@@ -300,7 +300,7 @@ export interface TaskRunner {
   getTaskDefinition(taskId: string): TaskDefinition | undefined;
 }
 
-export type HookDispatchMode = "serial" | "waterfall" | "collect" | "parallel";
+export type HookDispatchMode = "serial" | "waterfall" | "collect";
 
 export interface HookDispatcher {
   /** Dispatch a hook in serial mode — handlers execute sequentially */
@@ -321,9 +321,6 @@ export interface HookDispatcher {
     context: unknown,
     ...extraArgs: unknown[]
   ): Promise<TResult[]>;
-
-  /** Dispatch a hook in parallel mode — all handlers execute concurrently */
-  parallel<TContext>(category: HookCategory, hookName: string, context: TContext): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

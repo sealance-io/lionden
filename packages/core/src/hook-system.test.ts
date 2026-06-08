@@ -134,30 +134,6 @@ describe("HookDispatcherImpl", () => {
     });
   });
 
-  describe("parallel", () => {
-    it("calls all handlers concurrently", async () => {
-      const called: string[] = [];
-      const a = pluginWithConfigHooks("a", {
-        validateResolvedConfig: async () => {
-          called.push("a");
-          return [];
-        },
-      });
-      const b = pluginWithConfigHooks("b", {
-        validateResolvedConfig: async () => {
-          called.push("b");
-          return [];
-        },
-      });
-
-      const dispatcher = new HookDispatcherImpl();
-      dispatcher.registerPlugins([a, b]);
-      await dispatcher.parallel("config", "validateResolvedConfig", {});
-      expect(called).toContain("a");
-      expect(called).toContain("b");
-    });
-  });
-
   describe("lazy loading", () => {
     it("lazy-loads hook handlers on first invocation", async () => {
       const factory = vi.fn(async () => ({
