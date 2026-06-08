@@ -57,6 +57,17 @@ describe("parseArgs", () => {
     expect(result.globalArgs.network).toBe("testnet");
   });
 
+  it("routes --network after the task name into taskArgs", () => {
+    const result = parseArgs(["deploy", "--network", "testnet"]);
+    expect(result.globalArgs.network).toBeUndefined();
+    expect(result.taskArgs.network).toBe("testnet");
+  });
+
+  it("treats a trailing value-less --network task flag as boolean", () => {
+    const result = parseArgs(["deploy", "--network"]);
+    expect(result.taskArgs.network).toBe(true);
+  });
+
   it("identifies task name as first non-flag argument", () => {
     const result = parseArgs(["compile"]);
     expect(result.taskId).toBe("compile");
