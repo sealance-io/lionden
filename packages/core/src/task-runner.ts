@@ -79,9 +79,10 @@ export class TaskRunnerImpl implements TaskRunner {
     const action = registered.definition.action;
 
     // Normalize CLI args (kebab-case → camelCase, string → number coercion)
-    // then fill default values for options/flags
+    // then fill default values for options/flags, then bind positional args.
     const normalizedArgs = this.normalizeArgs(registered.definition, args);
     const mergedArgs = this.mergeDefaults(registered.definition, normalizedArgs);
+    const finalArgs = this.applyPositionalArguments(registered.definition, mergedArgs);
 
     // If there are overrides, create the runSuper chain
     if (registered.overrideChain.length > 0) {
@@ -92,10 +93,10 @@ export class TaskRunnerImpl implements TaskRunner {
         registered.definition,
       );
       // Override actions receive runSuper as third argument
-      return (action as TaskActionWithSuper)(mergedArgs, this.lre, runSuper);
+      return (action as TaskActionWithSuper)(finalArgs, this.lre, runSuper);
     }
 
-    return action(mergedArgs, this.lre);
+    return action(finalArgs, this.lre);
   }
 
   has(taskId: string): boolean {
@@ -197,5 +198,44 @@ export class TaskRunnerImpl implements TaskRunner {
     }
 
     return merged;
+  }
+
+  /**
+   * Bind positional arguments to their declared names.
+   *
+   * The CLI parser stores raw positional values in `args._positional` (kept
+   * populated for back-compat with hand-extraction in plugins). This maps each
+   * `_positional[i]` onto `positionalArguments[i].name` so actions can read by
+   * name, then enforces `required` positionals — throwing a clear error when a
+   * required positional was supplied neither by name nor positionally.
+   */
+  private applyPositionalArguments(
+    definition: TaskDefinition,
+    args: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const positionalDefs = definition.positionalArguments;
+    if (!positionalDefs || positionalDefs.length === 0) {
+      return args;
+    }
+
+    const result = { ...args };
+    const positionalValues = Array.isArray(result["_positional"])
+      ? (result["_positional"] as unknown[])
+      : [];
+
+    positionalDefs.forEach((def, i) => {
+      // An explicitly-named value (e.g. from a programmatic run({ script }))
+      // wins over the positional array; otherwise bind from _positional[i].
+      if (!(def.name in result) && i < positionalValues.length) {
+        result[def.name] = positionalValues[i];
+      }
+      if (def.required && result[def.name] === undefined) {
+        throw new Error(
+          `Task "${definition.id}" is missing required positional argument "${def.name}".`,
+        );
+      }
+    });
+
+    return result;
   }
 }
