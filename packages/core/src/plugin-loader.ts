@@ -18,8 +18,9 @@ export function resolvePluginOrder(plugins: readonly LionDenPlugin[]): LionDenPl
   const userPluginIds = new Set(plugins.map((p) => p.id));
   const allPlugins = new Map<string, LionDenPlugin>();
 
+  // Reverse once so LIFO pop() processes user-listed root plugins in their declared order.
+  const toVisit = [...plugins].reverse();
   // Collect all plugins including transitive dependencies
-  const toVisit = [...plugins];
   while (toVisit.length > 0) {
     const plugin = toVisit.pop()!;
     if (allPlugins.has(plugin.id)) {
