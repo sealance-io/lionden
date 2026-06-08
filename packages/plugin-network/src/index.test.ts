@@ -19,10 +19,9 @@ describe("plugin-network", () => {
     expect(taskIds).toContain("run");
   });
 
-  it("has config and network hook handlers", () => {
+  it("has config hook handlers", () => {
     expect(pluginNetwork.hookHandlers).toBeDefined();
     expect(pluginNetwork.hookHandlers!.config).toBeDefined();
-    expect(pluginNetwork.hookHandlers!.network).toBeDefined();
   });
 
   it("provides extendLre that injects network manager", () => {

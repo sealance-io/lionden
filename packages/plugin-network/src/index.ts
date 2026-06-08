@@ -5,7 +5,6 @@ import {
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
-  type NetworkHookHandlers,
   task,
 } from "@lionden/core";
 import {
@@ -71,12 +70,6 @@ const configHooks: ConfigHookHandlers = {
     return errors;
   },
 };
-
-// ---------------------------------------------------------------------------
-// Network hooks
-// ---------------------------------------------------------------------------
-
-const networkHooks: NetworkHookHandlers = {};
 
 // ---------------------------------------------------------------------------
 // Tasks
@@ -252,7 +245,6 @@ const pluginNetwork: LionDenPlugin = {
   name: "Network Plugin",
   hookHandlers: {
     config: configHooks,
-    network: networkHooks,
   },
   tasks: [nodeTask, runTask],
 

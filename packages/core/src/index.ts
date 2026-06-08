@@ -53,9 +53,6 @@ export { OverrideTaskBuilder, overrideTask, TaskBuilder, task } from "./task-bui
 export { TaskNotFoundError, TaskRunnerImpl } from "./task-runner.js";
 export type {
   ArtifactStore,
-  CompilationContext,
-  CompilationHookHandlers,
-  CompilationResult,
   ConfigHookHandlers,
   ConfigValidationError,
   DeploymentHookHandlers,
@@ -66,7 +63,6 @@ export type {
   HookHandlerMap,
   LionDenPlugin,
   LionDenRuntimeEnvironment,
-  NetworkHookHandlers,
   ProgramDeployedContext,
   ProgramDeploymentTarget,
   ProgramUpgradedContext,

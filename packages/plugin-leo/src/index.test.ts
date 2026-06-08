@@ -18,10 +18,9 @@ describe("plugin-leo", () => {
     expect(taskIds).toContain("clean");
   });
 
-  it("has config and compilation hook handlers", () => {
+  it("has config hook handlers", () => {
     expect(pluginLeo.hookHandlers).toBeDefined();
     expect(pluginLeo.hookHandlers!.config).toBeDefined();
-    expect(pluginLeo.hookHandlers!.compilation).toBeDefined();
   });
 
   it("compile task has force, noTypechain, and program options", () => {

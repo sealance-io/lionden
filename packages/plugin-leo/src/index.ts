@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenResolvedConfig, LionDenUserConfig } from "@lionden/config";
 import {
-  type CompilationHookHandlers,
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
@@ -83,12 +82,6 @@ const configHooks: ConfigHookHandlers = {
     return errors;
   },
 };
-
-// ---------------------------------------------------------------------------
-// Compilation hooks
-// ---------------------------------------------------------------------------
-
-const compilationHooks: CompilationHookHandlers = {};
 
 // ---------------------------------------------------------------------------
 // Tasks
@@ -185,7 +178,6 @@ const pluginLeo: LionDenPlugin = {
   name: "Leo Compiler Plugin",
   hookHandlers: {
     config: configHooks,
-    compilation: compilationHooks,
   },
   tasks: [compileTask, cleanTask],
 };

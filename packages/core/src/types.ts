@@ -41,37 +41,6 @@ export interface ConfigHookHandlers {
   ): Promise<ConfigValidationError[]> | ConfigValidationError[];
 }
 
-export interface CompilationHookHandlers {
-  /** Before any compilation begins. */
-  preBuild?(context: CompilationContext): Promise<void> | void;
-
-  /** The actual compilation step. */
-  compile?(context: CompilationContext): Promise<CompilationResult>;
-
-  /** After ABI is generated (programs only), before codegen. Allows ABI transformation. */
-  postAbi?(abi: unknown, context: CompilationContext): Promise<unknown> | unknown;
-
-  /** TypeScript codegen step (programs only). */
-  generateBindings?(abi: unknown, context: CompilationContext): Promise<string>;
-
-  /** After all compilation is complete. */
-  postBuild?(result: CompilationResult, context: CompilationContext): Promise<void> | void;
-}
-
-export interface NetworkHookHandlers {
-  /** Before network connection is established. */
-  preConnect?(config: unknown): Promise<unknown>;
-
-  /** After network connection is ready. */
-  postConnect?(connection: unknown): Promise<void> | void;
-
-  /** Before a transaction is submitted. */
-  preTransaction?(tx: unknown): Promise<unknown>;
-
-  /** After a transaction is confirmed. */
-  postTransaction?(result: unknown): Promise<void> | void;
-}
-
 export interface TestingHookHandlers {
   /** Before test suite begins (devnode lifecycle). */
   suiteSetup?(context: unknown): Promise<void> | void;
@@ -110,28 +79,14 @@ export interface DeploymentHookHandlers {
   programUpgraded?(ctx: ProgramUpgradedContext): Promise<void> | void;
 }
 
-/** Stub types — will be fully defined in @lionden/leo-compiler */
-export interface CompilationContext {
-  readonly config: LionDenResolvedConfig;
-  readonly programs: readonly string[];
-}
-
-export interface CompilationResult {
-  readonly success: boolean;
-  readonly programs: readonly string[];
-  readonly errors: readonly string[];
-}
-
 // ---------------------------------------------------------------------------
 // Hook categories map
 // ---------------------------------------------------------------------------
 
-export type HookCategory = "config" | "compilation" | "network" | "testing" | "deployment";
+export type HookCategory = "config" | "testing" | "deployment";
 
 export type HookHandlerMap = {
   config: ConfigHookHandlers;
-  compilation: CompilationHookHandlers;
-  network: NetworkHookHandlers;
   testing: TestingHookHandlers;
   deployment: DeploymentHookHandlers;
 };
