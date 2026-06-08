@@ -1,4 +1,4 @@
-import { createLre } from "@lionden/core";
+import { ArgumentType, collectGlobalOptions, createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
 import { describe, expect, it } from "vitest";
 import { DeployError, validateConstructor } from "./deploy-task.js";
@@ -28,6 +28,17 @@ describe("plugin-deploy", () => {
   it("has config hook handlers", () => {
     expect(pluginDeploy.hookHandlers).toBeDefined();
     expect(pluginDeploy.hookHandlers!.config).toBeDefined();
+  });
+
+  it("registers --prove as a BOOLEAN global option", () => {
+    const prove = pluginDeploy.globalOptions?.find((o) => o.name === "prove");
+    expect(prove).toBeDefined();
+    expect(prove!.type).toBe(ArgumentType.BOOLEAN);
+
+    // collectGlobalOptions surfaces it without collisions in the standard stack.
+    const collected = collectGlobalOptions([pluginDeploy]);
+    expect(collected.has("prove")).toBe(true);
+    expect(collected.get("prove")!.pluginId).toBe("@lionden/plugin-deploy");
   });
 
   it("deploy task has program, priorityFee, network options and all flags", () => {
