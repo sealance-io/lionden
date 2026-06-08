@@ -33,6 +33,7 @@ import {
   resolveConfigVariable,
   SDK_LOG_LEVELS,
 } from "@lionden/config";
+import { HookDispatcherImpl } from "./hook-system.js";
 import type { ConfigValidationError, LionDenPlugin } from "./types.js";
 
 export class ConfigResolutionError extends Error {
@@ -63,22 +64,25 @@ export async function resolveConfig(
   plugins: readonly LionDenPlugin[],
   projectRoot: string,
 ): Promise<ResolveConfigResult> {
-  // Resolve all config hook handlers from plugins upfront
-  const configHandlers = await getConfigHookHandlers(plugins);
+  // Route config hooks through the shared dispatcher. This boots a standalone
+  // instance — the LRE does not exist yet at this phase of CLI startup. Lazy
+  // hook factories resolve once (single-flight in resolveCategory) and the
+  // resolved handlers are reused across all four stages below.
+  const hooks = new HookDispatcherImpl();
+  hooks.registerPlugins(plugins);
 
-  // 1. Extend user config (waterfall)
-  let config = userConfig;
-  for (const handler of configHandlers) {
-    if (handler.extendUserConfig) {
-      config = await handler.extendUserConfig(config);
-    }
-  }
+  // 1. Extend user config (waterfall — an undefined return keeps the prior value)
+  const config = await hooks.waterfall<LionDenUserConfig>(
+    "config",
+    "extendUserConfig",
+    userConfig,
+  );
 
-  // 2. Validate user config (built-in core passes + plugin handlers)
+  // 2. Validate user config (built-in core passes first, then plugin handlers)
   const userErrors = [
     ...validateSdkUserConfig(config),
     ...validateExecutionUserConfig(config),
-    ...(await collectValidationErrorsFromHandlers(configHandlers, "validateUserConfig", config)),
+    ...(await hooks.collect<ConfigValidationError[]>("config", "validateUserConfig", config)).flat(),
   ];
   if (userErrors.length > 0) {
     throw new ConfigResolutionError(
@@ -92,31 +96,24 @@ export async function resolveConfig(
     return resolveConfigVariable(v);
   };
 
-  // Start with defaults
+  // Start with defaults, then merge plugin partials in plugin order.
   let resolved = buildDefaults(config, projectRoot);
-
-  // Let plugins contribute their partial resolutions
-  const partials: Partial<LionDenResolvedConfig>[] = [];
-  for (const handler of configHandlers) {
-    if (handler.resolveConfig) {
-      const partial = await handler.resolveConfig(config, resolvedVariable);
-      partials.push(partial);
-    }
-  }
-
-  // Merge partials into resolved
+  const partials = await hooks.collect<Partial<LionDenResolvedConfig>>(
+    "config",
+    "resolveConfig",
+    config,
+    resolvedVariable,
+  );
   for (const partial of partials) {
     resolved = mergePartial(resolved, partial);
   }
 
-  // 4. Validate resolved config (built-in core passes + plugin handlers)
+  // 4. Validate resolved config (built-in core passes first, then plugin handlers)
   const resolvedErrors = [
     ...validateExecutionResolvedConfig(resolved),
-    ...(await collectValidationErrorsFromHandlers(
-      configHandlers,
-      "validateResolvedConfig",
-      resolved,
-    )),
+    ...(
+      await hooks.collect<ConfigValidationError[]>("config", "validateResolvedConfig", resolved)
+    ).flat(),
   ];
   if (resolvedErrors.length > 0) {
     throw new ConfigResolutionError(
@@ -131,46 +128,6 @@ export async function resolveConfig(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-async function getConfigHookHandlers(
-  plugins: readonly LionDenPlugin[],
-): Promise<import("./types.js").ConfigHookHandlers[]> {
-  const handlers: import("./types.js").ConfigHookHandlers[] = [];
-
-  for (const plugin of plugins) {
-    const configHandlers = plugin.hookHandlers?.config;
-    if (!configHandlers) continue;
-
-    if (typeof configHandlers === "function") {
-      const resolved = await configHandlers();
-      handlers.push(resolved);
-    } else {
-      handlers.push(configHandlers);
-    }
-  }
-
-  return handlers;
-}
-
-async function collectValidationErrorsFromHandlers(
-  handlers: import("./types.js").ConfigHookHandlers[],
-  hookName: "validateUserConfig" | "validateResolvedConfig",
-  config: unknown,
-): Promise<ConfigValidationError[]> {
-  const allErrors: ConfigValidationError[] = [];
-
-  for (const handler of handlers) {
-    const fn = handler[hookName];
-    if (typeof fn === "function") {
-      const errors = await fn(config as never);
-      if (Array.isArray(errors)) {
-        allErrors.push(...errors);
-      }
-    }
-  }
-
-  return allErrors;
-}
 
 function formatErrors(errors: ConfigValidationError[]): string {
   return errors.map((e) => `  - ${e.path}: ${e.message}`).join("\n");
