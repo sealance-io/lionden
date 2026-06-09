@@ -21,7 +21,7 @@ import {
 import { type TempProject, TempProjectBuilder } from "@lionden/test-internals";
 import { afterEach, describe, expect, it } from "vitest";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
-import { dispatchTask, parseArgs, validateTaskGlobalOptionCollisions } from "./task-dispatch.js";
+import { dispatchTask, parseArgs } from "./task-dispatch.js";
 
 describe("CLI dispatch contract", () => {
   let project: TempProject;
