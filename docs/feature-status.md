@@ -67,8 +67,8 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Balance and block-height helpers on `AleoConnection` | same |
 | Low-level `connection.execute()` is fire-and-forget by default (broadcasts, returns `{ outputs: [], txId }`); awaited outputs available via `{ awaitConfirmation: true }` or the standalone `connection.getTransitionOutputs(txId, programId, transitionName)` helper. Rejected → `TransitionRejectedError`; 0/>1 transition matches → `TransitionSelectionError` (see [`network.md` § `execute()` and transition outputs](network.md#execute-and-transition-outputs)) | `packages/network/src/connection.ts`, `packages/network/src/transition-selector.ts` |
 | Deployed program source fetch via `getProgramSource()` | same |
-| `node` task: `--port` (default 3030), `--manual-blocks`, `--network` (testnet/mainnet/canary) | `packages/plugin-network/src/index.ts` |
-| `run` task: positional script path, optional `--network`; imports the script and calls `default` or `main` | same |
+| `node` task: `--port` (default 3030), `--manual-blocks`, | `packages/plugin-network/src/index.ts` |
+| `run` task: positional script path; imports the script and calls `default` or `main`; network selection comes from global `--network` / `defaultNetwork` | same |
 | `--consensus-heights` opt-in field for devnode (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts`, config types |
 | SDK egress policy (network-host scope): per-connection guarded `transport` on `AleoNetworkClient` and per-signer clones. Default `allowedNetworkHosts = { connection endpoint }` with `violation: "block"`; users extend via `sdk.egress.networkHosts` (telemetry, sidecars) and switch to `violation: "warn"` for rollout / debugging. Installing any transport flips `hasCustomTransport=true`, forcing state queries through `CallbackQuery` instead of WASM's `https://api.provable.com/v2`-baked SnapshotQuery — the load-bearing leak closure for the execute / prove path. A second WASM entry point, eager key synthesis (`synthesizeKeyPair`), takes no query parameter and is closed by skipping eager synthesis on every filesystem key-cache miss, deferring to lazy `pm.execute` synthesis through the `CallbackQuery`; sidecar/runtime cache hits are still injected. Parameter downloads (credits keys, SRS) use an internal known-host list; not user-configurable. See [`network.md` § Egress Policy](network.md#egress-policy) | `packages/network/src/sdk-adapter.ts` (`makeNetworkTransport`, `makeParameterTransport`, `SdkEgressPolicy`), `packages/network/src/network-manager.ts` (`resolveEgressPolicy`), `packages/network/src/connection.ts` (`getPersistentExecutionOptions`), `packages/core/src/config-resolution.ts` (`resolveSdkEgressConfig`) |
 
@@ -77,8 +77,8 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Feature | Evidence |
 | --- | --- |
 | `deploy` task: compile → preflight → broadcast → record state → fire hook → optional export | `packages/plugin-deploy/src/deploy-task.ts` |
-| Deploy flags: `--program`, `--priority-fee`, `--skip-confirm`, `--network`, `--no-compile`, `--preflight`, `--dry-run` (devnode), `--no-skip-deployed`, `--export` | `packages/plugin-deploy/src/index.ts` |
-| `--prove` global option (registered by plugin-deploy): `lionden --prove deploy`/`upgrade` forces standard/proven transactions on devnode; also honoured via `LIONDEN_PROVE=true` or an explicit task arg | `packages/plugin-deploy/src/index.ts` (`globalOptions`), `deploy-task.ts`/`upgrade-task.ts` (`resolveProveOption`) |
+| Deploy flags/options: `--program`, `--priority-fee`, `--skip-confirm`, `--no-compile`, `--preflight`, `--dry-run` (devnode), `--no-skip-deployed`, `--export`; network selection comes from global `--network` / `defaultNetwork` | `packages/plugin-deploy/src/index.ts` |
+| `--prove` global option (registered by plugin-deploy): `lionden --prove deploy`/`upgrade` forces standard/proven transactions on devnode; also honoured via `LIONDEN_PROVE=true` | `packages/plugin-deploy/src/index.ts` (`globalOptions`), `deploy-task.ts`/`upgrade-task.ts` (`resolveProveOption`) |
 | Constructor parser recognises `@noupgrade`, `@admin(address=...)`, `@checksum(...)`, `@custom(...)` (also accepts optional `async constructor` for v3.5) | `packages/plugin-deploy/src/constructor-parser.ts` |
 | Deploy preflight: constructor presence/validity, on-chain status, HTTP fee estimation, HTTP balance check, imported program availability | `packages/plugin-deploy/src/preflight.ts` |
 | Multi-program topological deploy order; targeted `--program` pulls transitive local deps | `packages/plugin-deploy/src/deploy-task.ts` |
@@ -89,7 +89,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | `export` task: per-network bundle to `deployments/_exports/<network>.json` or `--out <path>`; writes even in ephemeral mode | `packages/plugin-deploy/src/index.ts` |
 | `deploy.autoExport` hook after each deploy/upgrade | `packages/plugin-deploy/src/deployment-manager.ts` |
 | Hooks: `deployment.programDeployed`, `deployment.programUpgraded` | `packages/core/src/types.ts` |
-| `recipe` task: `--file`, `--export`, `--network`, `--no-compile`; passes typed `DeploymentContext` (named accounts, deploy, execute, lre, accounts) | `packages/plugin-deploy/src/recipe-task.ts` |
+| `recipe` task: `--file`, `--export`, `--no-compile`; passes typed `DeploymentContext` (named accounts, deploy, execute, lre, accounts); network selection comes from global `--network` / `defaultNetwork` | `packages/plugin-deploy/src/recipe-task.ts` |
 | Signer integration: `namedAccounts.deployer` (signable) → deploy signer; `namedAccounts.admin` (signable) → upgrade signer; address-only `admin` triggers `NAMED_ADMIN_DRIFT` warning instead of blocking | `packages/plugin-deploy/src/...` |
 
 ### Testing

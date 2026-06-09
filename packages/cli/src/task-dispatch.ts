@@ -3,6 +3,11 @@ import type {
   LionDenRuntimeEnvironment,
   TaskDefinition,
 } from "@lionden/core";
+import {
+  ArgumentType,
+  getPublicArgumentNames,
+  getReservedBuiltInGlobalArgumentNames,
+} from "@lionden/core";
 import { logger } from "./output/logger.js";
 
 export type TaskDefinitionLookup = (taskId: string) => TaskDefinition | undefined;
@@ -32,73 +37,48 @@ export function parseArgs(
 ): ParsedArgs {
   const globalArgs: ParsedArgs["globalArgs"] = {};
   const taskArgs: Record<string, unknown> = {};
-  let taskId: string | null = null;
-  let taskDefinition: TaskDefinition | undefined;
-  let parsingGlobal = true;
-
-  // Build set of known plugin global option names for matching
-  const pluginOptionNames = new Set(pluginGlobalOptions?.keys() ?? []);
+  const { taskId, taskIndex } = findTask(argv, pluginGlobalOptions, getTaskDefinition);
+  const taskDefinition = taskId ? getTaskDefinition?.(taskId) : undefined;
+  const globalDefinitions = buildGlobalArgumentLookup(pluginGlobalOptions);
+  const taskDefinitions = taskDefinition
+    ? buildTaskArgumentLookup(taskDefinition)
+    : new Map<string, TaskArgumentLookupEntry>();
 
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i]!;
 
-    if (parsingGlobal) {
-      if (arg === "--config" && i + 1 < argv.length) {
-        globalArgs.config = argv[++i];
-      } else if (arg === "--network" && i + 1 < argv.length) {
-        globalArgs.network = argv[++i];
-      } else if (arg === "--verbose") {
-        globalArgs.verbose = true;
-      } else if (arg === "--help" || arg === "-h") {
-        globalArgs.help = true;
-      } else if (arg === "--version" || arg === "-v") {
-        globalArgs.version = true;
-      } else if (arg.startsWith("--") && pluginOptionNames.has(arg.slice(2))) {
-        // Plugin global option
-        const name = arg.slice(2);
-        const def = pluginGlobalOptions!.get(name)!.definition;
-        if (def.type === "BOOLEAN") {
-          globalArgs[name] = true;
-        } else if (i + 1 < argv.length) {
-          globalArgs[name] = argv[++i];
+    if (i === taskIndex) {
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--") || arg.startsWith("-")) {
+      const rawName = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
+      const globalDefinition = globalDefinitions.get(rawName);
+      const taskDefinition = taskDefinitions.get(rawName);
+
+      if (taskDefinition && !globalDefinition?.builtIn) {
+        if (taskDefinition.type === "boolean") {
+          taskArgs[taskDefinition.name] = true;
+        } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
+          taskArgs[taskDefinition.name] = argv[++i];
         }
-      } else if (!arg.startsWith("--")) {
-        taskId = arg;
-        taskDefinition = getTaskDefinition?.(taskId);
-        parsingGlobal = false;
+      } else if (globalDefinition) {
+        if (globalDefinition.type === ArgumentType.BOOLEAN) {
+          globalArgs[globalDefinition.name] = true;
+        } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
+          globalArgs[globalDefinition.name] = argv[++i];
+        }
+      } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
+        taskArgs[rawName] = argv[++i];
+      } else {
+        taskArgs[rawName] = true;
       }
     } else {
-      // Task arguments
-      if (arg.startsWith("--")) {
-        const name = arg.slice(2);
-        const taskArg = taskDefinition
-          ? findTaskArgumentDefinition(taskDefinition, name)
-          : undefined;
-        const next = argv[i + 1];
-        if (taskArg?.type === "boolean") {
-          taskArgs[name] = true;
-        } else if (
-          taskArg === undefined &&
-          pluginGlobalOptions?.get(name)?.definition.type === "BOOLEAN"
-        ) {
-          // A known boolean GLOBAL option placed after the task name. Record it
-          // like its pre-task form (globalArgs → lre.globalOptions) rather than
-          // letting the greedy fallback below swallow the following token as a
-          // bogus string value. Task-defined args of the same name still win,
-          // since `taskArg === undefined` gates this branch.
-          globalArgs[name] = true;
-        } else if (next && !next.startsWith("--")) {
-          taskArgs[name] = next;
-          i++;
-        } else {
-          taskArgs[name] = true;
-        }
-      } else {
-        // Positional argument — store as _positional array
-        const positionals = (taskArgs["_positional"] as string[]) ?? [];
+      if (taskIndex >= 0 && i > taskIndex) {
+        const positionals = (taskArgs._positional as string[]) ?? [];
         positionals.push(arg);
-        taskArgs["_positional"] = positionals;
+        taskArgs._positional = positionals;
       }
     }
     i++;
@@ -107,32 +87,135 @@ export function parseArgs(
   return { taskId, taskArgs, globalArgs };
 }
 
-function findTaskArgumentDefinition(
+interface GlobalArgumentLookupEntry {
+  readonly name: string;
+  readonly type: ArgumentType;
+  readonly builtIn?: boolean;
+}
+
+interface TaskArgumentLookupEntry {
+  readonly name: string;
+  readonly type: "string" | "number" | "boolean";
+}
+
+const BUILT_IN_GLOBAL_ARGUMENTS = [
+  { name: "config", type: ArgumentType.FILE },
+  { name: "network", type: ArgumentType.STRING },
+  { name: "verbose", type: ArgumentType.BOOLEAN },
+  { name: "help", type: ArgumentType.BOOLEAN, aliases: ["h"] },
+  { name: "version", type: ArgumentType.BOOLEAN, aliases: ["v"] },
+] satisfies readonly (GlobalArgumentLookupEntry & { aliases?: readonly string[] })[];
+
+function buildGlobalArgumentLookup(
+  pluginGlobalOptions?: Map<string, { pluginId: string; definition: GlobalOptionDefinition }>,
+): Map<string, GlobalArgumentLookupEntry> {
+  const lookup = new Map<string, GlobalArgumentLookupEntry>();
+  for (const definition of BUILT_IN_GLOBAL_ARGUMENTS) {
+    const entry = { name: definition.name, type: definition.type, builtIn: true };
+    for (const publicName of getPublicArgumentNames(definition.name)) {
+      lookup.set(publicName, entry);
+    }
+    for (const alias of definition.aliases ?? []) {
+      lookup.set(alias, entry);
+    }
+  }
+  for (const { definition } of pluginGlobalOptions?.values() ?? []) {
+    const entry = { name: definition.name, type: definition.type };
+    for (const publicName of getPublicArgumentNames(definition.name)) {
+      lookup.set(publicName, entry);
+    }
+  }
+  return lookup;
+}
+
+function buildTaskArgumentLookup(
   taskDefinition: TaskDefinition,
-  rawName: string,
-): { type: "string" | "number" | "boolean" } | undefined {
+): Map<string, TaskArgumentLookupEntry> {
+  const lookup = new Map<string, TaskArgumentLookupEntry>();
   for (const flag of taskDefinition.flags ?? []) {
-    if (matchesTaskArgumentName(flag.name, rawName)) {
-      return { type: "boolean" };
+    const entry = { name: flag.name, type: "boolean" as const };
+    for (const publicName of getPublicArgumentNames(flag.name)) {
+      lookup.set(publicName, entry);
     }
   }
-
   for (const option of taskDefinition.options ?? []) {
-    if (matchesTaskArgumentName(option.name, rawName)) {
-      return { type: option.type };
+    const entry = { name: option.name, type: option.type };
+    for (const publicName of getPublicArgumentNames(option.name)) {
+      lookup.set(publicName, entry);
     }
   }
-
-  return undefined;
+  return lookup;
 }
 
-function matchesTaskArgumentName(definitionName: string, rawName: string): boolean {
-  return rawName === definitionName || rawName === camelToKebab(definitionName);
+interface TaskDiscoveryResult {
+  readonly taskId: string | null;
+  readonly taskIndex: number;
 }
 
-/** Convert camelCase to kebab-case (e.g., "noCompile" -> "no-compile"). */
-function camelToKebab(name: string): string {
-  return name.replace(/[A-Z]/g, (ch) => `-${ch.toLowerCase()}`);
+function findTask(
+  argv: readonly string[],
+  pluginGlobalOptions?: Map<string, { pluginId: string; definition: GlobalOptionDefinition }>,
+  getTaskDefinition?: TaskDefinitionLookup,
+): TaskDiscoveryResult {
+  const globalDefinitions = buildGlobalArgumentLookup(pluginGlobalOptions);
+  let firstUnclaimedToken: TaskDiscoveryResult | null = null;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (arg.startsWith("--") || arg.startsWith("-")) {
+      const rawName = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
+      const globalDefinition = globalDefinitions.get(rawName);
+      if (globalDefinition && globalDefinition.type !== ArgumentType.BOOLEAN) {
+        if (canConsumeAsValue(argv[i + 1], getTaskDefinition)) {
+          i++;
+        }
+      } else if (!globalDefinition && canConsumeAsValue(argv[i + 1], getTaskDefinition)) {
+        i++;
+      }
+      continue;
+    }
+    if (getTaskDefinition?.(arg)) {
+      return { taskId: arg, taskIndex: i };
+    }
+    firstUnclaimedToken ??= { taskId: arg, taskIndex: i };
+  }
+  return firstUnclaimedToken ?? { taskId: null, taskIndex: -1 };
+}
+
+function isOptionToken(token: string): boolean {
+  return token.startsWith("-");
+}
+
+function canConsumeAsValue(
+  token: string | undefined,
+  getTaskDefinition?: TaskDefinitionLookup,
+): boolean {
+  if (token === undefined) return false;
+  if (isOptionToken(token)) return false;
+  if (getTaskDefinition?.(token)) return false;
+  return true;
+}
+
+function canConsumeNextAsValue(argv: readonly string[], index: number, taskIndex: number): boolean {
+  if (index + 1 === taskIndex) return false;
+  return canConsumeAsValue(argv[index + 1]);
+}
+
+export function validateTaskGlobalOptionCollisions(lre: LionDenRuntimeEnvironment): void {
+  const globalNames = getReservedBuiltInGlobalArgumentNames();
+
+  for (const taskId of lre.tasks.getTaskIds()) {
+    const taskDefinition = lre.tasks.getTaskDefinition(taskId);
+    if (!taskDefinition) continue;
+    for (const arg of [...(taskDefinition.options ?? []), ...(taskDefinition.flags ?? [])]) {
+      for (const publicName of getPublicArgumentNames(arg.name)) {
+        if (globalNames.has(publicName)) {
+          throw new Error(
+            `Task "${taskId}" argument "${arg.name}" conflicts with global option "--${publicName}"`,
+          );
+        }
+      }
+    }
+  }
 }
 
 /**

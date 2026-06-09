@@ -90,6 +90,7 @@ Key current behaviors:
 - task overrides stack on top of earlier tasks
 - `runSuper` invokes the immediately preceding implementation chain
 - CLI arguments are normalized from kebab-case to canonical option names
+- named CLI arguments are assigned to global args or task args by public name lookup against registered schemas, not by whether the token appears before or after the task id
 - numeric option values are coerced from strings when possible
 - option defaults and flag defaults are filled before execution
 - positional arguments are bound by index to their declared names (`_positional` stays populated for back-compat), and a missing `required` positional throws before the action runs
@@ -127,7 +128,9 @@ The current LRE includes:
 5. collect plugin global options and parse again with that option set
 6. resolve config through the four-stage lifecycle
 7. create the LRE using resolved config and post-extension config tasks
-8. print help or dispatch the selected task
+8. validate task named arguments do not overlap with built-in or plugin global options
+9. parse again with task metadata so named arguments are routed by schema
+10. print help or dispatch the selected task
 
 `packages/cli/src/task-dispatch.ts` owns low-level argument parsing and help rendering.
 

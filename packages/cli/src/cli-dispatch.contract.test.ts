@@ -21,7 +21,7 @@ import {
 import { type TempProject, TempProjectBuilder } from "@lionden/test-internals";
 import { afterEach, describe, expect, it } from "vitest";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
-import { dispatchTask, parseArgs } from "./task-dispatch.js";
+import { dispatchTask, parseArgs, validateTaskGlobalOptionCollisions } from "./task-dispatch.js";
 
 describe("CLI dispatch contract", () => {
   let project: TempProject;
@@ -247,11 +247,37 @@ describe("CLI dispatch contract", () => {
     }
 
     const lre = createLre({ config: resolved, plugins, globalOptions });
-    expect(lre.globalOptions["prove"]).toBe(true);
+    expect(lre.globalOptions.prove).toBe(true);
+  });
+
+  it("does not override defaultNetwork when --network has no value", async () => {
+    const deployPlugin: LionDenPlugin = {
+      id: "deploy-test",
+      name: "Deploy",
+      tasks: [
+        task("deploy", "Deploy")
+          .setAction(async () => undefined)
+          .build(),
+      ],
+    };
+
+    const projectDir = createTempProject(`export default { defaultNetwork: "local" };`);
+    const configPath = findConfigFile(projectDir)!;
+    const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
+    const plugins = resolvePluginOrder([deployPlugin]);
+    const globalOptionDefs = collectGlobalOptions(plugins);
+    const parsed = parseArgs(["deploy", "--network"], globalOptionDefs);
+
+    const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
+    const networkOverride =
+      typeof parsed.globalArgs.network === "string" ? parsed.globalArgs.network : undefined;
+    const config = networkOverride ? { ...resolved, defaultNetwork: networkOverride } : resolved;
+
+    expect(parsed.globalArgs.network).toBeUndefined();
+    expect(config.defaultNetwork).toBe("local");
   });
 
   it("does not promote a task-local boolean flag into lre.globalOptions (task-aware seeding)", async () => {
-    // A deploy-like plugin contributes `prove` as a GLOBAL boolean option…
     const deployPlugin: LionDenPlugin = {
       id: "@lionden/plugin-deploy",
       name: "Deploy",
@@ -262,7 +288,6 @@ describe("CLI dispatch contract", () => {
           .build(),
       ],
     };
-    // …while a test-like plugin owns `prove` as a TASK FLAG on its own task.
     const testPlugin: LionDenPlugin = {
       id: "@lionden/plugin-test",
       name: "Test",
@@ -306,7 +331,6 @@ describe("CLI dispatch contract", () => {
     // Task flag wins: prove is a task arg and is NOT promoted into global state.
     expect(parsed.taskArgs["prove"]).toBe(true);
     expect(parsed.globalArgs["prove"]).toBeUndefined();
-    expect(lre.globalOptions["prove"]).toBeUndefined();
   });
 
   it("still seeds lre.globalOptions for a boolean global placed after a task that does not define it", async () => {

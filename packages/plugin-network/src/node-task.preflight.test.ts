@@ -93,9 +93,9 @@ describe("node task devnode preflight", () => {
     const processOn = vi.spyOn(process, "on").mockReturnValue(process);
 
     try {
-      await expect(
-        nodeTask!.action({ port: 3030, manualBlocks: false, network: "testnet" }, lre),
-      ).rejects.toThrow("stop after start");
+      await expect(nodeTask!.action({ port: 3030, manualBlocks: false }, lre)).rejects.toThrow(
+        "stop after start",
+      );
     } finally {
       processOn.mockRestore();
     }
@@ -128,10 +128,7 @@ describe("node task devnode preflight", () => {
 
     try {
       await expect(
-        nodeTask!.action(
-          { port: 3030, manualBlocks: false, network: "testnet", persist: "/tmp/ledger" },
-          lre,
-        ),
+        nodeTask!.action({ port: 3030, manualBlocks: false, persist: "/tmp/ledger" }, lre),
       ).rejects.toThrow("stop after start");
     } finally {
       processOn.mockRestore();
@@ -149,10 +146,7 @@ describe("node task devnode preflight", () => {
     const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
     const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
     await expect(
-      nodeTask!.action(
-        { port: 3030, manualBlocks: false, network: "testnet", clearStorage: true },
-        lre,
-      ),
+      nodeTask!.action({ port: 3030, manualBlocks: false, clearStorage: true }, lre),
     ).rejects.toThrow(/--clear-storage requires --persist/);
   });
 });

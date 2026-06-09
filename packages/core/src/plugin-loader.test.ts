@@ -70,15 +70,43 @@ describe("collectGlobalOptions", () => {
     const a = plugin("a", {
       globalOptions: [
         {
-          name: "verbose",
-          description: "Verbose output",
+          name: "prove",
+          description: "Enable proofs",
           type: ArgumentType.BOOLEAN,
         },
       ],
     });
     const result = collectGlobalOptions([a]);
-    expect(result.has("verbose")).toBe(true);
-    expect(result.get("verbose")!.pluginId).toBe("a");
+    expect(result.has("prove")).toBe(true);
+    expect(result.get("prove")!.pluginId).toBe("a");
+  });
+
+  it.each([
+    "verbose",
+    "network",
+    "config",
+    "help",
+    "version",
+  ])("rejects built-in global option name %s", (name) => {
+    const a = plugin("a", {
+      globalOptions: [{ name, description: "", type: ArgumentType.STRING }],
+    });
+    expect(() => collectGlobalOptions([a])).toThrow(
+      new RegExp(
+        `Global option "--${name}" registered by "a" conflicts with built-in global option "--${name}"`,
+      ),
+    );
+  });
+
+  it.each(["h", "v"])("rejects built-in global option alias %s", (name) => {
+    const a = plugin("a", {
+      globalOptions: [{ name, description: "", type: ArgumentType.BOOLEAN }],
+    });
+    expect(() => collectGlobalOptions([a])).toThrow(
+      new RegExp(
+        `Global option "--${name}" registered by "a" conflicts with built-in global option "--${name}"`,
+      ),
+    );
   });
 
   it("detects name collisions", () => {

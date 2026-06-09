@@ -108,7 +108,6 @@ For snapshot-based fast reset in tests, see [`testing.md`](testing.md) (`setup({
 - `--port`
 - `--manual-blocks`
 - `--quiet`
-- `--network` (Leo backend only)
 - `--persist <dir>` — persist the ledger (forces the standalone backend)
 - `--clear-storage` — clear the persist dir before start (requires `--persist`)
 

@@ -37,7 +37,7 @@ export async function recipeAction(
     );
   }
   const exportName = (args["export"] as string) ?? "default";
-  const networkName = (args["network"] as string) ?? lre.config.defaultNetwork;
+  const networkName = lre.config.defaultNetwork;
   const noCompile = (args["noCompile"] as boolean) ?? false;
 
   // 1. Compile first (unless --no-compile)
@@ -95,7 +95,6 @@ export function createCliDeploymentContext(
 
       const taskResult = await lre.tasks.run("deploy", {
         program: programName,
-        network: networkName,
         noCompile: opts?.noCompile ?? true, // pre-compiled by recipe task
         priorityFee: opts?.priorityFee,
         noSkipDeployed: opts?.noSkipDeployed,

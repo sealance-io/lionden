@@ -63,7 +63,6 @@ Current deploy options:
 - `--program`
 - `--priority-fee`
 - `--skip-confirm`
-- `--network`
 - `--no-compile`
 - `--preflight`
 - `--dry-run`
@@ -193,7 +192,6 @@ If the program is not on-chain, the marker is cleared. If the program is on-chai
 
 Current options:
 
-- `--network`
 - `--out`
 
 Without `--out`, export writes to `deployments/_exports/<network>.json`. With `--out`, export writes to the requested path.
@@ -230,7 +228,6 @@ Current upgrade options:
 - `--program`
 - `--priority-fee`
 - `--skip-confirm`
-- `--network`
 
 Upgrade preflight checks include:
 

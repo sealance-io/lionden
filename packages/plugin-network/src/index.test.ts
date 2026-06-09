@@ -63,21 +63,17 @@ describe("plugin-network", () => {
 
     const optionNames = nodeTask!.options?.map((o) => o.name) ?? [];
     expect(optionNames).toContain("port");
-    expect(optionNames).toContain("network");
 
     const flagNames = nodeTask!.flags?.map((f) => f.name) ?? [];
     expect(flagNames).toContain("manualBlocks");
   });
 
-  it("run task has script positional argument and network option", () => {
+  it("run task has script positional argument", () => {
     const runTask = pluginNetwork.tasks?.find((t) => t.id === "run");
     expect(runTask).toBeDefined();
 
     const positionalNames = runTask!.positionalArguments?.map((p) => p.name) ?? [];
     expect(positionalNames).toContain("script");
-
-    const optionNames = runTask!.options?.map((o) => o.name) ?? [];
-    expect(optionNames).toContain("network");
   });
 });
 

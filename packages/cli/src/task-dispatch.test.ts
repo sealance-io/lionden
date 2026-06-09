@@ -52,20 +52,61 @@ describe("parseArgs", () => {
     expect(result.globalArgs.config).toBe("my.config.ts");
   });
 
+  it("does not let --config consume a known task token during discovery", () => {
+    const result = parseArgs(
+      ["--config", "compile"],
+      undefined,
+      lookupFor(defineTask({ id: "compile" })),
+    );
+    expect(result.taskId).toBe("compile");
+    expect(result.globalArgs.config).toBeUndefined();
+  });
+
+  it("still consumes a real --config value before a known task", () => {
+    const result = parseArgs(
+      ["--config", "lionden.config.ts", "compile"],
+      undefined,
+      lookupFor(defineTask({ id: "compile" })),
+    );
+    expect(result.taskId).toBe("compile");
+    expect(result.globalArgs.config).toBe("lionden.config.ts");
+  });
+
   it("parses --network with value", () => {
     const result = parseArgs(["--network", "testnet"]);
     expect(result.globalArgs.network).toBe("testnet");
   });
 
-  it("routes --network after the task name into taskArgs", () => {
-    const result = parseArgs(["deploy", "--network", "testnet"]);
+  it("does not let --network consume a known task token during discovery", () => {
+    const result = parseArgs(
+      ["--network", "deploy"],
+      undefined,
+      lookupFor(defineTask({ id: "deploy" })),
+    );
+    expect(result.taskId).toBe("deploy");
     expect(result.globalArgs.network).toBeUndefined();
-    expect(result.taskArgs.network).toBe("testnet");
   });
 
-  it("treats a trailing value-less --network task flag as boolean", () => {
+  it("still consumes a real --network value before a known task", () => {
+    const result = parseArgs(
+      ["--network", "testnet", "deploy"],
+      undefined,
+      lookupFor(defineTask({ id: "deploy" })),
+    );
+    expect(result.taskId).toBe("deploy");
+    expect(result.globalArgs.network).toBe("testnet");
+  });
+
+  it("routes --network after the task name into globalArgs", () => {
+    const result = parseArgs(["deploy", "--network", "testnet"]);
+    expect(result.globalArgs.network).toBe("testnet");
+    expect(result.taskArgs.network).toBeUndefined();
+  });
+
+  it("keeps --network global-only even without a value", () => {
     const result = parseArgs(["deploy", "--network"]);
-    expect(result.taskArgs.network).toBe(true);
+    expect(result.globalArgs.network).toBeUndefined();
+    expect(result.taskArgs.network).toBeUndefined();
   });
 
   it("identifies task name as first non-flag argument", () => {
@@ -79,20 +120,62 @@ describe("parseArgs", () => {
     expect(result.taskArgs).toEqual({ program: "hello", priorityFee: "100" });
   });
 
+  it("routes task arguments by name even before the task name", () => {
+    const result = parseArgs(
+      ["--program", "hello", "deploy", "--network", "testnet"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "deploy",
+          options: [{ name: "program", type: "string", description: "Program name" }],
+        }),
+      ),
+    );
+
+    expect(result.taskId).toBe("deploy");
+    expect(result.taskArgs).toEqual({ program: "hello" });
+    expect(result.globalArgs.network).toBe("testnet");
+  });
+
   it("treats --flag without value as boolean true", () => {
     const result = parseArgs(["compile", "--force"]);
-    expect(result.taskArgs["force"]).toBe(true);
+    expect(result.taskArgs.force).toBe(true);
   });
 
   it("treats --flag before another --flag as boolean", () => {
     const result = parseArgs(["deploy", "--skipConfirm", "--program", "hello"]);
-    expect(result.taskArgs["skipConfirm"]).toBe(true);
-    expect(result.taskArgs["program"]).toBe("hello");
+    expect(result.taskArgs.skipConfirm).toBe(true);
+    expect(result.taskArgs.program).toBe("hello");
   });
 
   it("collects positional task arguments into _positional array", () => {
     const result = parseArgs(["run", "scripts/seed.ts", "extra"]);
-    expect(result.taskArgs["_positional"]).toEqual(["scripts/seed.ts", "extra"]);
+    expect(result.taskArgs._positional).toEqual(["scripts/seed.ts", "extra"]);
+  });
+
+  it("skips only the actual task token occurrence", () => {
+    const result = parseArgs(["run", "run"], undefined, lookupFor(defineTask({ id: "run" })));
+    expect(result.taskId).toBe("run");
+    expect(result.taskArgs._positional).toEqual(["run"]);
+  });
+
+  it("keeps later positional tokens that match the task id", () => {
+    const result = parseArgs(
+      ["run", "run", "extra"],
+      undefined,
+      lookupFor(defineTask({ id: "run" })),
+    );
+    expect(result.taskArgs._positional).toEqual(["run", "extra"]);
+  });
+
+  it("keeps repeated task-id positionals while routing global network after the task", () => {
+    const result = parseArgs(
+      ["run", "run", "--network", "testnet"],
+      undefined,
+      lookupFor(defineTask({ id: "run" })),
+    );
+    expect(result.taskArgs._positional).toEqual(["run"]);
+    expect(result.globalArgs.network).toBe("testnet");
   });
 
   it("keeps positionals after known boolean task flags", () => {
@@ -107,8 +190,8 @@ describe("parseArgs", () => {
       ),
     );
 
-    expect(result.taskArgs["no-compile"]).toBe(true);
-    expect(result.taskArgs["_positional"]).toEqual(["test/skip-devnode.test.ts"]);
+    expect(result.taskArgs.noCompile).toBe(true);
+    expect(result.taskArgs._positional).toEqual(["test/skip-devnode.test.ts"]);
   });
 
   it("keeps positionals before known boolean task flags", () => {
@@ -123,24 +206,24 @@ describe("parseArgs", () => {
       ),
     );
 
-    expect(result.taskArgs["_positional"]).toEqual(["test/file.test.ts"]);
-    expect(result.taskArgs["prove"]).toBe(true);
+    expect(result.taskArgs._positional).toEqual(["test/file.test.ts"]);
+    expect(result.taskArgs.prove).toBe(true);
   });
 
-  it("keeps positionals after known boolean task options", () => {
+  it("keeps positionals after known boolean task flags", () => {
     const result = parseArgs(
       ["compile", "--force", "programs/hello"],
       undefined,
       lookupFor(
         defineTask({
           id: "compile",
-          options: [{ name: "force", type: "boolean", description: "Force compile" }],
+          flags: [{ name: "force", description: "Force compile" }],
         }),
       ),
     );
 
-    expect(result.taskArgs["force"]).toBe(true);
-    expect(result.taskArgs["_positional"]).toEqual(["programs/hello"]);
+    expect(result.taskArgs.force).toBe(true);
+    expect(result.taskArgs._positional).toEqual(["programs/hello"]);
   });
 
   it("continues to consume values for known string and number task options", () => {
@@ -158,7 +241,39 @@ describe("parseArgs", () => {
       ),
     );
 
-    expect(result.taskArgs).toEqual({ program: "hello", "priority-fee": "100" });
+    expect(result.taskArgs).toEqual({ program: "hello", priorityFee: "100" });
+  });
+
+  it("does not let a known valued task option consume another option token", () => {
+    const result = parseArgs(
+      ["deploy", "--program", "--network", "testnet"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "deploy",
+          options: [{ name: "program", type: "string", description: "Program name" }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs.program).toBeUndefined();
+    expect(result.globalArgs.network).toBe("testnet");
+  });
+
+  it("still lets a known valued task option consume a real value before a global option", () => {
+    const result = parseArgs(
+      ["deploy", "--program", "hello", "--network", "testnet"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "deploy",
+          options: [{ name: "program", type: "string", description: "Program name" }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs.program).toBe("hello");
+    expect(result.globalArgs.network).toBe("testnet");
   });
 
   it("preserves greedy fallback for unknown tasks", () => {
@@ -196,7 +311,7 @@ describe("parseArgs", () => {
     expect(result.globalArgs.config).toBe("path.ts");
     expect(result.globalArgs.verbose).toBe(true);
     expect(result.taskId).toBe("compile");
-    expect(result.taskArgs["force"]).toBe(true);
+    expect(result.taskArgs.force).toBe(true);
   });
 
   it("parses boolean plugin global option", () => {
@@ -211,7 +326,7 @@ describe("parseArgs", () => {
     ]);
 
     const result = parseArgs(["--prove", "test"], pluginOpts);
-    expect(result.globalArgs["prove"]).toBe(true);
+    expect(result.globalArgs.prove).toBe(true);
     expect(result.taskId).toBe("test");
   });
 
@@ -238,13 +353,13 @@ describe("parseArgs", () => {
     );
 
     // --prove is recorded as a global (like its pre-task form), NOT as a task arg…
-    expect(result.globalArgs["prove"]).toBe(true);
-    expect(result.taskArgs["prove"]).toBeUndefined();
+    expect(result.globalArgs.prove).toBe(true);
+    expect(result.taskArgs.prove).toBeUndefined();
     // …and "hello" survives as a positional instead of being eaten as prove's value.
-    expect(result.taskArgs["_positional"]).toEqual(["hello"]);
+    expect(result.taskArgs._positional).toEqual(["hello"]);
   });
 
-  it("lets a same-named task flag take precedence over a boolean global in task position", () => {
+  it("routes a boolean global by name even when placed after a task", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
         "prove",
@@ -261,18 +376,43 @@ describe("parseArgs", () => {
       lookupFor(
         defineTask({
           id: "test",
+          flags: [{ name: "noCompile", description: "Skip compile" }],
+        }),
+      ),
+    );
+
+    expect(result.globalArgs.prove).toBe(true);
+    expect(result.taskArgs.prove).toBeUndefined();
+    expect(result.taskArgs._positional).toEqual(["extra"]);
+  });
+
+  it("routes --prove to the active task when the task defines a prove flag", () => {
+    const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "prove",
+        {
+          pluginId: "@lionden/plugin-deploy",
+          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+        },
+      ],
+    ]);
+
+    const result = parseArgs(
+      ["test", "--prove"],
+      pluginOpts,
+      lookupFor(
+        defineTask({
+          id: "test",
           flags: [{ name: "prove", description: "Enable proofs" }],
         }),
       ),
     );
 
-    // Task flag wins: prove lands in taskArgs, the global is not set, "extra" is a positional.
-    expect(result.taskArgs["prove"]).toBe(true);
-    expect(result.globalArgs["prove"]).toBeUndefined();
-    expect(result.taskArgs["_positional"]).toEqual(["extra"]);
+    expect(result.taskArgs.prove).toBe(true);
+    expect(result.globalArgs.prove).toBeUndefined();
   });
 
-  it("does not special-case valued (non-boolean) globals after the task — they stay greedy", () => {
+  it("routes valued globals after the task by name", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
         "env",
@@ -289,10 +429,29 @@ describe("parseArgs", () => {
       lookupFor(defineTask({ id: "deploy" })),
     );
 
-    // Only boolean globals are rerouted; a string global after the task keeps
-    // the pre-existing greedy task-arg behavior (no scope creep).
-    expect(result.globalArgs["env"]).toBeUndefined();
-    expect(result.taskArgs["env"]).toBe("prod");
+    expect(result.globalArgs.env).toBe("prod");
+    expect(result.taskArgs.env).toBeUndefined();
+  });
+
+  it("leaves a missing valued plugin global unset", () => {
+    const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "env",
+        {
+          pluginId: "core",
+          definition: { name: "env", description: "Environment", type: ArgumentType.STRING },
+        },
+      ],
+    ]);
+
+    const result = parseArgs(
+      ["deploy", "--env"],
+      pluginOpts,
+      lookupFor(defineTask({ id: "deploy" })),
+    );
+
+    expect(result.globalArgs.env).toBeUndefined();
+    expect(result.taskArgs.env).toBeUndefined();
   });
 
   it("parses string plugin global option", () => {
@@ -307,7 +466,7 @@ describe("parseArgs", () => {
     ]);
 
     const result = parseArgs(["--env", "production", "deploy"], pluginOpts);
-    expect(result.globalArgs["env"]).toBe("production");
+    expect(result.globalArgs.env).toBe("production");
     expect(result.taskId).toBe("deploy");
   });
 });

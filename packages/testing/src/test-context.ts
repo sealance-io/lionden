@@ -47,8 +47,6 @@ export interface SetupOptions {
   skipDevnode?: boolean;
   /** Override devnode auto-block setting. When omitted, the config value is used. */
   autoBlock?: boolean;
-  /** Network name to connect to (default: "devnode"). */
-  network?: string;
   /**
    * Enable snapshot-based fast reset for the auto-started devnode. Requires the
    * standalone `aleo-devnode` backend; a temp storage directory is allocated
@@ -189,7 +187,7 @@ export interface ExecuteResult {
  */
 export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   const lre = opts.lre ?? (await createTestLre());
-  const { skipDevnode, autoBlock, network: networkName, snapshotReset } = opts;
+  const { skipDevnode, autoBlock, snapshotReset } = opts;
   let managedDevnode: ManagedDevnode | undefined;
   // Temp parent dir for snapshot-reset storage. The ledger lives at
   // `<parent>/devnode`; the binary writes snapshots to the sibling
@@ -232,7 +230,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
   // 2. Connect to the network
   const manager = lre.network as NetworkManager;
-  const connectedNetwork = networkName ?? lre.config.defaultNetwork;
+  const connectedNetwork = lre.config.defaultNetwork;
   const connection = await manager.connect(connectedNetwork);
 
   if (!managedDevnode && connection.type === "devnode") {
@@ -297,7 +295,6 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
       const taskResult = await lre.tasks.run("deploy", {
         program: programName,
-        network: connectedNetwork,
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,
         noCompile: deployOpts?.noCompile,

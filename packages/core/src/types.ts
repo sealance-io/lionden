@@ -127,7 +127,7 @@ export interface GlobalOptionDefinition {
 export interface TaskOption {
   readonly name: string;
   readonly description: string;
-  readonly type: "string" | "boolean" | "number";
+  readonly type: "string" | "number";
   readonly defaultValue?: unknown;
   readonly required?: boolean;
 }
