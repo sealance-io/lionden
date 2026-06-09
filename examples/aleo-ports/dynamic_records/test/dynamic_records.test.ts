@@ -43,6 +43,26 @@ import { createTokenRouter } from "../typechain/TokenRouter.js";
 
 const RUNTIME_IMPORTS = ["gold_token.aleo", "silver_token.aleo"] as const;
 
+// True when the test runner was invoked with `--prove` (LIONDEN_PROVE=true).
+//
+// Spending a *held* record (one minted in a prior transaction) by passing it as
+// a `dyn record` ROOT input is only valid on the devnode fast path, which skips
+// inclusion-proof generation. Under real proving, snarkVM must build a ledger-
+// inclusion proof for the root input, and a record's on-chain commitment binds
+// its originating program (e.g. silver_token.aleo/Token); at a different-program
+// root (token_router.aleo / external_token_demo.aleo) the circuit cannot
+// reconstruct that commitment, so the ledger reports it as non-existent and the
+// transition is rejected before confirmation. This is the V15 "a dynamic value
+// carried across transactions is only a view" rule — see
+// docs/research/dynamic-records-v15.md § Held Records And Inclusion Proofs.
+//
+// `route_transfer` / `dispatch_and_receipt` can only be called with a held
+// record (their record input is a `dyn record` parameter), so those flows are
+// asserted as fast-path successes when not proving and as V15 rejections when
+// proving. Flows that mint *inside* the execution (`demo_transfer`, etc.) never
+// cross a transaction boundary and prove cleanly in both modes.
+const PROVING = process.env["LIONDEN_PROVE"] === "true";
+
 async function deployDynamicRecords() {
   const ctx = await setup();
   try {
@@ -256,29 +276,65 @@ describe("dynamic_records runtime dispatch", () => {
     expect(callee?.rawOutputs).toHaveLength(1);
   });
 
-  it("route_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling", async () => {
-    const minted = await silver.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 1200n,
-      grade: 2n,
-    });
+  // route_transfer takes its token as a `dyn record` parameter, so it can only
+  // ever be called with a record held from a prior transaction. Without --prove
+  // the devnode fast path skips inclusion-proof generation and the held record
+  // is "spent", so the matcher recovers the materialized sibling. This is a
+  // fast-path convenience, not a real on-chain spend.
+  it.skipIf(PROVING)(
+    "route_transfer (devnode fast-path) surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling",
+    async () => {
+      const minted = await silver.withSigner(alice()).mint_custom.accepted({
+        owner: alice(),
+        amount: 1200n,
+        grade: 2n,
+      });
 
-    const accepted = await router.route_transfer.accepted({
-      token_program: Leo.identifier("silver_token"),
-      token: asSilverToken(await minted.outputs.decrypt(alice())),
-      to: bob(),
-    });
+      const accepted = await router.route_transfer.accepted({
+        token_program: Leo.identifier("silver_token"),
+        token: asSilverToken(await minted.outputs.decrypt(alice())),
+        to: bob(),
+      });
 
-    expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
-    expect(accepted.outputs.type).toBe("record_dynamic");
+      expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
+      expect(accepted.outputs.type).toBe("record_dynamic");
 
-    const transferred = await accepted.outputs
-      .match(asSilverToken.output.from("transfer", 0))
-      .decrypt(bob());
-    expect(transferred.owner).toBe(bob().address);
-    expect(transferred.amount).toBe(1200n);
-    expect(transferred.grade).toBe(2n);
-  });
+      const transferred = await accepted.outputs
+        .match(asSilverToken.output.from("transfer", 0))
+        .decrypt(bob());
+      expect(transferred.owner).toBe(bob().address);
+      expect(transferred.amount).toBe(1200n);
+      expect(transferred.grade).toBe(2n);
+    },
+  );
+
+  // Under real proving the same call is rejected before confirmation: the held
+  // record entering as a `dyn record` root input has no reconstructable on-chain
+  // commitment at the token_router.aleo root, so snarkVM cannot build its
+  // inclusion proof (the ledger reports the commitment as non-existent). See the
+  // PROVING note at the top of this file.
+  it.runIf(PROVING)(
+    "route_transfer with a held record is rejected under V15 proving (no spendable root commitment)",
+    async () => {
+      const minted = await silver.withSigner(alice()).mint_custom.accepted({
+        owner: alice(),
+        amount: 1200n,
+        grade: 2n,
+      });
+
+      await expect(
+        router.route_transfer.accepted({
+          token_program: Leo.identifier("silver_token"),
+          token: asSilverToken(await minted.outputs.decrypt(alice())),
+          to: bob(),
+        }),
+      ).rejects.toMatchObject({
+        kind: "TransitionSubmissionError",
+        programId: "token_router.aleo",
+        transition: "route_transfer",
+      });
+    },
+  );
 
   it("gold_beats_silver mints both sides internally and compares balances", async () => {
     const result = await router.gold_beats_silver.accepted({
@@ -412,35 +468,69 @@ describe("external_token_demo external + nested record outputs", () => {
     expect(callee?.rawOutputs).toHaveLength(1);
   });
 
-  it("dispatch_and_receipt: intermediate dyn-record dispatch does not poison the concrete final output", async () => {
-    const minted = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 700n,
-      purity: 9n,
-    });
+  // dispatch_and_receipt accepts the token as a root `dyn record` (a held
+  // record), forwards it into the concrete `transfer`, and emits a concrete
+  // Receipt. Without --prove the fast path skips inclusion proofs, so the held
+  // record is materialized and the final Receipt decrypts.
+  it.skipIf(PROVING)(
+    "dispatch_and_receipt (devnode fast-path): intermediate dyn-record dispatch does not poison the concrete final output",
+    async () => {
+      const minted = await gold.withSigner(alice()).mint_custom.accepted({
+        owner: alice(),
+        amount: 700n,
+        purity: 9n,
+      });
 
-    const accepted = await demo.withSigner(alice()).dispatch_and_receipt.accepted({
-      token_program: Leo.identifier("gold_token"),
-      token: asGoldToken(await minted.outputs.decrypt(alice())),
-      to: bob(),
-    });
+      const accepted = await demo.withSigner(alice()).dispatch_and_receipt.accepted({
+        token_program: Leo.identifier("gold_token"),
+        token: asGoldToken(await minted.outputs.decrypt(alice())),
+        to: bob(),
+      });
 
-    // Final Receipt has a real ciphertext on external_token_demo's own
-    // transition, even though the intermediate `gold_token.transfer` call
-    // returned a tuple whose dynamic member is id-only.
-    const receipt = await accepted.outputs.decrypt(bob());
-    expect(receipt.owner).toBe(bob().address);
-    expect(receipt.balance).toBe(700n);
+      // Final Receipt has a real ciphertext on external_token_demo's own
+      // transition, even though the intermediate `gold_token.transfer` call
+      // returned a tuple whose dynamic member is id-only.
+      const receipt = await accepted.outputs.decrypt(bob());
+      expect(receipt.owner).toBe(bob().address);
+      expect(receipt.balance).toBe(700n);
 
-    // The callee transfer transition is reachable and exposes the materialized
-    // Token at output index 0 (sibling concrete record). Presence check only —
-    // dedicated recovery flows are covered by the runtime-dispatch describe.
-    const transferCallee = accepted.transitions.find(
-      (t: { readonly programId: string; readonly transitionName: string }) =>
-        t.programId === "gold_token.aleo" && t.transitionName === "transfer",
-    );
-    expect(transferCallee).toBeDefined();
-  });
+      // The callee transfer transition is reachable and exposes the materialized
+      // Token at output index 0 (sibling concrete record). Presence check only —
+      // dedicated recovery flows are covered by the runtime-dispatch describe.
+      const transferCallee = accepted.transitions.find(
+        (t: { readonly programId: string; readonly transitionName: string }) =>
+          t.programId === "gold_token.aleo" && t.transitionName === "transfer",
+      );
+      expect(transferCallee).toBeDefined();
+    },
+  );
+
+  // Under real proving the held-record root input cannot be inclusion-proven at
+  // the external_token_demo.aleo root, so the whole transaction (including the
+  // concrete Receipt output) is rejected before confirmation. See the PROVING
+  // note at the top of this file.
+  it.runIf(PROVING)(
+    "dispatch_and_receipt with a held record is rejected under V15 proving (no spendable root commitment)",
+    async () => {
+      const minted = await gold.withSigner(alice()).mint_custom.accepted({
+        owner: alice(),
+        amount: 700n,
+        purity: 9n,
+      });
+
+      await expect(
+        demo.withSigner(alice()).dispatch_and_receipt.accepted({
+          token_program: Leo.identifier("gold_token"),
+          token: asGoldToken(await minted.outputs.decrypt(alice())),
+          to: bob(),
+        }),
+      ).rejects.toMatchObject({
+        kind: "TransitionSubmissionError",
+        programId: "external_token_demo.aleo",
+        transition: "dispatch_and_receipt",
+      });
+    },
+  );
 });
 
 describe("IdOnlyExternalRecordHandle .match negative cases", () => {
@@ -534,27 +624,26 @@ describe("IdOnlyExternalRecordHandle .match negative cases", () => {
 });
 
 describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
-  const gold = createGoldToken();
-  const silver = createSilverToken();
   const router = createTokenRouter({ imports: RUNTIME_IMPORTS });
   const alice = () => ctx!.accounts[0]!;
   const bob = () => ctx!.accounts[1]!;
 
   beforeAll(() => {
-    gold.connect(ctx!.lre);
-    silver.connect(ctx!.lre);
     router.connect(ctx!.lre);
   });
 
-  async function routeGold() {
-    const minted = await gold.withSigner(alice()).mint_custom.accepted({
+  // Produce an IdOnlyDynamicRecordHandle via `demo_transfer`, which mints the
+  // token *inside* the execution and routes it through `transfer`. Unlike
+  // `route_transfer` (a held-record / dyn-record-root spend), this proves
+  // cleanly, so these matcher-resolution negative cases run in both the
+  // fast-path and --prove lanes. The handle's callgraph contains
+  // `gold_token.aleo/mint` and `gold_token.aleo/transfer` plus the router's own
+  // `token_router.aleo/demo_transfer` root.
+  async function dynHandle() {
+    const accepted = await router.demo_transfer.accepted({
+      token_program: Leo.identifier("gold_token"),
       owner: alice(),
       amount: 11n,
-      purity: 7n,
-    });
-    const accepted = await router.route_transfer.accepted({
-      token_program: Leo.identifier("gold_token"),
-      token: asGoldToken(await minted.outputs.decrypt(alice())),
       to: bob(),
     });
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
@@ -562,7 +651,7 @@ describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
   }
 
   it("transition-not-found when the named callee isn't in the dyn handle's callgraph", async () => {
-    const handle = await routeGold();
+    const handle = await dynHandle();
     // Build a matcher pointed at a missing program; .from inherits that program id.
     const missingMatcher = createRecordOutputMatcher<unknown>({
       program: "missing.aleo",
@@ -578,7 +667,7 @@ describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
   });
 
   it("program-mismatch when the matcher points at a different program than the selected transition", async () => {
-    const handle = await routeGold();
+    const handle = await dynHandle();
     // Named .from(...) on the silver matcher targets silver_token.aleo/transfer,
     // which doesn't exist in the callgraph — that would surface
     // transition-not-found, not program-mismatch. To exercise program-mismatch
@@ -600,7 +689,7 @@ describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
   });
 
   it("not-a-ciphertext when the selector points at the router's own id-only output slot", async () => {
-    const handle = await routeGold();
+    const handle = await dynHandle();
     // The router's own transition at output index 0 is the dyn-record id-only
     // entry. Use a router-program matcher to bypass program-mismatch.
     const routerSelfMatcher = createRecordOutputMatcher<unknown>({
@@ -609,7 +698,7 @@ describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
       deserialize: (s: string) => s,
     });
     await expect(
-      handle.match(routerSelfMatcher.from("route_transfer", 0)).decrypt(bob()),
+      handle.match(routerSelfMatcher.from("demo_transfer", 0)).decrypt(bob()),
     ).rejects.toMatchObject({
       kind: "IdOnlyRecordResolutionError",
       reason: "not-a-ciphertext",
