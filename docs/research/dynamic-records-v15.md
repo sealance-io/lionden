@@ -141,6 +141,13 @@ concrete-record-typed `transfer` implementation in the same execution. A router
 that only reads `token.amount` and returns/mints from it without a static
 consume is not V15-valid as a root transaction.
 
+This satisfies the structural `ensure_records_exist` *verify* check, but it does
+not by itself make a *held* record spendable through the router — see [Held
+records and inclusion proofs](#held-records-and-inclusion-proofs-verify-vs-prove)
+below. A `route_transfer`-style function is provable only when the record it
+forwards is produced *inside the same execution* (mint-then-route), not when a
+record minted by a prior transaction is passed in as the root `dyn record`.
+
 `balance_of` is a read, and the rule turns on whether its input is a *root*
 record. The natural shape is a pure read:
 
@@ -182,6 +189,54 @@ authoritative spends, while `dyn record` belongs on read/routing surfaces that
 either forward into a concrete consumer or operate on records produced inside the
 execution.
 
+## Held Records And Inclusion Proofs (Verify Vs Prove)
+
+The `ensure_records_exist` rule above is a *verify-time, structural* check: it
+asks whether every non-static root record input connects to a static consume in
+the same callgraph. Passing it is necessary but **not sufficient** to actually
+execute a spend. Spending a record additionally requires a *prove-time*
+**ledger-inclusion proof**: snarkVM must show the consumed record's commitment is
+present in the ledger's record tree (the SDK fetches it via
+`GET /statePaths?commitments=<cm>`).
+
+A record's on-chain commitment binds its **originating program and record name**
+(e.g. `silver_token.aleo/Token`, fixed when the record was minted). That
+commitment can only be reconstructed when the spent record enters with that
+program identity available to the proving circuit:
+
+- A **concrete static record input** whose declared type is
+  `silver_token.aleo/Token` — the root circuit knows the binding (direct
+  `transfer(token: Token, ...)`).
+- A record **produced inside the same execution** (a `mint`/`transfer` output)
+  that is consumed before crossing the root boundary (`demo_transfer`,
+  `read_balance`, `issue_receipt`).
+
+A record that enters as a `dyn record` **root** input on a *different* program
+(`token_router.aleo`, `external_token_demo.aleo`) does **not** carry that
+binding at the root, so the circuit cannot reconstruct its commitment. Proving
+fails because the ledger has no matching commitment:
+
+```text
+GET /testnet/statePaths?commitments=<cm> -> 500
+Commitment '<cm>' does not exist
+```
+
+This is the concrete, prove-time face of the Core Rule's statement that *"a
+dynamic value carried across transactions is only a view … it does not give the
+next transaction a serial number or ledger commitment to spend."* A held record
+(minted by a prior transaction) routed as a `dyn record` root is unspendable
+under real proving, even though it passes the structural verify check.
+
+> ⚠️ The built-in devnode **fast path** (`buildDevnodeExecutionTransaction`,
+> used when the test runner is invoked **without** `--prove`) skips inclusion-
+> proof generation entirely, so these held-record-via-dyn-root flows *appear* to
+> succeed there. They do not represent a valid spend on a proving network. The
+> example encodes both contracts: `route_transfer` / `dispatch_and_receipt` are
+> asserted as fast-path successes without `--prove` and as rejections with
+> `--prove` (the surfaced error is currently the opaque
+> `TransitionSubmissionError: … JS callback Promise rejected:` — surfacing the
+> underlying `statePaths` cause is a tracked follow-up).
+
 ## LionDen Example And Typechain Surface
 
 `examples/aleo-ports/dynamic_records` is the canonical LionDen example for this
@@ -199,11 +254,18 @@ In that example:
   direct/root `balance_of` on a held token is rejected by V15 — a negative test
   (`direct balance_of on a held token is rejected by the V15 record-existence
   check`) asserts the exact error.
-- `token_router.aleo` forwards external `dyn record` inputs into the concrete
-  `TokenStandard@(token_program)::transfer(...)` callee, which materializes them
-  (`route_transfer`, `demo_transfer`). Its read functions (`read_balance`,
-  `gold_beats_silver`, `has_more`) take no root record input — they `mint`
-  internally and then read via the pure `balance_of`.
+- `token_router.aleo` forwards `dyn record` values into the concrete
+  `TokenStandard@(token_program)::transfer(...)` callee. `demo_transfer` mints
+  the token *inside* the execution and routes it, so it both passes the verify
+  check and proves cleanly. `route_transfer` takes the token as a root
+  `dyn record` parameter — it can only be called with a *held* record, which
+  passes the verify check but is **not provable** (see [Held records and
+  inclusion proofs](#held-records-and-inclusion-proofs-verify-vs-prove)); the
+  test asserts the fast-path success and the `--prove` rejection separately. Its
+  read functions (`read_balance`, `gold_beats_silver`, `has_more`) take no root
+  record input — they `mint` internally and then read via the pure `balance_of`.
+  `external_token_demo::dispatch_and_receipt` is the same held-record-via-dyn-root
+  shape and carries the same fast-path-vs-prove split.
 - Typechain helpers such as `asGoldToken(token)` and `asSilverToken(token)` turn
   a typed concrete token object into a `dyn record` input for router/external
   wrapper calls.
