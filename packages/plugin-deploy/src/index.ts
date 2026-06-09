@@ -103,11 +103,6 @@ const deployTask = task("deploy", "Deploy Aleo programs to a network")
     name: "export",
     description: "Export deployment bundle after deploying",
   })
-  .addOption({
-    name: "network",
-    type: "string",
-    description: "Target network (overrides default)",
-  })
   .setAction(deployAction)
   .build();
 
@@ -127,20 +122,10 @@ const upgradeTask = task("upgrade", "Upgrade a deployed Aleo program")
     name: "skipConfirm",
     description: "Skip waiting for transaction confirmation",
   })
-  .addOption({
-    name: "network",
-    type: "string",
-    description: "Target network (overrides default)",
-  })
   .setAction(upgradeAction)
   .build();
 
 const exportTask = task("export", "Export deployment addresses and ABIs for frontend consumption")
-  .addOption({
-    name: "network",
-    type: "string",
-    description: "Target network (overrides default)",
-  })
   .addOption({
     name: "out",
     type: "string",
@@ -161,11 +146,6 @@ const recipeTask = task("recipe", "Run a deployment recipe")
     type: "string",
     description: "Named export to run (default: 'default')",
   })
-  .addOption({
-    name: "network",
-    type: "string",
-    description: "Target network (overrides default)",
-  })
   .addFlag({
     name: "noCompile",
     description: "Skip compilation before running recipe",
@@ -177,7 +157,7 @@ async function exportAction(
   args: Record<string, unknown>,
   lre: LionDenRuntimeEnvironment,
 ): Promise<unknown> {
-  const networkName = (args["network"] as string | undefined) ?? lre.config.defaultNetwork;
+  const networkName = lre.config.defaultNetwork;
   const outPath = args["out"] as string | undefined;
 
   const manager = lre.deployments as DeploymentManager | null;

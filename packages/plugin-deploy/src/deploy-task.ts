@@ -38,8 +38,6 @@ export interface DeployOptions {
   priorityFee?: number;
   /** Skip waiting for transaction confirmation */
   skipConfirm?: boolean;
-  /** Target network (overrides defaultNetwork) */
-  network?: string;
   /** Skip compilation before deploying (artifacts must already exist) */
   noCompile?: boolean;
   /** Run pre-flight checks only — do not deploy */
@@ -84,7 +82,6 @@ export async function deployAction(
     program: args["program"] as string | undefined,
     priorityFee: args["priorityFee"] as number | undefined,
     skipConfirm: args["skipConfirm"] as boolean | undefined,
-    network: args["network"] as string | undefined,
     noCompile: args["noCompile"] as boolean | undefined,
     preflight: args["preflight"] as boolean | undefined,
     dryRun: args["dryRun"] as boolean | undefined,
@@ -128,7 +125,7 @@ export async function deployAction(
   const targetIds = resolveDeployTargets(candidateIds, programMap, graph, options.program);
 
   // 5. Connect to network
-  const networkName = options.network ?? config.defaultNetwork;
+  const networkName = config.defaultNetwork;
   const networkConfig = config.networks[networkName];
   if (!networkConfig) {
     throw new DeployError(

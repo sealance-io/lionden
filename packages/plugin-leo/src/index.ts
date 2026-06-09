@@ -88,12 +88,7 @@ const configHooks: ConfigHookHandlers = {
 // ---------------------------------------------------------------------------
 
 const compileTask = task("compile", "Compile Leo programs and generate TypeScript bindings")
-  .addOption({
-    name: "force",
-    type: "boolean",
-    defaultValue: false,
-    description: "Force recompile, ignoring cache",
-  })
+  .addFlag({ name: "force", description: "Force recompile, ignoring cache" })
   .addFlag({ name: "noTypechain", description: "Skip TypeScript binding generation" })
   .addOption({
     name: "program",

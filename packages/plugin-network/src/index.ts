@@ -85,12 +85,6 @@ const nodeTask = task("node", "Start a local Aleo devnode")
   .addFlag({ name: "manualBlocks", description: "Disable automatic block creation" })
   .addFlag({ name: "quiet", description: "Suppress devnode log output" })
   .addOption({
-    name: "network",
-    type: "string",
-    description: "Aleo network (testnet, mainnet, canary). Leo backend only.",
-    defaultValue: "testnet",
-  })
-  .addOption({
     name: "persist",
     type: "string",
     description: "Persist the ledger to this directory (standalone aleo-devnode only)",
@@ -100,12 +94,11 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     description: "Clear the persist directory before starting (requires --persist)",
   })
   .setAction(async (args, lre) => {
-    const port = args["port"] as number;
-    const manualBlocks = args["manualBlocks"] as boolean;
-    const quiet = args["quiet"] as boolean;
-    const network = args["network"] as "testnet" | "mainnet" | "canary";
-    const persist = args["persist"] as string | undefined;
-    const clearStorage = args["clearStorage"] as boolean;
+    const port = args.port as number;
+    const manualBlocks = args.manualBlocks as boolean;
+    const quiet = args.quiet as boolean;
+    const persist = args.persist as string | undefined;
+    const clearStorage = args.clearStorage as boolean;
 
     if (clearStorage && !persist) {
       throw new Error("--clear-storage requires --persist <dir>.");
@@ -120,6 +113,7 @@ const nodeTask = task("node", "Start a local Aleo devnode")
       defaultNet?.type === "devnode"
         ? defaultNet
         : Object.values(lre.config.networks).find((n) => n.type === "devnode");
+    const network = devnodeNet?.network;
     const consensusHeights =
       devnodeNet?.type === "devnode" ? devnodeNet.consensusHeights : undefined;
     const storagePath =
@@ -195,26 +189,20 @@ const runTask = task("run", "Execute a TypeScript script with LRE context")
     description: "Path to the script file",
     required: true,
   })
-  .addOption({
-    name: "network",
-    type: "string",
-    description: "Network to connect to (overrides default)",
-  })
   .setAction(async (args, lre) => {
     // Positional arg is passed via _positional array from CLI parser
-    const positionals = args["_positional"] as string[] | undefined;
-    const scriptPath = positionals?.[0] ?? (args["script"] as string | undefined);
+    const positionals = args._positional as string[] | undefined;
+    const scriptPath = positionals?.[0] ?? (args.script as string | undefined);
 
     if (!scriptPath) {
-      throw new Error("Script path is required. Usage: lionden run <script> [--network <name>]");
+      throw new Error("Script path is required. Usage: lionden run <script>");
     }
 
-    const networkName = args["network"] as string | undefined;
-
-    // Connect to the specified or default network
+    // Connect to the configured default network. The global --network option
+    // updates lre.config.defaultNetwork before the LRE is created.
     const manager = lre.network as NetworkManagerImpl;
     if (manager && typeof manager.connect === "function") {
-      await manager.connect(networkName);
+      await manager.connect();
     }
 
     // Resolve the script path relative to project root

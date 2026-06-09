@@ -23,15 +23,15 @@ describe("plugin-leo", () => {
     expect(pluginLeo.hookHandlers!.config).toBeDefined();
   });
 
-  it("compile task has force, noTypechain, and program options", () => {
+  it("compile task has force/noTypechain flags and program option", () => {
     const compileTask = pluginLeo.tasks?.find((t) => t.id === "compile");
     expect(compileTask).toBeDefined();
 
     const optionNames = compileTask!.options?.map((o) => o.name) ?? [];
-    expect(optionNames).toContain("force");
     expect(optionNames).toContain("program");
 
     const flagNames = compileTask!.flags?.map((f) => f.name) ?? [];
+    expect(flagNames).toContain("force");
     expect(flagNames).toContain("noTypechain");
   });
 

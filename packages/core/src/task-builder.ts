@@ -1,4 +1,4 @@
-import { camelToKebab } from "./arg-names.js";
+import { getPublicArgumentNames, getReservedBuiltInGlobalArgumentNames } from "./arg-names.js";
 import {
   ArgumentType,
   type TaskAction,
@@ -17,7 +17,7 @@ export { ArgumentType };
  * @example
  * ```ts
  * const compileTask = task("compile", "Compile Leo programs")
- *   .addOption({ name: "force", type: "boolean", defaultValue: false, description: "Force recompile" })
+ *   .addFlag({ name: "force", description: "Force recompile" })
  *   .addFlag({ name: "noTypechain", description: "Skip TypeScript binding generation" })
  *   .setAction(async (args, lre) => { ... })
  *   .build();
@@ -34,6 +34,7 @@ export class TaskBuilder {
     string,
     { readonly kind: "option" | "flag" | "positional argument"; readonly name: string }
   >();
+  private readonly _reservedBuiltInGlobalNames = getReservedBuiltInGlobalArgumentNames();
 
   constructor(id: string, description: string) {
     this._id = id;
@@ -41,12 +42,19 @@ export class TaskBuilder {
   }
 
   addOption(option: TaskOption): this {
+    if ((option as { type?: unknown }).type === "boolean") {
+      throw new Error(
+        `Task "${this._id}" option "${option.name}" uses boolean type. Boolean task arguments must be registered with addFlag().`,
+      );
+    }
+    this.validateReservedBuiltInGlobalName("option", option.name);
     this.registerArgumentName("option", option.name);
     this._options.push(option);
     return this;
   }
 
   addFlag(flag: TaskFlag): this {
+    this.validateReservedBuiltInGlobalName("flag", flag.name);
     this.registerArgumentName("flag", flag.name);
     this._flags.push(flag);
     return this;
@@ -99,11 +107,16 @@ export class TaskBuilder {
       this._argumentNames.set(publicName, { kind, name });
     }
   }
-}
 
-function getPublicArgumentNames(name: string): string[] {
-  const names = new Set([name, camelToKebab(name)]);
-  return [...names];
+  private validateReservedBuiltInGlobalName(kind: "option" | "flag", name: string): void {
+    for (const publicName of getPublicArgumentNames(name)) {
+      if (this._reservedBuiltInGlobalNames.has(publicName)) {
+        throw new Error(
+          `Task "${this._id}" ${kind} "${name}" conflicts with built-in global option "--${publicName}"`,
+        );
+      }
+    }
+  }
 }
 
 /**

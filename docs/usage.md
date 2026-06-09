@@ -367,7 +367,7 @@ lionden run scripts/deploy.ts
 lionden run scripts/deploy.ts --network testnet
 ```
 
-The script's network defaults to `config.defaultNetwork` (or `--network` if provided). The LRE exposes:
+The script's network defaults to `config.defaultNetwork` (or the global `--network` if provided). The LRE exposes:
 
 - `lre.config` — fully resolved config
 - `lre.tasks.run(id, args?)` — invoke any registered task

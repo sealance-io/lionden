@@ -14,10 +14,9 @@ describe("task builder", () => {
   it("builds a task definition", () => {
     const def = task("compile", "Compile Leo programs")
       .addOption({
-        name: "force",
-        type: "boolean",
-        defaultValue: false,
-        description: "Force recompile",
+        name: "program",
+        type: "string",
+        description: "Compile one program",
       })
       .addFlag({ name: "noTypechain", description: "Skip codegen" })
       .setAction(async () => {})
@@ -29,6 +28,33 @@ describe("task builder", () => {
     expect(def.flags).toHaveLength(1);
   });
 
+  it("throws on boolean task options", () => {
+    expect(() =>
+      task("compile", "").addOption({
+        name: "force",
+        type: "boolean",
+        description: "",
+      } as never),
+    ).toThrow(
+      'Task "compile" option "force" uses boolean type. Boolean task arguments must be registered with addFlag().',
+    );
+  });
+
+  it("throws on reserved built-in global option names", () => {
+    expect(() =>
+      task("deploy", "").addOption({ name: "network", type: "string", description: "" }),
+    ).toThrow('Task "deploy" option "network" conflicts with built-in global option "--network"');
+  });
+
+  it("throws on reserved built-in global aliases", () => {
+    expect(() => task("test", "").addFlag({ name: "help", description: "" })).toThrow(
+      'Task "test" flag "help" conflicts with built-in global option "--help"',
+    );
+    expect(() => task("test", "").addFlag({ name: "h", description: "" })).toThrow(
+      'Task "test" flag "h" conflicts with built-in global option "--h"',
+    );
+  });
+
   it("throws if no action set", () => {
     expect(() => task("x", "").build()).toThrow('Task "x" has no action set');
   });
@@ -36,7 +62,7 @@ describe("task builder", () => {
   it("throws on duplicate option names", () => {
     expect(() =>
       task("deploy", "")
-        .addOption({ name: "force", type: "boolean", description: "" })
+        .addOption({ name: "force", type: "string", description: "" })
         .addOption({ name: "force", type: "string", description: "" }),
     ).toThrow('Task "deploy" option "force" conflicts with existing option "force"');
   });
@@ -44,7 +70,7 @@ describe("task builder", () => {
   it("throws on conflicting option and flag names", () => {
     expect(() =>
       task("deploy", "")
-        .addOption({ name: "force", type: "boolean", description: "" })
+        .addOption({ name: "force", type: "string", description: "" })
         .addFlag({ name: "force", description: "" }),
     ).toThrow('Task "deploy" flag "force" conflicts with existing option "force"');
   });
@@ -53,7 +79,7 @@ describe("task builder", () => {
     expect(() =>
       task("deploy", "")
         .addFlag({ name: "skipConfirm", description: "" })
-        .addOption({ name: "skip-confirm", type: "boolean", description: "" }),
+        .addOption({ name: "skip-confirm", type: "string", description: "" }),
     ).toThrow('Task "deploy" option "skip-confirm" conflicts with existing flag "skipConfirm"');
   });
 
@@ -67,21 +93,21 @@ describe("task builder", () => {
 
   it("snapshots parameter arrays when building task definitions", () => {
     const builder = task("compile", "")
-      .addOption({ name: "force", type: "boolean", description: "" })
-      .addFlag({ name: "verbose", description: "" })
-      .addPositionalArgument({ name: "program", type: ArgumentType.STRING })
+      .addOption({ name: "program", type: "string", description: "" })
+      .addFlag({ name: "quiet", description: "" })
+      .addPositionalArgument({ name: "target", type: ArgumentType.STRING })
       .setAction(async () => {});
 
     const firstDef = builder.build();
 
     builder
       .addOption({ name: "timeout", type: "number", description: "" })
-      .addFlag({ name: "quiet", description: "" })
+      .addFlag({ name: "loud", description: "" })
       .addPositionalArgument({ name: "profile", type: ArgumentType.STRING });
 
-    expect(firstDef.options?.map((option) => option.name)).toEqual(["force"]);
-    expect(firstDef.flags?.map((flag) => flag.name)).toEqual(["verbose"]);
-    expect(firstDef.positionalArguments?.map((arg) => arg.name)).toEqual(["program"]);
+    expect(firstDef.options?.map((option) => option.name)).toEqual(["program"]);
+    expect(firstDef.flags?.map((flag) => flag.name)).toEqual(["quiet"]);
+    expect(firstDef.positionalArguments?.map((arg) => arg.name)).toEqual(["target"]);
   });
 });
 
@@ -103,12 +129,12 @@ describe("task runner", () => {
     const action = vi.fn(async (args: Record<string, unknown>) => args);
     const def = task("test", "")
       .addOption({
-        name: "force",
-        type: "boolean",
-        defaultValue: false,
+        name: "program",
+        type: "string",
+        defaultValue: "hello",
         description: "",
       })
-      .addFlag({ name: "verbose", description: "" })
+      .addFlag({ name: "quiet", description: "" })
       .setAction(action)
       .build();
 
@@ -117,7 +143,7 @@ describe("task runner", () => {
     runner.setLre(mockLre);
 
     const result = (await runner.run("test")) as Record<string, unknown>;
-    expect(result).toEqual({ force: false, verbose: false });
+    expect(result).toEqual({ program: "hello", quiet: false });
   });
 
   it("throws on unknown task", async () => {
@@ -177,8 +203,8 @@ describe("task runner", () => {
       unknown
     >;
     // Named value is bound, and _positional stays populated for back-compat.
-    expect(result["script"]).toBe("deploy.ts");
-    expect(result["_positional"]).toEqual(["deploy.ts"]);
+    expect(result.script).toBe("deploy.ts");
+    expect(result._positional).toEqual(["deploy.ts"]);
   });
 
   it("throws when a required positional argument is missing", async () => {
@@ -210,7 +236,7 @@ describe("task runner", () => {
     runner.setLre(mockLre);
 
     const result = (await runner.run("run", { script: "deploy.ts" })) as Record<string, unknown>;
-    expect(result["script"]).toBe("deploy.ts");
+    expect(result.script).toBe("deploy.ts");
   });
 });
 

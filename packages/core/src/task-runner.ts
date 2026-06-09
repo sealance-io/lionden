@@ -1,4 +1,4 @@
-import { camelToKebab } from "./arg-names.js";
+import { getPublicArgumentNames } from "./arg-names.js";
 import type {
   LionDenRuntimeEnvironment,
   TaskAction,
@@ -145,17 +145,13 @@ export class TaskRunnerImpl implements TaskRunner {
     // Build canonical name lookup: kebab-case → camelCase
     const canonicalMap = new Map<string, { name: string; type?: string }>();
     for (const opt of definition.options ?? []) {
-      canonicalMap.set(opt.name, { name: opt.name, type: opt.type });
-      const kebab = camelToKebab(opt.name);
-      if (kebab !== opt.name) {
-        canonicalMap.set(kebab, { name: opt.name, type: opt.type });
+      for (const publicName of getPublicArgumentNames(opt.name)) {
+        canonicalMap.set(publicName, { name: opt.name, type: opt.type });
       }
     }
     for (const flag of definition.flags ?? []) {
-      canonicalMap.set(flag.name, { name: flag.name, type: "boolean" });
-      const kebab = camelToKebab(flag.name);
-      if (kebab !== flag.name) {
-        canonicalMap.set(kebab, { name: flag.name, type: "boolean" });
+      for (const publicName of getPublicArgumentNames(flag.name)) {
+        canonicalMap.set(publicName, { name: flag.name, type: "boolean" });
       }
     }
 

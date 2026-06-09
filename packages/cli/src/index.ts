@@ -9,7 +9,12 @@ import {
 } from "@lionden/core";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
 import { logger } from "./output/logger.js";
-import { dispatchTask, parseArgs, printHelp } from "./task-dispatch.js";
+import {
+  dispatchTask,
+  parseArgs,
+  printHelp,
+  validateTaskGlobalOptionCollisions,
+} from "./task-dispatch.js";
 
 const VERSION = "0.1.0";
 
@@ -67,10 +72,9 @@ export async function main(): Promise<void> {
     projectRoot,
   );
 
-  // Override default network from CLI (accepts --network before or after the task)
-  const taskNetwork =
-    typeof parsed.taskArgs.network === "string" ? parsed.taskArgs.network : undefined;
-  const networkOverride = parsed.globalArgs.network || taskNetwork;
+  // Override default network from CLI. --network is global-only.
+  const networkOverride =
+    typeof parsed.globalArgs.network === "string" ? parsed.globalArgs.network : undefined;
   const config = networkOverride
     ? { ...resolvedConfig, defaultNetwork: networkOverride }
     : resolvedConfig;
@@ -82,18 +86,15 @@ export async function main(): Promise<void> {
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   const globalOptions: Record<string, unknown> = {};
   const lre = createLre({ config, plugins, globalOptions, configTasks });
+  validateTaskGlobalOptionCollisions(lre);
 
-  // Re-parse WITH task metadata so a boolean global placed after a task name is
-  // classified against that task's own flags/options first.
+  // Re-parse WITH task metadata so named args are routed by schema rather than
+  // by whether they appeared before or after the task name.
   parsed = parseArgs(process.argv.slice(2), globalOptionDefs, (taskId) =>
     lre.tasks.getTaskDefinition(taskId),
   );
 
-  // Seed global option values from the task-aware parse. Seeding from the earlier
-  // task-unaware parse would misclassify a task-local boolean flag — e.g.
-  // `lionden test --prove`, where `prove` is the test task's own flag — as a
-  // global, wrongly populating lre.globalOptions and forcing deploy/upgrade prove
-  // behavior. See cli-dispatch.contract.test.ts.
+  // Seed global option values from the task-aware parse.
   for (const [name, { definition }] of globalOptionDefs) {
     if (name in parsed.globalArgs) {
       globalOptions[name] = (parsed.globalArgs as Record<string, unknown>)[name];

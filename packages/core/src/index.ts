@@ -1,5 +1,11 @@
 // Types
 
+export {
+  BUILT_IN_GLOBAL_ARGUMENT_NAMES,
+  camelToKebab,
+  getPublicArgumentNames,
+  getReservedBuiltInGlobalArgumentNames,
+} from "./arg-names.js";
 export type { ResolveConfigResult } from "./config-resolution.js";
 // Config resolution
 export { ConfigResolutionError, resolveConfig } from "./config-resolution.js";
