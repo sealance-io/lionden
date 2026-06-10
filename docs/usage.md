@@ -126,7 +126,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 | `leoVersion` | Compatibility line — `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.1.0"` |
 | `leoBinary` | Path to the Leo CLI to invoke. Tilde-expanded. | `"leo"` from `PATH` |
 | `programsDir` / `artifactsDir` / `typechainDir` | Source/output layout | `programs` / `artifacts` / `typechain` |
-| `defaultNetwork` | Selected by tasks when no `--network` is passed | `"devnode"` |
+| `defaultNetwork` | Named `networks` entry selected by tasks when no global `--network <name>` is passed | `"devnode"` |
 | `networks` | Map of named network configs (`devnode` or `http`) | implicit `devnode` |
 | `namedAccounts` | Per-role account values, optionally per network ([details](deployment.md#named-accounts)) | `{}` |
 | `compiler` | `leo build` knobs: `enableDce`, `conditionalBlockMaxDepth`, `buildTests`, `extraFlags` | sensible defaults |
@@ -334,7 +334,6 @@ For ad-hoc development outside of tests, run a managed devnode:
 lionden node                  # http://127.0.0.1:3030, auto-block on
 lionden node --port 4040
 lionden node --manual-blocks  # block production driven by `leo devnode advance`
-lionden node --network mainnet
 ```
 
 The process stays alive until `Ctrl-C`. Auto-block produces blocks automatically (the default); `--manual-blocks` requires you to advance manually with the Leo CLI.
@@ -384,7 +383,7 @@ This is the same interface tests use through `ctx.lre`.
 ```bash
 lionden deploy                            # compile + deploy all programs
 lionden deploy --program token            # compile + deploy token (and its local deps)
-lionden deploy --network testnet
+lionden deploy --network testnet          # select config.networks.testnet
 lionden deploy --no-compile               # use existing artifacts
 lionden deploy --preflight                # validation only — no compile, no broadcast
 lionden deploy --dry-run                  # build but don't broadcast (devnode only)
