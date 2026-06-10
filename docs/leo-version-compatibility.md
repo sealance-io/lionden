@@ -61,7 +61,9 @@ networks: {
 
 The value is comma-delimited block heights at which each consensus version activates (length = target version). LionDen does not default this field — it matches the Leo CLI's own default behavior. V4 projects do not need it. V3.5 projects deploying constructor programs must set it explicitly.
 
-`consensusHeights` and `network` selection apply to the **Leo backend only**. The standalone `aleo-devnode` backend (`provider: "standalone"`) is TestnetV0-only with consensus heights compiled in, so it rejects a non-`testnet` `network` and any `consensusHeights`. See the backend-selection section of [`network.md`](network.md#devnode-lifecycle).
+`consensusHeights` applies to the **Leo backend only**. The standalone `aleo-devnode` backend (`provider: "standalone"`) is TestnetV0-only with consensus heights compiled in, so it rejects any `consensusHeights`.
+
+Both managed devnode backends should be treated as testnet-like local chains. The standalone backend rejects a non-`testnet` `network`; the Leo backend may accept a `network` field for CLI compatibility, but the local devnode still behaves as testnet in practice. Use an `http` network entry when you need to target a real testnet, mainnet, canary, or a user-operated node. See the backend-selection section of [`network.md`](network.md#devnode-lifecycle).
 
 ## Compatibility Matrix
 

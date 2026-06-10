@@ -52,7 +52,7 @@ Current behavior:
 - resolves dependency order
 - reads compiled programs and ABIs from the LRE artifact store
 - deploys either all compiled programs or a selected program plus its transitive local program dependencies
-- connects to the requested network or the default network
+- connects to the selected config network (`config.defaultNetwork`, possibly overridden by the global CLI `--network <name>`)
 - runs deploy preflight before broadcasting
 - records deployment state after successful deployment (in memory for ephemeral networks, on disk for non-ephemeral networks)
 - fires the `deployment.programDeployed` hook after successful deployment

@@ -72,7 +72,9 @@ The backend is chosen by `resolveDevnodeBackend` (`packages/network/src/devnode-
 - When `provider` is omitted, the backend is **auto-detected** at start time: if `aleo-devnode --version` runs, the standalone backend is used; otherwise it falls back to the Leo CLI. (If you have `aleo-devnode` installed but want the bundled devnode, pin `provider: "leo"`.)
 - Standalone-only inputs — an explicit `binary`, `storagePath`, `clearStorageOnStart`, or the `--persist` flag — **force** the standalone backend. If it is unavailable (or `provider: "leo"` is pinned), startup fails with a clear error rather than silently dropping the feature.
 
-The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `consensusHeights` is rejected (at config validation for an explicit `provider: "standalone"`, and before spawn for the auto-detected case). `consensusHeights` and `--network` apply to the Leo backend only.
+The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `consensusHeights` is rejected (at config validation for an explicit `provider: "standalone"`, and before spawn for the auto-detected case).
+
+The Leo CLI backend also behaves as a testnet devnode in practice. LionDen's `network` field is retained for CLI compatibility and may be forwarded to `leo devnode start` when it is not `"testnet"`, but callers should not rely on Leo devnode as a real mainnet/canary/devnet simulator: changing the configured route name does not make the local chain mainnet/canary/devnet. `consensusHeights` applies to the Leo backend only.
 
 Leo 4.1 adds its own devnode persistence support, but LionDen does not enable or wrap it yet. Persistence and snapshot/restore remain standalone-backend-only in this repo.
 
@@ -81,7 +83,8 @@ Devnode network config fields:
 | Field | Backend | Meaning |
 | --- | --- | --- |
 | `socketAddr`, `autoBlock`, `verbosity`, `genesisPath`, `privateKey` | both | REST bind address, block mode, log level, genesis, validator key |
-| `network`, `consensusHeights` | leo | network selection; consensus heights (Leo v3.5 constructor programs) |
+| `network` | leo | retained for Leo CLI compatibility; the managed Leo devnode still behaves as testnet |
+| `consensusHeights` | leo | consensus heights (Leo v3.5 constructor programs) |
 | `provider` | both | `"leo"` / `"standalone"` / omit for auto-detect |
 | `binary` | standalone | path to the `aleo-devnode` binary (`leoBinary` is the Leo path) |
 | `storagePath` | standalone | persistent RocksDB ledger dir (`--storage`); enables snapshot/restore |
