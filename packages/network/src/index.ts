@@ -40,6 +40,12 @@ export {
   type SdkRuntimeMetadata,
   type SignerSdkObjects,
 } from "./sdk-adapter.js";
+export {
+  captureSdkCall,
+  type SdkCallContext,
+  SdkDiagnostics,
+  type SdkTransportFailure,
+} from "./sdk-diagnostics.js";
 export { selectMatchingTransition } from "./transition-selector.js";
 export type {
   ConfirmationTimeoutStage,
@@ -56,6 +62,7 @@ export type {
   NetworkConnection,
   NetworkManager,
   RawTransitionOutput,
+  SdkExecutionContext,
   Signer,
   TransitionCallResult,
   TransitionRejectedContext,
@@ -64,6 +71,7 @@ export type {
 export {
   LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
+  SdkExecutionError,
   TransitionRejectedError,
   TransitionSelectionError,
 } from "./types.js";

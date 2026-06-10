@@ -6,6 +6,7 @@
  * constructors from Leo source, and broadcasts through a mocked NetworkConnection.
  */
 
+import { SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeployError, type DeployTaskResult, deployAction } from "./deploy-task.js";
@@ -57,6 +58,7 @@ describe("deploy orchestration contract", () => {
       account: {
         address: () => ({ to_string: () => "aleo1testdeployer" }),
       },
+      diagnostics: new SdkDiagnostics(),
     });
   });
 
@@ -219,6 +221,7 @@ describe("deploy orchestration contract", () => {
       account: {
         address: () => ({ to_string: () => "aleo1testdeployer" }),
       },
+      diagnostics: new SdkDiagnostics(),
     });
     const { lre } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },

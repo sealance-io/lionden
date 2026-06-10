@@ -449,9 +449,8 @@ interface BuildUpgradeOptions {
 async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<string> {
   const { programId, aleoSource, connection, fee, privateFee, edition, signerPrivateKey } = opts;
 
-  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } = await import(
-    "@lionden/network"
-  );
+  const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
+    await import("@lionden/network");
 
   if (connection.type === "devnode") {
     await initConsensusHeights();
@@ -471,11 +470,14 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
   });
 
   if (connection.type === "devnode" && !opts.prove) {
-    const tx = await sdk.programManager.buildDevnodeUpgradeTransaction({
-      program: aleoSource,
-      priorityFee: fee,
-      privateFee,
-    });
+    // Only the build is wrapped; broadcast surfaces its own HTTP error.
+    const tx = await captureSdkCall(sdk.diagnostics, { operation: "upgrade", programId }, () =>
+      sdk.programManager.buildDevnodeUpgradeTransaction({
+        program: aleoSource,
+        priorityFee: fee,
+        privateFee,
+      }),
+    );
 
     return connection.broadcastTransaction(tx);
   }
@@ -483,11 +485,13 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
   // Standard upgrade — use buildUpgradeTransaction + manual broadcast
   const pm = sdk.programManager as any;
   if (typeof pm.buildUpgradeTransaction === "function") {
-    const tx = await pm.buildUpgradeTransaction({
-      program: aleoSource,
-      priorityFee: fee,
-      privateFee,
-    });
+    const tx = await captureSdkCall(sdk.diagnostics, { operation: "upgrade", programId }, () =>
+      pm.buildUpgradeTransaction({
+        program: aleoSource,
+        priorityFee: fee,
+        privateFee,
+      }),
+    );
     return connection.broadcastTransaction(tx);
   }
 
@@ -500,7 +504,9 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
 
   // Fallback: try legacy upgrade() if available on older SDK versions
   if (typeof pm.upgrade === "function") {
-    return pm.upgrade(aleoSource, fee, edition);
+    return captureSdkCall(sdk.diagnostics, { operation: "upgrade", programId }, () =>
+      pm.upgrade(aleoSource, fee, edition),
+    );
   }
 
   throw new DeployError(

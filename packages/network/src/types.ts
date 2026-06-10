@@ -1,5 +1,6 @@
 import type { AleoNetwork, NamedAccounts } from "@lionden/config";
 import type { SdkEgressPolicy } from "./sdk-adapter.js";
+import type { SdkTransportFailure } from "./sdk-diagnostics.js";
 
 // ---------------------------------------------------------------------------
 // Transaction types
@@ -153,6 +154,44 @@ export class LocalVmExecutionError extends Error {
     this.name = "LocalVmExecutionError";
     this.programId = context.programId;
     this.transitionName = context.transitionName;
+  }
+}
+
+export interface SdkExecutionContext {
+  readonly operation: "execute" | "local" | "deploy" | "upgrade";
+  readonly programId: string;
+  readonly transitionName?: string;
+  /** Transport failures captured during the failed SDK build/prove call. */
+  readonly diagnostics: readonly SdkTransportFailure[];
+  readonly cause?: unknown;
+}
+
+/**
+ * Thrown by `captureSdkCall(...)` when an SDK build/prove call fails and either
+ * a transport-level state-query failure was captured or the thrown value is an
+ * opaque WASM abort. The `message` surfaces the underlying HTTP state-query
+ * failure (endpoint + status + body); the original opaque error is preserved at
+ * `.cause`, and the full transport-failure snapshot at `.diagnostics`.
+ *
+ * Generated typechain wraps this into `TransitionSubmissionError` using its
+ * `.message`, so the descriptive cause flows through automatically (reachable
+ * at `.cause.cause`). Already-descriptive errors are never wrapped in this
+ * class — see `captureSdkCall`.
+ */
+export class SdkExecutionError extends Error {
+  readonly kind = "SdkExecutionError" as const;
+  readonly operation: "execute" | "local" | "deploy" | "upgrade";
+  readonly programId: string;
+  readonly transitionName?: string;
+  readonly diagnostics: readonly SdkTransportFailure[];
+
+  constructor(message: string, context: SdkExecutionContext) {
+    super(message, context.cause === undefined ? undefined : { cause: context.cause });
+    this.name = "SdkExecutionError";
+    this.operation = context.operation;
+    this.programId = context.programId;
+    this.transitionName = context.transitionName;
+    this.diagnostics = context.diagnostics;
   }
 }
 

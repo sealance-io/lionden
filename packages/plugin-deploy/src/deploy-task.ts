@@ -621,9 +621,8 @@ export async function buildDeployTransaction(opts: BuildDeployOptions): Promise<
     );
   }
 
-  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } = await import(
-    "@lionden/network"
-  );
+  const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
+    await import("@lionden/network");
 
   await initConsensusHeights();
   if (!opts.prove) {
@@ -640,7 +639,9 @@ export async function buildDeployTransaction(opts: BuildDeployOptions): Promise<
     egressPolicy: opts.egressPolicy,
   });
 
-  return buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts);
+  return captureSdkCall(sdk.diagnostics, { operation: "deploy", programId: opts.programId }, () =>
+    buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts),
+  );
 }
 
 type DeploymentProgramManager = {
@@ -683,9 +684,8 @@ async function buildDevnodeDeploymentTransactionForMode(
 async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
   const { aleoSource, connection, fee, privateFee } = opts;
 
-  const { createSdkObjects, checkDevnodeSdkSupport, initConsensusHeights } = await import(
-    "@lionden/network"
-  );
+  const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
+    await import("@lionden/network");
 
   const signerKey = opts.signerPrivateKey ?? connection.privateKey;
 
@@ -705,7 +705,12 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
       egressPolicy: opts.egressPolicy,
     });
 
-    const tx = await buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts);
+    // Only the build is wrapped; broadcast surfaces its own HTTP error.
+    const tx = await captureSdkCall(
+      sdk.diagnostics,
+      { operation: "deploy", programId: opts.programId },
+      () => buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts),
+    );
 
     return connection.broadcastTransaction(tx);
   }
@@ -721,7 +726,9 @@ async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
     egressPolicy: opts.egressPolicy,
   });
 
-  return sdk.programManager.deploy(aleoSource, fee, privateFee);
+  return captureSdkCall(sdk.diagnostics, { operation: "deploy", programId: opts.programId }, () =>
+    sdk.programManager.deploy(aleoSource, fee, privateFee),
+  );
 }
 
 // ---------------------------------------------------------------------------

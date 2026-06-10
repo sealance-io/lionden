@@ -35,9 +35,11 @@ vi.mock("./sdk-adapter.js", () => ({
 }));
 
 import { AleoConnection } from "./connection.js";
+import { SdkDiagnostics } from "./sdk-diagnostics.js";
 import {
   LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
+  SdkExecutionError,
   TransitionRejectedError,
   TransitionSelectionError,
 } from "./types.js";
@@ -166,6 +168,7 @@ describe("AleoConnection", () => {
       programManagerBase: mockProgramManagerBase,
       keyProvider: {},
       recordProvider: {},
+      diagnostics: new SdkDiagnostics(),
     });
   });
 
@@ -307,6 +310,7 @@ describe("AleoConnection", () => {
         },
         recordProvider: {},
         programManagerBase: { kind: "signer-base" },
+        diagnostics: new SdkDiagnostics(),
       });
 
       const connection = createDevnodeConnection();
@@ -444,6 +448,7 @@ describe("AleoConnection", () => {
         },
         keyProvider: {},
         recordProvider: {},
+        diagnostics: new SdkDiagnostics(),
       });
 
       const connection = createDevnodeConnection();
@@ -859,6 +864,138 @@ describe("AleoConnection", () => {
 
       expect(result.outputs).toEqual([]);
       expect(result.txId).toBeDefined();
+    });
+
+    // -----------------------------------------------------------------------
+    // execute() — SdkExecutionError enrichment of opaque WASM prove failures
+    // -----------------------------------------------------------------------
+
+    describe("SdkExecutionError enrichment", () => {
+      const STATE_PATHS_FAILURE = {
+        method: "GET",
+        url: "http://127.0.0.1:3030/testnet/statePaths?commitments=123field",
+        status: 500,
+        statusText: "Internal Server Error",
+        bodyExcerpt: "Commitment '123field' does not exist",
+        at: 0,
+      };
+
+      function mockSdkWithDiagnostics(diagnostics: SdkDiagnostics) {
+        mockCreateSdkObjects.mockResolvedValue({
+          account: {
+            address: () => ({ to_string: () => "aleo1derived" }),
+            privateKey: () => ({ kind: "private-key" }),
+          },
+          networkClient: {
+            getProgram: mockGetProgram,
+            submitTransaction: mockSubmitTransaction,
+            getProgramMappingValue: mockGetProgramMappingValue,
+            getLatestHeight: mockGetLatestHeight,
+            getLatestProgramEdition: mockGetLatestProgramEdition,
+          },
+          programManager: {
+            run: mockRun,
+            execute: mockExecute,
+            buildAuthorizationUnchecked: mockBuildAuthorizationUnchecked,
+            prepareInputs: mockPrepareInputs,
+            buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
+          },
+          programManagerBase: { kind: "ProgramManagerBase" },
+          keyProvider: {},
+          recordProvider: {},
+          diagnostics,
+        });
+      }
+
+      it("wraps a pm.execute rejection that recorded a statePaths 500", async () => {
+        const diagnostics = new SdkDiagnostics();
+        mockSdkWithDiagnostics(diagnostics);
+        const original = new Error("JS callback Promise rejected:");
+        mockExecute.mockImplementation(async () => {
+          diagnostics.record(STATE_PATHS_FAILURE);
+          throw original;
+        });
+
+        const connection = createDevnodeConnection();
+        const run = () =>
+          connection.execute("token_router.aleo", "route_transfer", ["1u32"], { prove: true });
+
+        await expect(run()).rejects.toMatchObject({
+          kind: "SdkExecutionError",
+          operation: "execute",
+          programId: "token_router.aleo",
+          transitionName: "route_transfer",
+        });
+        await expect(run()).rejects.toThrow(/statePaths.*500.*does not exist/);
+
+        let thrown: unknown;
+        try {
+          await run();
+        } catch (e) {
+          thrown = e;
+        }
+        expect(thrown).toBeInstanceOf(SdkExecutionError);
+        expect((thrown as SdkExecutionError).cause).toBe(original);
+        expect((thrown as SdkExecutionError).diagnostics).toHaveLength(1);
+      });
+
+      it("wraps a devnode fast-path build rejection that recorded a statePaths 500", async () => {
+        const diagnostics = new SdkDiagnostics();
+        mockSdkWithDiagnostics(diagnostics);
+        const original = new Error("JS callback Promise rejected:");
+        mockBuildDevnodeExec.mockImplementation(async () => {
+          diagnostics.record(STATE_PATHS_FAILURE);
+          throw original;
+        });
+
+        const connection = createDevnodeConnection();
+        // No `prove` -> the devnode fast-path build is used.
+        await expect(
+          connection.execute("token_router.aleo", "route_transfer", ["1u32"]),
+        ).rejects.toMatchObject({
+          kind: "SdkExecutionError",
+          operation: "execute",
+          programId: "token_router.aleo",
+          transitionName: "route_transfer",
+        });
+      });
+
+      it("rethrows a non-opaque pm.execute rejection unchanged when nothing was recorded", async () => {
+        const diagnostics = new SdkDiagnostics();
+        mockSdkWithDiagnostics(diagnostics);
+        const original = new Error("Stack evaluation failed: assertion failed");
+        mockExecute.mockRejectedValue(original);
+
+        const connection = createDevnodeConnection();
+        await expect(
+          connection.execute("hello.aleo", "main", ["1u32"], { prove: true }),
+        ).rejects.toBe(original);
+      });
+
+      it("rethrows a pm.execute broadcast failure unchanged (not a state-query error)", async () => {
+        // pm.execute() builds+proves THEN broadcasts internally; a broadcast 400
+        // recorded by the transport must not be relabeled as a build/prove
+        // state-query error — the descriptive broadcast error passes through.
+        const diagnostics = new SdkDiagnostics();
+        mockSdkWithDiagnostics(diagnostics);
+        const original = new Error("Transaction broadcast rejected: invalid fee");
+        mockExecute.mockImplementation(async () => {
+          diagnostics.record({
+            method: "POST",
+            url: "http://127.0.0.1:3030/testnet/transaction/broadcast",
+            status: 400,
+            statusText: "Bad Request",
+            bodyExcerpt: "invalid fee",
+            at: 0,
+          });
+          throw original;
+        });
+
+        const connection = createDevnodeConnection();
+        await expect(
+          connection.execute("hello.aleo", "main", ["1u32"], { prove: true }),
+        ).rejects.toBe(original);
+      });
     });
   });
 
@@ -2209,6 +2346,7 @@ describe("AleoConnection", () => {
         account: { destroy: signerDestroy },
         recordProvider: {},
         programManager: signerPm,
+        diagnostics: new SdkDiagnostics(),
       });
 
       const connection = createDevnodeConnection();
@@ -2239,6 +2377,7 @@ describe("AleoConnection", () => {
         },
         keyProvider: {},
         recordProvider: {},
+        diagnostics: new SdkDiagnostics(),
       });
 
       const connection = createDevnodeConnection();
@@ -2273,6 +2412,7 @@ describe("AleoConnection", () => {
           execute: signerExecuteMock,
           buildDevnodeExecutionTransaction: signerBuildDevnodeMock,
         },
+        diagnostics: new SdkDiagnostics(),
       });
     });
 
@@ -2364,6 +2504,7 @@ describe("AleoConnection", () => {
             execute: signerExecuteMock,
             buildDevnodeExecutionTransaction: signerBuildDevnodeMock,
           },
+          diagnostics: new SdkDiagnostics(),
         });
 
       const connection = createDevnodeConnection();
