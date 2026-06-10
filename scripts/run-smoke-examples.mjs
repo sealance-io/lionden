@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
 const CORE_EXAMPLES = [
@@ -117,6 +118,9 @@ if (listOnly) {
 }
 
 const coverageContext = coverage ? createCoverageContext(requestedGroups) : undefined;
+const runStartedAt = performance.now();
+
+printRunHeader(coverageContext);
 
 for (const config of configs) {
   const exampleName = dirname(config);
@@ -158,6 +162,8 @@ if (coverageContext) {
     `--coverage.reportsDirectory=${coverageContext.finalReportsDirectory}`,
   ]);
 }
+
+printTotalRuntime();
 
 function isAleoPortConfig(config) {
   return config.split(/[\\/]/).includes("aleo-ports");
@@ -202,6 +208,44 @@ function coverageExampleId(config) {
   return basename(exampleDir);
 }
 
+function printRunHeader(context) {
+  console.log("== Smoke example config ==");
+  console.log(`Groups: ${requestedGroups.join(", ")}`);
+  console.log(`Typecheck: ${formatEnabled(typecheck)}`);
+  console.log(
+    `Prove: ${formatEnabled(prove)}${
+      prove ? ` (test timeout ${formatDuration(PROVE_TEST_TIMEOUT_MS)})` : ""
+    }`,
+  );
+  console.log(`Coverage: ${formatEnabled(coverage)}${context ? ` (lane ${context.lane})` : ""}`);
+  console.log(`Configs (${configs.length}):`);
+  for (const config of configs) {
+    console.log(`  - ${config}`);
+  }
+}
+
+function printTotalRuntime() {
+  console.log(`\n== Smoke example runtime: ${formatDuration(performance.now() - runStartedAt)} ==`);
+}
+
+function formatEnabled(value) {
+  return value ? "enabled" : "disabled";
+}
+
+function formatDuration(ms) {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0 || hours > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+
+  return parts.join(" ");
+}
+
 function run(label, commandArgs, env = undefined) {
   console.log(`--> ${label}`);
   const result = spawnSync(process.execPath, commandArgs, {
@@ -210,5 +254,8 @@ function run(label, commandArgs, env = undefined) {
     stdio: "inherit",
   });
 
-  if (result.status !== 0) process.exit(result.status ?? 1);
+  if (result.status !== 0) {
+    printTotalRuntime();
+    process.exit(result.status ?? 1);
+  }
 }
