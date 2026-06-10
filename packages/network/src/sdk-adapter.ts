@@ -28,6 +28,7 @@ import {
 import type * as TestnetSdk from "@provablehq/sdk/testnet.js";
 import type { TransportFunction } from "@provablehq/sdk/testnet.js";
 import { Address } from "@provablehq/sdk/testnet.js";
+import { SdkDiagnostics } from "./sdk-diagnostics.js";
 
 // ---------------------------------------------------------------------------
 // SDK types
@@ -49,6 +50,8 @@ export interface SdkObjects {
   programManagerBase: SdkProgramManagerBase;
   keyProvider: SdkFunctionKeyProvider;
   recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
+  /** Transport-failure sink shared by this bundle's network transport. */
+  diagnostics: SdkDiagnostics;
 }
 
 export interface SdkExecutionKeys {
@@ -298,6 +301,24 @@ async function fetchWithEgressGuardedRedirects(
   }
 }
 
+function validateNetworkHost(
+  url: URL,
+  allowed: ReadonlySet<string>,
+  violation: "block" | "warn",
+): void {
+  if (!allowed.has(url.host)) {
+    const msg =
+      `LionDen blocked SDK network fetch to host "${url.host}". ` +
+      `Allowed hosts: ${
+        allowed.size === 0 ? "(none)" : Array.from(allowed).join(", ")
+      }. Extend sdk.egress.networkHosts or change sdk.egress.violation.`;
+    if (violation === "block") {
+      throw new Error(msg);
+    }
+    console.warn(msg);
+  }
+}
+
 /**
  * Build a `fetch`-shaped transport for SDK **network-host** calls
  * (chain state, transaction submission). On a host outside `allowed`,
@@ -305,25 +326,63 @@ async function fetchWithEgressGuardedRedirects(
  * `violation === "warn"`. Warn mode forwards the SDK request unchanged,
  * including headers, so use it only when intentionally observing egress
  * instead of enforcing it. Exported for unit testing.
+ *
+ * When `diagnostics` is supplied, the transport records non-OK responses
+ * (status/statusText/body excerpt) and thrown fetch/host-block failures so
+ * that `captureSdkCall` can surface the underlying state-query failure behind
+ * an opaque WASM error. Without it (the 2-arg form), behavior is unchanged.
  */
 export function makeNetworkTransport(
   allowed: ReadonlySet<string>,
   violation: "block" | "warn",
+  diagnostics?: SdkDiagnostics,
 ): TransportFunction {
-  return (input, init) => {
-    return fetchWithEgressGuardedRedirects(input, init, (url) => {
-      if (!allowed.has(url.host)) {
-        const msg =
-          `LionDen blocked SDK network fetch to host "${url.host}". ` +
-          `Allowed hosts: ${
-            allowed.size === 0 ? "(none)" : Array.from(allowed).join(", ")
-          }. Extend sdk.egress.networkHosts or change sdk.egress.violation.`;
-        if (violation === "block") {
-          throw new Error(msg);
+  if (diagnostics === undefined) {
+    return (input, init) =>
+      fetchWithEgressGuardedRedirects(input, init, (url) =>
+        validateNetworkHost(url, allowed, violation),
+      );
+  }
+
+  return async (input, init) => {
+    const method = init?.method?.toUpperCase() ?? "GET";
+    let url: string;
+    try {
+      url = urlOf(input).href;
+    } catch {
+      url = String(input);
+    }
+    try {
+      const response = await fetchWithEgressGuardedRedirects(input, init, (u) =>
+        validateNetworkHost(u, allowed, violation),
+      );
+      if (!response.ok) {
+        let bodyExcerpt: string | undefined;
+        try {
+          // clone() so the SDK still gets to read the original body.
+          bodyExcerpt = (await response.clone().text()).slice(0, 512);
+        } catch {
+          // Body-read failures are non-fatal diagnostics — ignore.
         }
-        console.warn(msg);
+        diagnostics.record({
+          method,
+          url,
+          status: response.status,
+          statusText: response.statusText,
+          ...(bodyExcerpt === undefined ? {} : { bodyExcerpt }),
+          at: Date.now(),
+        });
       }
-    });
+      return response;
+    } catch (error: unknown) {
+      diagnostics.record({
+        method,
+        url,
+        error: error instanceof Error ? error.message : String(error),
+        at: Date.now(),
+      });
+      throw error;
+    }
   };
 }
 
@@ -396,6 +455,11 @@ export async function createSdkObjects(opts: CreateSdkObjectsOptions): Promise<S
     // Create account
     const account = opts.privateKey ? new Account({ privateKey: opts.privateKey }) : new Account();
 
+    // Per-bundle transport-failure sink. Shared by every AleoNetworkClient
+    // built here (default + PM-internal) so state-query failures observed
+    // during prove are attributable to this connection's executions.
+    const diagnostics = new SdkDiagnostics();
+
     // Network transport (chain state, transaction submission). Installing
     // the transport on AleoNetworkClient flips hasCustomTransport=true in
     // the SDK, forcing the prove path to use CallbackQuery instead of
@@ -405,6 +469,7 @@ export async function createSdkObjects(opts: CreateSdkObjectsOptions): Promise<S
     const networkTransport = makeNetworkTransport(
       opts.egressPolicy.allowedNetworkHosts,
       opts.egressPolicy.violation,
+      diagnostics,
     );
 
     const networkClientOptions: { headers?: Record<string, string>; transport: TransportFunction } =
@@ -452,6 +517,7 @@ export async function createSdkObjects(opts: CreateSdkObjectsOptions): Promise<S
       programManagerBase: ProgramManagerBase,
       keyProvider: effectiveKeyProvider,
       recordProvider,
+      diagnostics,
     };
   } catch (err: unknown) {
     throw new Error(
@@ -476,6 +542,8 @@ export interface SignerSdkObjects {
   recordProvider: InstanceType<SdkModule["NetworkRecordProvider"]>;
   programManager: InstanceType<SdkModule["ProgramManager"]>;
   programManagerBase: SdkProgramManagerBase;
+  /** Transport-failure sink shared by this signer bundle's network transport. */
+  diagnostics: SdkDiagnostics;
 }
 
 export interface CreateSignerSdkObjectsOptions {
@@ -925,6 +993,11 @@ export async function createSignerSdkObjects(
 
   const account = new Account({ privateKey: opts.privateKey });
 
+  // Per-signer transport-failure sink. State queries during a signer
+  // execution go through this signer PM's own transport, so it needs its
+  // own diagnostics sink (distinct from the default connection's).
+  const diagnostics = new SdkDiagnostics();
+
   // Dedicated NetworkClient with API key for record lookups. Install the
   // same guarded network transport that createSdkObjects uses so the
   // per-signer PM's internal AleoNetworkClient also reports
@@ -934,6 +1007,7 @@ export async function createSignerSdkObjects(
   const networkTransport = makeNetworkTransport(
     opts.egressPolicy.allowedNetworkHosts,
     opts.egressPolicy.violation,
+    diagnostics,
   );
   const ncOptions: { headers?: Record<string, string>; transport: TransportFunction } = {
     transport: networkTransport,
@@ -950,7 +1024,13 @@ export async function createSignerSdkObjects(
   );
   programManager.setAccount(account);
 
-  return { account, recordProvider, programManager, programManagerBase: ProgramManagerBase };
+  return {
+    account,
+    recordProvider,
+    programManager,
+    programManagerBase: ProgramManagerBase,
+    diagnostics,
+  };
 }
 
 function assertValidEndpoint(endpoint: unknown, context: string): asserts endpoint is string {
