@@ -20,6 +20,7 @@ import {
   resolveProgramExecutionArtifacts,
 } from "./execution-key-cache.js";
 import type { SdkEgressPolicy, SdkObjects, SignerSdkObjects } from "./sdk-adapter.js";
+import { captureSdkCall, type SdkDiagnostics } from "./sdk-diagnostics.js";
 import { selectMatchingTransition } from "./transition-selector.js";
 import {
   type ConfirmedTransaction,
@@ -188,22 +189,27 @@ export class AleoConnection implements NetworkConnection {
    * Returns the default PM when no signer override is given,
    * or a per-signer isolated PM otherwise.
    */
-  private async getEffectivePm(signerPrivateKey?: string): Promise<{ pm: unknown; nc: unknown }> {
+  private async getEffectivePm(
+    signerPrivateKey?: string,
+  ): Promise<{ pm: unknown; nc: unknown; diagnostics: SdkDiagnostics }> {
     const defaultSdk = await this.getSdkObjects();
 
     if (!signerPrivateKey || signerPrivateKey === this.privateKey) {
       return {
         pm: defaultSdk.programManager,
         nc: defaultSdk.networkClient,
+        diagnostics: defaultSdk.diagnostics,
       };
     }
 
-    // Check resolved cache
+    // Check resolved cache. State queries during a signer execution go through
+    // the signer PM's own transport, so attribute failures to the signer sink.
     const resolved = this.signerSdkResolved.get(signerPrivateKey);
     if (resolved) {
       return {
         pm: resolved.programManager,
         nc: defaultSdk.networkClient,
+        diagnostics: resolved.diagnostics,
       };
     }
 
@@ -245,6 +251,7 @@ export class AleoConnection implements NetworkConnection {
     return {
       pm: signerSdk.programManager,
       nc: defaultSdk.networkClient,
+      diagnostics: signerSdk.diagnostics,
     };
   }
 
@@ -304,9 +311,12 @@ export class AleoConnection implements NetworkConnection {
 
     // Resolve the effective ProgramManager — uses a per-signer isolated PM
     // when options.signer is provided, otherwise the connection's default.
-    const { pm: effectivePm, nc: effectiveNc } = await this.getEffectivePm(
-      options?.signer?.privateKey,
-    );
+    // `diagnostics` is the transport-failure sink for whichever PM was chosen.
+    const {
+      pm: effectivePm,
+      nc: effectiveNc,
+      diagnostics,
+    } = await this.getEffectivePm(options?.signer?.privateKey);
     const pm = effectivePm as any;
     const nc = effectiveNc as any;
     const mode = options?.mode ?? "onchain";
@@ -328,13 +338,22 @@ export class AleoConnection implements NetworkConnection {
     });
 
     if (mode === "local") {
-      // Local execution — run without generating proofs.
-      const result = await pm.run(
-        artifacts.source,
-        transitionName,
-        args,
-        false, // proveExecution = false
-        artifacts.imports,
+      // Local execution — run without generating proofs. captureSdkCall covers
+      // local *rejections* and opaque-shape classification; the sink is normally
+      // empty for local. (Composition point for the local-trap workaround:
+      // wrap `pm.run` in `runLocalProgramWithTrapCapture(...)` inside the fn
+      // when that branch lands — see or/local_execution_hang_workaround.)
+      const result = await captureSdkCall(
+        diagnostics,
+        { operation: "local", programId, transitionName },
+        () =>
+          pm.run(
+            artifacts.source,
+            transitionName,
+            args,
+            false, // proveExecution = false
+            artifacts.imports,
+          ),
       );
       const outputs = extractLocalExecutionOutputs(result);
       return {
@@ -353,16 +372,22 @@ export class AleoConnection implements NetworkConnection {
     const importsSlice = artifacts.imports === undefined ? {} : { imports: artifacts.imports };
 
     if (useDevnodeFastPath) {
-      // Devnode fast-path — skips proof generation
-      const tx = await pm.buildDevnodeExecutionTransaction({
-        programName: programId,
-        functionName: transitionName,
-        inputs: args,
-        priorityFee: options?.fee ?? 0,
-        privateFee: options?.privateFee ?? false,
-        program: artifacts.source,
-        ...importsSlice,
-      });
+      // Devnode fast-path — skips proof generation. Only the build is wrapped;
+      // broadcast already surfaces a usable HTTP error on its own.
+      const tx = await captureSdkCall(
+        diagnostics,
+        { operation: "execute", programId, transitionName },
+        () =>
+          pm.buildDevnodeExecutionTransaction({
+            programName: programId,
+            functionName: transitionName,
+            inputs: args,
+            priorityFee: options?.fee ?? 0,
+            privateFee: options?.privateFee ?? false,
+            program: artifacts.source,
+            ...importsSlice,
+          }),
+      );
       txId = await this.broadcastTransaction(tx);
     } else {
       const persistentExtras = await this.getPersistentExecutionOptions(
@@ -371,17 +396,24 @@ export class AleoConnection implements NetworkConnection {
         transitionName,
         artifacts,
       );
-      // Standard execution via ProgramManager
-      txId = await pm.execute({
-        programName: programId,
-        functionName: transitionName,
-        inputs: args,
-        priorityFee: options?.fee ?? 0,
-        privateFee: options?.privateFee ?? false,
-        program: artifacts.source,
-        ...importsSlice,
-        ...(persistentExtras ?? {}),
-      });
+      // Standard execution via ProgramManager. This is the prove path whose
+      // WASM state-query callbacks surface as opaque "JS callback Promise
+      // rejected:" errors — captureSdkCall enriches them from the sink.
+      txId = await captureSdkCall(
+        diagnostics,
+        { operation: "execute", programId, transitionName },
+        () =>
+          pm.execute({
+            programName: programId,
+            functionName: transitionName,
+            inputs: args,
+            priorityFee: options?.fee ?? 0,
+            privateFee: options?.privateFee ?? false,
+            program: artifacts.source,
+            ...importsSlice,
+            ...(persistentExtras ?? {}),
+          }),
+      );
     }
 
     if (options?.awaitConfirmation !== true) {

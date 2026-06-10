@@ -2,6 +2,7 @@ import type { LionDenPlugin } from "@lionden/core";
 import { task } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkManager } from "@lionden/network";
+import { SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractConstructorFingerprint } from "./constructor-parser.js";
@@ -105,6 +106,7 @@ describe("upgrade orchestration contract", () => {
           to_string: () => DEVNODE_ACCOUNT_0,
         }),
       },
+      diagnostics: new SdkDiagnostics(),
     });
   });
 
@@ -479,6 +481,7 @@ describe("upgrade orchestration contract", () => {
           to_string: () => DEVNODE_ACCOUNT_0,
         }),
       },
+      diagnostics: new SdkDiagnostics(),
     });
     const { lre } = await createUpgradeFixture({ constructorType: "admin" });
 
