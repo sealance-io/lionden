@@ -233,9 +233,12 @@ under real proving, even though it passes the structural verify check.
 > succeed there. They do not represent a valid spend on a proving network. The
 > example encodes both contracts: `route_transfer` / `dispatch_and_receipt` are
 > asserted as fast-path successes without `--prove` and as rejections with
-> `--prove` (the surfaced error is currently the opaque
-> `TransitionSubmissionError: … JS callback Promise rejected:` — surfacing the
-> underlying `statePaths` cause is a tracked follow-up).
+> `--prove`. The top-level rejection is still a
+> `TransitionSubmissionError`, but the opaque `JS callback Promise rejected:`
+> WASM abort is now enriched by the network transport's SDK diagnostics: the
+> underlying `GET /statePaths -> 500 Commitment '<cm>' does not exist` state
+> query is surfaced in the error message and preserved on the cause chain
+> (`SdkExecutionError` at `.cause`, the original WASM error at `.cause.cause`).
 
 ## LionDen Example And Typechain Surface
 

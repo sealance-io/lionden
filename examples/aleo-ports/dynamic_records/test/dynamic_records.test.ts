@@ -322,17 +322,30 @@ describe("dynamic_records runtime dispatch", () => {
         grade: 2n,
       });
 
-      await expect(
-        router.route_transfer.accepted({
+      // Catch once — this is a real proving execution against the devnode, so
+      // we assert every property on a single rejection rather than re-running.
+      let thrown: unknown;
+      try {
+        await router.route_transfer.accepted({
           token_program: Leo.identifier("silver_token"),
           token: asSilverToken(await minted.outputs.decrypt(alice())),
           to: bob(),
-        }),
-      ).rejects.toMatchObject({
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toMatchObject({
         kind: "TransitionSubmissionError",
         programId: "token_router.aleo",
         transition: "route_transfer",
       });
+      // The SDK's opaque "JS callback Promise rejected:" abort is enriched by
+      // the network transport diagnostics: the underlying /statePaths
+      // state-query failure survives the typechain wrap and is visible in the
+      // surfaced message (see docs/research/dynamic-records-v15.md § Held
+      // Records And Inclusion Proofs).
+      expect((thrown as Error).message).toMatch(/statePaths/);
     },
   );
 
@@ -518,17 +531,30 @@ describe("external_token_demo external + nested record outputs", () => {
         purity: 9n,
       });
 
-      await expect(
-        demo.withSigner(alice()).dispatch_and_receipt.accepted({
+      // Catch once — this is a real proving execution against the devnode, so
+      // we assert every property on a single rejection rather than re-running.
+      let thrown: unknown;
+      try {
+        await demo.withSigner(alice()).dispatch_and_receipt.accepted({
           token_program: Leo.identifier("gold_token"),
           token: asGoldToken(await minted.outputs.decrypt(alice())),
           to: bob(),
-        }),
-      ).rejects.toMatchObject({
+        });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toMatchObject({
         kind: "TransitionSubmissionError",
         programId: "external_token_demo.aleo",
         transition: "dispatch_and_receipt",
       });
+      // The SDK's opaque "JS callback Promise rejected:" abort is enriched by
+      // the network transport diagnostics: the underlying /statePaths
+      // state-query failure survives the typechain wrap and is visible in the
+      // surfaced message (see docs/research/dynamic-records-v15.md § Held
+      // Records And Inclusion Proofs).
+      expect((thrown as Error).message).toMatch(/statePaths/);
     },
   );
 });
