@@ -395,17 +395,80 @@ export function makeNetworkTransport(
  * unit testing.
  */
 export function makeParameterTransport(): TransportFunction {
-  return (input, init) => {
-    return fetchWithEgressGuardedRedirects(input, init, (url) => {
-      if (!KNOWN_SDK_PARAMETER_HOSTS.has(url.host)) {
-        const msg =
-          `LionDen does not recognize SDK parameter host "${url.host}". ` +
-          `Known hosts: ${Array.from(KNOWN_SDK_PARAMETER_HOSTS).join(", ")}. ` +
-          `This may indicate a stale LionDen allowlist; please report.`;
-        throw new Error(msg);
-      }
-    });
+  return async (input, init) => {
+    let primaryUrl: URL;
+    try {
+      primaryUrl = urlOf(input);
+    } catch {
+      return fetchParameterUrl(input, init);
+    }
+
+    const mirrorUrl = parameterMirrorUrl(primaryUrl);
+
+    try {
+      const response = await fetchParameterUrl(input, init);
+      if (response.ok || !mirrorUrl) return response;
+      const mirrorResponse = await tryParameterMirror(mirrorUrl, init);
+      return mirrorResponse?.ok ? mirrorResponse : response;
+    } catch (primaryError) {
+      if (primaryError instanceof ParameterHostValidationError) throw primaryError;
+      if (!mirrorUrl) throw primaryError;
+      const mirrorResponse = await tryParameterMirror(mirrorUrl, init);
+      if (mirrorResponse?.ok) return mirrorResponse;
+      throw primaryError;
+    }
   };
+}
+
+class ParameterHostValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ParameterHostValidationError";
+  }
+}
+
+async function tryParameterMirror(
+  mirrorUrl: URL,
+  init: Parameters<TransportFunction>[1],
+): Promise<Response | undefined> {
+  try {
+    // SDK parameter downloads are GET-style requests; reuse the same init so
+    // headers/options stay identical between primary and mirror attempts.
+    return await fetchParameterUrl(mirrorUrl, init);
+  } catch {
+    // Keep the primary host failure as the diagnostic the SDK reports.
+    return undefined;
+  }
+}
+
+function fetchParameterUrl(
+  input: Parameters<TransportFunction>[0],
+  init: Parameters<TransportFunction>[1],
+): Promise<Response> {
+  return fetchWithEgressGuardedRedirects(input, init, validateParameterHost);
+}
+
+function validateParameterHost(url: URL): void {
+  if (!KNOWN_SDK_PARAMETER_HOSTS.has(url.host)) {
+    const msg =
+      `LionDen does not recognize SDK parameter host "${url.host}". ` +
+      `Known hosts: ${Array.from(KNOWN_SDK_PARAMETER_HOSTS).join(", ")}. ` +
+      `This may indicate a stale LionDen allowlist; please report.`;
+    throw new ParameterHostValidationError(msg);
+  }
+}
+
+function parameterMirrorUrl(url: URL): URL | undefined {
+  if (url.protocol !== "https:" || url.host !== "parameters.provable.com") {
+    return undefined;
+  }
+
+  const match = url.pathname.match(/^\/([^/]+)\/(.+)$/);
+  if (!match) return undefined;
+  const [, network, artifactPath] = match;
+  return new URL(
+    `https://s3.us-west-1.amazonaws.com/${network}.parameters/${artifactPath}${url.search}`,
+  );
 }
 
 export interface CreateSdkObjectsOptions {

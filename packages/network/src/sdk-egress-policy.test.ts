@@ -339,6 +339,88 @@ describe("makeParameterTransport()", () => {
     expect(fetchSpy).toHaveBeenCalledOnce();
   });
 
+  it("retries the S3 mirror when the Provable parameter host fetch throws", async () => {
+    fetchSpy.mockImplementation(async (input: Parameters<typeof fetch>[0]) => {
+      if (inputUrl(input) === "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff") {
+        throw new Error("primary unavailable");
+      }
+      return new Response("ok", { status: 200 });
+    });
+
+    const transport = makeParameterTransport();
+    const res = await transport(
+      "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff",
+    );
+
+    expect(res.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(inputUrl(fetchSpy.mock.calls[1]![0])).toBe(
+      "https://s3.us-west-1.amazonaws.com/testnet.parameters/fee_public.prover.f72b6ff",
+    );
+  });
+
+  it("preserves the primary thrown parameter failure when the S3 mirror also throws", async () => {
+    fetchSpy.mockImplementation(async (input: Parameters<typeof fetch>[0]) => {
+      const url = inputUrl(input);
+      if (url === "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff") {
+        throw new Error("primary unavailable");
+      }
+      if (
+        url === "https://s3.us-west-1.amazonaws.com/testnet.parameters/fee_public.prover.f72b6ff"
+      ) {
+        throw new Error("mirror unavailable");
+      }
+      return new Response("ok", { status: 200 });
+    });
+
+    const transport = makeParameterTransport();
+    await expect(
+      transport("https://parameters.provable.com/testnet/fee_public.prover.f72b6ff"),
+    ).rejects.toThrow("primary unavailable");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(inputUrl(fetchSpy.mock.calls[1]![0])).toBe(
+      "https://s3.us-west-1.amazonaws.com/testnet.parameters/fee_public.prover.f72b6ff",
+    );
+  });
+
+  it("retries the S3 mirror when the Provable parameter host returns non-OK", async () => {
+    fetchSpy.mockImplementation(async (input: Parameters<typeof fetch>[0]) => {
+      if (inputUrl(input) === "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff") {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return new Response("ok", { status: 200 });
+    });
+
+    const transport = makeParameterTransport();
+    const res = await transport(
+      "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff",
+    );
+
+    expect(res.ok).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(inputUrl(fetchSpy.mock.calls[1]![0])).toBe(
+      "https://s3.us-west-1.amazonaws.com/testnet.parameters/fee_public.prover.f72b6ff",
+    );
+  });
+
+  it("keeps the primary parameter response when the S3 mirror is also non-OK", async () => {
+    fetchSpy.mockImplementation(async (input: Parameters<typeof fetch>[0]) => {
+      if (inputUrl(input) === "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff") {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const transport = makeParameterTransport();
+    const res = await transport(
+      "https://parameters.provable.com/testnet/fee_public.prover.f72b6ff",
+    );
+
+    expect(res.status).toBe(503);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   it("allows the S3 mirror", async () => {
     const transport = makeParameterTransport();
     const res = await transport(
@@ -384,7 +466,7 @@ describe("makeParameterTransport()", () => {
     );
   });
 
-  it("re-validates redirected parameter targets before following", async () => {
+  it("does not retry the S3 mirror when a parameter redirect targets an unknown host", async () => {
     fetchSpy.mockImplementation(
       async () =>
         new Response(null, {
