@@ -87,8 +87,6 @@ Current deploy options:
 
 Deploy preflight checks include:
 
-- constructor annotation presence
-- constructor annotation validity
 - on-chain already-deployed status
 - imported program availability on HTTP networks
 - deployment fee estimation on HTTP networks when the SDK supports it
@@ -220,7 +218,6 @@ Current behavior:
 - compiles the updated program
 - reads the new ABI and compiled Aleo source
 - parses the updated constructor
-- validates upgrade permission
 - runs upgrade preflight
 - writes a pending marker on non-ephemeral networks
 - builds and broadcasts the upgrade transaction
@@ -239,11 +236,7 @@ Upgrade preflight checks include:
 
 - ABI compatibility
 - constructor type, parameter, and fingerprint immutability
-- `@admin` signer match
 - HTTP on-chain edition continuity
-- `@custom` constructor warning
-
-`@noupgrade` records fail upgrade permission validation. `@admin`, `@checksum`, and `@custom` are treated as upgrade-capable paths subject to their validation rules.
 
 ## Deployment Recipes
 
@@ -400,8 +393,7 @@ When `namedAccounts.deployer` is configured as a `SignableNamedAccount`, the dep
 When `namedAccounts.deployer` is `AddressOnlyNamedAccount`, the deploy task throws — the deployer role requires a signing key.
 
 When `namedAccounts.admin` is configured for the upgrade task:
-- Signable: used as the transaction signer and for preflight admin validation.
-- Address-only: does **not** sign or authorize the upgrade. The network signer (derived from `connection.privateKey` or the first devnode account) is still validated independently against `@admin(address=...)` in preflight. The address-only value is compared to `@admin(address=...)` as a drift check only — a mismatch emits a warning (`NAMED_ADMIN_DRIFT`), but the upgrade proceeds if the network signer matches.
+- Signable: used as the transaction signer.
 
 ## Deployment Hooks
 

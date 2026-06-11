@@ -466,7 +466,6 @@ The recipe task compiles once up front, then individual `ctx.deploy()` calls def
 
 Upgrades require:
 
-- A constructor that permits upgrades — `@admin(address=...)`, `@checksum(...)`, or `@custom(...)`. Programs marked `@noupgrade` fail upgrade permission.
 - An updated `main.leo` source with backward-compatible ABI (the parts the preflight enforces — see [`deployment.md`](deployment.md#upgrade-task)).
 
 ```bash
@@ -481,7 +480,7 @@ What `upgrade` does:
 2. Recovers any pending deployments.
 3. Reads the prior deployment record + old ABI.
 4. Recompiles the program.
-5. Runs upgrade preflight (ABI compat, constructor fingerprint, admin signer match, edition continuity).
+5. Runs upgrade preflight (ABI compat, constructor immutability, edition continuity).
 6. Broadcasts the upgrade transaction (devnode fast-path or HTTP build-then-broadcast).
 7. Waits for confirmation unless `--skip-confirm`.
 8. Records the new edition; fires `deployment.programUpgraded`.
