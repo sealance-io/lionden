@@ -149,20 +149,6 @@ describe("deploy orchestration contract", () => {
     expect(connect).toHaveBeenCalledWith("testnet");
   });
 
-  it("logs deploy preflight warnings for @custom constructors", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { lre } = createDeployFixture([
-      { name: "dao", annotation: "@custom\n    constructor() {}" },
-    ]);
-
-    await deployAction({ program: "dao", noCompile: true }, lre);
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      `Warning [CUSTOM_CONSTRUCTOR]: Program "dao.aleo" uses @custom constructor. ` +
-        `Custom constructor logic will be evaluated on-chain during deployment.`,
-    );
-  });
-
   it("uses the devnode fast-path when prove is not requested", async () => {
     const { lre, fakeNetwork } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
@@ -366,17 +352,6 @@ describe("deploy orchestration contract", () => {
 
     // broadcastTransaction called once per program
     expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(2);
-  });
-
-  it("throws DeployError when constructor annotation is missing", async () => {
-    const { lre } = createDeployFixture([
-      // No annotation at all — parser should return null
-      { name: "noctor", annotation: "" },
-    ]);
-
-    await expect(deployAction({ program: "noctor", noCompile: true }, lre)).rejects.toThrow(
-      DeployError,
-    );
   });
 
   it("throws DeployError when confirmation returns rejected status", async () => {

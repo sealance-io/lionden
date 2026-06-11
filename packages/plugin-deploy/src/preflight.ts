@@ -15,12 +15,7 @@ import type {
 import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
 import { checkAbiCompatibility } from "./abi-compat.js";
-import { validateAdminSigner } from "./admin-signer.js";
 import type { ConstructorInfo } from "./constructor-parser.js";
-import {
-  createCustomConstructorWarning,
-  validateConstructorAnnotation,
-} from "./constructor-validation.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { checkProgramOnChain, fetchImportSources } from "./on-chain-check.js";
 
@@ -65,48 +60,6 @@ export interface UpgradePreflightResult {
 // ---------------------------------------------------------------------------
 // Individual checks — deploy
 // ---------------------------------------------------------------------------
-
-/**
- * Check that the constructor is present and valid.
- * Returns an error if missing or invalid.
- */
-export function checkConstructorPresent(
-  constructor: ConstructorInfo | null,
-  programId: string,
-): PreflightError | null {
-  if (!constructor) {
-    return {
-      code: "NO_CONSTRUCTOR",
-      message:
-        `Program "${programId}" has no constructor annotation. ` +
-        `Per ARC-0006, all deployments require a constructor.`,
-      recoverable: false,
-    };
-  }
-  return null;
-}
-
-/**
- * Check that the constructor annotation is fully valid (address format, etc.).
- * Delegates to the shared constructor validator, converting errors to PreflightError.
- */
-export function checkConstructorValid(
-  constructor: ConstructorInfo | null,
-  programId: string,
-): PreflightError | null {
-  if (!constructor) return null; // already caught by checkConstructorPresent
-
-  try {
-    validateConstructorAnnotation(constructor, programId, { emitCustomWarning: false });
-    return null;
-  } catch (err: unknown) {
-    return {
-      code: "INVALID_CONSTRUCTOR",
-      message: err instanceof Error ? err.message : String(err),
-      recoverable: false,
-    };
-  }
-}
 
 /**
  * Check whether a program is already deployed on-chain.
@@ -399,72 +352,6 @@ export function checkConstructorImmutable(
 }
 
 /**
- * Check that the admin signer address matches the @admin constructor address.
- * Delegates to validateAdminSigner, converting DeployError to PreflightError.
- *
- * Returns { warning, error } where:
- * - warning: NAMED_ADMIN_DRIFT when address-only namedAccounts.admin drifts from @admin(address)
- * - error: ADMIN_SIGNER_MISMATCH when the actual transaction signer is not the admin
- *
- * The drift warning is additive: it fires when namedAdminAddress differs from adminAddress,
- * but signer validation still runs independently unless signerPrivateKey is provided
- * (in which case signerPrivateKey IS the selected signer and covers both).
- */
-export async function checkAdminSigner(
-  connection: NetworkConnection,
-  config: LionDenResolvedConfig,
-  networkName: string,
-  record: DeploymentRecord,
-  programId: string,
-  signerPrivateKey?: string,
-  namedAdminAddress?: string,
-): Promise<{ warning: PreflightWarning | null; error: PreflightError | null }> {
-  if (record.constructor.type !== "admin" || !record.constructor.adminAddress) {
-    return { warning: null, error: null };
-  }
-
-  const adminAddress = record.constructor.adminAddress!;
-
-  // Drift check: when an address-only named admin is provided (no private key),
-  // warn if it doesn't match the program's @admin address.
-  // This is purely additive — signer validation still runs below.
-  let driftWarning: PreflightWarning | null = null;
-  if (!signerPrivateKey && namedAdminAddress && namedAdminAddress !== adminAddress) {
-    driftWarning = {
-      code: "NAMED_ADMIN_DRIFT",
-      message:
-        `Named account "admin" address "${namedAdminAddress}" does not match ` +
-        `@admin(address="${adminAddress}") in program "${programId}". ` +
-        `Update your namedAccounts config or the program constructor.`,
-    };
-  }
-
-  // Signer validation: always run. When signerPrivateKey is provided, validateAdminSigner
-  // derives its address and checks against adminAddress — same path as network-config signer,
-  // just using the named account's key instead.
-  try {
-    await validateAdminSigner(
-      connection,
-      config,
-      networkName,
-      adminAddress,
-      programId,
-      signerPrivateKey,
-    );
-    return { warning: driftWarning, error: null };
-  } catch (err: unknown) {
-    return {
-      warning: driftWarning,
-      error: {
-        code: "ADMIN_SIGNER_MISMATCH",
-        message: err instanceof Error ? err.message : String(err),
-        recoverable: false,
-      },
-    };
-  }
-}
-
-/**
  * Check that the on-chain edition matches the expected edition.
  * HTTP only — ensures no out-of-band upgrades happened since last sync.
  */
@@ -551,29 +438,9 @@ export async function runDeployPreflight(
   let totalFeeEstimate: bigint | undefined;
 
   for (const prog of programs) {
-    const { programId, constructor, aleoSource, existingRecord } = prog;
+    const { programId, aleoSource, existingRecord } = prog;
 
-    // 1. Check constructor present
-    const noCtorErr = checkConstructorPresent(constructor, programId);
-    if (noCtorErr) {
-      errors.push(noCtorErr);
-      outcomes.push({ programId, action: "deploy" });
-      continue;
-    }
-
-    // 2. Check constructor valid
-    const ctorErr = checkConstructorValid(constructor, programId);
-    if (ctorErr) {
-      errors.push(ctorErr);
-      outcomes.push({ programId, action: "deploy" });
-      continue;
-    }
-
-    if (constructor?.type === "custom") {
-      warnings.push(createCustomConstructorWarning(programId, "deployment"));
-    }
-
-    // 3. Check if already deployed
+    // 1. Check if already deployed
     const { outcome: deployedOutcome, error: deployedErr } = await checkAlreadyDeployed(
       connection,
       programId,
@@ -596,7 +463,7 @@ export async function runDeployPreflight(
 
     // This program will be deployed — run HTTP-only checks
     if (!isDevnode) {
-      // 3.5. Check compiled artifacts present (HTTP only — needed for import/fee checks)
+      // 2. Check compiled artifacts present (HTTP only — needed for import/fee checks)
       if (aleoSource === undefined) {
         errors.push({
           code: "MISSING_ARTIFACTS",
@@ -609,7 +476,7 @@ export async function runDeployPreflight(
         continue;
       }
 
-      // 4. Check imports available
+      // 3. Check imports available
       if (aleoSource !== undefined) {
         const importErrors = await checkImportsAvailable(
           connection,
@@ -625,7 +492,7 @@ export async function runDeployPreflight(
         }
       }
 
-      // 5. Fee estimation
+      // 4. Fee estimation
       if (aleoSource !== undefined) {
         // Collect import sources for fee estimation.
         // Local sources (deps in this batch) are known; all other imports (including
@@ -672,7 +539,7 @@ export async function runDeployPreflight(
     }
   }
 
-  // 6. Balance check (HTTP only, batch)
+  // 5. Balance check (HTTP only, batch)
   if (!isDevnode && totalFeeEstimate !== undefined && totalFeeEstimate > 0n) {
     // Derive signer address if a signer key override is provided
     let signerAddress: string | undefined;
@@ -724,13 +591,6 @@ export interface RunUpgradePreflightOptions {
   connection: NetworkConnection;
   config: LionDenResolvedConfig;
   networkName: string;
-  /** Override signing key for admin validation. When set, overrides the key derived from network config. */
-  signerPrivateKey?: string;
-  /**
-   * Address of an address-only named admin account.
-   * When present (and signerPrivateKey is absent), checked against @admin(address) for drift warning.
-   */
-  namedAdminAddress?: string;
 }
 
 /**
@@ -750,8 +610,6 @@ export async function runUpgradePreflight(
     connection,
     config,
     networkName,
-    signerPrivateKey,
-    namedAdminAddress,
   } = opts;
 
   const isDevnode = config.networks[networkName]?.type === "devnode";
@@ -766,28 +624,10 @@ export async function runUpgradePreflight(
   const ctorErr = checkConstructorImmutable(oldRecord, newConstructor, newFingerprint, programId);
   if (ctorErr) errors.push(ctorErr);
 
-  // 3. Admin signer (if applicable)
-  const { warning: adminDriftWarning, error: signerErr } = await checkAdminSigner(
-    connection,
-    config,
-    networkName,
-    oldRecord,
-    programId,
-    signerPrivateKey,
-    namedAdminAddress,
-  );
-  if (adminDriftWarning) warnings.push(adminDriftWarning);
-  if (signerErr) errors.push(signerErr);
-
-  // 4. Edition continuity (HTTP only)
+  // 3. Edition continuity (HTTP only)
   if (!isDevnode && oldRecord.status === "complete") {
     const editionErr = await checkEditionContinuity(connection, programId, oldRecord.edition);
     if (editionErr) errors.push(editionErr);
-  }
-
-  // Custom constructor warning
-  if (newConstructor.type === "custom") {
-    warnings.push(createCustomConstructorWarning(programId, "upgrade"));
   }
 
   return {

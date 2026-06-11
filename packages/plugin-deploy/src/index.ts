@@ -246,7 +246,6 @@ export {
   DeployError,
   readLeoSourcesFromDir,
   resolveDeployTargets,
-  validateConstructor,
 } from "./deploy-task.js";
 // Deployment manager
 export type { DeploymentManager, PreflightOptions, RecordOptions } from "./deployment-manager.js";
@@ -290,5 +289,4 @@ export type { UpgradeOptions, UpgradeResult } from "./upgrade-task.js";
 export {
   UpgradeCompatibilityError,
   validateAdminSigner,
-  validateUpgradePermission,
 } from "./upgrade-task.js";

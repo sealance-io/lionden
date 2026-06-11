@@ -19,7 +19,6 @@ import {
   extractConstructorFingerprint,
   parseConstructor,
 } from "./constructor-parser.js";
-import { validateConstructorAnnotation } from "./constructor-validation.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { CompleteDeploymentRecord, PendingDeployment } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
@@ -532,18 +531,6 @@ function collectTransitiveProgramDeps(
     if (graph.networkDeps.has(dep)) continue;
     collectTransitiveProgramDeps(dep, graph, programMap, collected, visited);
   }
-}
-
-// ---------------------------------------------------------------------------
-// Constructor validation
-// ---------------------------------------------------------------------------
-
-/**
- * Validate the constructor annotation via the shared internal validator.
- * Kept as a public legacy export from @lionden/plugin-deploy.
- */
-export function validateConstructor(constructor: ConstructorInfo | null, programId: string): void {
-  validateConstructorAnnotation(constructor, programId);
 }
 
 // ---------------------------------------------------------------------------

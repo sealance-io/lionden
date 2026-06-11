@@ -7,8 +7,8 @@ import { createMockConfig, createMockConnection } from "@lionden/test-internals"
 import { describe, expect, it, vi } from "vitest";
 import { writeDeploymentRecord } from "./deployment-state.js";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
-import pluginDeploy, { DeployError, validateConstructor } from "./index.js";
-import { UpgradeCompatibilityError, validateUpgradePermission } from "./upgrade-task.js";
+import pluginDeploy, { DeployError } from "./index.js";
+import { UpgradeCompatibilityError } from "./upgrade-task.js";
 
 const mockConfig = createMockConfig();
 
@@ -189,126 +189,6 @@ describe("export task", () => {
       logSpy.mockRestore();
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Constructor validation tests
-// ---------------------------------------------------------------------------
-
-describe("validateConstructor", () => {
-  it("throws DeployError when constructor is null", () => {
-    expect(() => validateConstructor(null, "hello.aleo")).toThrow(DeployError);
-    expect(() => validateConstructor(null, "hello.aleo")).toThrow("has no constructor annotation");
-  });
-
-  it("throws DeployError with guidance including all three forms", () => {
-    try {
-      validateConstructor(null, "hello.aleo");
-      expect.unreachable("Should have thrown");
-    } catch (err) {
-      const msg = (err as Error).message;
-      expect(msg).toContain("@noupgrade");
-      expect(msg).toContain("@admin");
-      expect(msg).toContain("@custom");
-    }
-  });
-
-  it("accepts @noupgrade constructor", () => {
-    expect(() => validateConstructor({ type: "noupgrade" }, "hello.aleo")).not.toThrow();
-  });
-
-  it("accepts valid @admin constructor", () => {
-    expect(() =>
-      validateConstructor(
-        {
-          type: "admin",
-          adminAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
-        },
-        "token.aleo",
-      ),
-    ).not.toThrow();
-  });
-
-  it("throws for @admin with no address", () => {
-    expect(() => validateConstructor({ type: "admin" }, "token.aleo")).toThrow(
-      "no address specified",
-    );
-  });
-
-  it("throws for @admin with invalid address", () => {
-    expect(() =>
-      validateConstructor({ type: "admin", adminAddress: "invalid_address" }, "token.aleo"),
-    ).toThrow("invalid address");
-  });
-
-  it("accepts @custom constructor and emits the legacy warning", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      expect(() => validateConstructor({ type: "custom" }, "dao.aleo")).not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith(
-        `Warning: Program "dao.aleo" uses @custom constructor. ` +
-          `Custom constructor logic will be evaluated on-chain during deployment.`,
-      );
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Upgrade permission validation tests
-// ---------------------------------------------------------------------------
-
-describe("validateUpgradePermission", () => {
-  const baseRecord: CompleteDeploymentRecord = {
-    status: "complete",
-    programId: "hello.aleo",
-    network: "devnode",
-    endpoint: "http://127.0.0.1:3030",
-    txId: "at1test",
-    blockHeight: 42,
-    edition: 0,
-    constructor: { type: "noupgrade" },
-    abiHash: null,
-    deployerAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
-    deployedAt: "2026-04-08T12:00:00.000Z",
-    updatedAt: "2026-04-08T12:00:00.000Z",
-    historyCount: 1,
-  };
-
-  it("throws for @noupgrade programs", () => {
-    expect(() => validateUpgradePermission(baseRecord, "hello.aleo")).toThrow("@noupgrade");
-    expect(() => validateUpgradePermission(baseRecord, "hello.aleo")).toThrow("cannot be upgraded");
-  });
-
-  it("allows @admin programs", () => {
-    const record: CompleteDeploymentRecord = {
-      ...baseRecord,
-      constructor: {
-        type: "admin",
-        adminAddress: "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
-      },
-    };
-    expect(() => validateUpgradePermission(record, "hello.aleo")).not.toThrow();
-  });
-
-  it("allows @custom programs (with warning)", () => {
-    const record: CompleteDeploymentRecord = {
-      ...baseRecord,
-      constructor: { type: "custom" },
-    };
-    expect(() => validateUpgradePermission(record, "hello.aleo")).not.toThrow();
-  });
-
-  it("throws for unknown constructor type", () => {
-    const record: CompleteDeploymentRecord = {
-      ...baseRecord,
-      constructor: { type: "unknown" as any },
-    };
-    expect(() => validateUpgradePermission(record, "hello.aleo")).toThrow(
-      "unknown constructor type",
-    );
   });
 });
 
