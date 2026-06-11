@@ -82,17 +82,16 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Deploy flags/options: `--program`, `--priority-fee`, `--skip-confirm`, `--no-compile`, `--preflight`, `--dry-run` (devnode), `--no-skip-deployed`, `--export`; config network selection comes from global `--network` / `defaultNetwork` | `packages/plugin-deploy/src/index.ts` |
 | `--prove` framework built-in global: `lionden --prove deploy`/`upgrade`/`recipe`/`test` (or a truthy `LIONDEN_PROVE`) forces standard/proven builders on devnode; `--prove=false` reliably disables it; `test` honours ambient `LIONDEN_PROVE` and prints a notice when the env (not a flag) is the source; per-call escape hatches on testing `ctx.deploy`/`ctx.execute` and recipe `deploy`/`execute` | `packages/core/src/arg-names.ts` (reserved name), `packages/cli/src/{task-dispatch,index}.ts` (parse + seed), `deploy-task.ts`/`upgrade-task.ts`/`recipe-task.ts` (`resolveProveOption`), `plugin-test/src/index.ts` (`test`) |
 | Constructor parser recognises `@noupgrade`, `@admin(address=...)`, `@checksum(...)`, `@custom(...)` (also accepts optional `async constructor` for v3.5) | `packages/plugin-deploy/src/constructor-parser.ts` |
-| Deploy preflight: constructor presence/validity, on-chain status, HTTP fee estimation, HTTP balance check, imported program availability | `packages/plugin-deploy/src/preflight.ts` |
+| Deploy preflight: on-chain status, HTTP fee estimation, HTTP balance check, imported program availability | `packages/plugin-deploy/src/preflight.ts` |
 | Multi-program topological deploy order; targeted `--program` pulls transitive local deps | `packages/plugin-deploy/src/deploy-task.ts` |
 | Deployment state on disk: `complete` / `degraded` / `recovered` records, per-network ABI snapshots, append-only history, pending markers, atomic temp+rename writes | `packages/plugin-deploy/src/deployment-manager.ts` |
 | Ephemeral mode: devnode is in-memory by default; HTTP is disk-backed by default; per-network and global overrides | same |
 | Pending marker recovery on next run (non-ephemeral networks) | same |
-| `upgrade` task: ABI compat check, constructor fingerprint immutability, `@admin` signer match, edition continuity, `@custom` warning, `@noupgrade` rejection | `packages/plugin-deploy/src/upgrade-task.ts` + `abi-compat.ts` |
+| `upgrade` task: ABI compat check, constructor immutability, edition continuity | `packages/plugin-deploy/src/upgrade-task.ts` + `abi-compat.ts` |
 | `export` task: per-network bundle to `deployments/_exports/<network>.json` or `--out <path>`; writes even in ephemeral mode | `packages/plugin-deploy/src/index.ts` |
 | `deploy.autoExport` hook after each deploy/upgrade | `packages/plugin-deploy/src/deployment-manager.ts` |
 | Hooks: `deployment.programDeployed`, `deployment.programUpgraded` | `packages/core/src/types.ts` |
 | `recipe` task: `--file`, `--export`, `--no-compile`; passes typed `DeploymentContext` (named accounts, deploy, execute, lre, accounts); config network selection comes from global `--network` / `defaultNetwork` | `packages/plugin-deploy/src/recipe-task.ts` |
-| Signer integration: `namedAccounts.deployer` (signable) → deploy signer; `namedAccounts.admin` (signable) → upgrade signer; address-only `admin` triggers `NAMED_ADMIN_DRIFT` warning instead of blocking | `packages/plugin-deploy/src/...` |
 
 ### Testing
 
@@ -180,16 +179,6 @@ The features below are described or implied by LionDen's design intent (see [`vi
 - **Nonzero `priorityFee` / `privateFee`**: flags wired through; no probe exercises actual fee arithmetic.
 - **Inter-deployment delay** (`deploy.interDeploymentDelay`, HTTP-only): default `12_000` ms set, never exercised end-to-end.
 - **Standalone `lionden export --out ...`**: auto-export proven by probe 1; explicit CLI path not probed.
-
-### Constructor variant gaps
-
-These gaps are relative to the five bug-hunt probes, not the full example suite. Some aleo-ports cover the behavior partially, as noted below.
-
-- **`@noupgrade` upgrade rejection**: upgrade task rejects `@noupgrade` records. The five-probe suite does not attempt one (probe 2 deploys `@noupgrade`, doesn't try to upgrade it), but `examples/aleo-ports/noupgrade` does exercise a rejected upgrade.
-- **`@checksum` constructor**: parser recognises the syntax; deploy and upgrade paths exist for it. `examples/aleo-ports/upgrades-vote` deploys a checksum-annotated program, but the real voting/checksum authorization flow is skipped.
-- **`@custom` constructor**: parser recognises the syntax; upgrade preflight emits a warning. `examples/aleo-ports/timelock` exercises a positive custom-constructor upgrade after block advancement, but no probe covers the negative low-height rejection path.
-- **Constructor immutability during upgrade**: no probe attempts to change constructor type, admin address, checksum params, or custom fingerprint between deploy and upgrade.
-- **`@admin` signer mismatch**: probe 4 uses the correct admin key; wrong-key upgrade rejection is not probed.
 
 ### Recovery and failure-path gaps
 
@@ -279,8 +268,7 @@ LionDen and **doko-js** ([github.com/venture23-aleo/doko-js](https://github.com/
 
 ### What LionDen has that doko-js does not (per inspected doko-js 1.1.0 checkout)
 
-- **ARC-0006 constructor model as a first-class concept.** LionDen parses the Leo program constructor annotation (`@noupgrade` / `@admin(address=...)` / `@checksum(...)` / `@custom(...)`) from source in `packages/plugin-deploy/src/constructor-parser.ts`, validates it at deploy preflight, snapshots it into the deployment record, and re-validates fingerprint immutability + admin-signer match at upgrade preflight. In the upstream doko-js checkout inspected for this comparison, doko-js does not tokenize or reason about these annotations anywhere in its parser/generator/CLI — the Leo CLI emits whatever the source declares and the chain enforces it. Doko-js's sample template includes `@noupgrade async constructor(){}` purely because Leo requires it; doko-js itself ignores it.
-- **First-class `upgrade` task** with ABI compatibility checks, constructor fingerprint comparison, and signer validation. Doko-js has no `upgrade` command at all — its `cli/src/scripts/deploy.ts` shells out to `leo deploy` and that's it; upgrades would be hand-rolled by the consumer.
+- **First-class `upgrade` task** with ABI compatibility checks, constructor immutability. Doko-js has no `upgrade` command at all — its `cli/src/scripts/deploy.ts` shells out to `leo deploy` and that's it; upgrades would be hand-rolled by the consumer.
 - **Deployment state with `complete` / `degraded` / `recovered` record statuses**, ABI snapshots, append-only history, pending markers, atomic temp+rename writes.
 - **Crash-recovery for pending deploys** via on-next-run reconciliation against on-chain state.
 - **`--preflight` and `--dry-run` deploy modes**.
