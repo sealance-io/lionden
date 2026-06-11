@@ -192,27 +192,15 @@ describe("test-context", () => {
     });
 
     it("connects to specified network when provided", async () => {
-      const lre = {
-        ...mockLre(),
-        config: {
-          ...mockLre().config,
-          defaultNetwork: "testnet",
-        },
-      };
-      await setup({ lre });
+      const lre = mockLre();
+      await setup({ lre, network: "testnet" });
 
       const manager = lre.network as NetworkManager;
       expect(manager.connect).toHaveBeenCalledWith("testnet");
     });
 
     it("creates a named account accessor for the connected network", async () => {
-      const lre = {
-        ...mockLre(),
-        config: {
-          ...mockLre().config,
-          defaultNetwork: "testnet",
-        },
-      };
+      const lre = mockLre();
       Object.defineProperty(lre, "namedAccounts", {
         value: {
           treasury: {
@@ -223,7 +211,7 @@ describe("test-context", () => {
         },
       });
 
-      const ctx = await setup({ lre });
+      const ctx = await setup({ lre, network: "testnet" });
 
       expect(ctx.named.address("treasury").address).toBe("aleo1treasury");
       expect(() => ctx.named.address("missing")).toThrow(
@@ -329,14 +317,9 @@ describe("test-context", () => {
         endpoint: "https://api.explorer.provable.com/v1",
         getBlockHeight,
       });
-      const lre = {
-        ...mockLre({ connection }),
-        config: {
-          ...mockLre({ connection }).config,
-          defaultNetwork: "testnet",
-        },
-      };
-      const ctx = await setup({ lre, skipDevnode: true });
+      const lre = mockLre({ connection });
+
+      const ctx = await setup({ lre, skipDevnode: true, network: "testnet" });
 
       expect(ctx.connection).toBe(connection);
       expect(getBlockHeight).not.toHaveBeenCalled();
@@ -411,6 +394,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "hello",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
@@ -418,6 +402,22 @@ describe("test-context", () => {
       });
       expect(result.programId).toBe("hello.aleo");
       expect(result.txId).toBe("at1deploy");
+    });
+
+    it("forwards the connected setup network to the deploy task", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true, network: "testnet" });
+
+      await ctx.deploy("hello");
+
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "hello",
+        network: "testnet",
+        priorityFee: undefined,
+        skipConfirm: undefined,
+        noCompile: undefined,
+        noSkipDeployed: undefined,
+      });
     });
 
     it("passes deploy options", async () => {
@@ -428,6 +428,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "token",
+        network: "devnode",
         priorityFee: 1000,
         skipConfirm: true,
         noCompile: undefined,
@@ -444,6 +445,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "token",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
@@ -461,6 +463,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "token",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
@@ -513,6 +516,7 @@ describe("test-context", () => {
       expect(getCached).not.toHaveBeenCalled();
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "hello",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
@@ -585,6 +589,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "token",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,
@@ -600,6 +605,7 @@ describe("test-context", () => {
 
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "hello.aleo",
+        network: "devnode",
         priorityFee: undefined,
         skipConfirm: undefined,
         noCompile: undefined,

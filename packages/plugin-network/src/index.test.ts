@@ -1,8 +1,11 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import type { ConfigValidationError } from "@lionden/core";
 import { createLre } from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
-import { createMockConfig } from "@lionden/test-internals";
-import { describe, expect, it } from "vitest";
+import { createMockConfig, createMockConnection } from "@lionden/test-internals";
+import { describe, expect, it, vi } from "vitest";
 import pluginNetwork from "./index.js";
 
 const mockConfig = createMockConfig();
@@ -74,6 +77,38 @@ describe("plugin-network", () => {
 
     const positionalNames = runTask!.positionalArguments?.map((p) => p.name) ?? [];
     expect(positionalNames).toContain("script");
+  });
+
+  it("run task honors a programmatic network override", async () => {
+    const runTask = pluginNetwork.tasks?.find((t) => t.id === "run");
+    const dir = mkdtempSync(path.join(tmpdir(), "lionden-run-"));
+    const script = path.join(dir, "script.mjs");
+    writeFileSync(script, "export default async () => undefined;\n");
+    const lre = createLre({
+      config: createMockConfig({
+        networks: {
+          ...mockConfig.networks,
+          testnet: {
+            type: "http",
+            endpoint: "https://api.explorer.provable.com/v1",
+            network: "testnet",
+            ephemeral: false,
+          },
+        },
+      }),
+      plugins: [pluginNetwork],
+    });
+    const connect = vi
+      .spyOn(lre.network as NetworkManager, "connect")
+      .mockResolvedValue(createMockConnection());
+
+    try {
+      await runTask!.action({ script, network: "testnet" }, lre);
+
+      expect(connect).toHaveBeenCalledWith("testnet");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

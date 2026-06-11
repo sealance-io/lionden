@@ -110,6 +110,7 @@ describe("recipe deployment context", () => {
     expect(getCached).not.toHaveBeenCalled();
     expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
       program: "hello",
+      network: "devnode",
       noCompile: true,
       priorityFee: undefined,
       noSkipDeployed: true,
@@ -169,6 +170,7 @@ describe("recipe deployment context", () => {
 
     expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
       program: "hello",
+      network: "devnode",
       noCompile: true,
       priorityFee: undefined,
       noSkipDeployed: true,
@@ -183,6 +185,7 @@ describe("recipe deployment context", () => {
 
     expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
       program: "hello.aleo",
+      network: "devnode",
       noCompile: true,
       priorityFee: undefined,
       noSkipDeployed: true,

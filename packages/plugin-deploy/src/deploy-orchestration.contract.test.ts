@@ -6,6 +6,7 @@
  * constructors from Leo source, and broadcasts through a mocked NetworkConnection.
  */
 
+import type { NetworkManager } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeployError, type DeployTaskResult, deployAction } from "./deploy-task.js";
@@ -129,6 +130,22 @@ describe("deploy orchestration contract", () => {
 
     // Constructor type recorded
     expect(results[0]!.constructorType).toBe("noupgrade");
+  });
+
+  it("honors a programmatic network override", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    (lre.config.networks as Record<string, unknown>)["testnet"] = {
+      ...lre.config.networks.devnode,
+    };
+    const connect = vi
+      .spyOn(lre.network as NetworkManager, "connect")
+      .mockResolvedValue(fakeNetwork);
+
+    await deployAction({ program: "hello", noCompile: true, network: "testnet" }, lre);
+
+    expect(connect).toHaveBeenCalledWith("testnet");
   });
 
   it("uses the devnode fast-path when prove is not requested", async () => {

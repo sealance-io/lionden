@@ -291,6 +291,32 @@ describe("upgrade orchestration contract", () => {
     }
   });
 
+  it("honors a programmatic network override", async () => {
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+    (lre.config.networks as Record<string, unknown>)["testnet"] = {
+      ...lre.config.networks.devnode,
+    };
+    const manager = lre.deployments as DeploymentManagerImpl;
+    await manager.record(
+      makeRecord({
+        network: "testnet",
+        fingerprint: extractConstructorFingerprint(
+          `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
+          "admin",
+        ),
+      }),
+      "deploy",
+      { abi: makeAbi() },
+    );
+    const connect = vi
+      .spyOn(lre.network as NetworkManager, "connect")
+      .mockResolvedValue(fakeNetwork);
+
+    await upgradeAction({ program: "hello", network: "testnet" }, lre);
+
+    expect(connect).toHaveBeenCalledWith("testnet");
+  });
+
   it("uses the standard upgrade builder on devnode when prove is requested", async () => {
     const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
 
