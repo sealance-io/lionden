@@ -1,4 +1,4 @@
-import { createLre } from "@lionden/core";
+import { ArgumentType, collectGlobalOptions, createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
 import { describe, expect, it } from "vitest";
 import { DeployError, validateConstructor } from "./deploy-task.js";
@@ -30,14 +30,24 @@ describe("plugin-deploy", () => {
     expect(pluginDeploy.hookHandlers!.config).toBeDefined();
   });
 
-  it("deploy task has program, priorityFee, network options and all flags", () => {
+  it("registers --prove as a BOOLEAN global option", () => {
+    const prove = pluginDeploy.globalOptions?.find((o) => o.name === "prove");
+    expect(prove).toBeDefined();
+    expect(prove!.type).toBe(ArgumentType.BOOLEAN);
+
+    // collectGlobalOptions surfaces it without collisions in the standard stack.
+    const collected = collectGlobalOptions([pluginDeploy]);
+    expect(collected.has("prove")).toBe(true);
+    expect(collected.get("prove")!.pluginId).toBe("@lionden/plugin-deploy");
+  });
+
+  it("deploy task has program and priorityFee options and all flags", () => {
     const deployTask = pluginDeploy.tasks?.find((t) => t.id === "deploy");
     expect(deployTask).toBeDefined();
 
     const optionNames = deployTask!.options?.map((o) => o.name) ?? [];
     expect(optionNames).toContain("program");
     expect(optionNames).toContain("priorityFee");
-    expect(optionNames).toContain("network");
 
     const flagNames = deployTask!.flags?.map((f) => f.name) ?? [];
     expect(flagNames).toContain("skipConfirm");
@@ -47,12 +57,11 @@ describe("plugin-deploy", () => {
     expect(flagNames).toContain("export");
   });
 
-  it("export task has network and out options", () => {
+  it("export task has out option and no task-level network option", () => {
     const exportTask = pluginDeploy.tasks?.find((t) => t.id === "export");
     expect(exportTask).toBeDefined();
 
     const optionNames = exportTask!.options?.map((o) => o.name) ?? [];
-    expect(optionNames).toContain("network");
     expect(optionNames).toContain("out");
   });
 
@@ -78,13 +87,12 @@ describe("plugin-deploy", () => {
     expect(programOpt!.required).toBe(true);
   });
 
-  it("upgrade task has priorityFee, network options and skipConfirm flag", () => {
+  it("upgrade task has priorityFee option and skipConfirm flag", () => {
     const upgradeTask = pluginDeploy.tasks?.find((t) => t.id === "upgrade");
     expect(upgradeTask).toBeDefined();
 
     const optionNames = upgradeTask!.options?.map((o) => o.name) ?? [];
     expect(optionNames).toContain("priorityFee");
-    expect(optionNames).toContain("network");
 
     const flagNames = upgradeTask!.flags?.map((f) => f.name) ?? [];
     expect(flagNames).toContain("skipConfirm");
