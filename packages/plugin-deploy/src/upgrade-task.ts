@@ -44,6 +44,8 @@ export interface UpgradeOptions {
   priorityFee?: number;
   /** Skip waiting for transaction confirmation */
   skipConfirm?: boolean;
+  /** Target network (overrides defaultNetwork) */
+  network?: string;
   /** Build a standard/proven transaction even on devnode. */
   prove?: boolean;
 }
@@ -74,6 +76,7 @@ export async function upgradeAction(
     program: programArg,
     priorityFee: args["priorityFee"] as number | undefined,
     skipConfirm: args["skipConfirm"] as boolean | undefined,
+    network: args["network"] as string | undefined,
     prove: resolveProveOption(args, lre),
   };
 
@@ -87,7 +90,7 @@ export async function upgradeAction(
   const programId = options.program.endsWith(".aleo") ? options.program : `${options.program}.aleo`;
 
   // 1. Connect to network
-  const networkName = config.defaultNetwork;
+  const networkName = options.network ?? config.defaultNetwork;
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
 
