@@ -118,4 +118,16 @@ describe("collectGlobalOptions", () => {
     });
     expect(() => collectGlobalOptions([a, b])).toThrow(/Global option "--opt" registered by both/);
   });
+
+  it("detects collisions between camelCase and kebab-case public names", () => {
+    const a = plugin("a", {
+      globalOptions: [{ name: "fooBar", description: "", type: ArgumentType.STRING }],
+    });
+    const b = plugin("b", {
+      globalOptions: [{ name: "foo-bar", description: "", type: ArgumentType.STRING }],
+    });
+    expect(() => collectGlobalOptions([a, b])).toThrow(
+      /Global option "--foo-bar" registered by both "a" and "b"/,
+    );
+  });
 });

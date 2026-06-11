@@ -83,6 +83,7 @@ export function collectGlobalOptions(
   plugins: readonly LionDenPlugin[],
 ): Map<string, { pluginId: string; definition: GlobalOptionDefinition }> {
   const options = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>();
+  const publicNames = new Map<string, string>();
   const reservedBuiltInNames = getReservedBuiltInGlobalArgumentNames();
 
   for (const plugin of plugins) {
@@ -93,14 +94,17 @@ export function collectGlobalOptions(
             `Global option "--${opt.name}" registered by "${plugin.id}" conflicts with built-in global option "--${publicName}"`,
           );
         }
-      }
-      if (options.has(opt.name)) {
-        const existing = options.get(opt.name)!;
-        throw new PluginLoadError(
-          `Global option "--${opt.name}" registered by both "${existing.pluginId}" and "${plugin.id}"`,
-        );
+        const existingPluginId = publicNames.get(publicName);
+        if (existingPluginId) {
+          throw new PluginLoadError(
+            `Global option "--${opt.name}" registered by both "${existingPluginId}" and "${plugin.id}"`,
+          );
+        }
       }
       options.set(opt.name, { pluginId: plugin.id, definition: opt });
+      for (const publicName of getPublicArgumentNames(opt.name)) {
+        publicNames.set(publicName, plugin.id);
+      }
     }
   }
 
