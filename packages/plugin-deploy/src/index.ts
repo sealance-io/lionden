@@ -157,7 +157,7 @@ async function exportAction(
   args: Record<string, unknown>,
   lre: LionDenRuntimeEnvironment,
 ): Promise<unknown> {
-  const networkName = lre.config.defaultNetwork;
+  const networkName = (args["network"] as string | undefined) ?? lre.config.defaultNetwork;
   const outPath = args["out"] as string | undefined;
 
   const manager = lre.deployments as DeploymentManager | null;
