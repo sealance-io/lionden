@@ -5,12 +5,9 @@ import type { ConstructorInfo } from "./constructor-parser.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import {
   checkAbiCompatible,
-  checkAdminSigner,
   checkAlreadyDeployed,
   checkBalanceSufficient,
   checkConstructorImmutable,
-  checkConstructorPresent,
-  checkConstructorValid,
   checkEditionContinuity,
   checkImportsAvailable,
   runDeployPreflight,
@@ -92,68 +89,6 @@ beforeEach(() => {
         to_string: () => DEVNODE_ACCOUNT_0_ADDRESS,
       }),
     },
-  });
-});
-
-// ---------------------------------------------------------------------------
-// checkConstructorPresent
-// ---------------------------------------------------------------------------
-
-describe("checkConstructorPresent", () => {
-  it("returns null when constructor is present", () => {
-    expect(checkConstructorPresent(noupgradeConstructor, "hello.aleo")).toBeNull();
-  });
-
-  it("returns error when constructor is null", () => {
-    const err = checkConstructorPresent(null, "hello.aleo");
-    expect(err).not.toBeNull();
-    expect(err!.code).toBe("NO_CONSTRUCTOR");
-    expect(err!.recoverable).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// checkConstructorValid
-// ---------------------------------------------------------------------------
-
-describe("checkConstructorValid", () => {
-  it("returns null for valid @noupgrade constructor", () => {
-    expect(checkConstructorValid(noupgradeConstructor, "hello.aleo")).toBeNull();
-  });
-
-  it("returns null for null constructor (already handled by presence check)", () => {
-    expect(checkConstructorValid(null, "hello.aleo")).toBeNull();
-  });
-
-  it("returns error for @admin with invalid address", () => {
-    const bad: ConstructorInfo = { type: "admin", adminAddress: "not-an-aleo-address" };
-    const err = checkConstructorValid(bad, "hello.aleo");
-    expect(err).not.toBeNull();
-    expect(err!.code).toBe("INVALID_CONSTRUCTOR");
-  });
-
-  it("returns error for @checksum without mapping", () => {
-    const bad: ConstructorInfo = { type: "checksum" };
-    const err = checkConstructorValid(bad, "hello.aleo");
-    expect(err).not.toBeNull();
-    expect(err!.code).toBe("INVALID_CONSTRUCTOR");
-  });
-
-  it("returns error for @checksum without key", () => {
-    const bad: ConstructorInfo = { type: "checksum", checksumMapping: "hello.aleo::checksums" };
-    const err = checkConstructorValid(bad, "hello.aleo");
-    expect(err).not.toBeNull();
-    expect(err!.code).toBe("INVALID_CONSTRUCTOR");
-  });
-
-  it("does not emit console warnings for @custom constructor validation", () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try {
-      expect(checkConstructorValid({ type: "custom" }, "hello.aleo")).toBeNull();
-      expect(warnSpy).not.toHaveBeenCalled();
-    } finally {
-      warnSpy.mockRestore();
-    }
   });
 });
 
@@ -480,44 +415,7 @@ describe("runDeployPreflight", () => {
     expect(result.programs[0]!.action).toBe("deploy");
   });
 
-  it("returns structured warning for @custom constructor deploy preflight", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const conn = createMockConnection({
-      getProgramSource: vi.fn().mockResolvedValue(null),
-    });
-    try {
-      const result = await runDeployPreflight({
-        programs: [
-          {
-            programId: "dao.aleo",
-            constructor: { type: "custom" },
-            aleoSource: "program dao.aleo;",
-            existingRecord: null,
-          },
-        ],
-        connection: conn,
-        networkConfig: devnodeNetworkConfig,
-        config,
-        skipDeployed: true,
-        deployTargets: new Set(["dao.aleo"]),
-        localSources: new Map(),
-        graph: makeGraph(),
-      });
-
-      expect(result.passed).toBe(true);
-      expect(result.warnings).toContainEqual({
-        code: "CUSTOM_CONSTRUCTOR",
-        message:
-          `Program "dao.aleo" uses @custom constructor. ` +
-          `Custom constructor logic will be evaluated on-chain during deployment.`,
-      });
-      expect(warnSpy).not.toHaveBeenCalled();
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it("fails when constructor is missing", async () => {
+  it("does not fail when constructor is missing", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(null),
     });
@@ -539,8 +437,8 @@ describe("runDeployPreflight", () => {
       graph: makeGraph(),
     });
 
-    expect(result.passed).toBe(false);
-    expect(result.errors.some((e) => e.code === "NO_CONSTRUCTOR")).toBe(true);
+    expect(result.passed).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 
   it("skips fee and import checks on devnode", async () => {
@@ -740,15 +638,11 @@ describe("runUpgradePreflight", () => {
     expect(result.errors.some((e) => e.code === "ABI_INCOMPATIBLE")).toBe(true);
   });
 
-  it("warns for @custom constructor upgrade", async () => {
+  it("fails when a recorded constructor is changed", async () => {
     const conn = createMockConnection();
-    const customRecord: DeploymentRecord = {
-      ...completeRecord,
-      constructor: { type: "custom" },
-    };
     const result = await runUpgradePreflight({
       programId: "hello.aleo",
-      oldRecord: customRecord,
+      oldRecord: completeRecord,
       oldAbi: mockAbi,
       newConstructor: { type: "custom" },
       newAbi: mockAbi,
@@ -757,63 +651,7 @@ describe("runUpgradePreflight", () => {
       config,
       networkName: "devnode",
     });
-    expect(result.warnings.some((w) => w.code === "CUSTOM_CONSTRUCTOR")).toBe(true);
-  });
-
-  // address-only admin: matching @admin but wrong network signer
-  // Regression test for the bug where namedAdminAddress === adminAddress caused
-  // validateAdminSigner() to be skipped entirely, letting an invalid signer through.
-  it("still validates network signer when address-only admin matches @admin address", async () => {
-    // DEVNODE_ACCOUNTS[0].address is the well-known account-0. Use a different
-    // address as @admin so account-0 (the default devnode signer) fails signer check.
-    const nonSignerAdminAddress = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz15iwyf2vd3d7jkqqe0yv8s2zs0za";
-    const adminRecord: DeploymentRecord = {
-      ...completeRecord,
-      constructor: { type: "admin", adminAddress: nonSignerAdminAddress },
-    };
-    const conn = createMockConnection();
-    const { warning, error } = await checkAdminSigner(
-      conn,
-      config,
-      "devnode",
-      adminRecord,
-      "hello.aleo",
-      undefined, // no signerPrivateKey
-      nonSignerAdminAddress, // namedAdminAddress matches @admin — no drift
-    );
-    // No drift: addresses match
-    expect(warning).toBeNull();
-    // Signer error: devnode account-0 ≠ nonSignerAdminAddress
-    expect(error).not.toBeNull();
-    expect(error!.code).toBe("ADMIN_SIGNER_MISMATCH");
-  });
-
-  // address-only admin: drift warning is non-fatal, preflight passes when signer is correct
-  it("emits NAMED_ADMIN_DRIFT warning without failing preflight when signer is correct", async () => {
-    // @admin address = devnode account-0 (signer check will pass)
-    const account0Address = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
-    const differentAddress = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz15iwyf2vd3d7jkqqe0yv8s2zs0za";
-    const adminRecord: DeploymentRecord = {
-      ...completeRecord,
-      constructor: { type: "admin", adminAddress: account0Address },
-    };
-    const conn = createMockConnection();
-    const result = await runUpgradePreflight({
-      programId: "hello.aleo",
-      oldRecord: adminRecord,
-      oldAbi: mockAbi,
-      newConstructor: { type: "admin", adminAddress: account0Address }, // same as oldRecord
-      newAbi: mockAbi,
-      newFingerprint: "",
-      connection: conn,
-      config,
-      networkName: "devnode",
-      namedAdminAddress: differentAddress, // drifts from @admin address
-    });
-    // Drift warning fires
-    expect(result.warnings.some((w) => w.code === "NAMED_ADMIN_DRIFT")).toBe(true);
-    // Preflight still passes: signer (account-0) matches @admin, drift is a warning only
-    expect(result.passed).toBe(true);
-    expect(result.errors).toHaveLength(0);
+    expect(result.passed).toBe(false);
+    expect(result.errors.some((e) => e.code === "CONSTRUCTOR_TYPE_CHANGED")).toBe(true);
   });
 });

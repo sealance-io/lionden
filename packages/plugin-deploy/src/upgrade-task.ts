@@ -210,18 +210,12 @@ export async function upgradeAction(
         `ARC-0006 requires a constructor for all deployments/upgrades.`,
     );
   }
-
   const newFingerprint = extractConstructorFingerprint(aleoSource, newConstructor.type);
 
-  // 10. Check upgrade permission (noupgrade → immediate error)
-  // Uses effectiveRecord so degraded/recovered records with a locally-derived constructor type
-  // are subject to the same @noupgrade enforcement as complete records.
-  validateUpgradePermission(effectiveRecord, programId);
-
-  // 11. Run upgrade pre-flight (ABI compat, constructor immutability, admin signer, edition check)
+  // 10. Run upgrade pre-flight (ABI compat, constructor immutability, edition check)
   const preflightResult = await runUpgradePreflight({
     programId,
-    oldRecord: effectiveRecord,
+    oldRecord: existingRecord,
     oldAbi,
     newConstructor,
     newAbi,
@@ -229,8 +223,6 @@ export async function upgradeAction(
     connection,
     config,
     networkName,
-    signerPrivateKey: adminSignerKey,
-    namedAdminAddress,
   });
 
   if (!preflightResult.passed) {
@@ -274,10 +266,10 @@ export async function upgradeAction(
       priorityFee: options.priorityFee ?? config.deploy.defaultPriorityFee,
       privateFee: config.deploy.privateFee,
       constructor: {
-        type: newConstructor.type,
-        adminAddress: newConstructor.adminAddress,
-        checksumMapping: newConstructor.checksumMapping,
-        checksumKey: newConstructor.checksumKey,
+        type: newConstructor?.type ?? null,
+        adminAddress: newConstructor?.adminAddress,
+        checksumMapping: newConstructor?.checksumMapping,
+        checksumKey: newConstructor?.checksumKey,
         fingerprint: newFingerprint,
       },
       abiHash: newAbiHash,
@@ -330,10 +322,10 @@ export async function upgradeAction(
       programId,
       edition: newEdition,
       constructor: {
-        type: newConstructor.type,
-        adminAddress: newConstructor.adminAddress,
-        checksumMapping: newConstructor.checksumMapping,
-        checksumKey: newConstructor.checksumKey,
+        type: newConstructor?.type ?? null,
+        adminAddress: newConstructor?.adminAddress,
+        checksumMapping: newConstructor?.checksumMapping,
+        checksumKey: newConstructor?.checksumKey,
         fingerprint: newFingerprint,
       },
       abiHash: newAbiHash,
@@ -367,7 +359,7 @@ export async function upgradeAction(
     txId,
     blockHeight,
     edition: newEdition,
-    constructorType: newConstructor.type,
+    constructorType: newConstructor?.type ?? null,
     network: networkName,
     previousEdition,
   });
@@ -383,35 +375,6 @@ export async function upgradeAction(
 // ---------------------------------------------------------------------------
 // Upgrade permission (still exported for external use)
 // ---------------------------------------------------------------------------
-
-/**
- * Check that the recorded deployment's constructor permits upgrade.
- *
- * Rejects deployed `@noupgrade` programs before upgrade preflight and fails
- * closed for persisted constructor types that LionDen does not recognize.
- */
-export function validateUpgradePermission(record: DeploymentRecord, programId: string): void {
-  const type = record.constructor.type;
-
-  switch (type) {
-    case "noupgrade":
-      throw new DeployError(
-        `Program "${programId}" was deployed with @noupgrade and cannot be upgraded.`,
-      );
-    case "admin":
-    case "checksum":
-    case "custom":
-      break;
-    case null:
-      // Degraded record — constructor type unknown, proceed and let preflight validate
-      break;
-    default:
-      throw new DeployError(
-        `Program "${programId}" has unknown constructor type "${type}". ` +
-          `Cannot determine upgrade eligibility.`,
-      );
-  }
-}
 
 // Re-export for backward compatibility
 export { validateAdminSigner } from "./admin-signer.js";

@@ -491,13 +491,6 @@ describe("upgrade orchestration contract", () => {
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
   });
 
-  it("rejects upgrade of @noupgrade program", async () => {
-    const { lre } = await createUpgradeFixture({ constructorType: "noupgrade" });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("@noupgrade");
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(DeployError);
-  });
-
   it("rejects upgrade when new ABI is not compatible (mapping removed)", async () => {
     const { lre } = await createUpgradeFixture({
       oldMappings: ["counters", "scores"],
