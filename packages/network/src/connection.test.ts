@@ -1093,9 +1093,7 @@ describe("AleoConnection", () => {
 
         const connection = createDevnodeConnection();
         // No `prove` -> the devnode fast-path build is used.
-        await expect(
-          connection.execute("hello.aleo", "main", ["1u32"]),
-        ).rejects.toThrow(
+        await expect(connection.execute("hello.aleo", "main", ["1u32"])).rejects.toThrow(
           "Provable SDK local execution trapped outside the pm.run promise: unreachable",
         );
       });
@@ -1112,9 +1110,7 @@ describe("AleoConnection", () => {
         );
 
         const connection = createDevnodeConnection();
-        await expect(
-          connection.execute("hello.aleo", "main", ["1u32"]),
-        ).rejects.toThrow(
+        await expect(connection.execute("hello.aleo", "main", ["1u32"])).rejects.toThrow(
           "Provable SDK local execution trapped outside the pm.run promise: unreachable",
         );
       });

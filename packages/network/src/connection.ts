@@ -892,9 +892,7 @@ function runWithLocalWasmTrapCapture<T>(operation: () => Promise<T>): Promise<T>
 // when another callback already owns the slot, since Node suppresses the
 // `uncaughtException` event once a capture callback is installed. Unrelated
 // exceptions are re-raised so Node's default crash behavior is preserved.
-function installUncaughtExceptionTrapHandler(
-  rejectTrap: (error: unknown) => void,
-): () => void {
+function installUncaughtExceptionTrapHandler(rejectTrap: (error: unknown) => void): () => void {
   const hasCaptureCallbackSupport =
     typeof process.setUncaughtExceptionCaptureCallback === "function" &&
     typeof process.hasUncaughtExceptionCaptureCallback === "function";
@@ -962,9 +960,7 @@ function installUncaughtExceptionTrapHandler(
 // `unhandledRejection` listener still fires (EventEmitter semantics), so this is
 // only observable if LionDen is the sole listener — an accepted process-global
 // caveat that mirrors the uncaughtException path.
-function installUnhandledRejectionTrapHandler(
-  rejectTrap: (error: unknown) => void,
-): () => void {
+function installUnhandledRejectionTrapHandler(rejectTrap: (error: unknown) => void): () => void {
   const handler: NodeJS.UnhandledRejectionListener = (reason) => {
     if (isLocalExecutionWasmTrap(reason)) {
       rejectTrap(reason);
