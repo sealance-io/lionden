@@ -26,6 +26,7 @@ import {
   type ConfirmedTransaction,
   type ConfirmedTransitionRecord,
   type ExecuteOptions,
+  LocalExecutionWasmTrapError,
   LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
   type NetworkConnection,
@@ -340,19 +341,25 @@ export class AleoConnection implements NetworkConnection {
     if (mode === "local") {
       // Local execution — run without generating proofs. captureSdkCall covers
       // local *rejections* and opaque-shape classification; the sink is normally
-      // empty for local. (Composition point for the local-trap workaround:
-      // wrap `pm.run` in `runLocalProgramWithTrapCapture(...)` inside the fn
-      // when that branch lands — see or/local_execution_hang_workaround.)
+      // empty for local. runWithLocalWasmTrapCapture is nested INSIDE (closest
+      // to pm.run) so a Leo body panic that escapes the pm.run promise as a
+      // process-global `RuntimeError: unreachable` trap becomes a rejection
+      // rather than hanging forever. Order matters: captureSdkCall must stay the
+      // outer wrapper so its runExclusive mutex is released when the trap rejects
+      // — see sdk-diagnostics.ts for the matching LocalExecutionWasmTrapError
+      // pass-through that keeps the trap from being re-wrapped.
       const result = await captureSdkCall(
         diagnostics,
         { operation: "local", programId, transitionName },
         () =>
-          pm.run(
-            artifacts.source,
-            transitionName,
-            args,
-            false, // proveExecution = false
-            artifacts.imports,
+          runWithLocalWasmTrapCapture(() =>
+            pm.run(
+              artifacts.source,
+              transitionName,
+              args,
+              false, // proveExecution = false
+              artifacts.imports,
+            ),
           ),
       );
       const outputs = extractLocalExecutionOutputs(result);
@@ -373,20 +380,26 @@ export class AleoConnection implements NetworkConnection {
 
     if (useDevnodeFastPath) {
       // Devnode fast-path — skips proof generation. Only the build is wrapped;
-      // broadcast already surfaces a usable HTTP error on its own.
+      // broadcast already surfaces a usable HTTP error on its own. The build runs
+      // the transition body locally to authorize the tx, so an arithmetic body
+      // panic traps the same way local pm.run does — runWithLocalWasmTrapCapture
+      // nested INSIDE captureSdkCall converts that trap into a rejection instead
+      // of a hang/crash (tmp/bug-hunts/onchain-trap probe).
       const tx = await captureSdkCall(
         diagnostics,
         { operation: "execute", programId, transitionName },
         () =>
-          pm.buildDevnodeExecutionTransaction({
-            programName: programId,
-            functionName: transitionName,
-            inputs: args,
-            priorityFee: options?.fee ?? 0,
-            privateFee: options?.privateFee ?? false,
-            program: artifacts.source,
-            ...importsSlice,
-          }),
+          runWithLocalWasmTrapCapture(() =>
+            pm.buildDevnodeExecutionTransaction({
+              programName: programId,
+              functionName: transitionName,
+              inputs: args,
+              priorityFee: options?.fee ?? 0,
+              privateFee: options?.privateFee ?? false,
+              program: artifacts.source,
+              ...importsSlice,
+            }),
+          ),
       );
       txId = await this.broadcastTransaction(tx);
     } else {
@@ -398,21 +411,28 @@ export class AleoConnection implements NetworkConnection {
       );
       // Standard execution via ProgramManager. This is the prove path whose
       // WASM state-query callbacks surface as opaque "JS callback Promise
-      // rejected:" errors — captureSdkCall enriches them from the sink.
+      // rejected:" errors — captureSdkCall enriches them from the sink. The
+      // local authorize phase runs the transition body before proof generation,
+      // so an arithmetic body panic traps before any state query —
+      // runWithLocalWasmTrapCapture (nested INSIDE captureSdkCall) converts that
+      // trap into a rejection instead of a hang/crash. A normal opaque rejection
+      // still passes through to captureSdkCall's enrichment unchanged.
       txId = await captureSdkCall(
         diagnostics,
         { operation: "execute", programId, transitionName },
         () =>
-          pm.execute({
-            programName: programId,
-            functionName: transitionName,
-            inputs: args,
-            priorityFee: options?.fee ?? 0,
-            privateFee: options?.privateFee ?? false,
-            program: artifacts.source,
-            ...importsSlice,
-            ...(persistentExtras ?? {}),
-          }),
+          runWithLocalWasmTrapCapture(() =>
+            pm.execute({
+              programName: programId,
+              functionName: transitionName,
+              inputs: args,
+              priorityFee: options?.fee ?? 0,
+              privateFee: options?.privateFee ?? false,
+              program: artifacts.source,
+              ...importsSlice,
+              ...(persistentExtras ?? {}),
+            }),
+          ),
       );
     }
 
@@ -817,6 +837,175 @@ export class AleoConnection implements NetworkConnection {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// The Provable WASM runtime can report Leo runtime panics (integer
+// under/overflow, division by zero) as process-level `RuntimeError: unreachable`
+// traps while leaving the SDK promise pending. Wrap this around any local-WASM
+// SDK operation to convert that specific trap into the rejection callers expect:
+//   - local `pm.run` (mode:"local"), and
+//   - the local authorize/build phase of on-chain execute
+//     (`buildDevnodeExecutionTransaction` fast-path and `pm.execute` prove path),
+//     where a transition-body arithmetic panic traps the same way before any
+//     broadcast — confirmed by the tmp/bug-hunts/onchain-trap probe.
+// (An explicit `assert` failure is a *catchable* `Stack …` rejection, not a
+// trap, so it settles the promise normally and never reaches this handler.)
+//
+// When LionDen owns the capture point it rethrows unrelated uncaught exceptions;
+// when another capture callback is already installed, it observes traps through
+// `uncaughtExceptionMonitor` because Node suppresses the `uncaughtException`
+// event. The capture point is process-global, so this relies on LionDen's serial
+// execution model; an unrelated `RuntimeError: unreachable` during the same
+// window would be attributed to this run. Keep each wrap scoped to a single
+// in-flight call — do not install overlapping captures.
+//
+// The trap only carries the generic `unreachable` message; the descriptive
+// snarkVM panic text (e.g. "Integer subtraction failed on: ...") is written to
+// stderr by the panic hook and is not available here, so the resulting
+// `LocalExecutionWasmTrapError` cannot surface the underlying failure reason.
+function runWithLocalWasmTrapCapture<T>(operation: () => Promise<T>): Promise<T> {
+  if (typeof process === "undefined") return operation();
+
+  return raceLocalOperationWithTrap(operation, (rejectTrap) => {
+    // The trap escapes the SDK promise through one of two process-global
+    // channels, depending on the call site (observed via the onchain-trap probe):
+    //   - `uncaughtException`  — local `pm.run` and the prove-path `pm.execute`
+    //     throw the trap out of band.
+    //   - `unhandledRejection` — the devnode fast-path
+    //     `buildDevnodeExecutionTransaction` rejects an internal promise that is
+    //     never awaited.
+    // Watch both so every confirmed site is covered; the first to fire wins
+    // (the trap promise's reject is idempotent).
+    const cleanups = [
+      installUncaughtExceptionTrapHandler(rejectTrap),
+      installUnhandledRejectionTrapHandler(rejectTrap),
+    ];
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  });
+}
+
+// Convert the `RuntimeError: unreachable` trap that escapes as an
+// uncaughtException (local `pm.run`, prove-path `pm.execute`) into a rejection.
+// Uses the capture-callback API when available — and `uncaughtExceptionMonitor`
+// when another callback already owns the slot, since Node suppresses the
+// `uncaughtException` event once a capture callback is installed. Unrelated
+// exceptions are re-raised so Node's default crash behavior is preserved.
+function installUncaughtExceptionTrapHandler(
+  rejectTrap: (error: unknown) => void,
+): () => void {
+  const hasCaptureCallbackSupport =
+    typeof process.setUncaughtExceptionCaptureCallback === "function" &&
+    typeof process.hasUncaughtExceptionCaptureCallback === "function";
+
+  if (hasCaptureCallbackSupport) {
+    if (process.hasUncaughtExceptionCaptureCallback()) {
+      const handler: NodeJS.UncaughtExceptionListener = (error) => {
+        if (isLocalExecutionWasmTrap(error)) {
+          rejectTrap(error);
+        }
+      };
+      process.on("uncaughtExceptionMonitor", handler);
+      return () => {
+        process.removeListener("uncaughtExceptionMonitor", handler);
+      };
+    }
+
+    process.setUncaughtExceptionCaptureCallback((error) => {
+      if (isLocalExecutionWasmTrap(error)) {
+        rejectTrap(error);
+        return;
+      }
+
+      process.setUncaughtExceptionCaptureCallback(null);
+      setImmediate(() => {
+        throw error;
+      });
+    });
+    return () => {
+      if (process.hasUncaughtExceptionCaptureCallback()) {
+        process.setUncaughtExceptionCaptureCallback(null);
+      }
+    };
+  }
+
+  const handler: NodeJS.UncaughtExceptionListener = (error) => {
+    if (isLocalExecutionWasmTrap(error)) {
+      rejectTrap(error);
+      return;
+    }
+
+    // Unrelated exception: detach before re-raising. A listener-based handler
+    // suppresses Node's default crash, so rethrowing while still attached would
+    // loop straight back into this handler. Detaching first lets the rethrow
+    // reach Node's default (crash) behavior.
+    process.removeListener("uncaughtException", handler);
+    setImmediate(() => {
+      throw error;
+    });
+  };
+  process.on("uncaughtException", handler);
+  return () => {
+    process.removeListener("uncaughtException", handler);
+  };
+}
+
+// Convert the same trap when it escapes as an unhandledRejection — the devnode
+// `buildDevnodeExecutionTransaction` fast-path rejects an internal promise that
+// LionDen never awaits, so the trap surfaces here rather than as an
+// uncaughtException (confirmed by the onchain-trap probe: trapVia=unhandledRejection).
+//
+// Only the specific trap is intercepted; unrelated rejections are left for other
+// listeners and Node's default. Merely having a listener suppresses Node's
+// built-in default for the brief, serial capture window, but every other
+// `unhandledRejection` listener still fires (EventEmitter semantics), so this is
+// only observable if LionDen is the sole listener — an accepted process-global
+// caveat that mirrors the uncaughtException path.
+function installUnhandledRejectionTrapHandler(
+  rejectTrap: (error: unknown) => void,
+): () => void {
+  const handler: NodeJS.UnhandledRejectionListener = (reason) => {
+    if (isLocalExecutionWasmTrap(reason)) {
+      rejectTrap(reason);
+    }
+  };
+  process.on("unhandledRejection", handler);
+  return () => {
+    process.removeListener("unhandledRejection", handler);
+  };
+}
+
+function raceLocalOperationWithTrap<T>(
+  operation: () => Promise<T>,
+  installTrapHandler: (rejectTrap: (error: unknown) => void) => () => void,
+): Promise<T> {
+  let cleanupTrapHandler = () => {};
+  const trap = new Promise<never>((_, reject) => {
+    cleanupTrapHandler = installTrapHandler((error) => {
+      reject(new LocalExecutionWasmTrapError(error));
+    });
+  });
+
+  let operationPromise: Promise<T>;
+  try {
+    operationPromise = operation();
+  } catch (error) {
+    cleanupTrapHandler();
+    return Promise.reject(error);
+  }
+
+  return Promise.race([operationPromise, trap]).finally(cleanupTrapHandler);
+}
+
+function isLocalExecutionWasmTrap(error: unknown): boolean {
+  if (error instanceof WebAssembly.RuntimeError && error.message === "unreachable") {
+    return true;
+  }
+
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { readonly name?: unknown; readonly message?: unknown };
+  return candidate.name === "RuntimeError" && candidate.message === "unreachable";
 }
 
 function dedupAndSortRuntimeImports(

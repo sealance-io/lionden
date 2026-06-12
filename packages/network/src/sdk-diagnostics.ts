@@ -16,7 +16,7 @@
  * re-throws a typed, descriptive {@link SdkExecutionError}.
  */
 
-import { SdkExecutionError } from "./types.js";
+import { LocalExecutionWasmTrapError, SdkExecutionError } from "./types.js";
 
 /**
  * One transport-level failure observed during an SDK build/prove call.
@@ -130,6 +130,13 @@ export async function captureSdkCall<T>(
     } catch (error: unknown) {
       // Never double-wrap a previously-enriched error (defensive against nesting).
       if (error instanceof SdkExecutionError) {
+        throw error;
+      }
+      // Pass a local-execution WASM trap through untouched. Its message contains
+      // "unreachable", which isOpaqueWasmError would otherwise treat as an opaque
+      // abort and re-wrap into a generic SdkExecutionError — burying the trap
+      // class and message that local trap-capture callers assert on.
+      if (error instanceof LocalExecutionWasmTrapError) {
         throw error;
       }
       const failures = diagnostics.snapshot();

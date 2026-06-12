@@ -69,6 +69,7 @@ export type {
   TransitionSelectionContext,
 } from "./types.js";
 export {
+  LocalExecutionWasmTrapError,
   LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
   SdkExecutionError,

@@ -195,6 +195,37 @@ export class SdkExecutionError extends Error {
   }
 }
 
+/**
+ * Thrown by the network layer's local-WASM trap capture when the Provable WASM
+ * runtime reports a Leo runtime panic (integer under/overflow, division by zero)
+ * as a process-level `RuntimeError: unreachable` trap that escapes the SDK call
+ * promise (`pm.run`, `pm.execute`, or `buildDevnodeExecutionTransaction`),
+ * leaving it pending. The original trap is preserved at `.cause`. (An explicit
+ * `assert` failure is a *catchable* `Stack …` rejection, not this trap.)
+ *
+ * The trap carries only the generic `unreachable` message; the descriptive
+ * snarkVM panic text is written to stderr by the panic hook and is not
+ * recoverable here, so this error cannot surface the underlying failure reason.
+ *
+ * Defined in this module (rather than connection.ts) so `captureSdkCall`
+ * (sdk-diagnostics.ts) can pass it through without re-wrapping it into a
+ * generic `SdkExecutionError`, and without introducing a
+ * connection.ts -> sdk-diagnostics.ts import cycle.
+ */
+export class LocalExecutionWasmTrapError extends Error {
+  readonly kind = "LocalExecutionWasmTrapError" as const;
+
+  constructor(cause: unknown) {
+    super(
+      `Provable SDK local execution trapped outside the pm.run promise: ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+      { cause },
+    );
+    this.name = "LocalExecutionWasmTrapError";
+  }
+}
+
 export interface TransitionSelectionContext {
   readonly programId: string;
   readonly transitionName: string;
