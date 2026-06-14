@@ -128,9 +128,10 @@ The current LRE includes:
 5. collect plugin global options and parse again with that option set
 6. resolve config through the four-stage lifecycle
 7. create the LRE using resolved config and post-extension config tasks
-8. validate task named arguments do not overlap with built-in or plugin global options
+8. validate task named arguments do not overlap with built-in global options (plugin globals are allowed to collide — a task arg of the same name wins during routing)
 9. parse again with task metadata so named arguments are routed by schema
-10. print help or dispatch the selected task
+10. apply the global `--network` override from that task-aware parse to `config.defaultNetwork`
+11. print help or dispatch the selected task
 
 `packages/cli/src/task-dispatch.ts` owns low-level argument parsing and help rendering.
 

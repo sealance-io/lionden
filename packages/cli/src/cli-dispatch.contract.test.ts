@@ -250,7 +250,12 @@ describe("CLI dispatch contract", () => {
     expect(lre.globalOptions.prove).toBe(true);
   });
 
-  it("does not override defaultNetwork when --network has no value", async () => {
+  // Mirrors the index.ts boot order: the --network override must be taken from
+  // the task-AWARE parse, after the LRE exists, not the earlier task-unaware one.
+  async function resolveNetworkOverrideThroughBoot(
+    argv: string[],
+    configContent: string,
+  ): Promise<{ taskId: string | null; defaultNetwork: string }> {
     const deployPlugin: LionDenPlugin = {
       id: "deploy-test",
       name: "Deploy",
@@ -261,20 +266,55 @@ describe("CLI dispatch contract", () => {
       ],
     };
 
-    const projectDir = createTempProject(`export default { defaultNetwork: "local" };`);
+    const projectDir = createTempProject(configContent);
     const configPath = findConfigFile(projectDir)!;
     const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
     const plugins = resolvePluginOrder([deployPlugin]);
     const globalOptionDefs = collectGlobalOptions(plugins);
-    const parsed = parseArgs(["deploy", "--network"], globalOptionDefs);
-
     const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
-    const networkOverride =
-      typeof parsed.globalArgs.network === "string" ? parsed.globalArgs.network : undefined;
-    const config = networkOverride ? { ...resolved, defaultNetwork: networkOverride } : resolved;
 
-    expect(parsed.globalArgs.network).toBeUndefined();
-    expect(config.defaultNetwork).toBe("local");
+    const config = { ...resolved };
+    const lre = createLre({ config, plugins, globalOptions: {} });
+    const parsed = parseArgs(argv, globalOptionDefs, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+    if (typeof parsed.globalArgs.network === "string") {
+      (config as { defaultNetwork: string }).defaultNetwork = parsed.globalArgs.network;
+    }
+    return { taskId: parsed.taskId, defaultNetwork: config.defaultNetwork };
+  }
+
+  it("does not override defaultNetwork when --network has no value", async () => {
+    const { taskId, defaultNetwork } = await resolveNetworkOverrideThroughBoot(
+      ["deploy", "--network"],
+      `export default { defaultNetwork: "local" };`,
+    );
+
+    expect(taskId).toBe("deploy");
+    expect(defaultNetwork).toBe("local");
+  });
+
+  it("does not let a value-less --network before the task swallow the task token", async () => {
+    // `lionden --network deploy`: the task-unaware parse would read network="deploy"
+    // and clobber defaultNetwork. The task-aware boot order must identify `deploy`
+    // as the task and leave defaultNetwork untouched.
+    const { taskId, defaultNetwork } = await resolveNetworkOverrideThroughBoot(
+      ["--network", "deploy"],
+      `export default { defaultNetwork: "local" };`,
+    );
+
+    expect(taskId).toBe("deploy");
+    expect(defaultNetwork).toBe("local");
+  });
+
+  it("still applies a real --network override placed before the task", async () => {
+    const { taskId, defaultNetwork } = await resolveNetworkOverrideThroughBoot(
+      ["--network", "testnet", "deploy"],
+      `export default { defaultNetwork: "local" };`,
+    );
+
+    expect(taskId).toBe("deploy");
+    expect(defaultNetwork).toBe("testnet");
   });
 
   it("does not promote a task-local boolean flag into lre.globalOptions (task-aware seeding)", async () => {
