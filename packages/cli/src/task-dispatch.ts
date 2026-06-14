@@ -164,6 +164,21 @@ function buildTaskArgumentLookup(
       lookup.set(publicName, entry);
     }
   }
+  // Positionals may also be supplied by name (e.g. `--script-path` for a
+  // `scriptPath` positional). Register them as valued (never boolean) so a
+  // value-less `--script-path` consumes nothing and leaves the positional unset
+  // — letting the runner's required-positional check fire — instead of routing
+  // through the unknown-option branch and landing a `true` sentinel that
+  // masquerades as a supplied value. A real option/flag spelling wins on a
+  // clash (a config bug), so only fill names not already claimed above.
+  for (const positional of taskDefinition.positionalArguments ?? []) {
+    const entry = { name: positional.name, type: "string" as const };
+    for (const publicName of getPublicArgumentNames(positional.name)) {
+      if (!lookup.has(publicName)) {
+        lookup.set(publicName, entry);
+      }
+    }
+  }
   return lookup;
 }
 
@@ -311,7 +326,9 @@ export function validateParsedArgs(lre: LionDenRuntimeEnvironment, parsed: Parse
 
   const taskDefinition = lre.tasks.getTaskDefinition(parsed.taskId);
   if (!taskDefinition) {
-    throw new Error(`Unknown task: "${parsed.taskId}"`);
+    throw new Error(
+      `Unknown task: "${parsed.taskId}". Run 'lionden --help' to see available tasks.`,
+    );
   }
 
   if (parsed.preTaskArgs.length > 0) {
@@ -327,21 +344,22 @@ export function validateParsedArgs(lre: LionDenRuntimeEnvironment, parsed: Parse
   const variadic =
     positionalDefinitions.length > 0 &&
     positionalDefinitions[positionalDefinitions.length - 1]?.variadic === true;
-  if (
-    positionalValues.length > 0 &&
-    !variadic &&
-    positionalValues.length > positionalDefinitions.length
-  ) {
-    const unexpected = positionalValues[positionalDefinitions.length] ?? positionalValues[0];
+  // Positionals already supplied by name don't consume a bare slot (the runner
+  // binds bare values only to the still-unbound positionals, left-to-right), so
+  // the number of bare values the schema can absorb is the count of positionals
+  // NOT supplied by name.
+  const namedPositionalCount = positionalDefinitions.filter((definition) =>
+    getPublicArgumentNames(definition.name).some((publicName) => publicName in parsed.taskArgs),
+  ).length;
+  const bareSlots = positionalDefinitions.length - namedPositionalCount;
+  if (positionalValues.length > 0 && !variadic && positionalValues.length > bareSlots) {
+    const unexpected = positionalValues[bareSlots] ?? positionalValues[0];
     throw new Error(`Unexpected argument "${unexpected}" for task "${parsed.taskId}"`);
   }
 
+  // buildTaskArgumentLookup already includes positional public names, so a
+  // positional supplied by name (e.g. `--script-path`) is an allowed key.
   const allowedTaskArgs = buildTaskArgumentLookup(taskDefinition);
-  for (const positional of taskDefinition.positionalArguments ?? []) {
-    for (const publicName of getPublicArgumentNames(positional.name)) {
-      allowedTaskArgs.set(publicName, { name: positional.name, type: "string" });
-    }
-  }
 
   for (const key of Object.keys(parsed.taskArgs)) {
     if (key === "_positional") continue;

@@ -149,12 +149,19 @@ export class TaskRunnerImpl implements TaskRunner {
   }
 
   /**
-   * Normalize CLI-parsed args to match the task definition's option/flag names.
+   * Normalize CLI-parsed args to match the task definition's option, flag, and
+   * positional names.
    *
    * The CLI parser stores raw flag names (e.g., "no-compile") and string values
    * (e.g., "5000" for --timeout 5000). This method:
    * 1. Maps kebab-case keys to their camelCase equivalents
    * 2. Coerces string values to the declared option type (number, boolean)
+   *
+   * Positionals are included so a positional supplied on the CLI by its public
+   * name (e.g. `--script-path` for a `scriptPath` positional, which the parser
+   * stores under the kebab key) is canonicalized to the name the action and the
+   * required-positional check read — the validator already allow-lists these
+   * public spellings, so without this they would pass validation but never bind.
    */
   private normalizeArgs(
     definition: TaskDefinition,
@@ -170,6 +177,15 @@ export class TaskRunnerImpl implements TaskRunner {
     for (const flag of definition.flags ?? []) {
       for (const publicName of getPublicArgumentNames(flag.name)) {
         canonicalMap.set(publicName, { name: flag.name, type: "boolean" });
+      }
+    }
+    for (const positional of definition.positionalArguments ?? []) {
+      for (const publicName of getPublicArgumentNames(positional.name)) {
+        // A real option/flag spelling wins over a positional alias on a clash
+        // (a config bug), so only fill names not already claimed above.
+        if (!canonicalMap.has(publicName)) {
+          canonicalMap.set(publicName, { name: positional.name });
+        }
       }
     }
 
@@ -236,10 +252,13 @@ export class TaskRunnerImpl implements TaskRunner {
    * Bind positional arguments to their declared names.
    *
    * The CLI parser stores raw positional values in `args._positional` (kept
-   * populated for back-compat with hand-extraction in plugins). This maps each
-   * `_positional[i]` onto `positionalArguments[i].name` so actions can read by
-   * name, then enforces `required` positionals — throwing a clear error when a
-   * required positional was supplied neither by name nor positionally.
+   * populated for back-compat with hand-extraction in plugins). Bare values
+   * fill the positionals not already supplied by name, left-to-right, so an
+   * earlier named positional does not misalign the bare ones; a variadic
+   * positional (declared last) collects every remaining bare value into an
+   * array under its name. Finally it enforces `required` positionals — throwing
+   * a clear error when a required positional was supplied neither by name nor
+   * positionally.
    */
   private applyPositionalArguments(
     definition: TaskDefinition,
@@ -255,18 +274,29 @@ export class TaskRunnerImpl implements TaskRunner {
       ? (result["_positional"] as unknown[])
       : [];
 
-    positionalDefs.forEach((def, i) => {
-      // An explicitly-named value (e.g. from a programmatic run({ script }))
-      // wins over the positional array; otherwise bind from _positional[i].
-      if (!(def.name in result) && i < positionalValues.length) {
-        result[def.name] = positionalValues[i];
+    // Bare values fill only the positionals NOT already supplied by name,
+    // consumed left-to-right via a cursor. Advancing this cursor (rather than
+    // indexing `_positional` by the declaration index) keeps the remaining bare
+    // values aligned when an earlier positional was given by name — e.g. a named
+    // `scriptPath` must not shift the bare args that fill a later positional.
+    let cursor = 0;
+    for (const def of positionalDefs) {
+      // An explicitly-named value (a programmatic run({ script }) or a CLI
+      // `--name` spelling canonicalized in normalizeArgs) wins over the bare
+      // array and does not consume a bare slot. A variadic positional (always
+      // declared last) takes every remaining bare value as an array, so an
+      // action can read the whole tail by name instead of re-extracting from
+      // `_positional`.
+      if (!(def.name in result) && cursor < positionalValues.length) {
+        result[def.name] = def.variadic ? positionalValues.slice(cursor) : positionalValues[cursor];
+        cursor = def.variadic ? positionalValues.length : cursor + 1;
       }
       if (def.required && result[def.name] === undefined) {
         throw new Error(
           `Task "${definition.id}" is missing required positional argument "${def.name}".`,
         );
       }
-    });
+    }
 
     return result;
   }

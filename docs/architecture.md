@@ -94,7 +94,7 @@ Key current behaviors:
 - the final task-aware CLI parse is validated before dispatch, so unknown tasks, unknown named arguments, bare arguments before the resolved task, and unused after-task positional arguments are rejected centrally
 - numeric option values are coerced from strings when possible
 - option defaults and flag defaults are filled before execution
-- positional arguments are bound by index to their declared names (`_positional` stays populated for back-compat), variadic positionals can consume multiple bare arguments, and a missing `required` positional throws before the action runs
+- positional arguments are bound by index to their declared names (`_positional` stays populated for back-compat), a variadic positional (declared last) collects the remaining bare arguments into an array under its declared name, and a missing `required` positional throws before the action runs
 
 This is the basis for the repo's built-in tasks such as `compile`, `node`, `deploy`, and `test`.
 
