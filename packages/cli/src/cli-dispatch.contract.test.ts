@@ -19,8 +19,9 @@ import {
   task,
 } from "@lionden/core";
 import { type TempProject, TempProjectBuilder } from "@lionden/test-internals";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
+import { main } from "./index.js";
 import { dispatchTask, parseArgs } from "./task-dispatch.js";
 
 describe("CLI dispatch contract", () => {
@@ -248,6 +249,25 @@ describe("CLI dispatch contract", () => {
 
     const lre = createLre({ config: resolved, plugins, globalOptions });
     expect(lre.globalOptions.prove).toBe(true);
+  });
+
+  it("renders help before validating an unknown --network override", async () => {
+    const projectDir = createTempProject(
+      `export default { defaultNetwork: "local", networks: { local: { type: "devnode" } } };`,
+    );
+    const configPath = path.join(projectDir, "lionden.config.ts");
+    const originalArgv = process.argv;
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    try {
+      process.argv = ["node", "lionden", "--config", configPath, "--network", "ghostnet", "--help"];
+
+      await expect(main()).resolves.toBeUndefined();
+      expect(logSpy.mock.calls.flat().join("\n")).toContain("LionDen");
+    } finally {
+      process.argv = originalArgv;
+      logSpy.mockRestore();
+    }
   });
 
   // Mirrors the index.ts boot order: the --network override must be taken from
