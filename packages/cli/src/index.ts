@@ -111,6 +111,9 @@ export async function main(): Promise<void> {
       );
     }
     (config as { defaultNetwork: string }).defaultNetwork = requestedNetwork;
+    // Seed the explicit --network into globalOptions so the test task can bridge it
+    // to Vitest workers (LIONDEN_NETWORK). Other tasks keep reading config.defaultNetwork.
+    globalOptions["network"] = requestedNetwork;
   }
 
   // Seed the built-in --prove preference into globalOptions so deploy/upgrade/

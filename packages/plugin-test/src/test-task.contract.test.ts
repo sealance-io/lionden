@@ -362,6 +362,36 @@ describe("test task contract", () => {
     });
   });
 
+  describe("network bridge", () => {
+    it("forwards an explicit globalOptions.network to runTests via LIONDEN_NETWORK", async () => {
+      const lre = createTestLre();
+      lre.globalOptions["network"] = "altnet";
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(process.env["LIONDEN_NETWORK"]).toBe("altnet");
+    });
+
+    it("prints a notice naming the explicit network", async () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const lre = createTestLre();
+      lre.globalOptions["network"] = "altnet";
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(logSpy.mock.calls.flat()).toContain('Running tests against network "altnet"');
+      logSpy.mockRestore();
+    });
+
+    it("leaves LIONDEN_NETWORK unset when no explicit network is selected", async () => {
+      const lre = createTestLre();
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(process.env["LIONDEN_NETWORK"]).toBeUndefined();
+    });
+  });
+
   it("config validation rejects timeout <= 0 through LRE hook dispatch", async () => {
     const config = createMockConfig();
     const configHooks = pluginTest.hookHandlers!.config as {

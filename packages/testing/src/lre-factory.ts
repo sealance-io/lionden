@@ -85,6 +85,23 @@ async function buildLre(): Promise<LionDenRuntimeEnvironment> {
   const plugins = resolvePluginOrder(userPlugins);
   const { resolved, extendedUserConfig } = await resolveConfig(userConfig, plugins, root);
 
+  // Worker-side mirror of the parent CLI's --network override (cli/src/index.ts).
+  // When the test runner bridged an explicit --network via LIONDEN_NETWORK, retarget
+  // defaultNetwork here so every worker reader (connect, deployment-manager, and
+  // setup()'s default network) is consistent. Custom-LRE tests (setup({ lre })) are
+  // untouched because they never reach buildLre(). Validation is defense-in-depth for
+  // hand-set or stale env values.
+  const bridgedNetwork = process.env["LIONDEN_NETWORK"];
+  if (bridgedNetwork) {
+    if (!resolved.networks[bridgedNetwork]) {
+      throw new Error(
+        `Network "${bridgedNetwork}" (from LIONDEN_NETWORK) is not defined in config.networks. ` +
+          `Available networks: ${Object.keys(resolved.networks).join(", ") || "(none)"}`,
+      );
+    }
+    (resolved as { defaultNetwork: string }).defaultNetwork = bridgedNetwork;
+  }
+
   // Create LRE — use post-extend config for tasks so plugin-injected tasks are included
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   return createLre({ config: resolved, plugins, configTasks });

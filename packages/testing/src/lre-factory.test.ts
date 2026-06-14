@@ -1,3 +1,4 @@
+import { type TempProject, TempProjectBuilder } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestLre, resetTestLre } from "./lre-factory.js";
 
@@ -11,6 +12,67 @@ describe("lre-factory", () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     resetTestLre();
+  });
+
+  describe("LIONDEN_NETWORK bridge", () => {
+    let project: TempProject | undefined;
+
+    const TWO_NETWORK_CONFIG = `export default {
+      defaultNetwork: "devnode",
+      networks: {
+        devnode: { type: "devnode", autoBlock: true },
+        altnet: {
+          type: "http",
+          endpoint: "https://api.explorer.provable.com/v1",
+          network: "testnet",
+        },
+      },
+    };`;
+
+    afterEach(() => {
+      project?.cleanup();
+      project = undefined;
+    });
+
+    it("retargets config.defaultNetwork to the bridged network", async () => {
+      project = new TempProjectBuilder().withConfig(TWO_NETWORK_CONFIG).build();
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      process.env["LIONDEN_NETWORK"] = "altnet";
+
+      try {
+        const lre = await createTestLre();
+        expect(lre.config.defaultNetwork).toBe("altnet");
+      } finally {
+        resetTestLre();
+      }
+    });
+
+    it("throws a clear error when the bridged network is unknown", async () => {
+      project = new TempProjectBuilder().withConfig(TWO_NETWORK_CONFIG).build();
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      process.env["LIONDEN_NETWORK"] = "ghostnet";
+
+      try {
+        await expect(createTestLre()).rejects.toThrow(
+          'Network "ghostnet" (from LIONDEN_NETWORK) is not defined in config.networks',
+        );
+      } finally {
+        resetTestLre();
+      }
+    });
+
+    it("leaves config.defaultNetwork at the file default when LIONDEN_NETWORK is unset", async () => {
+      project = new TempProjectBuilder().withConfig(TWO_NETWORK_CONFIG).build();
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      delete process.env["LIONDEN_NETWORK"];
+
+      try {
+        const lre = await createTestLre();
+        expect(lre.config.defaultNetwork).toBe("devnode");
+      } finally {
+        resetTestLre();
+      }
+    });
   });
 
   it("throws when no config file is found", async () => {

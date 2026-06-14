@@ -9,9 +9,17 @@ When to read this: use this file for network config types, connection management
 - `devnode`
 - `http`
 
-Resolved config stores them under `config.networks` and selects one through `config.defaultNetwork` unless the CLI or task overrides it.
+Resolved config stores them under `config.networks` and selects one through `config.defaultNetwork` unless the CLI or task overrides it. See [Network Selection And The Worker Bridge](#network-selection-and-the-worker-bridge) for how `--network` flows from the CLI into Vitest worker test contexts.
 
 Current defaults include an implicit `devnode` network when the user does not configure any networks.
+
+## Network Selection And The Worker Bridge
+
+The active network is resolved in this order:
+
+- **CLI `--network <name>`** is a built-in global. The CLI validates it against `config.networks`, mutates `config.defaultNetwork` for the in-process run, and seeds it into `globalOptions["network"]`. Every task except `test` reads the mutated `config.defaultNetwork` directly.
+- **`test --network <name>`** additionally bridges the selection to Vitest worker processes via the `LIONDEN_NETWORK` env var (alongside `LIONDEN_PROJECT_ROOT` and `LIONDEN_PROVE`). It is set only when `--network` was supplied, so default runs leave it unset. Each worker's LRE (`@lionden/testing` `buildLre()`) retargets `config.defaultNetwork` to the bridged name — validated, with an unknown name throwing a clear error — so worker `setup()` contexts target the same network the CLI selected. A per-call `setup({ network })` still wins over the bridged default.
+- **Programmatic `tasks.run("deploy"/"recipe"/"upgrade", { network })`** retargets that single task's connect/deploy step, but **not** the implicit compile it triggers. Compilation reads `config.defaultNetwork` for `.env` materialization and network-dependency fetch, and the compile task has no `network` option — so a `{ network }` task call compiles against the file default while deploying against the requested network. This is the **N2/N3 boundary**: when these can diverge (e.g. per-network `configVariable()` values or network-backed program fetches), precompile per network or use CLI `--network` instead. Threading a compiler `effectiveConfig` override through `compilePipeline`/`buildDotEnv` is a tracked follow-up.
 
 ## Platform Baseline
 

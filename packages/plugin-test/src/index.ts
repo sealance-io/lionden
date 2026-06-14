@@ -111,6 +111,15 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
       console.log("Proving enabled via LIONDEN_PROVE");
     }
 
+    // Resolve an explicit --network (seeded into globalOptions by the CLI boot
+    // path). When present, bridge it to Vitest workers via LIONDEN_NETWORK so
+    // each worker's LRE targets the same network; default runs leave it unset.
+    const globalNetwork = lre.globalOptions["network"];
+    const explicitNetwork = typeof globalNetwork === "string" ? globalNetwork : undefined;
+    if (explicitNetwork) {
+      console.log(`Running tests against network "${explicitNetwork}"`);
+    }
+
     // Canonicalize/clear LIONDEN_PROVE BEFORE suiteSetup so testing hooks and
     // Vitest workers observe the same resolved value (fixes P1). Workers read
     // the strict `=== "true"` wrapper check, so canonicalize a truthy env to
@@ -136,6 +145,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
         timeout: timeout ?? lre.config.testing.timeout,
         compile: !noCompile,
         prove: effectiveProve,
+        network: explicitNetwork,
         parallel: parallel ?? false,
         coverage: resolveCoverageOptions(coverage ?? false),
         files,

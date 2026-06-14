@@ -130,8 +130,8 @@ The current LRE includes:
 7. create the LRE using resolved config and post-extension config tasks
 8. parse again with task metadata so named arguments are routed by schema, not by position
 9. render help (if requested) **before** validating option values, so an invocation like `--network ghostnet --help` still documents recovery instead of failing on the bad value
-10. apply the global `--network` override from that task-aware parse to `config.defaultNetwork` (validated against `config.networks`)
-11. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`; unlike `--network`, this does **not** mutate config
+10. apply the global `--network` override from that task-aware parse to `config.defaultNetwork` (validated against `config.networks`) **and** seed it into `globalOptions["network"]` so the `test` task can bridge it to Vitest workers via `LIONDEN_NETWORK` (other tasks keep reading `config.defaultNetwork`)
+11. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`. The contrast with `--network`: `--network` mutates config *and* seeds `globalOptions`, while `--prove` only seeds `globalOptions` (never mutates config), preserving an explicit `--prove=false`
 12. seed plugin global option values from the task-aware parse
 13. validate task named arguments do not overlap with built-in or plugin global options
 14. dispatch the selected task

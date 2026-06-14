@@ -26,10 +26,12 @@ This testing approach is built around a devnode-first workflow, suite-level isol
 `setup()` currently:
 
 - creates or reuses an LRE
-- optionally starts a managed devnode
+- optionally starts a managed devnode — only when the target network is itself a devnode (a non-devnode/http target skips devnode auto-start entirely, including under `snapshotReset: true`, which then fails with a clear message)
 - connects to the selected network
 - exposes well-known devnode accounts when connected to devnode, otherwise an empty account list
 - returns helpers for deploy, execute, advance blocks, and teardown
+
+The network `setup()` connects to is `network ?? config.defaultNetwork`. `lionden test --network <name>` now reaches worker `setup()` contexts: the CLI seeds the explicit `--network` into `globalOptions`, the `test` task bridges it to Vitest workers via `LIONDEN_NETWORK`, and each worker's LRE retargets `config.defaultNetwork` to it (see [Vitest Integration](#vitest-integration) and [`network.md`](network.md#network-selection-and-the-worker-bridge)). A per-call `setup({ network })` still wins over the bridged default.
 
 The resulting `TestContext` includes:
 
@@ -64,8 +66,8 @@ Generated typechain wrappers are preferred when the ABI is known. Use `ctx.raw.e
 
 Current behavior:
 
-- derives defaults from the first configured devnode network when available
-- starts a devnode unless the caller skips it
+- uses the settings of the *selected* devnode network when `setup()` passes one (so the started node's bind address, verbosity, genesis, and private key match the network the test connects to); otherwise derives defaults from the default-then-first configured devnode network
+- starts a devnode unless the caller skips it or the target network is not a devnode
 - verifies a manually supplied devnode is reachable up front when setup uses a devnode network but did not start one
 - returns a managed handle with endpoint metadata
 - tears it down during cleanup
@@ -148,6 +150,7 @@ LionDen does not currently prevalidate that each positional path exists. A typo 
 The programmatic Vitest runner currently:
 
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
+- bridges an explicit `--network` to workers via `LIONDEN_NETWORK` (set only when `--network` was supplied; default runs leave it unset). Workers honor it in `lre-factory`'s `buildLre()`, retargeting `config.defaultNetwork`, and an unknown name throws a clear validation error
 - scopes test discovery to `test/**/*.test.ts` by default, or to the provided `lionden test [files...]` include patterns
 - applies timeout overrides from task args or config
 - optionally enables V8 coverage for package source when `--coverage` is set

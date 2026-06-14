@@ -19,7 +19,7 @@ describe("test-runner", () => {
 
   afterEach(() => {
     // Restore original env after each test
-    for (const key of ["LIONDEN_PROJECT_ROOT", "LIONDEN_PROVE"]) {
+    for (const key of ["LIONDEN_PROJECT_ROOT", "LIONDEN_PROVE", "LIONDEN_NETWORK"]) {
       if (key in originalEnv) {
         process.env[key] = originalEnv[key];
       } else {
@@ -62,6 +62,18 @@ describe("test-runner", () => {
       delete process.env["LIONDEN_PROVE"];
       await runTests({ root: "/tmp/test" });
       expect(process.env["LIONDEN_PROVE"]).toBeUndefined();
+    });
+
+    it("sets LIONDEN_NETWORK when network is provided", async () => {
+      delete process.env["LIONDEN_NETWORK"];
+      await runTests({ root: "/tmp/test", network: "altDevnode" });
+      expect(process.env["LIONDEN_NETWORK"]).toBe("altDevnode");
+    });
+
+    it("clears LIONDEN_NETWORK when network is omitted, even with an ambient value", async () => {
+      process.env["LIONDEN_NETWORK"] = "stale";
+      await runTests({ root: "/tmp/test" });
+      expect(process.env["LIONDEN_NETWORK"]).toBeUndefined();
     });
   });
 

@@ -201,6 +201,61 @@ describe("devnode-lifecycle", () => {
     });
   });
 
+  describe("target-aware network selection", () => {
+    const twoDevnodes = () =>
+      makeConfig({
+        devnode: {
+          type: "devnode",
+          autoBlock: true,
+          network: "testnet",
+          socketAddr: "127.0.0.1:3030",
+        },
+        altDevnode: {
+          type: "devnode",
+          autoBlock: true,
+          network: "testnet",
+          socketAddr: "127.0.0.1:3031",
+        },
+      });
+
+    it("starts the named devnode's socketAddr when networkName is provided", async () => {
+      // Regression guard for the start/connect divergence: with two devnode
+      // networks, the SELECTED one's bind address must be used, not the default.
+      const result = await startDevnode(twoDevnodes(), undefined, "altDevnode");
+
+      expect(result.manager.start).toHaveBeenCalledWith(
+        expect.objectContaining({ socketAddr: "127.0.0.1:3031" }),
+      );
+    });
+
+    it("keeps the default/first devnode socketAddr when no networkName is provided", async () => {
+      const result = await startDevnode(twoDevnodes());
+
+      expect(result.manager.start).toHaveBeenCalledWith(
+        expect.objectContaining({ socketAddr: "127.0.0.1:3030" }),
+      );
+    });
+
+    it("forwards a configured devnode privateKey and verbosity to start (previously dropped)", async () => {
+      const config = makeConfig({
+        devnode: {
+          type: "devnode",
+          autoBlock: true,
+          network: "testnet",
+          socketAddr: "127.0.0.1:3030",
+          privateKey: "APrivateKey1zkpTEST",
+          verbosity: 2,
+        },
+      });
+
+      const result = await startDevnode(config);
+
+      expect(result.manager.start).toHaveBeenCalledWith(
+        expect.objectContaining({ privateKey: "APrivateKey1zkpTEST", verbosity: 2 }),
+      );
+    });
+  });
+
   describe("stopDevnode", () => {
     it("stops the devnode manager", async () => {
       const managed = await startDevnode();
