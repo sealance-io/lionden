@@ -88,6 +88,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     name: "files",
     type: ArgumentType.FILE,
     description: "Test file or glob patterns to run",
+    variadic: true,
   })
   .setAction(async (args, lre) => {
     const grep = args["grep"] as string | undefined;

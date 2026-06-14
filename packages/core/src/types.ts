@@ -142,6 +142,7 @@ export interface TaskPositionalArgument {
   readonly type: ArgumentType;
   readonly description?: string;
   readonly required?: boolean;
+  readonly variadic?: boolean;
 }
 
 export type TaskAction = (

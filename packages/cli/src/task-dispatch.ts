@@ -16,6 +16,7 @@ export type TaskDefinitionLookup = (taskId: string) => TaskDefinition | undefine
 export interface ParsedArgs {
   taskId: string | null;
   taskArgs: Record<string, unknown>;
+  preTaskArgs: string[];
   globalArgs: Record<string, unknown> & {
     config?: string;
     network?: string;
@@ -44,6 +45,7 @@ export function parseArgs(
 ): ParsedArgs {
   const globalArgs: ParsedArgs["globalArgs"] = {};
   const taskArgs: Record<string, unknown> = {};
+  const preTaskArgs: string[] = [];
   const { taskId, taskIndex } = findTask(argv, pluginGlobalOptions, getTaskDefinition);
   const taskDefinition = taskId ? getTaskDefinition?.(taskId) : undefined;
   const globalDefinitions = buildGlobalArgumentLookup(pluginGlobalOptions);
@@ -94,12 +96,14 @@ export function parseArgs(
         const positionals = (taskArgs._positional as string[]) ?? [];
         positionals.push(arg);
         taskArgs._positional = positionals;
+      } else if (taskIndex >= 0 && i < taskIndex) {
+        preTaskArgs.push(arg);
       }
     }
     i++;
   }
 
-  return { taskId, taskArgs, globalArgs };
+  return { taskId, taskArgs, preTaskArgs, globalArgs };
 }
 
 interface GlobalArgumentLookupEntry {
@@ -296,6 +300,61 @@ export function validateTaskGlobalOptionCollisions(lre: LionDenRuntimeEnvironmen
         }
       }
     }
+  }
+}
+
+export function validateParsedArgs(lre: LionDenRuntimeEnvironment, parsed: ParsedArgs): void {
+  if (!parsed.taskId) {
+    validateNoTaskArgs(parsed);
+    return;
+  }
+
+  const taskDefinition = lre.tasks.getTaskDefinition(parsed.taskId);
+  if (!taskDefinition) {
+    throw new Error(`Unknown task: "${parsed.taskId}"`);
+  }
+
+  if (parsed.preTaskArgs.length > 0) {
+    throw new Error(
+      `Unexpected argument "${parsed.preTaskArgs[0]}" before task "${parsed.taskId}"`,
+    );
+  }
+
+  const positionalValues = Array.isArray(parsed.taskArgs._positional)
+    ? (parsed.taskArgs._positional as string[])
+    : [];
+  const positionalDefinitions = taskDefinition.positionalArguments ?? [];
+  const variadic =
+    positionalDefinitions.length > 0 &&
+    positionalDefinitions[positionalDefinitions.length - 1]?.variadic === true;
+  if (
+    positionalValues.length > 0 &&
+    !variadic &&
+    positionalValues.length > positionalDefinitions.length
+  ) {
+    const unexpected = positionalValues[positionalDefinitions.length] ?? positionalValues[0];
+    throw new Error(`Unexpected argument "${unexpected}" for task "${parsed.taskId}"`);
+  }
+
+  const allowedTaskArgs = buildTaskArgumentLookup(taskDefinition);
+  for (const positional of taskDefinition.positionalArguments ?? []) {
+    for (const publicName of getPublicArgumentNames(positional.name)) {
+      allowedTaskArgs.set(publicName, { name: positional.name, type: "string" });
+    }
+  }
+
+  for (const key of Object.keys(parsed.taskArgs)) {
+    if (key === "_positional") continue;
+    if (!allowedTaskArgs.has(key)) {
+      throw new Error(`Unknown argument "${argumentFlagName(key)}" for task "${parsed.taskId}"`);
+    }
+  }
+}
+
+function validateNoTaskArgs(parsed: ParsedArgs): void {
+  for (const key of Object.keys(parsed.taskArgs)) {
+    if (key === "_positional") continue;
+    throw new Error(`Unknown argument "${argumentFlagName(key)}"`);
   }
 }
 

@@ -54,6 +54,12 @@ describe("plugin-test", () => {
       const prove = testTask.flags?.find((f) => f.name === "prove");
       expect(prove).toBeUndefined();
     });
+
+    it("declares test files as a variadic positional argument", () => {
+      const files = testTask.positionalArguments?.find((arg) => arg.name === "files");
+      expect(files).toBeDefined();
+      expect(files?.variadic).toBe(true);
+    });
   });
 
   describe("config validation", () => {

@@ -270,6 +270,68 @@ describe("CLI dispatch contract", () => {
     }
   });
 
+  it("rejects unknown CLI arguments after the final task-aware parse", async () => {
+    const projectDir = createTempProject(`export default {};`);
+    const configPath = path.join(projectDir, "lionden.config.ts");
+    const originalArgv = process.argv;
+
+    try {
+      process.argv = ["node", "lionden", "--config", configPath, "--bogus"];
+
+      await expect(main()).rejects.toThrow('Unknown argument "--bogus"');
+    } finally {
+      process.argv = originalArgv;
+    }
+  });
+
+  it("rejects redundant bare arguments before the task", async () => {
+    const projectDir = createTempProject(`export default {
+      plugins: [{
+        id: "compile-test",
+        name: "Compile",
+        tasks: [{
+          id: "compile",
+          description: "Compile",
+          action: async () => undefined,
+        }],
+      }],
+    };`);
+    const configPath = path.join(projectDir, "lionden.config.ts");
+    const originalArgv = process.argv;
+
+    try {
+      process.argv = ["node", "lionden", "--config", configPath, "hello", "compile"];
+
+      await expect(main()).rejects.toThrow('Unexpected argument "hello" before task "compile"');
+    } finally {
+      process.argv = originalArgv;
+    }
+  });
+
+  it("rejects redundant bare arguments after a task with no positional arguments", async () => {
+    const projectDir = createTempProject(`export default {
+      plugins: [{
+        id: "compile-test",
+        name: "Compile",
+        tasks: [{
+          id: "compile",
+          description: "Compile",
+          action: async () => undefined,
+        }],
+      }],
+    };`);
+    const configPath = path.join(projectDir, "lionden.config.ts");
+    const originalArgv = process.argv;
+
+    try {
+      process.argv = ["node", "lionden", "--config", configPath, "compile", "hello"];
+
+      await expect(main()).rejects.toThrow('Unexpected argument "hello" for task "compile"');
+    } finally {
+      process.argv = originalArgv;
+    }
+  });
+
   // Mirrors the index.ts boot order: the --network override must be taken from
   // the task-AWARE parse, after the LRE exists, not the earlier task-unaware one,
   // and an unknown network name is rejected centrally before dispatch.

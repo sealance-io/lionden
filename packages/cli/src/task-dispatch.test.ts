@@ -1,6 +1,11 @@
-import { ArgumentType, type GlobalOptionDefinition, type TaskDefinition } from "@lionden/core";
+import {
+  ArgumentType,
+  type GlobalOptionDefinition,
+  type LionDenRuntimeEnvironment,
+  type TaskDefinition,
+} from "@lionden/core";
 import { describe, expect, it } from "vitest";
-import { parseArgs } from "./task-dispatch.js";
+import { parseArgs, validateParsedArgs } from "./task-dispatch.js";
 
 describe("parseArgs", () => {
   function defineTask(
@@ -158,6 +163,18 @@ describe("parseArgs", () => {
   it("identifies task name as first non-flag argument", () => {
     const result = parseArgs(["compile"]);
     expect(result.taskId).toBe("compile");
+  });
+
+  it("records bare arguments before a later known task separately from positionals", () => {
+    const result = parseArgs(
+      ["hello", "compile"],
+      undefined,
+      lookupFor(defineTask({ id: "compile" })),
+    );
+
+    expect(result.taskId).toBe("compile");
+    expect(result.preTaskArgs).toEqual(["hello"]);
+    expect(result.taskArgs._positional).toBeUndefined();
   });
 
   it("parses task arguments after task name", () => {
@@ -717,5 +734,135 @@ describe("parseArgs", () => {
       );
       expect(result.taskArgs.priorityFee).toBe("2");
     });
+  });
+});
+
+describe("validateParsedArgs", () => {
+  function defineTask(
+    definition: Pick<TaskDefinition, "id"> & Partial<TaskDefinition>,
+  ): TaskDefinition {
+    return {
+      description: "Test task",
+      action: async () => undefined,
+      ...definition,
+    };
+  }
+
+  function lookupFor(
+    ...definitions: TaskDefinition[]
+  ): (taskId: string) => TaskDefinition | undefined {
+    const byId = new Map(definitions.map((definition) => [definition.id, definition]));
+    return (taskId) => byId.get(taskId);
+  }
+
+  function lreFor(...definitions: TaskDefinition[]): LionDenRuntimeEnvironment {
+    const lookup = lookupFor(...definitions);
+    return {
+      tasks: {
+        getTaskDefinition: lookup,
+      },
+    } as unknown as LionDenRuntimeEnvironment;
+  }
+
+  it("accepts declared task options, flags, positionals, and raw _positional values", () => {
+    const lre = lreFor(
+      defineTask({
+        id: "run",
+        options: [{ name: "priorityFee", type: "number", description: "Fee" }],
+        flags: [{ name: "dryRun", description: "Dry run" }],
+        positionalArguments: [{ name: "scriptPath", type: ArgumentType.FILE }],
+      }),
+    );
+    const parsed = parseArgs(
+      ["run", "--priority-fee", "10", "--dry-run", "--script-path", "scripts/deploy.ts"],
+      undefined,
+      (taskId) => lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).not.toThrow();
+  });
+
+  it("rejects an unknown task", () => {
+    const lre = lreFor(defineTask({ id: "compile" }));
+    const parsed = parseArgs(["missing"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow('Unknown task: "missing"');
+  });
+
+  it("rejects an unknown argument when no task was selected", () => {
+    const lre = lreFor();
+    const parsed = parseArgs(["--bogus"]);
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow('Unknown argument "--bogus"');
+  });
+
+  it("rejects an unknown argument for a known task", () => {
+    const lre = lreFor(
+      defineTask({
+        id: "test",
+        flags: [{ name: "noCompile", description: "Skip compile" }],
+      }),
+    );
+    const parsed = parseArgs(["test", "--unknown", "test/file.test.ts"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      'Unknown argument "--unknown" for task "test"',
+    );
+  });
+
+  it("rejects a bare argument before a later known task", () => {
+    const lre = lreFor(defineTask({ id: "compile" }));
+    const parsed = parseArgs(["hello", "compile"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      'Unexpected argument "hello" before task "compile"',
+    );
+  });
+
+  it("rejects a bare argument after a task with no positional arguments", () => {
+    const lre = lreFor(defineTask({ id: "compile" }));
+    const parsed = parseArgs(["compile", "hello"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      'Unexpected argument "hello" for task "compile"',
+    );
+  });
+
+  it("rejects more bare arguments than declared positionals", () => {
+    const lre = lreFor(
+      defineTask({
+        id: "run",
+        positionalArguments: [{ name: "script", type: ArgumentType.FILE }],
+      }),
+    );
+    const parsed = parseArgs(["run", "scripts/deploy.ts", "extra"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      'Unexpected argument "extra" for task "run"',
+    );
+  });
+
+  it("allows multiple bare arguments for a variadic positional", () => {
+    const lre = lreFor(
+      defineTask({
+        id: "test",
+        positionalArguments: [{ name: "files", type: ArgumentType.FILE, variadic: true }],
+      }),
+    );
+    const parsed = parseArgs(["test", "a.test.ts", "b.test.ts"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).not.toThrow();
   });
 });
