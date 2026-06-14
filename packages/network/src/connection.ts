@@ -85,6 +85,15 @@ export class TransactionShapeParseError extends Error {
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 60_000;
 const CONFIRMATION_POLL_INTERVAL_MS = 1_000;
 
+/**
+ * Process-wide serialization for local-WASM trap capture.
+ *
+ * runWithLocalWasmTrapCapture installs process-global uncaughtException /
+ * unhandledRejection handlers. Those handler windows cannot safely overlap,
+ * even when the SDK operations use different connections or diagnostics sinks.
+ */
+let localWasmTrapCaptureLock: Promise<void> = Promise.resolve();
+
 export class AleoConnection implements NetworkConnection {
   readonly type: "devnode" | "http";
   readonly name: string;
@@ -798,36 +807,48 @@ function sleep(ms: number): Promise<void> {
 // When LionDen owns the capture point it rethrows unrelated uncaught exceptions;
 // when another capture callback is already installed, it observes traps through
 // `uncaughtExceptionMonitor` because Node suppresses the `uncaughtException`
-// event. The capture point is process-global, so this relies on LionDen's serial
-// execution model; an unrelated `RuntimeError: unreachable` during the same
-// window would be attributed to this run. Keep each wrap scoped to a single
-// in-flight call — do not install overlapping captures.
+// event. The capture point and rejection listener are process-global, so every
+// trap-captured SDK operation is intentionally serialized by the module-level
+// mutex above. An unrelated `RuntimeError: unreachable` during the same window
+// would still be attributed to this run, so keep each wrap scoped to a single
+// in-flight call.
 //
 // The trap only carries the generic `unreachable` message; the descriptive
 // snarkVM panic text (e.g. "Integer subtraction failed on: ...") is written to
 // stderr by the panic hook and is not available here, so the resulting
 // `LocalExecutionWasmTrapError` cannot surface the underlying failure reason.
-function runWithLocalWasmTrapCapture<T>(operation: () => Promise<T>): Promise<T> {
+async function runWithLocalWasmTrapCapture<T>(operation: () => Promise<T>): Promise<T> {
   if (typeof process === "undefined") return operation();
 
-  return raceLocalOperationWithTrap(operation, (rejectTrap) => {
-    // The trap escapes the SDK promise through one of two process-global
-    // channels, depending on the call site (observed via the onchain-trap probe):
-    //   - `uncaughtException`  — local `pm.run` and the prove-path `pm.execute`
-    //     throw the trap out of band.
-    //   - `unhandledRejection` — the devnode fast-path
-    //     `buildDevnodeExecutionTransaction` rejects an internal promise that is
-    //     never awaited.
-    // Watch both so every confirmed site is covered; the first to fire wins
-    // (the trap promise's reject is idempotent).
-    const cleanups = [
-      installUncaughtExceptionTrapHandler(rejectTrap),
-      installUnhandledRejectionTrapHandler(rejectTrap),
-    ];
-    return () => {
-      for (const cleanup of cleanups) cleanup();
-    };
+  const previous = localWasmTrapCaptureLock;
+  let release!: () => void;
+  localWasmTrapCaptureLock = new Promise<void>((resolve) => {
+    release = resolve;
   });
+
+  await previous;
+  try {
+    return await raceLocalOperationWithTrap(operation, (rejectTrap) => {
+      // The trap escapes the SDK promise through one of two process-global
+      // channels, depending on the call site (observed via the onchain-trap probe):
+      //   - `uncaughtException`  — local `pm.run` and the prove-path `pm.execute`
+      //     throw the trap out of band.
+      //   - `unhandledRejection` — the devnode fast-path
+      //     `buildDevnodeExecutionTransaction` rejects an internal promise that is
+      //     never awaited.
+      // Watch both so every confirmed site is covered; the first to fire wins
+      // (the trap promise's reject is idempotent).
+      const cleanups = [
+        installUncaughtExceptionTrapHandler(rejectTrap),
+        installUnhandledRejectionTrapHandler(rejectTrap),
+      ];
+      return () => {
+        for (const cleanup of cleanups) cleanup();
+      };
+    });
+  } finally {
+    release();
+  }
 }
 
 // Convert the `RuntimeError: unreachable` trap that escapes as an
