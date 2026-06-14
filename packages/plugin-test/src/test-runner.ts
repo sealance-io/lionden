@@ -10,6 +10,8 @@
  * - `LIONDEN_PROVE` — canonical "true" when proving is on; deleted otherwise.
  *   `options.prove === true` sets it, `false` clears it, and `undefined` honors
  *   (and canonicalizes) a truthy ambient `LIONDEN_PROVE`.
+ * - `LIONDEN_NETWORK` — the explicit `--network` to target in workers; set when
+ *   `options.network` is provided, deleted otherwise.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -46,6 +48,12 @@ export interface TestRunnerOptions {
    * `false` clears it, and omitting it honors a truthy ambient `LIONDEN_PROVE`.
    */
   prove?: boolean;
+  /**
+   * Network to bridge to Vitest workers via `LIONDEN_NETWORK`; omitted clears it.
+   * Mirrors the explicit `--network` selection so each worker's LRE targets the
+   * same network instead of the on-disk config default.
+   */
+  network?: string;
   /**
    * Test file or glob patterns to include. Defaults to the standard test glob.
    *
@@ -104,6 +112,11 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   const prove = options.prove ?? parseBooleanEnv(process.env["LIONDEN_PROVE"], false);
   if (prove) process.env["LIONDEN_PROVE"] = "true";
   else delete process.env["LIONDEN_PROVE"];
+
+  // Bridge the explicit --network selection to workers. Set only when supplied,
+  // so default runs leave LIONDEN_NETWORK unset (zero behavior change).
+  if (options.network) process.env["LIONDEN_NETWORK"] = options.network;
+  else delete process.env["LIONDEN_NETWORK"];
 
   const { startVitest } = await import("vitest/node");
   const coverageOptions = normalizeCoverageOptions(options.coverage);

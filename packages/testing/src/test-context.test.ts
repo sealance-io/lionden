@@ -372,8 +372,9 @@ describe("test-context", () => {
       await setup({ lre });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
-      // Should be called without autoBlock override (second arg undefined or without autoBlock)
-      expect(startDevnode).toHaveBeenCalledWith(lre.config, undefined);
+      // Should be called without autoBlock override (second arg undefined or
+      // without autoBlock), and with the connected network name as the third arg.
+      expect(startDevnode).toHaveBeenCalledWith(lre.config, undefined, "devnode");
     });
 
     it("passes explicit autoBlock override when caller sets it", async () => {
@@ -381,7 +382,96 @@ describe("test-context", () => {
       await setup({ lre, autoBlock: false });
 
       const { startDevnode } = await import("./devnode-lifecycle.js");
-      expect(startDevnode).toHaveBeenCalledWith(lre.config, { autoBlock: false });
+      expect(startDevnode).toHaveBeenCalledWith(lre.config, { autoBlock: false }, "devnode");
+    });
+  });
+
+  describe("devnode auto-start gating by target network (N4)", () => {
+    // Extend the base mock so config.networks carries a second devnode and an
+    // http network, letting setup() target each by name.
+    function mockLreWithNetworks(connection?: NetworkConnection): LionDenRuntimeEnvironment {
+      const lre = mockLre(connection ? { connection } : {});
+      Object.defineProperty(lre.config, "networks", {
+        value: {
+          devnode: {
+            type: "devnode" as const,
+            socketAddr: "127.0.0.1:3030",
+            autoBlock: true,
+            verbosity: 0,
+            accounts: [],
+            network: "testnet" as const,
+            ephemeral: true,
+          },
+          altDevnode: {
+            type: "devnode" as const,
+            socketAddr: "127.0.0.1:3031",
+            autoBlock: true,
+            verbosity: 0,
+            accounts: [],
+            network: "testnet" as const,
+            ephemeral: true,
+          },
+          httpnet: {
+            type: "http" as const,
+            endpoint: "https://api.explorer.provable.com/v1",
+            network: "testnet" as const,
+            ephemeral: false,
+          },
+        },
+        writable: true,
+      });
+      return lre;
+    }
+
+    it("does not auto-start a devnode for an http target and still connects to it", async () => {
+      const connection = createMockConnection({
+        type: "http",
+        name: "httpnet",
+        endpoint: "https://api.explorer.provable.com/v1",
+      });
+      const lre = mockLreWithNetworks(connection);
+
+      const ctx = await setup({ lre, network: "httpnet" });
+
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(startDevnode).not.toHaveBeenCalled();
+      const manager = lre.network as NetworkManager;
+      expect(manager.connect).toHaveBeenCalledWith("httpnet");
+      expect(ctx.connection.type).toBe("http");
+    });
+
+    it("auto-starts a devnode for a devnode target", async () => {
+      const lre = mockLreWithNetworks();
+
+      await setup({ lre, network: "altDevnode" });
+
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(startDevnode).toHaveBeenCalledOnce();
+    });
+
+    it("starts the selected devnode network, not the config default", async () => {
+      const lre = mockLreWithNetworks();
+
+      await setup({ lre, network: "altDevnode" });
+
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(startDevnode).toHaveBeenCalledWith(lre.config, undefined, "altDevnode");
+    });
+
+    it("throws an updated snapshotReset message for a non-devnode target", async () => {
+      const connection = createMockConnection({
+        type: "http",
+        name: "httpnet",
+        endpoint: "https://api.explorer.provable.com/v1",
+      });
+      const lre = mockLreWithNetworks(connection);
+
+      await expect(setup({ lre, network: "httpnet", snapshotReset: true })).rejects.toThrow(
+        /target network "httpnet" must be a devnode network/,
+      );
+
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      expect(startDevnode).not.toHaveBeenCalled();
     });
   });
 

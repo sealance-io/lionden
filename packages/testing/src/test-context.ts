@@ -209,8 +209,18 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   // silent — a worker-context reader must not warn (Finding 3).
   const prove = parseBooleanEnv(process.env["LIONDEN_PROVE"], false);
 
-  // 1. Optionally start a devnode
-  if (!skipDevnode && lre.config.testing.autoStartDevnode) {
+  // The network this context will connect to. Resolved up front so the
+  // devnode-target gate below and the connect step agree on one name.
+  const connectedNetwork = networkName ?? lre.config.defaultNetwork;
+
+  // 1. Optionally start a devnode — only when the target network is itself a
+  // devnode. A non-devnode (http) target never touches a local devnode, so we
+  // skip the (potentially failing) startup for a network it would never use,
+  // and start the *selected* devnode rather than the config default/first.
+  const targetIsDevnode = lre.config.networks[connectedNetwork]?.type === "devnode";
+  const willAutoStartDevnode =
+    !skipDevnode && lre.config.testing.autoStartDevnode && targetIsDevnode;
+  if (willAutoStartDevnode) {
     const overrides: DevnodeStartOptions = {};
     if (autoBlock !== undefined) overrides.autoBlock = autoBlock;
     if (snapshotReset) {
@@ -223,6 +233,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       managedDevnode = await startDevnode(
         lre.config,
         Object.keys(overrides).length > 0 ? overrides : undefined,
+        connectedNetwork,
       );
     } catch (err) {
       // Startup failed (e.g. aleo-devnode missing) — no TestContext is returned,
@@ -235,13 +246,13 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   } else if (snapshotReset) {
     throw new Error(
       "setup({ snapshotReset: true }) requires an auto-started devnode " +
-        "(skipDevnode must be false and testing.autoStartDevnode must be true).",
+        "(skipDevnode must be false, testing.autoStartDevnode must be true, and the " +
+        `target network "${connectedNetwork}" must be a devnode network).`,
     );
   }
 
   // 2. Connect to the network
   const manager = lre.network as NetworkManager;
-  const connectedNetwork = networkName ?? lre.config.defaultNetwork;
   const connection = await manager.connect(connectedNetwork);
 
   if (!managedDevnode && connection.type === "devnode") {

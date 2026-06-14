@@ -276,7 +276,11 @@ describe("CLI dispatch contract", () => {
   async function resolveNetworkOverrideThroughBoot(
     argv: string[],
     configContent: string,
-  ): Promise<{ taskId: string | null; defaultNetwork: string }> {
+  ): Promise<{
+    taskId: string | null;
+    defaultNetwork: string;
+    globalOptions: Record<string, unknown>;
+  }> {
     const deployPlugin: LionDenPlugin = {
       id: "deploy-test",
       name: "Deploy",
@@ -294,8 +298,9 @@ describe("CLI dispatch contract", () => {
     const globalOptionDefs = collectGlobalOptions(plugins);
     const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
 
+    const globalOptions: Record<string, unknown> = {};
     const config = { ...resolved };
-    const lre = createLre({ config, plugins, globalOptions: {} });
+    const lre = createLre({ config, plugins, globalOptions });
     const parsed = parseArgs(argv, globalOptionDefs, (taskId) =>
       lre.tasks.getTaskDefinition(taskId),
     );
@@ -309,8 +314,11 @@ describe("CLI dispatch contract", () => {
         );
       }
       (config as { defaultNetwork: string }).defaultNetwork = requestedNetwork;
+      // Mirror index.ts: also seed the explicit --network into globalOptions so
+      // the test task can bridge it to workers via LIONDEN_NETWORK.
+      globalOptions["network"] = requestedNetwork;
     }
-    return { taskId: parsed.taskId, defaultNetwork: config.defaultNetwork };
+    return { taskId: parsed.taskId, defaultNetwork: config.defaultNetwork, globalOptions };
   }
 
   it("does not override defaultNetwork when --network has no value", async () => {
@@ -359,6 +367,31 @@ describe("CLI dispatch contract", () => {
         `export default { defaultNetwork: "local", networks: { local: { type: "devnode" } } };`,
       ),
     ).rejects.toThrow('Network "ghostnet" (from --network) is not defined in config.networks');
+  });
+
+  it("seeds the explicit --network into lre.globalOptions in addition to mutating config", async () => {
+    const { defaultNetwork, globalOptions } = await resolveNetworkOverrideThroughBoot(
+      ["--network", "testnet", "deploy"],
+      `export default {
+        defaultNetwork: "local",
+        networks: {
+          local: { type: "devnode" },
+          testnet: { type: "http", endpoint: "https://api.explorer.provable.com/v1", network: "testnet" },
+        },
+      };`,
+    );
+
+    expect(defaultNetwork).toBe("testnet");
+    expect(globalOptions["network"]).toBe("testnet");
+  });
+
+  it("leaves lre.globalOptions.network unset when --network is absent", async () => {
+    const { globalOptions } = await resolveNetworkOverrideThroughBoot(
+      ["deploy"],
+      `export default { defaultNetwork: "local", networks: { local: { type: "devnode" } } };`,
+    );
+
+    expect("network" in globalOptions).toBe(false);
   });
 
   it("seeds the built-in --prove into lre.globalOptions even when placed after the test task", async () => {
