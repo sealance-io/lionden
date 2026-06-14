@@ -15,7 +15,14 @@ export function argumentFlagName(name: string): string {
   return name.length === 1 ? `-${name}` : `--${name}`;
 }
 
-export const BUILT_IN_GLOBAL_ARGUMENT_NAMES = ["config", "network", "verbose", "help", "version"];
+export const BUILT_IN_GLOBAL_ARGUMENT_NAMES = [
+  "config",
+  "network",
+  "prove",
+  "verbose",
+  "help",
+  "version",
+];
 
 const BUILT_IN_GLOBAL_ARGUMENT_ALIASES = new Map<string, readonly string[]>([
   ["help", ["h"]],

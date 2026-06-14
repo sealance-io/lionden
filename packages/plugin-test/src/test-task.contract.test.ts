@@ -6,6 +6,7 @@
  */
 
 import { join } from "node:path";
+import type { LionDenPlugin } from "@lionden/core";
 import {
   type ContractLreResult,
   createContractLre,
@@ -290,17 +291,75 @@ describe("test task contract", () => {
     });
   });
 
-  it("--prove sets LIONDEN_PROVE env var", async () => {
-    const lre = createTestLre();
+  describe("prove resolution", () => {
+    it("global prove=true canonicalizes LIONDEN_PROVE and runs proving", async () => {
+      const lre = createTestLre();
+      lre.globalOptions["prove"] = true;
 
-    await lre.tasks.run("test", { noCompile: true, prove: true });
+      await lre.tasks.run("test", { noCompile: true });
 
-    // The test runner should have set LIONDEN_PROVE before calling startVitest
-    const { startVitest } = await import("vitest/node");
-    expect(startVitest).toHaveBeenCalledOnce();
-    // Since we can't easily check env at call time, verify the env is set after the call
-    // (the mock resolves synchronously, so the env var should still be set)
-    expect(process.env["LIONDEN_PROVE"]).toBe("true");
+      const { startVitest } = await import("vitest/node");
+      expect(startVitest).toHaveBeenCalledOnce();
+      expect(process.env["LIONDEN_PROVE"]).toBe("true");
+    });
+
+    it("global prove=false clears an ambient LIONDEN_PROVE", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+      const lre = createTestLre();
+      lre.globalOptions["prove"] = false;
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(process.env["LIONDEN_PROVE"]).toBeUndefined();
+    });
+
+    it("honors a truthy ambient LIONDEN_PROVE, canonicalizes it, and prints a notice", async () => {
+      process.env["LIONDEN_PROVE"] = "1";
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+      const lre = createTestLre();
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(process.env["LIONDEN_PROVE"]).toBe("true");
+      expect(logSpy.mock.calls.flat()).toContain("Proving enabled via LIONDEN_PROVE");
+      logSpy.mockRestore();
+    });
+
+    it("deletes LIONDEN_PROVE when neither a global nor an env requests proving", async () => {
+      const lre = createTestLre();
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(process.env["LIONDEN_PROVE"]).toBeUndefined();
+    });
+
+    it("resolves and canonicalizes LIONDEN_PROVE BEFORE suiteSetup runs (P1)", async () => {
+      // A testing.suiteSetup hook must observe the already-resolved env value,
+      // not whatever ambient value preceded resolution.
+      process.env["LIONDEN_PROVE"] = "yes"; // truthy spelling, not yet canonical
+      let envAtSuiteSetup: string | undefined = "unset-sentinel";
+      const recordingPlugin: LionDenPlugin = {
+        id: "record-prove",
+        name: "Record Prove",
+        hookHandlers: {
+          testing: {
+            suiteSetup: () => {
+              envAtSuiteSetup = process.env["LIONDEN_PROVE"];
+            },
+          },
+        },
+      };
+
+      fixture = createContractLre({
+        plugins: [pluginTest, recordingPlugin],
+        withMockCompile: true,
+      });
+
+      await fixture.lre.tasks.run("test", { noCompile: true });
+
+      // Canonicalized to "true" before the hook saw it.
+      expect(envAtSuiteSetup).toBe("true");
+    });
   });
 
   it("config validation rejects timeout <= 0 through LRE hook dispatch", async () => {

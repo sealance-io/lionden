@@ -24,7 +24,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Hook categories: `config`, `compilation`, `network`, `testing`, `deployment` | `packages/core/src/types.ts` |
 | Task builder API with `addOption`/`addFlag`/`addPositionalArgument`/`setAction`/`overrideTask`/`runSuper` | `packages/core/src/task-builder.ts` |
 | CLI tasks registered today: `compile`, `clean`, `node`, `run`, `deploy`, `upgrade`, `export`, `recipe`, `test` | `packages/plugin-*/src/index.ts` |
-| Global CLI options: `--config`, `--network`, `--verbose`, `--help`/`-h`, `--version`/`-v`; `--network <name>` selects a named `config.networks` entry, not an Aleo chain id | `packages/cli/src/task-dispatch.ts`, `packages/cli/src/index.ts` |
+| Global CLI options: `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, `--version`/`-v`; `--network <name>` selects a named `config.networks` entry, not an Aleo chain id | `packages/cli/src/task-dispatch.ts`, `packages/cli/src/index.ts` |
 | Config discovery walks up from cwd to find `lionden.config.{ts,js,mjs}` | `packages/cli/src/config-discovery.ts` |
 | TypeScript config files loaded via `tsx`-import path | `packages/cli/src/bin.ts` |
 
@@ -79,7 +79,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | --- | --- |
 | `deploy` task: compile → preflight → broadcast → record state → fire hook → optional export | `packages/plugin-deploy/src/deploy-task.ts` |
 | Deploy flags/options: `--program`, `--priority-fee`, `--skip-confirm`, `--no-compile`, `--preflight`, `--dry-run` (devnode), `--no-skip-deployed`, `--export`; config network selection comes from global `--network` / `defaultNetwork` | `packages/plugin-deploy/src/index.ts` |
-| `--prove` global option (registered by plugin-deploy): `lionden --prove deploy`/`upgrade` forces standard/proven transactions on devnode; also honoured via `LIONDEN_PROVE=true` | `packages/plugin-deploy/src/index.ts` (`globalOptions`), `deploy-task.ts`/`upgrade-task.ts` (`resolveProveOption`) |
+| `--prove` framework built-in global: `lionden --prove deploy`/`upgrade`/`recipe`/`test` (or a truthy `LIONDEN_PROVE`) forces standard/proven builders on devnode; `--prove=false` reliably disables it; `test` honours ambient `LIONDEN_PROVE` and prints a notice when the env (not a flag) is the source; per-call escape hatches on testing `ctx.deploy`/`ctx.execute` and recipe `deploy`/`execute` | `packages/core/src/arg-names.ts` (reserved name), `packages/cli/src/{task-dispatch,index}.ts` (parse + seed), `deploy-task.ts`/`upgrade-task.ts`/`recipe-task.ts` (`resolveProveOption`), `plugin-test/src/index.ts` (`test`) |
 | Constructor parser recognises `@noupgrade`, `@admin(address=...)`, `@checksum(...)`, `@custom(...)` (also accepts optional `async constructor` for v3.5) | `packages/plugin-deploy/src/constructor-parser.ts` |
 | Deploy preflight: constructor presence/validity, on-chain status, HTTP fee estimation, HTTP balance check, imported program availability | `packages/plugin-deploy/src/preflight.ts` |
 | Multi-program topological deploy order; targeted `--program` pulls transitive local deps | `packages/plugin-deploy/src/deploy-task.ts` |

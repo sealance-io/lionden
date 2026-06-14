@@ -2,7 +2,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import {
-  ArgumentType,
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
@@ -192,16 +191,10 @@ const pluginDeploy: LionDenPlugin = {
   hookHandlers: {
     config: configHooks,
   },
-  // Registers --prove as a global option so `lionden --prove deploy/upgrade`
-  // populates lre.globalOptions["prove"], consumed by resolveProveOption() in
-  // the deploy and upgrade actions to force standard/proven transactions.
-  globalOptions: [
-    {
-      name: "prove",
-      type: ArgumentType.BOOLEAN,
-      description: "Build standard/proven transactions even on devnode (slower)",
-    },
-  ],
+  // --prove is a framework built-in global (see arg-names.ts), so it is not
+  // declared here. deployAction/upgradeAction still read it via
+  // resolveProveOption(), which consults lre.globalOptions["prove"] (seeded by
+  // the CLI from the built-in --prove) and LIONDEN_PROVE.
   tasks: [deployTask, upgradeTask, exportTask, recipeTask],
   extendLre(lre: LionDenRuntimeEnvironment): void {
     const networkAccessor = () => lre.network as NetworkManager | null;

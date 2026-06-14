@@ -377,6 +377,23 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
+  it("treats a permissive LIONDEN_PROVE spelling (1) as proving and selects the standard upgrade builder", async () => {
+    process.env["LIONDEN_PROVE"] = "1";
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program hello.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-upgrade-tx-bytes",
+    );
+  });
+
   it("uses lre.globalOptions.prove (the --prove global option) to select the standard upgrade builder", async () => {
     const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
     // Simulates `lionden --prove upgrade` AND `lionden upgrade --prove`: the CLI

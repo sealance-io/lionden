@@ -46,6 +46,14 @@ describe("task builder", () => {
     ).toThrow('Task "deploy" option "network" conflicts with built-in global option "--network"');
   });
 
+  it("throws when a task flag shadows the built-in --prove global", () => {
+    // `prove` is a reserved built-in global, so the builder rejects it up front
+    // (before validateTaskGlobalOptionCollisions ever runs).
+    expect(() => task("test", "").addFlag({ name: "prove", description: "" })).toThrow(
+      'Task "test" flag "prove" conflicts with built-in global option "--prove"',
+    );
+  });
+
   it("throws on reserved built-in global aliases", () => {
     expect(() => task("test", "").addFlag({ name: "help", description: "" })).toThrow(
       'Task "test" flag "help" conflicts with built-in global option "--help"',

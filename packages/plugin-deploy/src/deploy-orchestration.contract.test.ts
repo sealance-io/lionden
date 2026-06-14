@@ -228,6 +228,25 @@ describe("deploy orchestration contract", () => {
     );
   });
 
+  it("treats a permissive LIONDEN_PROVE spelling (1) as proving and selects the standard builder", async () => {
+    process.env["LIONDEN_PROVE"] = "1";
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).not.toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).toHaveBeenCalledWith(
+      expect.stringContaining("program hello.aleo"),
+      0,
+      false,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "standard-deploy-tx-bytes",
+    );
+  });
+
   it("uses lre.globalOptions.prove (the --prove global option) to select the standard deployment builder", async () => {
     const { lre, fakeNetwork } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },

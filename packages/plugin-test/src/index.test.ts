@@ -50,9 +50,9 @@ describe("plugin-test", () => {
       expect(noCompile).toBeDefined();
     });
 
-    it("has prove flag", () => {
+    it("does not define a local prove flag (--prove is a framework built-in global)", () => {
       const prove = testTask.flags?.find((f) => f.name === "prove");
-      expect(prove).toBeDefined();
+      expect(prove).toBeUndefined();
     });
   });
 

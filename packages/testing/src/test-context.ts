@@ -13,6 +13,7 @@ import {
   createNamedAccountAccessor,
   type NamedAccountAccessor,
   type NamedAccounts,
+  parseBooleanEnv,
 } from "@lionden/config";
 import {
   type LionDenRuntimeEnvironment,
@@ -135,6 +136,12 @@ export interface DeployResult {
 export interface ExecuteOptions {
   mode?: "local" | "onchain";
   fee?: number;
+  /**
+   * Override proof generation for this execution. Defaults to the setup-time
+   * `LIONDEN_PROVE` value; a per-call value beats it (e.g. `{ prove: false }`
+   * to skip proving one call while the run otherwise proves).
+   */
+  prove?: boolean;
   /** Override the signer for this execution. */
   signer?: Signer;
   /**
@@ -196,9 +203,11 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   // `<parent>/devnode-snapshots`, so deleting the parent cleans up both.
   let snapshotStorageParent: string | undefined;
 
-  // When LIONDEN_PROVE is set (by the test runner's --prove flag),
-  // force real proof generation on devnode deploy and execute calls.
-  const prove = process.env["LIONDEN_PROVE"] === "true";
+  // When LIONDEN_PROVE is set (the test runner canonicalizes it to "true" from
+  // --prove or a truthy env), force real proof generation on devnode deploy and
+  // execute calls. Parsed permissively for direct (non-runner) setup() callers;
+  // silent — a worker-context reader must not warn (Finding 3).
+  const prove = parseBooleanEnv(process.env["LIONDEN_PROVE"], false);
 
   // 1. Optionally start a devnode
   if (!skipDevnode && lre.config.testing.autoStartDevnode) {
@@ -256,7 +265,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     const result = await connection.execute(programId, transitionName, args, {
       mode,
       fee: execOpts?.fee,
-      prove,
+      prove: execOpts?.prove ?? prove,
       signer: execOpts?.signer,
       ...awaitOpt,
       ...(execOpts?.imports === undefined ? {} : { imports: execOpts.imports }),

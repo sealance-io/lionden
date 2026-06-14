@@ -120,11 +120,12 @@ Current task options:
 - `--grep`
 - `--timeout`
 - `--no-compile`
-- `--prove`
 - `--parallel`
 - `--coverage`
 
-`--prove` is forwarded through `LIONDEN_PROVE=true` so tests force proof generation. On managed devnode this also makes `ctx.deploy()` and direct `upgrade` task calls use the standard ProgramManager builders instead of the devnode fast-path builders.
+`--prove` is a framework **built-in global** (not a `test` task flag) — `lionden --prove test` and `lionden test --prove` both force proof generation. The `test` task also honours an ambient truthy `LIONDEN_PROVE` (consistent with `deploy`/`upgrade`), parsed permissively (`1`/`yes`/`on`/…); when the env — not a flag — is the source, the run prints `Proving enabled via LIONDEN_PROVE`. An explicit `--prove=false` reliably disables proving even when `LIONDEN_PROVE` is set. The resolved value is canonicalized into `LIONDEN_PROVE="true"` (or cleared) **before** suite-setup hooks run, so hooks and Vitest workers observe the same value. On managed devnode this makes `ctx.deploy()`/`ctx.execute()` and direct `upgrade` task calls use the standard ProgramManager builders instead of the devnode fast-path builders.
+
+For mixed control within a single run, the per-call escape hatches override the run-level value: testing `ctx.deploy({ prove })` and `ctx.execute(..., { prove })`, and recipe `ctx.deploy({ prove })` / `ctx.execute(..., { prove })`. For example, `ctx.execute(id, fn, args, { prove: false })` skips proving for one call while the rest of a `--prove` run proves.
 
 Cold-cache prove runs succeed on first use: the SDK transparently downloads credits proving keys (and KZG SRS files for circuits that require them) from the known parameter hosts, written through to the filesystem cache. Subsequent runs hit the cache and skip the network. The egress policy in [`network.md`](network.md) § Egress Policy applies to **network-host** fetches only — chain state and transaction submission — and does not gate parameter downloads. For hermetic / offline test runs, pre-warm the cache and then isolate the test process at the container / CI / firewall level.
 

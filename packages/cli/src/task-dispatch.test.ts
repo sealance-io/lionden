@@ -242,18 +242,18 @@ describe("parseArgs", () => {
 
   it("keeps positionals before known boolean task flags", () => {
     const result = parseArgs(
-      ["test", "test/file.test.ts", "--prove"],
+      ["test", "test/file.test.ts", "--coverage"],
       undefined,
       lookupFor(
         defineTask({
           id: "test",
-          flags: [{ name: "prove", description: "Enable proofs" }],
+          flags: [{ name: "coverage", description: "Collect coverage" }],
         }),
       ),
     );
 
     expect(result.taskArgs._positional).toEqual(["test/file.test.ts"]);
-    expect(result.taskArgs.prove).toBe(true);
+    expect(result.taskArgs.coverage).toBe(true);
   });
 
   it("keeps positionals after known boolean task flags", () => {
@@ -363,32 +363,32 @@ describe("parseArgs", () => {
   it("parses boolean plugin global option", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
-        "prove",
+        "trace",
         {
           pluginId: "test",
-          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+          definition: { name: "trace", description: "Enable tracing", type: ArgumentType.BOOLEAN },
         },
       ],
     ]);
 
-    const result = parseArgs(["--prove", "test"], pluginOpts);
-    expect(result.globalArgs.prove).toBe(true);
+    const result = parseArgs(["--trace", "test"], pluginOpts);
+    expect(result.globalArgs.trace).toBe(true);
     expect(result.taskId).toBe("test");
   });
 
   it("routes a boolean plugin global option placed AFTER the task into globalArgs without swallowing the next token", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
-        "prove",
+        "trace",
         {
           pluginId: "@lionden/plugin-deploy",
-          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+          definition: { name: "trace", description: "Enable tracing", type: ArgumentType.BOOLEAN },
         },
       ],
     ]);
 
     const result = parseArgs(
-      ["deploy", "--prove", "hello"],
+      ["deploy", "--trace", "hello"],
       pluginOpts,
       lookupFor(
         defineTask({
@@ -398,26 +398,26 @@ describe("parseArgs", () => {
       ),
     );
 
-    // --prove is recorded as a global (like its pre-task form), NOT as a task arg…
-    expect(result.globalArgs.prove).toBe(true);
-    expect(result.taskArgs.prove).toBeUndefined();
-    // …and "hello" survives as a positional instead of being eaten as prove's value.
+    // --trace is recorded as a global (like its pre-task form), NOT as a task arg…
+    expect(result.globalArgs.trace).toBe(true);
+    expect(result.taskArgs.trace).toBeUndefined();
+    // …and "hello" survives as a positional instead of being eaten as trace's value.
     expect(result.taskArgs._positional).toEqual(["hello"]);
   });
 
   it("routes a boolean global by name even when placed after a task", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
-        "prove",
+        "trace",
         {
           pluginId: "@lionden/plugin-deploy",
-          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+          definition: { name: "trace", description: "Enable tracing", type: ArgumentType.BOOLEAN },
         },
       ],
     ]);
 
     const result = parseArgs(
-      ["test", "--prove", "extra"],
+      ["test", "--trace", "extra"],
       pluginOpts,
       lookupFor(
         defineTask({
@@ -427,35 +427,99 @@ describe("parseArgs", () => {
       ),
     );
 
-    expect(result.globalArgs.prove).toBe(true);
-    expect(result.taskArgs.prove).toBeUndefined();
+    expect(result.globalArgs.trace).toBe(true);
+    expect(result.taskArgs.trace).toBeUndefined();
     expect(result.taskArgs._positional).toEqual(["extra"]);
   });
 
-  it("routes --prove to the active task when the task defines a prove flag", () => {
+  it("routes a plugin global to the active task when the task defines a flag of the same name", () => {
     const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
-        "prove",
+        "trace",
         {
           pluginId: "@lionden/plugin-deploy",
-          definition: { name: "prove", description: "Enable proofs", type: ArgumentType.BOOLEAN },
+          definition: { name: "trace", description: "Enable tracing", type: ArgumentType.BOOLEAN },
         },
       ],
     ]);
 
     const result = parseArgs(
-      ["test", "--prove"],
+      ["test", "--trace"],
       pluginOpts,
       lookupFor(
         defineTask({
           id: "test",
-          flags: [{ name: "prove", description: "Enable proofs" }],
+          flags: [{ name: "trace", description: "Enable tracing" }],
         }),
       ),
     );
 
-    expect(result.taskArgs.prove).toBe(true);
-    expect(result.globalArgs.prove).toBeUndefined();
+    expect(result.taskArgs.trace).toBe(true);
+    expect(result.globalArgs.trace).toBeUndefined();
+  });
+
+  describe("built-in --prove routing", () => {
+    it("routes --prove before the task into globalArgs and keeps the task token", () => {
+      const result = parseArgs(
+        ["--prove", "test"],
+        undefined,
+        lookupFor(defineTask({ id: "test" })),
+      );
+      expect(result.globalArgs.prove).toBe(true);
+      expect(result.taskId).toBe("test");
+    });
+
+    it("routes --prove after the task into globalArgs (built-in, not a task arg)", () => {
+      const result = parseArgs(
+        ["test", "--prove", "extra"],
+        undefined,
+        lookupFor(
+          defineTask({
+            id: "test",
+            flags: [{ name: "noCompile", description: "Skip compile" }],
+          }),
+        ),
+      );
+      expect(result.globalArgs.prove).toBe(true);
+      expect(result.taskArgs.prove).toBeUndefined();
+      // boolean built-in does not consume the next token
+      expect(result.taskArgs._positional).toEqual(["extra"]);
+    });
+
+    it("interprets --prove=false as an explicit false", () => {
+      const result = parseArgs(
+        ["deploy", "--prove=false"],
+        undefined,
+        lookupFor(defineTask({ id: "deploy" })),
+      );
+      expect(result.globalArgs.prove).toBe(false);
+    });
+
+    it("keeps the last value for a repeated --prove (last write wins)", () => {
+      const result = parseArgs(
+        ["--prove", "--prove=false", "deploy"],
+        undefined,
+        lookupFor(defineTask({ id: "deploy" })),
+      );
+      expect(result.globalArgs.prove).toBe(false);
+    });
+
+    it("wins over a task that raw-defines a prove arg (built-in is reserved)", () => {
+      // TaskBuilder rejects a `prove` arg, but a raw TaskDefinition can still
+      // carry one; the built-in global must take precedence during routing.
+      const result = parseArgs(
+        ["test", "--prove"],
+        undefined,
+        lookupFor(
+          defineTask({
+            id: "test",
+            flags: [{ name: "prove", description: "Enable proofs" }],
+          }),
+        ),
+      );
+      expect(result.globalArgs.prove).toBe(true);
+      expect(result.taskArgs.prove).toBeUndefined();
+    });
   });
 
   it("routes valued globals after the task by name", () => {
@@ -517,12 +581,12 @@ describe("parseArgs", () => {
   });
 
   describe("inline --opt=value", () => {
-    const proveGlobal = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+    const traceGlobal = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
-        "prove",
+        "trace",
         {
           pluginId: "@lionden/plugin-deploy",
-          definition: { name: "prove", description: "Prove", type: ArgumentType.BOOLEAN },
+          definition: { name: "trace", description: "Trace", type: ArgumentType.BOOLEAN },
         },
       ],
     ]);
@@ -585,9 +649,9 @@ describe("parseArgs", () => {
     });
 
     it("interprets =false / =true / presence for boolean globals", () => {
-      expect(parseArgs(["deploy", "--prove=false"], proveGlobal).globalArgs.prove).toBe(false);
-      expect(parseArgs(["deploy", "--prove=true"], proveGlobal).globalArgs.prove).toBe(true);
-      expect(parseArgs(["deploy", "--prove"], proveGlobal).globalArgs.prove).toBe(true);
+      expect(parseArgs(["deploy", "--trace=false"], traceGlobal).globalArgs.trace).toBe(false);
+      expect(parseArgs(["deploy", "--trace=true"], traceGlobal).globalArgs.trace).toBe(true);
+      expect(parseArgs(["deploy", "--trace"], traceGlobal).globalArgs.trace).toBe(true);
     });
 
     it("keeps an unknown inline option's value instead of a bogus key", () => {
@@ -602,12 +666,12 @@ describe("parseArgs", () => {
   });
 
   describe("duplicate args — last write wins", () => {
-    const proveGlobal = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+    const traceGlobal = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
       [
-        "prove",
+        "trace",
         {
           pluginId: "@lionden/plugin-deploy",
-          definition: { name: "prove", description: "Prove", type: ArgumentType.BOOLEAN },
+          definition: { name: "trace", description: "Trace", type: ArgumentType.BOOLEAN },
         },
       ],
     ]);
@@ -621,9 +685,9 @@ describe("parseArgs", () => {
       expect(result.globalArgs.network).toBe("b");
     });
 
-    it("keeps the last value for a repeated boolean global (--prove --prove=false)", () => {
-      const result = parseArgs(["deploy", "--prove", "--prove=false"], proveGlobal);
-      expect(result.globalArgs.prove).toBe(false);
+    it("keeps the last value for a repeated boolean global (--trace --trace=false)", () => {
+      const result = parseArgs(["deploy", "--trace", "--trace=false"], traceGlobal);
+      expect(result.globalArgs.trace).toBe(false);
     });
 
     it("keeps the last value for a repeated valued task option (--grep)", () => {

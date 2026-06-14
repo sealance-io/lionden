@@ -7,11 +7,14 @@
  * Sets environment variables so that `@lionden/testing` can discover the
  * project config and reconstruct the LRE in Vitest worker processes:
  * - `LIONDEN_PROJECT_ROOT` — project root for config discovery
- * - `LIONDEN_PROVE` — "true" when `--prove` flag is set
+ * - `LIONDEN_PROVE` — canonical "true" when proving is on; deleted otherwise.
+ *   `options.prove === true` sets it, `false` clears it, and `undefined` honors
+ *   (and canonicalizes) a truthy ambient `LIONDEN_PROVE`.
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import { parseBooleanEnv } from "@lionden/config";
 import type { startVitest as startVitestType } from "vitest/node";
 
 type VitestStartOptions = NonNullable<Parameters<typeof startVitestType>[2]>;
@@ -38,7 +41,10 @@ export interface TestRunnerOptions {
   timeout?: number;
   /** Run compile task before testing. Default: true */
   compile?: boolean;
-  /** Generate proofs during execution (slower). Default: false */
+  /**
+   * Generate proofs during execution (slower). `true` sets `LIONDEN_PROVE`,
+   * `false` clears it, and omitting it honors a truthy ambient `LIONDEN_PROVE`.
+   */
   prove?: boolean;
   /**
    * Test file or glob patterns to include. Defaults to the standard test glob.
@@ -91,11 +97,13 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   // Workers inherit process.env, so @lionden/testing can discover
   // the project config and construct an LRE from any worker thread.
   process.env["LIONDEN_PROJECT_ROOT"] = options.root;
-  if (options.prove) {
-    process.env["LIONDEN_PROVE"] = "true";
-  } else {
-    delete process.env["LIONDEN_PROVE"];
-  }
+  // undefined → honor (and canonicalize) ambient env; true → set; false → clear.
+  // `false ?? x === false`, so an explicit false still clears; only `undefined`
+  // falls through to the ambient-env parse. No onInvalid callback here — this is
+  // the worker-boundary owner and must stay silent (Finding 3).
+  const prove = options.prove ?? parseBooleanEnv(process.env["LIONDEN_PROVE"], false);
+  if (prove) process.env["LIONDEN_PROVE"] = "true";
+  else delete process.env["LIONDEN_PROVE"];
 
   const { startVitest } = await import("vitest/node");
   const coverageOptions = normalizeCoverageOptions(options.coverage);

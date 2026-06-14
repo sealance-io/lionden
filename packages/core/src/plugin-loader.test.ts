@@ -70,20 +70,21 @@ describe("collectGlobalOptions", () => {
     const a = plugin("a", {
       globalOptions: [
         {
-          name: "prove",
-          description: "Enable proofs",
+          name: "trace",
+          description: "Enable tracing",
           type: ArgumentType.BOOLEAN,
         },
       ],
     });
     const result = collectGlobalOptions([a]);
-    expect(result.has("prove")).toBe(true);
-    expect(result.get("prove")!.pluginId).toBe("a");
+    expect(result.has("trace")).toBe(true);
+    expect(result.get("trace")!.pluginId).toBe("a");
   });
 
   it.each([
     "verbose",
     "network",
+    "prove",
     "config",
     "help",
     "version",

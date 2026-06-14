@@ -1,4 +1,4 @@
-import type { LionDenResolvedConfig } from "@lionden/config";
+import { type LionDenResolvedConfig, parseBooleanEnv } from "@lionden/config";
 import {
   ArgumentType,
   type ConfigHookHandlers,
@@ -9,6 +9,16 @@ import {
 } from "@lionden/core";
 import type { TestCoverageOptions } from "./test-runner.js";
 import { runTests } from "./test-runner.js";
+
+// Warn at most once per process when LIONDEN_PROVE holds an unrecognized value.
+// Only the parent-process test action passes this callback to parseBooleanEnv —
+// worker-side readers stay silent to avoid per-worker spam (Finding 3).
+let warnedInvalidProveEnv = false;
+function warnOnceInvalidProveEnv(value: string): void {
+  if (warnedInvalidProveEnv) return;
+  warnedInvalidProveEnv = true;
+  console.warn(`Ignoring unrecognized LIONDEN_PROVE value "${value}" — treating as not set.`);
+}
 
 // ---------------------------------------------------------------------------
 // Config hooks
@@ -67,10 +77,6 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     description: "Skip compilation before running tests",
   })
   .addFlag({
-    name: "prove",
-    description: "Generate proofs during execution (slower)",
-  })
-  .addFlag({
     name: "parallel",
     description: "Run test files in parallel (default: serial, to avoid devnode contention)",
   })
@@ -87,11 +93,30 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     const grep = args["grep"] as string | undefined;
     const timeout = args["timeout"] as number | undefined;
     const noCompile = args["noCompile"] as boolean | undefined;
-    const prove = args["prove"] as boolean | undefined;
     const parallel = args["parallel"] as boolean | undefined;
     const coverage = args["coverage"] as boolean | undefined;
     const positionals = args["_positional"] as string[] | undefined;
     const files = positionals && positionals.length > 0 ? positionals : undefined;
+
+    // Resolve the effective prove preference. An explicit built-in --prove (or
+    // --prove=false) wins; otherwise a truthy LIONDEN_PROVE forces proving
+    // (consistent with deploy/upgrade). When the env — not a flag — is the
+    // source, print one notice so the behavior is not silent.
+    const globalProve = lre.globalOptions["prove"];
+    const explicitProve = typeof globalProve === "boolean" ? globalProve : undefined;
+    const envProve = parseBooleanEnv(process.env["LIONDEN_PROVE"], false, warnOnceInvalidProveEnv);
+    const effectiveProve = explicitProve ?? envProve;
+
+    if (effectiveProve && explicitProve === undefined) {
+      console.log("Proving enabled via LIONDEN_PROVE");
+    }
+
+    // Canonicalize/clear LIONDEN_PROVE BEFORE suiteSetup so testing hooks and
+    // Vitest workers observe the same resolved value (fixes P1). Workers read
+    // the strict `=== "true"` wrapper check, so canonicalize a truthy env to
+    // exactly "true" here.
+    if (effectiveProve) process.env["LIONDEN_PROVE"] = "true";
+    else delete process.env["LIONDEN_PROVE"];
 
     // 1. Compile unless --no-compile
     if (!noCompile) {
@@ -103,13 +128,14 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     await lre.hooks.serial("testing", "suiteSetup", { lre });
 
     try {
-      // 3. Run tests via Vitest
+      // 3. Run tests via Vitest. Pass the resolved boolean so runTests simply
+      // re-affirms the canonical env (idempotent) rather than re-deciding.
       const result = await runTests({
         root: lre.config.paths.root,
         grep,
         timeout: timeout ?? lre.config.testing.timeout,
         compile: !noCompile,
-        prove: prove ?? false,
+        prove: effectiveProve,
         parallel: parallel ?? false,
         coverage: resolveCoverageOptions(coverage ?? false),
         files,

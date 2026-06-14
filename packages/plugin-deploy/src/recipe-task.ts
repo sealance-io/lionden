@@ -20,6 +20,7 @@ import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
+import { resolveProveOption } from "./prove.js";
 import type { DeploymentContext } from "./recipe-types.js";
 
 // ---------------------------------------------------------------------------
@@ -49,8 +50,11 @@ export async function recipeAction(
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
 
-  // 3. Create deployment context
-  const ctx = createCliDeploymentContext(lre, connection, networkName);
+  // 3. Create deployment context. Resolve the run-level prove preference once
+  // (programmatic args.prove → --prove global → LIONDEN_PROVE → false) so
+  // ctx.execute inherits it; per-call opts can still override.
+  const resolvedRecipeProve = resolveProveOption(args, lre);
+  const ctx = createCliDeploymentContext(lre, connection, networkName, resolvedRecipeProve);
 
   // 4. Import and run recipe — resolve relative to project root, not cwd
   const resolved = path.isAbsolute(file) ? file : path.resolve(lre.config.paths.root, file);
@@ -72,6 +76,7 @@ export function createCliDeploymentContext(
   lre: LionDenRuntimeEnvironment,
   connection: NetworkConnection,
   networkName: string,
+  resolvedProve = false,
 ): DeploymentContext {
   return {
     lre,
@@ -99,6 +104,11 @@ export function createCliDeploymentContext(
         noCompile: opts?.noCompile ?? true, // pre-compiled by recipe task
         priorityFee: opts?.priorityFee,
         noSkipDeployed: opts?.noSkipDeployed,
+        // Forward prove only when the caller set it. Omitted → the deploy task
+        // self-resolves the run-level preference via resolveProveOption, so
+        // run-level inheritance is unchanged; a per-call value is the escape
+        // hatch for mixed control (Finding 2).
+        ...(opts?.prove !== undefined ? { prove: opts.prove } : {}),
       });
 
       // Unwrap DeployTaskResult discriminated union
@@ -138,6 +148,7 @@ export function createCliDeploymentContext(
       const result = await connection.execute(programId, transitionName, args, {
         mode,
         fee: opts?.fee,
+        prove: opts?.prove ?? resolvedProve,
         signer: opts?.signer,
         ...awaitOpt,
       });

@@ -10,6 +10,7 @@ export type {
   LionDenUserConfigExtensions,
 } from "./declaration-merging.js";
 export { defineConfig } from "./define-config.js";
+export { parseBooleanEnv } from "./env.js";
 export type { RuntimeImportDiagnostic } from "./execution-imports.js";
 export {
   checkRuntimeImportRefExists,
