@@ -104,11 +104,14 @@ export function createCliDeploymentContext(
         noCompile: opts?.noCompile ?? true, // pre-compiled by recipe task
         priorityFee: opts?.priorityFee,
         noSkipDeployed: opts?.noSkipDeployed,
-        // Forward prove only when the caller set it. Omitted → the deploy task
-        // self-resolves the run-level preference via resolveProveOption, so
-        // run-level inheritance is unchanged; a per-call value is the escape
-        // hatch for mixed control (Finding 2).
-        ...(opts?.prove !== undefined ? { prove: opts.prove } : {}),
+        // Forward the recipe's authoritative prove value (a per-call override
+        // wins; otherwise inherit the run-level `resolvedProve`), mirroring
+        // ctx.execute. resolvedProve already encodes the full args > --prove >
+        // LIONDEN_PROVE precedence, so passing it explicitly keeps deploy and
+        // execute consistent — including programmatic `tasks.run("recipe", {
+        // prove })` and an explicit `{ prove: false }` that must beat a truthy
+        // ambient env (Finding 2 escape hatch + run-level inheritance).
+        prove: opts?.prove ?? resolvedProve,
       });
 
       // Unwrap DeployTaskResult discriminated union
