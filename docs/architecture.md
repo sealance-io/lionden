@@ -91,9 +91,10 @@ Key current behaviors:
 - `runSuper` invokes the immediately preceding implementation chain
 - CLI arguments are normalized from kebab-case to canonical option names
 - named CLI arguments are assigned to global args or task args by public name lookup against registered schemas, not by whether the token appears before or after the task id
+- the final task-aware CLI parse is validated before dispatch, so unknown tasks, unknown named arguments, bare arguments before the resolved task, and unused after-task positional arguments are rejected centrally
 - numeric option values are coerced from strings when possible
 - option defaults and flag defaults are filled before execution
-- positional arguments are bound by index to their declared names (`_positional` stays populated for back-compat), and a missing `required` positional throws before the action runs
+- positional arguments are bound by index to their declared names (`_positional` stays populated for back-compat), variadic positionals can consume multiple bare arguments, and a missing `required` positional throws before the action runs
 
 This is the basis for the repo's built-in tasks such as `compile`, `node`, `deploy`, and `test`.
 
@@ -130,11 +131,12 @@ The current LRE includes:
 7. create the LRE using resolved config and post-extension config tasks
 8. parse again with task metadata so named arguments are routed by schema, not by position
 9. render help (if requested) **before** validating option values, so an invocation like `--network ghostnet --help` still documents recovery instead of failing on the bad value
-10. apply the global `--network` override from that task-aware parse to `config.defaultNetwork` (validated against `config.networks`) **and** seed it into `globalOptions["network"]` so the `test` task can bridge it to Vitest workers via `LIONDEN_NETWORK` (other tasks keep reading `config.defaultNetwork`)
-11. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`. The contrast with `--network`: `--network` mutates config *and* seeds `globalOptions`, while `--prove` only seeds `globalOptions` (never mutates config), preserving an explicit `--prove=false`
-12. seed plugin global option values from the task-aware parse
-13. validate task named arguments do not overlap with built-in or plugin global options
-14. dispatch the selected task
+10. validate the final parse against the resolved task registry, rejecting unknown tasks, unknown named task/global arguments, bare arguments before the resolved task, and after-task bare arguments that the resolved task's positional schema cannot consume
+11. apply the global `--network` override from that task-aware parse to `config.defaultNetwork` (validated against `config.networks`) **and** seed it into `globalOptions["network"]` so the `test` task can bridge it to Vitest workers via `LIONDEN_NETWORK` (other tasks keep reading `config.defaultNetwork`)
+12. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`; unlike `--network`, this does **not** mutate config
+13. seed plugin global option values from the task-aware parse
+14. validate task named arguments do not overlap with built-in or plugin global options
+15. dispatch the selected task
 
 The built-in globals are `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, and `--version`/`-v` (see `BUILT_IN_GLOBAL_ARGUMENT_NAMES` in `packages/core/src/arg-names.ts`). These names are reserved: a plugin global or task argument that shadows one is rejected at load/build time. `--prove` is consumed by deploy/upgrade/recipe/test via `resolveProveOption()` / `lre.globalOptions["prove"]`; it is not owned by any single plugin.
 

@@ -72,6 +72,18 @@ Either clone it or copy one of the examples under `examples/` (`hello-world`, `t
 
 The examples are the canonical reference for "how does a real LionDen project look?" Prefer reading them over inventing your own setup.
 
+## CLI Argument Shape
+
+LionDen commands follow:
+
+```bash
+lionden [global-options] <task> [task-options] [task-positionals]
+```
+
+Global options include `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, and `--version`/`-v`. Named task options can appear before or after the task id because the final CLI parse routes them through the resolved task schema. For example, `lionden --program hello deploy` and `lionden deploy --program hello` both target the `deploy` task's `program` option.
+
+Bare arguments are stricter. A bare argument before the resolved task id is rejected, and bare arguments after the task id must be consumed by that task's positional schema. So `lionden hello compile` and `lionden compile hello` both fail because `compile` has no positional arguments. `lionden run scripts/deploy.ts` works because `run` declares one `script` positional. `lionden test a.test.ts b.test.ts` works because the `test` task declares its `files` positional as variadic.
+
 ## Project Layout
 
 A standard LionDen project looks like:

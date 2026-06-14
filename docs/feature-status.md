@@ -25,6 +25,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Task builder API with `addOption`/`addFlag`/`addPositionalArgument`/`setAction`/`overrideTask`/`runSuper` | `packages/core/src/task-builder.ts` |
 | CLI tasks registered today: `compile`, `clean`, `node`, `run`, `deploy`, `upgrade`, `export`, `recipe`, `test` | `packages/plugin-*/src/index.ts` |
 | Global CLI options: `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, `--version`/`-v`; `--network <name>` selects a named `config.networks` entry, not an Aleo chain id | `packages/cli/src/task-dispatch.ts`, `packages/cli/src/index.ts` |
+| Final task-aware CLI validation rejects unknown tasks, unknown named arguments, bare arguments before the resolved task, and after-task bare arguments that the task's positional schema cannot consume | `packages/cli/src/task-dispatch.ts`, `packages/cli/src/index.ts` |
 | Config discovery walks up from cwd to find `lionden.config.{ts,js,mjs}` | `packages/cli/src/config-discovery.ts` |
 | TypeScript config files loaded via `tsx`-import path | `packages/cli/src/bin.ts` |
 

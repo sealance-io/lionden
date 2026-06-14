@@ -14,6 +14,7 @@ import {
   dispatchTask,
   parseArgs,
   printHelp,
+  validateParsedArgs,
   validateTaskGlobalOptionCollisions,
 } from "./task-dispatch.js";
 
@@ -95,6 +96,8 @@ export async function main(): Promise<void> {
     printHelp(lre, globalOptionDefs);
     return;
   }
+
+  validateParsedArgs(lre, parsed);
 
   // Override default network from CLI. --network is global-only, and is resolved
   // from the task-aware parse — so a value-less `--network` before a task name
