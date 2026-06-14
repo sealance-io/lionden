@@ -477,15 +477,17 @@ export class AleoConnection implements NetworkConnection {
     });
 
     try {
-      await pm.buildAuthorizationUnchecked({
-        programName: programId,
-        functionName: transitionName,
-        inputs: args,
-        programSource: artifacts.source,
-        ...(artifacts.imports === undefined ? {} : { programImports: artifacts.imports }),
-      });
+      await runWithLocalWasmTrapCapture(() =>
+        pm.buildAuthorizationUnchecked({
+          programName: programId,
+          functionName: transitionName,
+          inputs: args,
+          programSource: artifacts.source,
+          ...(artifacts.imports === undefined ? {} : { programImports: artifacts.imports }),
+        }),
+      );
     } catch (error) {
-      if (isCatchableLocalVmError(error)) {
+      if (error instanceof LocalExecutionWasmTrapError || isCatchableLocalVmError(error)) {
         throw new LocalVmExecutionError(
           `Local VM execution failed for ${programId}/${transitionName}: ${errorMessage(error)}`,
           {
@@ -784,7 +786,8 @@ function sleep(ms: number): Promise<void> {
 // under/overflow, division by zero) as process-level `RuntimeError: unreachable`
 // traps while leaving the SDK promise pending. Wrap this around any local-WASM
 // SDK operation to convert that specific trap into the rejection callers expect:
-//   - local `pm.run` (mode:"local"), and
+//   - local `pm.run` (mode:"local"),
+//   - local failure checks via `buildAuthorizationUnchecked`, and
 //   - the local authorize/build phase of on-chain execute
 //     (`buildDevnodeExecutionTransaction` fast-path and `pm.execute` prove path),
 //     where a transition-body arithmetic panic traps the same way before any
