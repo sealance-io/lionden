@@ -78,9 +78,10 @@ export async function resolveConfig(
   const userErrors = [
     ...validateSdkUserConfig(config),
     ...validateExecutionUserConfig(config),
-    ...(
-      await hooks.collect<ConfigValidationError[]>("config", "validateUserConfig", config)
-    ).flat(),
+    ...(await hooks.collect<ConfigValidationError[]>("config", "validateUserConfig", config))
+      .flat()
+      // drop undefined returns from handlers that break the ConfigValidationError[] contract
+      .filter(Boolean),
   ];
   if (userErrors.length > 0) {
     throw new ConfigResolutionError(
@@ -109,9 +110,10 @@ export async function resolveConfig(
   // 4. Validate resolved config (built-in core passes first, then plugin handlers)
   const resolvedErrors = [
     ...validateExecutionResolvedConfig(resolved),
-    ...(
-      await hooks.collect<ConfigValidationError[]>("config", "validateResolvedConfig", resolved)
-    ).flat(),
+    ...(await hooks.collect<ConfigValidationError[]>("config", "validateResolvedConfig", resolved))
+      .flat()
+      // drop undefined returns from handlers that break the ConfigValidationError[] contract
+      .filter(Boolean),
   ];
   if (resolvedErrors.length > 0) {
     throw new ConfigResolutionError(

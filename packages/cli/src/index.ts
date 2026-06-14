@@ -61,10 +61,6 @@ export async function main(): Promise<void> {
   const globalOptionDefs = collectGlobalOptions(plugins);
   parsed = parseArgs(process.argv.slice(2), globalOptionDefs);
 
-  if (parsed.globalArgs.verbose) {
-    logger.setLevel("debug");
-  }
-
   // Resolve config through the full lifecycle
   const { resolved: resolvedConfig, extendedUserConfig } = await resolveConfig(
     userConfig,
@@ -83,7 +79,6 @@ export async function main(): Promise<void> {
   const globalOptions: Record<string, unknown> = {};
   const config = { ...resolvedConfig };
   const lre = createLre({ config, plugins, globalOptions, configTasks });
-  validateTaskGlobalOptionCollisions(lre);
 
   // Re-parse WITH task metadata so named args are routed by schema rather than
   // by whether they appeared before or after the task name.
@@ -94,9 +89,20 @@ export async function main(): Promise<void> {
   // Override default network from CLI. --network is global-only, and is resolved
   // from the task-aware parse — so a value-less `--network` before a task name
   // (e.g. `lionden --network deploy`) does not consume the task token as a bogus
-  // network value the way the earlier task-unaware parse would.
+  // network value the way the earlier task-unaware parse would. Validate the name
+  // against config.networks here so an unknown --network fails once, centrally,
+  // with a clear message — instead of later and differently inside each task's
+  // connect path.
   if (typeof parsed.globalArgs.network === "string") {
-    (config as { defaultNetwork: string }).defaultNetwork = parsed.globalArgs.network;
+    const requestedNetwork = parsed.globalArgs.network;
+    if (!config.networks[requestedNetwork]) {
+      const available = Object.keys(config.networks).join(", ") || "(none)";
+      throw new Error(
+        `Network "${requestedNetwork}" (from --network) is not defined in config.networks. ` +
+          `Available networks: ${available}`,
+      );
+    }
+    (config as { defaultNetwork: string }).defaultNetwork = requestedNetwork;
   }
 
   // Seed global option values from the task-aware parse.
@@ -108,11 +114,18 @@ export async function main(): Promise<void> {
     }
   }
 
-  // Handle help
+  // Handle help before the collision guard below, so `lionden --help` still
+  // renders even when a config-level task argument collides with a built-in
+  // global option.
   if (parsed.globalArgs.help) {
     printHelp(lre, globalOptionDefs);
     return;
   }
+
+  // Reject tasks whose arguments shadow a built-in global option before we
+  // dispatch — otherwise the parser silently routes the colliding arg to the
+  // global and the task never receives it.
+  validateTaskGlobalOptionCollisions(lre);
 
   // Dispatch task
   await dispatchTask(lre, parsed);
