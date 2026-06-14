@@ -199,9 +199,10 @@ export class SdkExecutionError extends Error {
  * Thrown by the network layer's local-WASM trap capture when the Provable WASM
  * runtime reports a Leo runtime panic (integer under/overflow, division by zero)
  * as a process-level `RuntimeError: unreachable` trap that escapes the SDK call
- * promise (`pm.run`, `pm.execute`, or `buildDevnodeExecutionTransaction`),
- * leaving it pending. The original trap is preserved at `.cause`. (An explicit
- * `assert` failure is a *catchable* `Stack …` rejection, not this trap.)
+ * promise (`pm.run`, `pm.execute`, `buildDevnodeExecutionTransaction`, or
+ * `buildAuthorizationUnchecked`), leaving it pending. The original trap is
+ * preserved at `.cause`. (An explicit `assert` failure is a *catchable*
+ * `Stack …` rejection, not this trap.)
  *
  * The trap carries only the generic `unreachable` message; the descriptive
  * snarkVM panic text is written to stderr by the panic hook and is not

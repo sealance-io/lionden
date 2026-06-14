@@ -37,6 +37,7 @@ vi.mock("./sdk-adapter.js", () => ({
 import { AleoConnection } from "./connection.js";
 import { SdkDiagnostics } from "./sdk-diagnostics.js";
 import {
+  LocalExecutionWasmTrapError,
   LocalVmExecutionError,
   NetworkConfirmationTimeoutError,
   SdkExecutionError,
@@ -411,6 +412,35 @@ describe("AleoConnection", () => {
       await expect(
         connection.checkLocalExecution("hello.aleo", "main", ["1u32"]),
       ).resolves.toBeUndefined();
+    });
+
+    it("wraps captured WASM traps in LocalVmExecutionError", async () => {
+      const hadCaptureCallback = process.hasUncaughtExceptionCaptureCallback();
+      mockBuildAuthorizationUnchecked.mockImplementation(
+        () =>
+          new Promise(() => {
+            setImmediate(() => {
+              throw new WebAssembly.RuntimeError("unreachable");
+            });
+          }),
+      );
+      const connection = createDevnodeConnection();
+
+      let thrown: unknown;
+      try {
+        await connection.checkLocalExecution("hello.aleo", "main", ["1u32"]);
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(LocalVmExecutionError);
+      expect(thrown).toMatchObject({
+        kind: "LocalVmExecutionError",
+        programId: "hello.aleo",
+        transitionName: "main",
+      });
+      expect((thrown as Error).cause).toBeInstanceOf(LocalExecutionWasmTrapError);
+      expect(process.hasUncaughtExceptionCaptureCallback()).toBe(hadCaptureCallback);
     });
 
     it("treats VM failures as catchable only with vetted SDK prefixes", async () => {
