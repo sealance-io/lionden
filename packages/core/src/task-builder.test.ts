@@ -51,7 +51,7 @@ describe("task builder", () => {
       'Task "test" flag "help" conflicts with built-in global option "--help"',
     );
     expect(() => task("test", "").addFlag({ name: "h", description: "" })).toThrow(
-      'Task "test" flag "h" conflicts with built-in global option "--h"',
+      'Task "test" flag "h" conflicts with built-in global option "-h"',
     );
   });
 

@@ -1,4 +1,8 @@
-import { getPublicArgumentNames, getReservedBuiltInGlobalArgumentNames } from "./arg-names.js";
+import {
+  argumentFlagName,
+  getPublicArgumentNames,
+  getReservedBuiltInGlobalArgumentNames,
+} from "./arg-names.js";
 import {
   ArgumentType,
   type TaskAction,
@@ -112,7 +116,7 @@ export class TaskBuilder {
     for (const publicName of getPublicArgumentNames(name)) {
       if (this._reservedBuiltInGlobalNames.has(publicName)) {
         throw new Error(
-          `Task "${this._id}" ${kind} "${name}" conflicts with built-in global option "--${publicName}"`,
+          `Task "${this._id}" ${kind} "${name}" conflicts with built-in global option "${argumentFlagName(publicName)}"`,
         );
       }
     }

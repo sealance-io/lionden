@@ -104,7 +104,7 @@ describe("collectGlobalOptions", () => {
     });
     expect(() => collectGlobalOptions([a])).toThrow(
       new RegExp(
-        `Global option "--${name}" registered by "a" conflicts with built-in global option "--${name}"`,
+        `Global option "-${name}" registered by "a" conflicts with built-in global option "-${name}"`,
       ),
     );
   });

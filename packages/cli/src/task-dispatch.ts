@@ -5,6 +5,7 @@ import type {
 } from "@lionden/core";
 import {
   ArgumentType,
+  argumentFlagName,
   getPublicArgumentNames,
   getReservedBuiltInGlobalArgumentNames,
 } from "@lionden/core";
@@ -26,7 +27,12 @@ export interface ParsedArgs {
 
 /**
  * Parse CLI arguments into structured form.
- * Format: lionden [global-options] <task> [task-options]
+ * Format: lionden [options] <task> [options]
+ *
+ * The task id is discovered by position (first token that names a registered
+ * task), but named arguments are routed by public-name lookup against the
+ * built-in globals, plugin globals, and the selected task's schema — so an
+ * option is classified the same whether it appears before or after the task id.
  *
  * @param pluginGlobalOptions - global options registered by plugins
  */
@@ -55,13 +61,13 @@ export function parseArgs(
     if (arg.startsWith("--") || arg.startsWith("-")) {
       const rawName = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
       const globalDefinition = globalDefinitions.get(rawName);
-      const taskDefinition = taskDefinitions.get(rawName);
+      const taskArg = taskDefinitions.get(rawName);
 
-      if (taskDefinition && !globalDefinition?.builtIn) {
-        if (taskDefinition.type === "boolean") {
-          taskArgs[taskDefinition.name] = true;
+      if (taskArg && !globalDefinition?.builtIn) {
+        if (taskArg.type === "boolean") {
+          taskArgs[taskArg.name] = true;
         } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
-          taskArgs[taskDefinition.name] = argv[++i];
+          taskArgs[taskArg.name] = argv[++i];
         }
       } else if (globalDefinition) {
         if (globalDefinition.type === ArgumentType.BOOLEAN) {
@@ -210,7 +216,7 @@ export function validateTaskGlobalOptionCollisions(lre: LionDenRuntimeEnvironmen
       for (const publicName of getPublicArgumentNames(arg.name)) {
         if (globalNames.has(publicName)) {
           throw new Error(
-            `Task "${taskId}" argument "${arg.name}" conflicts with global option "--${publicName}"`,
+            `Task "${taskId}" argument "${arg.name}" conflicts with global option "${argumentFlagName(publicName)}"`,
           );
         }
       }

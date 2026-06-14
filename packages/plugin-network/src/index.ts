@@ -198,7 +198,7 @@ const runTask = task("run", "Execute a TypeScript script with LRE context")
       throw new Error("Script path is required. Usage: lionden run <script>");
     }
 
-    const networkName = (args["network"] as string) ?? lre.config.defaultNetwork;
+    const networkName = (args.network as string) ?? lre.config.defaultNetwork;
 
     // Connect to the specified or default network
     const manager = lre.network as NetworkManagerImpl;
