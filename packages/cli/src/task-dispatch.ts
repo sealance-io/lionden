@@ -276,6 +276,13 @@ function canConsumeNextAsValue(argv: readonly string[], index: number, taskIndex
 
 export function validateTaskGlobalOptionCollisions(lre: LionDenRuntimeEnvironment): void {
   const globalNames = getReservedBuiltInGlobalArgumentNames();
+  for (const plugin of lre.plugins) {
+    for (const opt of plugin.globalOptions ?? []) {
+      for (const publicName of getPublicArgumentNames(opt.name)) {
+        globalNames.add(publicName);
+      }
+    }
+  }
 
   for (const taskId of lre.tasks.getTaskIds()) {
     const taskDefinition = lre.tasks.getTaskDefinition(taskId);
