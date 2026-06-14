@@ -383,6 +383,15 @@ describe("test task contract", () => {
       logSpy.mockRestore();
     });
 
+    it("forwards the exact CLI config path to workers", async () => {
+      const lre = createTestLre();
+      lre.globalOptions["configPath"] = "/tmp/lionden/http.config.ts";
+
+      await lre.tasks.run("test", { noCompile: true });
+
+      expect(process.env["LIONDEN_CONFIG_PATH"]).toBe("/tmp/lionden/http.config.ts");
+    });
+
     it("leaves LIONDEN_NETWORK unset when no explicit network is selected", async () => {
       const lre = createTestLre();
 

@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import type { LionDenUserConfig } from "@lionden/config";
 import {
   collectGlobalOptions,
@@ -46,8 +47,9 @@ export async function main(): Promise<void> {
     process.exit(1);
   }
 
-  logger.debug(`Loading config from ${configPath}`);
-  const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
+  const absoluteConfigPath = path.resolve(configPath);
+  logger.debug(`Loading config from ${absoluteConfigPath}`);
+  const { config: rawConfig, projectRoot } = await loadConfigFile(absoluteConfigPath);
   const userConfig = rawConfig as LionDenUserConfig;
 
   // Resolve plugins
@@ -76,7 +78,7 @@ export async function main(): Promise<void> {
   // DeploymentManagerImpl capture lre.config by reference and read
   // defaultNetwork lazily, so mutating it here is observed at connect time.)
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
-  const globalOptions: Record<string, unknown> = {};
+  const globalOptions: Record<string, unknown> = { configPath: absoluteConfigPath };
   const config = { ...resolvedConfig };
   const lre = createLre({ config, plugins, globalOptions, configTasks });
 

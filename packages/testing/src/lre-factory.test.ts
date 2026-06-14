@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { type TempProject, TempProjectBuilder } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestLre, resetTestLre } from "./lre-factory.js";
@@ -69,6 +71,55 @@ describe("lre-factory", () => {
       try {
         const lre = await createTestLre();
         expect(lre.config.defaultNetwork).toBe("devnode");
+      } finally {
+        resetTestLre();
+      }
+    });
+
+    it("uses LIONDEN_CONFIG_PATH when the parent CLI loaded a nonstandard config file", async () => {
+      project = new TempProjectBuilder()
+        .withConfig(`export default { defaultNetwork: "devnode" };`)
+        .build();
+      const customConfigPath = path.join(project.root, "lionden.http.config.ts");
+      fs.writeFileSync(
+        customConfigPath,
+        `export default {
+          defaultNetwork: "localHttp",
+          networks: {
+            devnode: { type: "devnode", autoBlock: true },
+            localHttp: {
+              type: "http",
+              endpoint: "http://127.0.0.1:4066",
+              network: "testnet",
+            },
+          },
+        };`,
+      );
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      process.env["LIONDEN_CONFIG_PATH"] = customConfigPath;
+      process.env["LIONDEN_NETWORK"] = "localHttp";
+
+      try {
+        const lre = await createTestLre();
+        expect(lre.config.defaultNetwork).toBe("localHttp");
+        expect(lre.config.networks.localHttp?.type).toBe("http");
+      } finally {
+        resetTestLre();
+      }
+    });
+
+    it("throws a clear error when LIONDEN_CONFIG_PATH points at a missing file", async () => {
+      project = new TempProjectBuilder()
+        .withConfig(`export default { defaultNetwork: "devnode" };`)
+        .build();
+      const missingConfigPath = path.join(project.root, "missing.config.ts");
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      process.env["LIONDEN_CONFIG_PATH"] = missingConfigPath;
+
+      try {
+        await expect(createTestLre()).rejects.toThrow(
+          `Config file "${missingConfigPath}" from LIONDEN_CONFIG_PATH does not exist`,
+        );
       } finally {
         resetTestLre();
       }

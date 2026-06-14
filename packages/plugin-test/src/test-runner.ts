@@ -7,6 +7,8 @@
  * Sets environment variables so that `@lionden/testing` can discover the
  * project config and reconstruct the LRE in Vitest worker processes:
  * - `LIONDEN_PROJECT_ROOT` — project root for config discovery
+ * - `LIONDEN_CONFIG_PATH` — exact config file loaded by the parent CLI; present
+ *   when known so `--config custom.config.ts` is honored in workers.
  * - `LIONDEN_PROVE` — canonical "true" when proving is on; deleted otherwise.
  *   `options.prove === true` sets it, `false` clears it, and `undefined` honors
  *   (and canonicalizes) a truthy ambient `LIONDEN_PROVE`.
@@ -74,6 +76,8 @@ export interface TestRunnerOptions {
   coverage?: boolean | TestCoverageOptions;
   /** Project root directory. */
   root: string;
+  /** Exact config file path loaded by the parent CLI, if known. */
+  configPath?: string;
 }
 
 export interface TestRunnerResult {
@@ -105,6 +109,8 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   // Workers inherit process.env, so @lionden/testing can discover
   // the project config and construct an LRE from any worker thread.
   process.env["LIONDEN_PROJECT_ROOT"] = options.root;
+  if (options.configPath) process.env["LIONDEN_CONFIG_PATH"] = options.configPath;
+  else delete process.env["LIONDEN_CONFIG_PATH"];
   // undefined → honor (and canonicalize) ambient env; true → set; false → clear.
   // `false ?? x === false`, so an explicit false still clears; only `undefined`
   // falls through to the ambient-env parse. No onInvalid callback here — this is

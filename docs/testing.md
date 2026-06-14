@@ -150,6 +150,7 @@ LionDen does not currently prevalidate that each positional path exists. A typo 
 The programmatic Vitest runner currently:
 
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
+- sets `LIONDEN_CONFIG_PATH` when the parent CLI loaded an explicit config path, so worker processes honor `--config <file>` instead of falling back to the nearest conventional filename
 - bridges an explicit `--network` to workers via `LIONDEN_NETWORK` (set only when `--network` was supplied; default runs leave it unset). Workers honor it in `lre-factory`'s `buildLre()`, retargeting `config.defaultNetwork`, and an unknown name throws a clear validation error
 - scopes test discovery to `test/**/*.test.ts` by default, or to the provided `lionden test [files...]` include patterns
 - applies timeout overrides from task args or config

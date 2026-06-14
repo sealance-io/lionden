@@ -119,6 +119,8 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     if (explicitNetwork) {
       console.log(`Running tests against network "${explicitNetwork}"`);
     }
+    const globalConfigPath = lre.globalOptions["configPath"];
+    const configPath = typeof globalConfigPath === "string" ? globalConfigPath : undefined;
 
     // Canonicalize/clear LIONDEN_PROVE BEFORE suiteSetup so testing hooks and
     // Vitest workers observe the same resolved value (fixes P1). Workers read
@@ -141,6 +143,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
       // re-affirms the canonical env (idempotent) rather than re-deciding.
       const result = await runTests({
         root: lre.config.paths.root,
+        configPath,
         grep,
         timeout: timeout ?? lre.config.testing.timeout,
         compile: !noCompile,
