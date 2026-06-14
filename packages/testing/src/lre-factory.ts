@@ -6,8 +6,9 @@
  * files to call `setup()` without manually constructing an LRE — the
  * factory handles config discovery and LRE creation transparently.
  *
- * Config is discovered from `LIONDEN_PROJECT_ROOT` (set by the test
- * runner) or by walking up from cwd.
+ * Config is discovered from `LIONDEN_CONFIG_PATH` (exact parent CLI config)
+ * when present, otherwise from `LIONDEN_PROJECT_ROOT` (set by the test runner)
+ * or by walking up from cwd.
  */
 
 import * as fs from "node:fs";
@@ -37,8 +38,9 @@ function findConfigFile(startDir: string): string | null {
 /**
  * Create or return the cached LRE for the current test process.
  *
- * Discovers config from `LIONDEN_PROJECT_ROOT` env var (set by the
- * test runner) or by walking up from cwd.
+ * Discovers config from `LIONDEN_CONFIG_PATH` (exact parent CLI config) when
+ * present, otherwise from `LIONDEN_PROJECT_ROOT` env var (set by the test
+ * runner) or by walking up from cwd.
  */
 export async function createTestLre(): Promise<LionDenRuntimeEnvironment> {
   if (cachedLre) return cachedLre;
@@ -58,7 +60,7 @@ export async function createTestLre(): Promise<LionDenRuntimeEnvironment> {
 
 async function buildLre(): Promise<LionDenRuntimeEnvironment> {
   const projectRoot = process.env["LIONDEN_PROJECT_ROOT"] ?? process.cwd();
-  const configPath = findConfigFile(projectRoot);
+  const configPath = resolveWorkerConfigPath(projectRoot);
 
   if (!configPath) {
     throw new Error(
@@ -105,6 +107,21 @@ async function buildLre(): Promise<LionDenRuntimeEnvironment> {
   // Create LRE — use post-extend config for tasks so plugin-injected tasks are included
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   return createLre({ config: resolved, plugins, configTasks });
+}
+
+function resolveWorkerConfigPath(projectRoot: string): string | null {
+  const explicitConfigPath = process.env["LIONDEN_CONFIG_PATH"];
+  if (explicitConfigPath) {
+    const resolvedConfigPath = path.resolve(explicitConfigPath);
+    if (!fs.existsSync(resolvedConfigPath)) {
+      throw new Error(
+        `Config file "${resolvedConfigPath}" from LIONDEN_CONFIG_PATH does not exist. ` +
+          `Ensure the parent LionDen test runner and Vitest workers can access the same config file.`,
+      );
+    }
+    return resolvedConfigPath;
+  }
+  return findConfigFile(projectRoot);
 }
 
 /**

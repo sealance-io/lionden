@@ -19,7 +19,12 @@ describe("test-runner", () => {
 
   afterEach(() => {
     // Restore original env after each test
-    for (const key of ["LIONDEN_PROJECT_ROOT", "LIONDEN_PROVE", "LIONDEN_NETWORK"]) {
+    for (const key of [
+      "LIONDEN_PROJECT_ROOT",
+      "LIONDEN_CONFIG_PATH",
+      "LIONDEN_PROVE",
+      "LIONDEN_NETWORK",
+    ]) {
       if (key in originalEnv) {
         process.env[key] = originalEnv[key];
       } else {
@@ -36,6 +41,17 @@ describe("test-runner", () => {
     it("sets LIONDEN_PROJECT_ROOT to the project root", async () => {
       await runTests({ root: "/tmp/proj" });
       expect(process.env["LIONDEN_PROJECT_ROOT"]).toBe("/tmp/proj");
+    });
+
+    it("sets LIONDEN_CONFIG_PATH when an exact config file is provided", async () => {
+      await runTests({ root: "/tmp/proj", configPath: "/tmp/proj/lionden.http.config.ts" });
+      expect(process.env["LIONDEN_CONFIG_PATH"]).toBe("/tmp/proj/lionden.http.config.ts");
+    });
+
+    it("clears LIONDEN_CONFIG_PATH when no exact config file is provided", async () => {
+      process.env["LIONDEN_CONFIG_PATH"] = "/tmp/stale.config.ts";
+      await runTests({ root: "/tmp/proj" });
+      expect(process.env["LIONDEN_CONFIG_PATH"]).toBeUndefined();
     });
 
     it("sets LIONDEN_PROVE when prove is true", async () => {
