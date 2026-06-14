@@ -87,11 +87,6 @@ export class NamedAccountManager {
     this.cache.clear();
   }
 
-  /** Remove a single network's cached entry (not currently used but available). */
-  invalidateNetwork(networkName: string): void {
-    this.cache.delete(networkName);
-  }
-
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
