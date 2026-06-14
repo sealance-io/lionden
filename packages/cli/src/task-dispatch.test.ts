@@ -600,4 +600,58 @@ describe("parseArgs", () => {
       expect("foo=bar" in result.taskArgs).toBe(false);
     });
   });
+
+  describe("duplicate args — last write wins", () => {
+    const proveGlobal = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "prove",
+        {
+          pluginId: "@lionden/plugin-deploy",
+          definition: { name: "prove", description: "Prove", type: ArgumentType.BOOLEAN },
+        },
+      ],
+    ]);
+
+    it("keeps the last value for a repeated valued global (--network)", () => {
+      const result = parseArgs(
+        ["--network=a", "--network=b", "deploy"],
+        undefined,
+        lookupFor(defineTask({ id: "deploy" })),
+      );
+      expect(result.globalArgs.network).toBe("b");
+    });
+
+    it("keeps the last value for a repeated boolean global (--prove --prove=false)", () => {
+      const result = parseArgs(["deploy", "--prove", "--prove=false"], proveGlobal);
+      expect(result.globalArgs.prove).toBe(false);
+    });
+
+    it("keeps the last value for a repeated valued task option (--grep)", () => {
+      const result = parseArgs(
+        ["test", "--grep=a", "--grep=b"],
+        undefined,
+        lookupFor(
+          defineTask({
+            id: "test",
+            options: [{ name: "grep", type: "string", description: "Filter" }],
+          }),
+        ),
+      );
+      expect(result.taskArgs.grep).toBe("b");
+    });
+
+    it("collapses camelCase and kebab-case spellings of the same task option", () => {
+      const result = parseArgs(
+        ["deploy", "--priority-fee=1", "--priorityFee=2"],
+        undefined,
+        lookupFor(
+          defineTask({
+            id: "deploy",
+            options: [{ name: "priorityFee", type: "number", description: "Priority fee" }],
+          }),
+        ),
+      );
+      expect(result.taskArgs.priorityFee).toBe("2");
+    });
+  });
 });

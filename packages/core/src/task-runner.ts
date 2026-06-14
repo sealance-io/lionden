@@ -78,12 +78,7 @@ export class TaskRunnerImpl implements TaskRunner {
 
     const action = registered.definition.action;
 
-    // Normalize CLI args (kebab-case → camelCase, string → number coercion)
-    // then fill default values for options/flags, then bind positional args.
-    const normalizedArgs = this.normalizeArgs(registered.definition, args);
-    const mergedArgs = this.mergeDefaults(registered.definition, normalizedArgs);
-    this.enforceRequiredOptions(registered.definition, mergedArgs);
-    const finalArgs = this.applyPositionalArguments(registered.definition, mergedArgs);
+    const finalArgs = this.prepareArgs(registered.definition, args);
 
     // If there are overrides, create the runSuper chain
     if (registered.overrideChain.length > 0) {
@@ -120,15 +115,37 @@ export class TaskRunnerImpl implements TaskRunner {
   ): (args: Record<string, unknown>) => Promise<unknown> {
     return async (args: Record<string, unknown>) => {
       const action = chain[index]!;
-      const mergedArgs = this.mergeDefaults(definition, args);
+      const preparedArgs = this.prepareArgs(definition, args);
 
       if (index + 1 < chain.length) {
         const nextSuper = this.buildRunSuper(chain, index + 1, lre, definition);
-        return (action as TaskActionWithSuper)(mergedArgs, lre, nextSuper);
+        return (action as TaskActionWithSuper)(preparedArgs, lre, nextSuper);
       }
 
-      return action(mergedArgs, lre);
+      return action(preparedArgs, lre);
     };
+  }
+
+  /**
+   * Prepare task args for an action: normalize CLI spellings (kebab-case →
+   * camelCase, string → number coercion), fill default values for
+   * options/flags, enforce required options, then bind positional arguments.
+   *
+   * Shared by {@link run} and the runSuper chain so override actions receive
+   * the same fully-prepared args as the top-level action. The pipeline is
+   * idempotent on already-prepared args: normalize maps canonical names to
+   * themselves and only coerces strings, mergeDefaults only fills missing
+   * names, enforcement only throws on a missing required option, and positional
+   * binding only fills names not already present.
+   */
+  private prepareArgs(
+    definition: TaskDefinition,
+    args: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const normalized = this.normalizeArgs(definition, args);
+    const merged = this.mergeDefaults(definition, normalized);
+    this.enforceRequiredOptions(definition, merged);
+    return this.applyPositionalArguments(definition, merged);
   }
 
   /**

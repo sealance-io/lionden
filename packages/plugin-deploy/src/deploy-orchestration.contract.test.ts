@@ -250,6 +250,22 @@ describe("deploy orchestration contract", () => {
     );
   });
 
+  it("lets an explicit --prove=false global override LIONDEN_PROVE (I5: stays on the devnode fast-path)", async () => {
+    process.env["LIONDEN_PROVE"] = "true";
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    // `LIONDEN_PROVE=true lionden deploy --prove=false`: the explicit global
+    // boolean must win over the env var, so proving is disabled.
+    lre.globalOptions["prove"] = false;
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    expect(mockBuildDevnodeDeploymentTransaction).toHaveBeenCalled();
+    expect(mockBuildDeploymentTransaction).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe("mock-tx-bytes");
+  });
+
   it("throws when proving is requested but the standard deployment builder is unavailable", async () => {
     mockCreateSdkObjects.mockResolvedValue({
       programManager: {

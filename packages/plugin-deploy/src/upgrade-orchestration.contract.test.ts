@@ -397,6 +397,22 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
+  it("lets an explicit --prove=false global override LIONDEN_PROVE (I5: stays on the devnode fast-path)", async () => {
+    process.env["LIONDEN_PROVE"] = "true";
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+    // `LIONDEN_PROVE=true lionden upgrade --prove=false`: the explicit global
+    // boolean must win over the env var, so proving is disabled.
+    lre.globalOptions["prove"] = false;
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    expect(mockBuildDevnodeUpgradeTransaction).toHaveBeenCalled();
+    expect(mockBuildUpgradeTransaction).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
+      "devnode-upgrade-tx-bytes",
+    );
+  });
+
   it("throws when proving is requested but the standard upgrade builder is unavailable", async () => {
     mockCreateSdkObjects.mockResolvedValue({
       programManager: {
