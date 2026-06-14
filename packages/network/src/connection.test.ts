@@ -108,6 +108,16 @@ function createHttpConnection(
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("AleoConnection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -270,6 +280,81 @@ describe("AleoConnection", () => {
         process.setUncaughtExceptionCaptureCallback(null);
       }
     }
+  });
+
+  it("serializes process-global trap capture across different connections", async () => {
+    const firstRun = deferred<{ getOutputs: () => string[] }>();
+    const secondRun = deferred<{ getOutputs: () => string[] }>();
+    const enteredRuns: number[] = [];
+    let activeRuns = 0;
+    let maxActiveRuns = 0;
+    let sdkIndex = 0;
+
+    mockCreateSdkObjects.mockImplementation(async () => {
+      const index = ++sdkIndex;
+      const run = vi.fn(() => {
+        enteredRuns.push(index);
+        activeRuns++;
+        maxActiveRuns = Math.max(maxActiveRuns, activeRuns);
+        const pending = index === 1 ? firstRun.promise : secondRun.promise;
+        return pending.finally(() => {
+          activeRuns--;
+        });
+      });
+
+      const mockAccount = {
+        address: () => ({ to_string: () => `aleo${index}` }),
+        privateKey: () => ({ kind: `private-key-${index}` }),
+      };
+      return {
+        account: mockAccount,
+        networkClient: {
+          getProgram: mockGetProgram,
+          submitTransaction: mockSubmitTransaction,
+          getProgramMappingValue: mockGetProgramMappingValue,
+          getLatestHeight: mockGetLatestHeight,
+          getLatestProgramEdition: mockGetLatestProgramEdition,
+        },
+        programManager: {
+          run,
+          execute: mockExecute,
+          synthesizeKeys: mockSynthesizeKeys,
+          buildAuthorizationUnchecked: mockBuildAuthorizationUnchecked,
+          prepareInputs: mockPrepareInputs,
+          account: mockAccount,
+          buildDevnodeExecutionTransaction: mockBuildDevnodeExec,
+        },
+        programManagerBase: { kind: `ProgramManagerBase-${index}` },
+        keyProvider: {},
+        recordProvider: {},
+        diagnostics: new SdkDiagnostics(),
+      };
+    });
+
+    const firstConnection = createDevnodeConnection({ name: "devnode-a" });
+    const secondConnection = createDevnodeConnection({ name: "devnode-b" });
+
+    const first = firstConnection.execute("hello.aleo", "main", ["1u32"], {
+      mode: "local",
+    });
+    await vi.waitFor(() => expect(enteredRuns).toEqual([1]));
+    const listenerCountDuringFirst = process.listenerCount("unhandledRejection");
+
+    const second = secondConnection.execute("hello.aleo", "main", ["2u32"], {
+      mode: "local",
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(enteredRuns).toEqual([1]);
+    expect(process.listenerCount("unhandledRejection")).toBe(listenerCountDuringFirst);
+
+    firstRun.resolve({ getOutputs: () => ["1u32"] });
+    await expect(first).resolves.toEqual({ outputs: ["1u32"] });
+    await vi.waitFor(() => expect(enteredRuns).toEqual([1, 2]));
+
+    secondRun.resolve({ getOutputs: () => ["2u32"] });
+    await expect(second).resolves.toEqual({ outputs: ["2u32"] });
+    expect(maxActiveRuns).toBe(1);
   });
 
   // -------------------------------------------------------------------------
