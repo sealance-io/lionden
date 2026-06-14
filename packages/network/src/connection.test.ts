@@ -218,7 +218,7 @@ describe("AleoConnection", () => {
         mode: "local",
       }),
     ).rejects.toThrow(
-      "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+      "Provable SDK local-WASM execution trapped outside the SDK call promise: unreachable",
     );
 
     if (!hadCaptureCallback) {
@@ -256,7 +256,7 @@ describe("AleoConnection", () => {
           mode: "local",
         }),
       ).rejects.toThrow(
-        "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+        "Provable SDK local-WASM execution trapped outside the SDK call promise: unreachable",
       );
       expect(uncaughtExceptionListener).not.toHaveBeenCalled();
       if (!hadCaptureCallback) {
@@ -1124,7 +1124,7 @@ describe("AleoConnection", () => {
         const connection = createDevnodeConnection();
         // No `prove` -> the devnode fast-path build is used.
         await expect(connection.execute("hello.aleo", "main", ["1u32"])).rejects.toThrow(
-          "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+          "Provable SDK local-WASM execution trapped outside the SDK call promise: unreachable",
         );
       });
 
@@ -1141,7 +1141,7 @@ describe("AleoConnection", () => {
 
         const connection = createDevnodeConnection();
         await expect(connection.execute("hello.aleo", "main", ["1u32"])).rejects.toThrow(
-          "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+          "Provable SDK local-WASM execution trapped outside the SDK call promise: unreachable",
         );
       });
 
@@ -1159,7 +1159,7 @@ describe("AleoConnection", () => {
         await expect(
           connection.execute("hello.aleo", "main", ["1u32"], { prove: true }),
         ).rejects.toThrow(
-          "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+          "Provable SDK local-WASM execution trapped outside the SDK call promise: unreachable",
         );
       });
     });
@@ -2739,7 +2739,7 @@ describe("AleoConnection", () => {
           signer,
         }),
       ).rejects.toThrow(
-        "Provable SDK local execution trapped outside the pm.run promise: unreachable",
+        "Provable SDK local-WASM execution trapped outside the SDK call promise: unreachable",
       );
 
       const result = await connection.execute("hello.aleo", "main", ["1u32"], {
