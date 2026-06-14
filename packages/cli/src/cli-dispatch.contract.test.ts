@@ -462,4 +462,31 @@ describe("CLI dispatch contract", () => {
       'Task "custom" argument "prove" conflicts with global option "--prove"',
     );
   });
+
+  it("validateTaskGlobalOptionCollisions rejects a raw task arg that shadows a plugin global option", async () => {
+    const rawTracePlugin: LionDenPlugin = {
+      id: "raw-trace",
+      name: "Raw Trace",
+      globalOptions: [{ name: "trace", description: "Enable tracing", type: ArgumentType.BOOLEAN }],
+      tasks: [
+        {
+          id: "custom",
+          description: "Custom",
+          action: async () => undefined,
+          flags: [{ name: "trace", description: "Trace" }],
+        },
+      ],
+    };
+
+    const projectDir = createTempProject(`export default {};`);
+    const configPath = findConfigFile(projectDir)!;
+    const { config: rawConfig, projectRoot } = await loadConfigFile(configPath);
+    const plugins = resolvePluginOrder([rawTracePlugin]);
+    const { resolved } = await resolveConfig(rawConfig as LionDenUserConfig, plugins, projectRoot);
+    const lre = createLre({ config: resolved, plugins });
+
+    expect(() => validateTaskGlobalOptionCollisions(lre)).toThrow(
+      'Task "custom" argument "trace" conflicts with global option "--trace"',
+    );
+  });
 });
