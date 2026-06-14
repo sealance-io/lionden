@@ -114,6 +114,7 @@ describe("recipe deployment context", () => {
       noCompile: true,
       priorityFee: undefined,
       noSkipDeployed: true,
+      prove: false,
     });
   });
 
@@ -174,6 +175,7 @@ describe("recipe deployment context", () => {
       noCompile: true,
       priorityFee: undefined,
       noSkipDeployed: true,
+      prove: false,
     });
   });
 
@@ -189,6 +191,7 @@ describe("recipe deployment context", () => {
       noCompile: true,
       priorityFee: undefined,
       noSkipDeployed: true,
+      prove: false,
     });
   });
 
@@ -254,18 +257,22 @@ describe("recipe deployment context", () => {
       });
     });
 
-    it("ctx.deploy omits prove so the deploy task self-resolves the run-level preference", async () => {
+    it("ctx.deploy inherits the run-level prove when no per-call override is given", async () => {
       const lre = mockLre();
       const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode", true);
 
       await ctx.deploy("hello", { noSkipDeployed: true });
 
+      // Mirrors ctx.execute: the authoritative run-level prove is forwarded so a
+      // programmatic recipe prove (or --prove) reaches the deploy task too — it
+      // is NOT silently dropped to the deploy task's own self-resolution.
       expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
         program: "hello",
         network: "devnode",
         noCompile: true,
         priorityFee: undefined,
         noSkipDeployed: true,
+        prove: true,
       });
     });
   });
