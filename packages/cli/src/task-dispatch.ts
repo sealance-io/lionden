@@ -59,22 +59,30 @@ export function parseArgs(
       continue;
     }
     if (arg.startsWith("--") || arg.startsWith("-")) {
-      const rawName = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
+      const { rawName, inlineValue } = splitOptionToken(arg);
       const globalDefinition = globalDefinitions.get(rawName);
       const taskArg = taskDefinitions.get(rawName);
 
+      // An inline `--opt=value` carries its own value, so it never consumes the
+      // following token. Valued options without `=` fall back to the next token.
       if (taskArg && !globalDefinition?.builtIn) {
         if (taskArg.type === "boolean") {
-          taskArgs[taskArg.name] = true;
+          taskArgs[taskArg.name] = coerceFlagValue(inlineValue);
+        } else if (inlineValue !== undefined) {
+          taskArgs[taskArg.name] = inlineValue;
         } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
           taskArgs[taskArg.name] = argv[++i];
         }
       } else if (globalDefinition) {
         if (globalDefinition.type === ArgumentType.BOOLEAN) {
-          globalArgs[globalDefinition.name] = true;
+          globalArgs[globalDefinition.name] = coerceFlagValue(inlineValue);
+        } else if (inlineValue !== undefined) {
+          globalArgs[globalDefinition.name] = inlineValue;
         } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
           globalArgs[globalDefinition.name] = argv[++i];
         }
+      } else if (inlineValue !== undefined) {
+        taskArgs[rawName] = inlineValue;
       } else if (canConsumeNextAsValue(argv, i, taskIndex)) {
         taskArgs[rawName] = argv[++i];
       } else {
@@ -168,17 +176,19 @@ function findTask(
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg.startsWith("--") || arg.startsWith("-")) {
-      const rawName = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
+      const { rawName, inlineValue } = splitOptionToken(arg);
       const globalDefinition = globalDefinitions.get(rawName);
       const isValuedOption = !globalDefinition || globalDefinition.type !== ArgumentType.BOOLEAN;
-      // A valued option consumes the following token as its value. A token that
-      // names a registered task is normally left alone (so `lionden --network
-      // deploy` runs deploy with a value-less --network) — but only when it is
-      // the last task candidate. If a *later* task token exists to serve as the
-      // task, the immediate token is a genuine option value even when it matches
-      // a task name, so `lionden --network test deploy` (a network named "test")
-      // sets network=test and still dispatches deploy.
+      // A valued option consumes the following token as its value — unless it
+      // already carries an inline `--opt=value`, in which case the next token is
+      // untouched. A token that names a registered task is normally left alone
+      // (so `lionden --network deploy` runs deploy with a value-less --network) —
+      // but only when it is the last task candidate. If a *later* task token
+      // exists to serve as the task, the immediate token is a genuine option
+      // value even when it matches a task name, so `lionden --network test deploy`
+      // (a network named "test") sets network=test and still dispatches deploy.
       if (
+        inlineValue === undefined &&
         isValuedOption &&
         canConsumeAsValue(
           argv[i + 1],
@@ -200,6 +210,30 @@ function findTask(
 
 function isOptionToken(token: string): boolean {
   return token.startsWith("-");
+}
+
+/**
+ * Split an option token into its name and optional inline value, supporting the
+ * `--opt=value` / `-o=value` idiom. Without an `=`, `inlineValue` is undefined
+ * and the option follows the usual "consume the next token" rules. Splitting on
+ * the FIRST `=` keeps values that themselves contain `=` intact (e.g.
+ * `--out=a=b` ⇒ name "out", value "a=b").
+ */
+function splitOptionToken(arg: string): { rawName: string; inlineValue: string | undefined } {
+  const body = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
+  const eq = body.indexOf("=");
+  if (eq === -1) return { rawName: body, inlineValue: undefined };
+  return { rawName: body.slice(0, eq), inlineValue: body.slice(eq + 1) };
+}
+
+/**
+ * Resolve a boolean flag's value. Presence (no inline value) ⇒ `true`; an
+ * explicit `=false` (case-insensitive) ⇒ `false`; any other inline value ⇒
+ * `true`. This keeps boolean flags permissive (the parser never throws) while
+ * making `--flag=false` mean what it says instead of being silently dropped.
+ */
+function coerceFlagValue(inlineValue: string | undefined): boolean {
+  return inlineValue === undefined || inlineValue.toLowerCase() !== "false";
 }
 
 function canConsumeAsValue(

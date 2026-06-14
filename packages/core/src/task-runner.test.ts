@@ -211,4 +211,82 @@ describe("TaskRunnerImpl", () => {
       );
     });
   });
+
+  describe("required options", () => {
+    function runnerWith(task: TaskDefinition): TaskRunnerImpl {
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([task]);
+      runner.setLre(makeLre());
+      return runner;
+    }
+
+    it("throws when a required option is missing", async () => {
+      const runner = runnerWith({
+        id: "upgrade",
+        description: "upgrade",
+        action: vi.fn(),
+        options: [{ name: "program", type: "string", description: "program", required: true }],
+      });
+
+      await expect(runner.run("upgrade", {})).rejects.toThrow(
+        'Task "upgrade" is missing required option "--program".',
+      );
+    });
+
+    it("does not throw when the required option is supplied", async () => {
+      const action = vi.fn();
+      const runner = runnerWith({
+        id: "upgrade",
+        description: "upgrade",
+        action,
+        options: [{ name: "program", type: "string", description: "program", required: true }],
+      });
+
+      await runner.run("upgrade", { program: "hello" });
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ program: "hello" }),
+        expect.anything(),
+      );
+    });
+
+    it("accepts a kebab-case spelling of a required option", async () => {
+      const action = vi.fn();
+      const runner = runnerWith({
+        id: "deploy",
+        description: "deploy",
+        action,
+        options: [{ name: "priorityFee", type: "number", description: "fee", required: true }],
+      });
+
+      await runner.run("deploy", { "priority-fee": "5" });
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ priorityFee: 5 }),
+        expect.anything(),
+      );
+    });
+
+    it("is satisfied by a default value", async () => {
+      const action = vi.fn();
+      const runner = runnerWith({
+        id: "upgrade",
+        description: "upgrade",
+        action,
+        options: [
+          {
+            name: "program",
+            type: "string",
+            description: "program",
+            required: true,
+            defaultValue: "fallback",
+          },
+        ],
+      });
+
+      await runner.run("upgrade", {});
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ program: "fallback" }),
+        expect.anything(),
+      );
+    });
+  });
 });

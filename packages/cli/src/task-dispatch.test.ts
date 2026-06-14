@@ -515,4 +515,89 @@ describe("parseArgs", () => {
     expect(result.globalArgs.env).toBe("production");
     expect(result.taskId).toBe("deploy");
   });
+
+  describe("inline --opt=value", () => {
+    const proveGlobal = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "prove",
+        {
+          pluginId: "@lionden/plugin-deploy",
+          definition: { name: "prove", description: "Prove", type: ArgumentType.BOOLEAN },
+        },
+      ],
+    ]);
+
+    it("applies an inline value to a valued global (--network=testnet)", () => {
+      const result = parseArgs(
+        ["--network=testnet", "deploy"],
+        undefined,
+        lookupFor(defineTask({ id: "deploy" })),
+      );
+      expect(result.taskId).toBe("deploy");
+      expect(result.globalArgs.network).toBe("testnet");
+      expect("network=testnet" in result.taskArgs).toBe(false);
+    });
+
+    it("applies an inline valued global after the task name too", () => {
+      const result = parseArgs(["deploy", "--network=testnet"]);
+      expect(result.globalArgs.network).toBe("testnet");
+    });
+
+    it("does not consume the following token when the option is inline", () => {
+      // `--network=test deploy`: a network literally named "test" supplied inline,
+      // with `test` ALSO a registered task — the inline value must win and `deploy`
+      // must remain the task.
+      const result = parseArgs(
+        ["--network=test", "deploy"],
+        undefined,
+        lookupFor(defineTask({ id: "test" }), defineTask({ id: "deploy" })),
+      );
+      expect(result.taskId).toBe("deploy");
+      expect(result.globalArgs.network).toBe("test");
+    });
+
+    it("applies inline values to known valued task options", () => {
+      const result = parseArgs(
+        ["deploy", "--program=hello"],
+        undefined,
+        lookupFor(
+          defineTask({
+            id: "deploy",
+            options: [{ name: "program", type: "string", description: "" }],
+          }),
+        ),
+      );
+      expect(result.taskArgs.program).toBe("hello");
+    });
+
+    it("splits on the first = so values may contain =", () => {
+      const result = parseArgs(
+        ["deploy", "--program=a=b"],
+        undefined,
+        lookupFor(
+          defineTask({
+            id: "deploy",
+            options: [{ name: "program", type: "string", description: "" }],
+          }),
+        ),
+      );
+      expect(result.taskArgs.program).toBe("a=b");
+    });
+
+    it("interprets =false / =true / presence for boolean globals", () => {
+      expect(parseArgs(["deploy", "--prove=false"], proveGlobal).globalArgs.prove).toBe(false);
+      expect(parseArgs(["deploy", "--prove=true"], proveGlobal).globalArgs.prove).toBe(true);
+      expect(parseArgs(["deploy", "--prove"], proveGlobal).globalArgs.prove).toBe(true);
+    });
+
+    it("keeps an unknown inline option's value instead of a bogus key", () => {
+      const result = parseArgs(
+        ["deploy", "--foo=bar"],
+        undefined,
+        lookupFor(defineTask({ id: "deploy" })),
+      );
+      expect(result.taskArgs.foo).toBe("bar");
+      expect("foo=bar" in result.taskArgs).toBe(false);
+    });
+  });
 });

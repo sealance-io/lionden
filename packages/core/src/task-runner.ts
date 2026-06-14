@@ -1,4 +1,4 @@
-import { getPublicArgumentNames } from "./arg-names.js";
+import { argumentFlagName, getPublicArgumentNames } from "./arg-names.js";
 import type {
   LionDenRuntimeEnvironment,
   TaskAction,
@@ -82,6 +82,7 @@ export class TaskRunnerImpl implements TaskRunner {
     // then fill default values for options/flags, then bind positional args.
     const normalizedArgs = this.normalizeArgs(registered.definition, args);
     const mergedArgs = this.mergeDefaults(registered.definition, normalizedArgs);
+    this.enforceRequiredOptions(registered.definition, mergedArgs);
     const finalArgs = this.applyPositionalArguments(registered.definition, mergedArgs);
 
     // If there are overrides, create the runSuper chain
@@ -194,6 +195,24 @@ export class TaskRunnerImpl implements TaskRunner {
     }
 
     return merged;
+  }
+
+  /**
+   * Enforce `required: true` on value options, mirroring the required-positional
+   * check in {@link applyPositionalArguments}. Runs after defaults are merged, so
+   * an option with both `required` and a `defaultValue` is satisfied by the
+   * default. This covers every task dispatched through the runner (CLI and
+   * programmatic `lre.tasks.run`); actions that are imported and invoked directly
+   * keep their own guards for that separate entry point.
+   */
+  private enforceRequiredOptions(definition: TaskDefinition, args: Record<string, unknown>): void {
+    for (const opt of definition.options ?? []) {
+      if (opt.required && args[opt.name] === undefined) {
+        throw new Error(
+          `Task "${definition.id}" is missing required option "${argumentFlagName(opt.name)}".`,
+        );
+      }
+    }
   }
 
   /**
