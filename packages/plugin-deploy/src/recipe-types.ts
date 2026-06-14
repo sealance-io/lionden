@@ -57,6 +57,13 @@ export interface RecipeDeployOptions {
   noCompile?: boolean;
   /** Fail instead of reusing or skipping already-deployed programs. */
   noSkipDeployed?: boolean;
+  /**
+   * Override proof generation for this deploy. When omitted, the deploy task
+   * self-resolves the run-level preference (`--prove` / `LIONDEN_PROVE`); set
+   * it (e.g. `{ prove: false }`) to skip proving one fixture deploy while the
+   * rest of the recipe proves.
+   */
+  prove?: boolean;
 }
 
 export interface RecipeDeployResult {
@@ -67,6 +74,12 @@ export interface RecipeDeployResult {
 export interface RecipeExecuteOptions {
   mode?: "local" | "onchain";
   fee?: number;
+  /**
+   * Override proof generation for this execution. Defaults to the recipe's
+   * run-level prove preference (`--prove` / `LIONDEN_PROVE`); a per-call value
+   * beats it.
+   */
+  prove?: boolean;
   signer?: Signer;
   /**
    * On-chain mode only. When omitted or `true`, the call awaits confirmation

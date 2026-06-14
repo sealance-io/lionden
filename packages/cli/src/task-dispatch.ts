@@ -19,6 +19,7 @@ export interface ParsedArgs {
   globalArgs: Record<string, unknown> & {
     config?: string;
     network?: string;
+    prove?: boolean;
     verbose?: boolean;
     help?: boolean;
     version?: boolean;
@@ -115,6 +116,7 @@ interface TaskArgumentLookupEntry {
 const BUILT_IN_GLOBAL_ARGUMENTS = [
   { name: "config", type: ArgumentType.FILE },
   { name: "network", type: ArgumentType.STRING },
+  { name: "prove", type: ArgumentType.BOOLEAN },
   { name: "verbose", type: ArgumentType.BOOLEAN },
   { name: "help", type: ArgumentType.BOOLEAN, aliases: ["h"] },
   { name: "version", type: ArgumentType.BOOLEAN, aliases: ["v"] },
@@ -306,6 +308,7 @@ export function printHelp(
 \x1b[1mGlobal Options:\x1b[0m
   --config <path>     Path to config file (default: lionden.config.ts)
   --network <name>    Network to use (overrides config default)
+  --prove             Force standard/proven builders on devnode (slower; --prove=false to disable)
   --verbose           Show debug output
   --help, -h          Show this help
   --version, -v       Show version`);

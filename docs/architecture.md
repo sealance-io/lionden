@@ -128,10 +128,15 @@ The current LRE includes:
 5. collect plugin global options and parse again with that option set
 6. resolve config through the four-stage lifecycle
 7. create the LRE using resolved config and post-extension config tasks
-8. validate task named arguments do not overlap with built-in global options (plugin globals are allowed to collide — a task arg of the same name wins during routing)
-9. parse again with task metadata so named arguments are routed by schema
-10. apply the global `--network` override from that task-aware parse to `config.defaultNetwork`
-11. print help or dispatch the selected task
+8. parse again with task metadata so named arguments are routed by schema, not by position
+9. render help (if requested) **before** validating option values, so an invocation like `--network ghostnet --help` still documents recovery instead of failing on the bad value
+10. apply the global `--network` override from that task-aware parse to `config.defaultNetwork` (validated against `config.networks`)
+11. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`; unlike `--network`, this does **not** mutate config
+12. seed plugin global option values from the task-aware parse
+13. validate task named arguments do not overlap with built-in global options (plugin globals are allowed to collide — a task arg of the same name wins during routing)
+14. dispatch the selected task
+
+The built-in globals are `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, and `--version`/`-v` (see `BUILT_IN_GLOBAL_ARGUMENT_NAMES` in `packages/core/src/arg-names.ts`). These names are reserved: a plugin global or task argument that shadows one is rejected at load/build time. `--prove` is consumed by deploy/upgrade/recipe/test via `resolveProveOption()` / `lre.globalOptions["prove"]`; it is not owned by any single plugin.
 
 `packages/cli/src/task-dispatch.ts` owns low-level argument parsing and help rendering.
 

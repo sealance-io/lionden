@@ -113,6 +113,14 @@ export async function main(): Promise<void> {
     (config as { defaultNetwork: string }).defaultNetwork = requestedNetwork;
   }
 
+  // Seed the built-in --prove preference into globalOptions so deploy/upgrade/
+  // recipe/test resolve it via resolveProveOption()/lre.globalOptions. Unlike
+  // --network this does NOT mutate config; the `in` check preserves an explicit
+  // --prove=false (a falsy-but-present value) instead of treating it as unset.
+  if ("prove" in parsed.globalArgs) {
+    globalOptions["prove"] = parsed.globalArgs.prove;
+  }
+
   // Seed global option values from the task-aware parse.
   for (const [name, { definition }] of globalOptionDefs) {
     if (name in parsed.globalArgs) {

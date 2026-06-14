@@ -1,7 +1,21 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock vitest/node so runTests can be invoked without starting real Vitest.
+vi.mock("vitest/node", () => ({
+  startVitest: vi.fn().mockResolvedValue({
+    close: vi.fn().mockResolvedValue(undefined),
+    state: { getFiles: () => [] },
+  }),
+}));
+
+import { runTests } from "./test-runner.js";
 
 describe("test-runner", () => {
   const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   afterEach(() => {
     // Restore original env after each test
@@ -15,28 +29,39 @@ describe("test-runner", () => {
   });
 
   describe("env var injection", () => {
-    // We can't easily invoke runTests() (it tries to import vitest/node
-    // and start a full Vitest instance), but we can verify the module
-    // contract by importing and checking the function exists.
-
-    it("runTests function is exported", async () => {
-      const { runTests } = await import("./test-runner.js");
+    it("runTests function is exported", () => {
       expect(typeof runTests).toBe("function");
     });
-  });
 
-  describe("TestRunnerOptions contract", () => {
-    it("accepts prove flag", () => {
-      const opts = {
-        root: "/tmp/test",
-        grep: "mint",
-        timeout: 60_000,
-        compile: true,
-        prove: true,
-      };
+    it("sets LIONDEN_PROJECT_ROOT to the project root", async () => {
+      await runTests({ root: "/tmp/proj" });
+      expect(process.env["LIONDEN_PROJECT_ROOT"]).toBe("/tmp/proj");
+    });
 
-      expect(opts.prove).toBe(true);
-      expect(opts.root).toBe("/tmp/test");
+    it("sets LIONDEN_PROVE when prove is true", async () => {
+      delete process.env["LIONDEN_PROVE"];
+      await runTests({ root: "/tmp/test", prove: true });
+      expect(process.env["LIONDEN_PROVE"]).toBe("true");
+    });
+
+    it("clears LIONDEN_PROVE when prove is explicitly false, even with an ambient value", async () => {
+      // `false ?? env === false`: an explicit false still clears (Finding 1).
+      process.env["LIONDEN_PROVE"] = "true";
+      await runTests({ root: "/tmp/test", prove: false });
+      expect(process.env["LIONDEN_PROVE"]).toBeUndefined();
+    });
+
+    it("honors and canonicalizes a truthy ambient LIONDEN_PROVE when prove is omitted", async () => {
+      // undefined → honor (and canonicalize) the ambient env (Finding 1).
+      process.env["LIONDEN_PROVE"] = "1";
+      await runTests({ root: "/tmp/test" });
+      expect(process.env["LIONDEN_PROVE"]).toBe("true");
+    });
+
+    it("leaves LIONDEN_PROVE unset when prove is omitted and no ambient env is present", async () => {
+      delete process.env["LIONDEN_PROVE"];
+      await runTests({ root: "/tmp/test" });
+      expect(process.env["LIONDEN_PROVE"]).toBeUndefined();
     });
   });
 

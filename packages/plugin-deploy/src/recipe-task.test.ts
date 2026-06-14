@@ -191,4 +191,82 @@ describe("recipe deployment context", () => {
       noSkipDeployed: true,
     });
   });
+
+  describe("prove forwarding", () => {
+    it("ctx.execute forwards the resolved run-level prove", async () => {
+      const lre = mockLre();
+      const conn = createMockConnection();
+      const ctx = createCliDeploymentContext(lre, conn, "devnode", true);
+
+      await ctx.execute("hello.aleo", "main", ["1u32"]);
+
+      expect(conn.execute).toHaveBeenCalledWith(
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        expect.objectContaining({ prove: true }),
+      );
+    });
+
+    it("ctx.execute per-call prove=false overrides the run-level prove", async () => {
+      const lre = mockLre();
+      const conn = createMockConnection();
+      const ctx = createCliDeploymentContext(lre, conn, "devnode", true);
+
+      await ctx.execute("hello.aleo", "main", ["1u32"], { prove: false });
+
+      expect(conn.execute).toHaveBeenCalledWith(
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        expect.objectContaining({ prove: false }),
+      );
+    });
+
+    it("ctx.execute defaults to prove=false when the run-level prove is unset", async () => {
+      const lre = mockLre();
+      const conn = createMockConnection();
+      const ctx = createCliDeploymentContext(lre, conn, "devnode");
+
+      await ctx.execute("hello.aleo", "main", ["1u32"]);
+
+      expect(conn.execute).toHaveBeenCalledWith(
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        expect.objectContaining({ prove: false }),
+      );
+    });
+
+    it("ctx.deploy forwards a per-call prove opt-out into the deploy task", async () => {
+      const lre = mockLre();
+      const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode", true);
+
+      await ctx.deploy("hello", { noSkipDeployed: true, prove: false });
+
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "hello",
+        network: "devnode",
+        noCompile: true,
+        priorityFee: undefined,
+        noSkipDeployed: true,
+        prove: false,
+      });
+    });
+
+    it("ctx.deploy omits prove so the deploy task self-resolves the run-level preference", async () => {
+      const lre = mockLre();
+      const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode", true);
+
+      await ctx.deploy("hello", { noSkipDeployed: true });
+
+      expect(lre.tasks.run).toHaveBeenCalledWith("deploy", {
+        program: "hello",
+        network: "devnode",
+        noCompile: true,
+        priorityFee: undefined,
+        noSkipDeployed: true,
+      });
+    });
+  });
 });

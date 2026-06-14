@@ -646,6 +646,50 @@ describe("test-context", () => {
       });
     });
 
+    it("honors a permissive LIONDEN_PROVE spelling (1) as prove=true", async () => {
+      process.env["LIONDEN_PROVE"] = "1";
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.execute("hello.aleo", "main", ["1u32"]);
+
+      expect(ctx.connection.execute).toHaveBeenCalledWith(
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        expect.objectContaining({ prove: true }),
+      );
+    });
+
+    it("per-call prove=false overrides a setup-time LIONDEN_PROVE", async () => {
+      process.env["LIONDEN_PROVE"] = "true";
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.execute("hello.aleo", "main", ["1u32"], { prove: false });
+
+      expect(ctx.connection.execute).toHaveBeenCalledWith(
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        expect.objectContaining({ prove: false }),
+      );
+    });
+
+    it("per-call prove=true forwards prove=true without LIONDEN_PROVE", async () => {
+      const lre = mockLre();
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await ctx.execute("hello.aleo", "main", ["1u32"], { prove: true });
+
+      expect(ctx.connection.execute).toHaveBeenCalledWith(
+        "hello.aleo",
+        "main",
+        ["1u32"],
+        expect.objectContaining({ prove: true }),
+      );
+    });
+
     it("explicit mode overrides default", async () => {
       const lre = mockLre();
       const ctx = await setup({ lre, skipDevnode: true });

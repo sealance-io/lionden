@@ -75,6 +75,12 @@ Current deploy options:
 
 `--no-skip-deployed` makes already-deployed programs a hard preflight error instead of skipping them.
 
+### `--prove` (global)
+
+`--prove` is a framework **built-in global** (like `--network`), not a deploy-task flag — it works in any position (`lionden --prove deploy`, `lionden deploy --prove`) and on `upgrade`/`recipe`/`test` too. `deploy`/`upgrade` resolve it via `resolveProveOption()` (precedence: a programmatic per-call arg → the `--prove`/`--prove=false` global → a truthy `LIONDEN_PROVE` env → `false`). A truthy `LIONDEN_PROVE` is parsed permissively (`1`/`yes`/`on`/…); an explicit `--prove=false` reliably wins over the env.
+
+**Devnode-scoped applicability**: proving selects the standard/proven ProgramManager builders instead of the devnode fast-path builders — this only matters on devnode. On a configured HTTP target the standard builders are always used, so `--prove` is a no-op for builder selection there.
+
 ## Deployment Preflight
 
 `packages/plugin-deploy/src/preflight.ts` implements pure validation for deploy and upgrade. It returns structured errors, warnings, and per-program outcomes without writing deployment state.
