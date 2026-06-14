@@ -215,7 +215,7 @@ export async function upgradeAction(
   // 10. Run upgrade pre-flight (ABI compat, constructor immutability, edition check)
   const preflightResult = await runUpgradePreflight({
     programId,
-    oldRecord: existingRecord,
+    oldRecord: effectiveRecord,
     oldAbi,
     newConstructor,
     newAbi,
@@ -266,10 +266,10 @@ export async function upgradeAction(
       priorityFee: options.priorityFee ?? config.deploy.defaultPriorityFee,
       privateFee: config.deploy.privateFee,
       constructor: {
-        type: newConstructor?.type ?? null,
-        adminAddress: newConstructor?.adminAddress,
-        checksumMapping: newConstructor?.checksumMapping,
-        checksumKey: newConstructor?.checksumKey,
+        type: newConstructor.type,
+        adminAddress: newConstructor.adminAddress,
+        checksumMapping: newConstructor.checksumMapping,
+        checksumKey: newConstructor.checksumKey,
         fingerprint: newFingerprint,
       },
       abiHash: newAbiHash,
@@ -322,10 +322,10 @@ export async function upgradeAction(
       programId,
       edition: newEdition,
       constructor: {
-        type: newConstructor?.type ?? null,
-        adminAddress: newConstructor?.adminAddress,
-        checksumMapping: newConstructor?.checksumMapping,
-        checksumKey: newConstructor?.checksumKey,
+        type: newConstructor.type,
+        adminAddress: newConstructor.adminAddress,
+        checksumMapping: newConstructor.checksumMapping,
+        checksumKey: newConstructor.checksumKey,
         fingerprint: newFingerprint,
       },
       abiHash: newAbiHash,
@@ -359,7 +359,7 @@ export async function upgradeAction(
     txId,
     blockHeight,
     edition: newEdition,
-    constructorType: newConstructor?.type ?? null,
+    constructorType: newConstructor.type,
     network: networkName,
     previousEdition,
   });

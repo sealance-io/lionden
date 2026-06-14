@@ -20,7 +20,11 @@ import {
   parseConstructor,
 } from "./constructor-parser.js";
 import type { DeploymentManager } from "./deployment-manager.js";
-import type { CompleteDeploymentRecord, PendingDeployment } from "./deployment-types.js";
+import type {
+  CompleteDeploymentRecord,
+  DeploymentRecord,
+  PendingDeployment,
+} from "./deployment-types.js";
 import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
 import { createDegradedRecord } from "./on-chain-check.js";
@@ -180,7 +184,7 @@ export async function deployAction(
     programId: string;
     constructor: ConstructorInfo | null;
     aleoSource: string | undefined;
-    existingRecord: import("./deployment-types.js").DeploymentRecord | null;
+    existingRecord: DeploymentRecord | null;
   }> = [];
   for (const programId of targetIds) {
     const prog = programMap.get(programId);
@@ -312,7 +316,13 @@ export async function deployAction(
     const programId = toDeployIds[i]!;
     const prog = programMap.get(programId);
     const leoSources = prog ? readLeoSourcesFromDirImpl(prog.sourceDir) : "";
-    const constructor = parseConstructor(leoSources)!;
+    const constructor = parseConstructor(leoSources);
+    if (!constructor) {
+      throw new DeployError(
+        `Program "${programId}" has no parsable constructor annotation. ` +
+          `ARC-0006 requires a constructor for deployments.`,
+      );
+    }
 
     const aleoSource = lre.artifacts.getAleoSource(programId);
     if (!aleoSource) {

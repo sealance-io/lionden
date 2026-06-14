@@ -438,7 +438,7 @@ export async function runDeployPreflight(
   let totalFeeEstimate: bigint | undefined;
 
   for (const prog of programs) {
-    const { programId, aleoSource, existingRecord } = prog;
+    const { programId, constructor: constructorInfo, aleoSource, existingRecord } = prog;
 
     // 1. Check if already deployed
     const { outcome: deployedOutcome, error: deployedErr } = await checkAlreadyDeployed(
@@ -457,6 +457,19 @@ export async function runDeployPreflight(
     if (deployedOutcome.action === "skip") {
       outcomes.push(deployedOutcome);
       // Do NOT add to confirmedDeployTargets — it's being skipped
+      confirmedDeployTargets.delete(programId);
+      continue;
+    }
+
+    if (!constructorInfo) {
+      errors.push({
+        code: "MISSING_CONSTRUCTOR",
+        message:
+          `Program "${programId}" has no parsable constructor annotation. ` +
+          `ARC-0006 requires a constructor for deployments.`,
+        recoverable: false,
+      });
+      outcomes.push({ programId, action: "deploy" });
       confirmedDeployTargets.delete(programId);
       continue;
     }
