@@ -16,6 +16,7 @@ import {
   verifyKeyFileRef,
   writeRuntimeKeyCacheMetadata,
 } from "@lionden/core";
+import { writeFileAtomic } from "./file-io.js";
 
 export interface ProgramExecutionArtifacts {
   readonly source: string;
@@ -380,14 +381,4 @@ function hashImports(imports: Record<string, string> | undefined): string {
         sourceHash: sha256Text(source),
       })),
   });
-}
-
-function writeFileAtomic(filePath: string, bytes: Uint8Array): void {
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tmpPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
-  );
-  fs.writeFileSync(tmpPath, bytes);
-  fs.renameSync(tmpPath, filePath);
 }
