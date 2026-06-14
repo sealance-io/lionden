@@ -72,19 +72,16 @@ export async function main(): Promise<void> {
     projectRoot,
   );
 
-  // Override default network from CLI. --network is global-only.
-  const networkOverride =
-    typeof parsed.globalArgs.network === "string" ? parsed.globalArgs.network : undefined;
-  const config = networkOverride
-    ? { ...resolvedConfig, defaultNetwork: networkOverride }
-    : resolvedConfig;
-
   // Create LRE — use post-extend config for tasks (plugins may inject tasks via extendUserConfig).
-  // globalOptions starts empty and is populated AFTER the task-aware parse below.
-  // createLre stores it by reference, so filling it later flows through to
-  // lre.globalOptions without re-touching the LRE.
+  // Both `config` and `globalOptions` start as written here and are populated
+  // AFTER the task-aware parse below; createLre stores them by reference, so the
+  // network override and seeded global options flow through to lre.config /
+  // lre.globalOptions without re-touching the LRE. (NetworkManagerImpl and
+  // DeploymentManagerImpl capture lre.config by reference and read
+  // defaultNetwork lazily, so mutating it here is observed at connect time.)
   const configTasks = (extendedUserConfig.tasks ?? []) as TaskDefinition[];
   const globalOptions: Record<string, unknown> = {};
+  const config = { ...resolvedConfig };
   const lre = createLre({ config, plugins, globalOptions, configTasks });
   validateTaskGlobalOptionCollisions(lre);
 
@@ -93,6 +90,14 @@ export async function main(): Promise<void> {
   parsed = parseArgs(process.argv.slice(2), globalOptionDefs, (taskId) =>
     lre.tasks.getTaskDefinition(taskId),
   );
+
+  // Override default network from CLI. --network is global-only, and is resolved
+  // from the task-aware parse — so a value-less `--network` before a task name
+  // (e.g. `lionden --network deploy`) does not consume the task token as a bogus
+  // network value the way the earlier task-unaware parse would.
+  if (typeof parsed.globalArgs.network === "string") {
+    (config as { defaultNetwork: string }).defaultNetwork = parsed.globalArgs.network;
+  }
 
   // Seed global option values from the task-aware parse.
   for (const [name, { definition }] of globalOptionDefs) {
