@@ -216,6 +216,39 @@ describe("parseArgs", () => {
     expect(result.taskArgs._positional).toEqual(["scripts/seed.ts", "extra"]);
   });
 
+  it("routes a named positional's value under its canonical name", () => {
+    const result = parseArgs(
+      ["run", "--script-path", "scripts/seed.ts"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "run",
+          positionalArguments: [{ name: "scriptPath", type: ArgumentType.FILE }],
+        }),
+      ),
+    );
+
+    expect(result.taskArgs.scriptPath).toBe("scripts/seed.ts");
+  });
+
+  it("does not store a value-less named positional as a boolean sentinel", () => {
+    const result = parseArgs(
+      ["run", "--script-path"],
+      undefined,
+      lookupFor(
+        defineTask({
+          id: "run",
+          positionalArguments: [{ name: "scriptPath", type: ArgumentType.FILE }],
+        }),
+      ),
+    );
+
+    // A value-less `--script-path` must consume nothing — not land `true` — so
+    // the positional stays unset and the runner's required check can fire.
+    expect("scriptPath" in result.taskArgs).toBe(false);
+    expect("script-path" in result.taskArgs).toBe(false);
+  });
+
   it("skips only the actual task token occurrence", () => {
     const result = parseArgs(["run", "run"], undefined, lookupFor(defineTask({ id: "run" })));
     expect(result.taskId).toBe("run");
@@ -788,7 +821,9 @@ describe("validateParsedArgs", () => {
       lre.tasks.getTaskDefinition(taskId),
     );
 
-    expect(() => validateParsedArgs(lre, parsed)).toThrow('Unknown task: "missing"');
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      `Unknown task: "missing". Run 'lionden --help' to see available tasks.`,
+    );
   });
 
   it("rejects an unknown argument when no task was selected", () => {
@@ -852,6 +887,45 @@ describe("validateParsedArgs", () => {
     );
   });
 
+  it("rejects a bare argument that overflows the positionals left unbound by a named one", () => {
+    const lre = lreFor(
+      defineTask({
+        id: "pair",
+        positionalArguments: [
+          { name: "first", type: ArgumentType.STRING },
+          { name: "second", type: ArgumentType.STRING },
+        ],
+      }),
+    );
+    // `--first` consumes "named", leaving only `second` unbound; the bare values
+    // "x" and "y" then exceed the single remaining slot, so "y" overflows.
+    const parsed = parseArgs(["pair", "--first", "named", "x", "y"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      'Unexpected argument "y" for task "pair"',
+    );
+  });
+
+  it("accepts bare arguments that exactly fill the positionals left unbound by a named one", () => {
+    const lre = lreFor(
+      defineTask({
+        id: "pair",
+        positionalArguments: [
+          { name: "first", type: ArgumentType.STRING },
+          { name: "second", type: ArgumentType.STRING },
+        ],
+      }),
+    );
+    // `--first` fills `first`; the single bare value "x" fills `second` exactly.
+    const parsed = parseArgs(["pair", "--first", "named", "x"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).not.toThrow();
+  });
+
   it("allows multiple bare arguments for a variadic positional", () => {
     const lre = lreFor(
       defineTask({
@@ -864,5 +938,27 @@ describe("validateParsedArgs", () => {
     );
 
     expect(() => validateParsedArgs(lre, parsed)).not.toThrow();
+  });
+
+  it("rejects an unknown option placed before a known task", () => {
+    const lre = lreFor(defineTask({ id: "compile" }));
+    const parsed = parseArgs(["--bogus", "compile"], undefined, (taskId) =>
+      lre.tasks.getTaskDefinition(taskId),
+    );
+
+    expect(() => validateParsedArgs(lre, parsed)).toThrow(
+      'Unknown argument "--bogus" for task "compile"',
+    );
+  });
+
+  it("does not reject known global options placed before or after the task", () => {
+    const lre = lreFor(defineTask({ id: "compile" }));
+    const lookup = (taskId: string) => lre.tasks.getTaskDefinition(taskId);
+
+    const globalBefore = parseArgs(["--verbose", "compile"], undefined, lookup);
+    const globalAfter = parseArgs(["compile", "--network", "testnet"], undefined, lookup);
+
+    expect(() => validateParsedArgs(lre, globalBefore)).not.toThrow();
+    expect(() => validateParsedArgs(lre, globalAfter)).not.toThrow();
   });
 });

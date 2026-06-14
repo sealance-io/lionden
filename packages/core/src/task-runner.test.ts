@@ -291,6 +291,149 @@ describe("TaskRunnerImpl", () => {
     });
   });
 
+  describe("positional binding", () => {
+    it("binds all trailing values to a variadic positional by name", async () => {
+      const action = vi.fn();
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        {
+          id: "test",
+          description: "test",
+          action,
+          positionalArguments: [{ name: "files", type: ArgumentType.FILE, variadic: true }],
+        },
+      ]);
+      runner.setLre(makeLre());
+
+      await runner.run("test", { _positional: ["a.test.ts", "b.test.ts"] });
+
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ files: ["a.test.ts", "b.test.ts"] }),
+        expect.anything(),
+      );
+    });
+
+    it("throws for a required positional supplied neither by name nor positionally", async () => {
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        {
+          id: "run",
+          description: "run",
+          action: vi.fn(),
+          positionalArguments: [{ name: "scriptPath", type: ArgumentType.FILE, required: true }],
+        },
+      ]);
+      runner.setLre(makeLre());
+
+      // Mirrors the parser output for a value-less `--script-path`: the
+      // positional is absent (no `true` sentinel), so the required check fires.
+      await expect(runner.run("run", {})).rejects.toThrow(
+        'Task "run" is missing required positional argument "scriptPath".',
+      );
+    });
+
+    it("binds a positional supplied by its kebab-case public name", async () => {
+      const action = vi.fn();
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        {
+          id: "run",
+          description: "run",
+          action,
+          positionalArguments: [{ name: "scriptPath", type: ArgumentType.FILE, required: true }],
+        },
+      ]);
+      runner.setLre(makeLre());
+
+      // The CLI parser stores a `--script-path` positional under its kebab public
+      // spelling. It must bind to the canonical `scriptPath` (and so satisfy the
+      // required-positional check) rather than throwing "missing required
+      // positional argument".
+      await runner.run("run", { "script-path": "scripts/deploy.ts" });
+
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ scriptPath: "scripts/deploy.ts" }),
+        expect.anything(),
+      );
+    });
+
+    it("binds leading positionals by index and collects the variadic tail", async () => {
+      const action = vi.fn();
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        {
+          id: "run",
+          description: "run",
+          action,
+          positionalArguments: [
+            { name: "script", type: ArgumentType.FILE },
+            { name: "rest", type: ArgumentType.STRING, variadic: true },
+          ],
+        },
+      ]);
+      runner.setLre(makeLre());
+
+      await runner.run("run", { _positional: ["deploy.ts", "1", "2"] });
+
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ script: "deploy.ts", rest: ["1", "2"] }),
+        expect.anything(),
+      );
+    });
+
+    it("flows all bare values to the unbound variadic when an earlier positional is named", async () => {
+      const action = vi.fn();
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        {
+          id: "run",
+          description: "run",
+          action,
+          positionalArguments: [
+            { name: "scriptPath", type: ArgumentType.FILE },
+            { name: "rest", type: ArgumentType.STRING, variadic: true },
+          ],
+        },
+      ]);
+      runner.setLre(makeLre());
+
+      // `scriptPath` is supplied by name, so all bare values must flow to the
+      // still-unbound variadic `rest` — none dropped by declaration-index skew.
+      await runner.run("run", { scriptPath: "deploy.ts", _positional: ["a", "b"] });
+
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ scriptPath: "deploy.ts", rest: ["a", "b"] }),
+        expect.anything(),
+      );
+    });
+
+    it("binds a bare value to a later positional when an earlier one is named", async () => {
+      const action = vi.fn();
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        {
+          id: "pair",
+          description: "pair",
+          action,
+          positionalArguments: [
+            { name: "first", type: ArgumentType.STRING, required: true },
+            { name: "second", type: ArgumentType.STRING, required: true },
+          ],
+        },
+      ]);
+      runner.setLre(makeLre());
+
+      // `first` is named; the single bare value fills `second` rather than being
+      // dropped, so the required-positional check for `second` is satisfied.
+      await runner.run("pair", { first: "named", _positional: ["bare-second"] });
+
+      expect(action).toHaveBeenCalledWith(
+        expect.objectContaining({ first: "named", second: "bare-second" }),
+        expect.anything(),
+      );
+    });
+  });
+
   describe("runSuper arg preparation", () => {
     function runnerWith(...definitions: TaskDefinition[]): TaskRunnerImpl {
       const runner = new TaskRunnerImpl();
