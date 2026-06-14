@@ -170,11 +170,22 @@ function findTask(
     if (arg.startsWith("--") || arg.startsWith("-")) {
       const rawName = arg.startsWith("--") ? arg.slice(2) : arg.slice(1);
       const globalDefinition = globalDefinitions.get(rawName);
-      if (globalDefinition && globalDefinition.type !== ArgumentType.BOOLEAN) {
-        if (canConsumeAsValue(argv[i + 1], getTaskDefinition)) {
-          i++;
-        }
-      } else if (!globalDefinition && canConsumeAsValue(argv[i + 1], getTaskDefinition)) {
+      const isValuedOption = !globalDefinition || globalDefinition.type !== ArgumentType.BOOLEAN;
+      // A valued option consumes the following token as its value. A token that
+      // names a registered task is normally left alone (so `lionden --network
+      // deploy` runs deploy with a value-less --network) — but only when it is
+      // the last task candidate. If a *later* task token exists to serve as the
+      // task, the immediate token is a genuine option value even when it matches
+      // a task name, so `lionden --network test deploy` (a network named "test")
+      // sets network=test and still dispatches deploy.
+      if (
+        isValuedOption &&
+        canConsumeAsValue(
+          argv[i + 1],
+          getTaskDefinition,
+          hasTaskTokenAfter(argv, i + 1, getTaskDefinition),
+        )
+      ) {
         i++;
       }
       continue;
@@ -194,11 +205,32 @@ function isOptionToken(token: string): boolean {
 function canConsumeAsValue(
   token: string | undefined,
   getTaskDefinition?: TaskDefinitionLookup,
+  allowTaskIdValue = false,
 ): boolean {
   if (token === undefined) return false;
   if (isOptionToken(token)) return false;
-  if (getTaskDefinition?.(token)) return false;
+  if (!allowTaskIdValue && getTaskDefinition?.(token)) return false;
   return true;
+}
+
+/**
+ * Does a token that names a registered task appear at any index after
+ * `fromIndex`? Used to decide whether a valued option may consume a task-named
+ * token as its value: it may, as long as another task token remains to be the
+ * task.
+ */
+function hasTaskTokenAfter(
+  argv: readonly string[],
+  fromIndex: number,
+  getTaskDefinition?: TaskDefinitionLookup,
+): boolean {
+  for (let j = fromIndex + 1; j < argv.length; j++) {
+    const token = argv[j]!;
+    if (!isOptionToken(token) && getTaskDefinition?.(token)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function canConsumeNextAsValue(argv: readonly string[], index: number, taskIndex: number): boolean {
