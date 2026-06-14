@@ -78,6 +78,10 @@ When the default network is:
 
 The network segment in the URL is driven by the `networkHint` on the dependency (typically `"testnet"`). When no hint is configured, `defaultFetchNetworkDep()` tries `testnet`, `mainnet`, and `canary` in order and uses the first successful response.
 
+### Effective-network override
+
+`compilePipeline()` resolves the endpoint, `networkHint`, and `.env` from `config.defaultNetwork` by default. `CompileOptions.network` overrides this: when set, the network-dependency fetch (`GET /{network}/program/{id}`) and `.env` materialization use `config.networks[network]` instead. This is an **internal override**, not a CLI flag — `--network` is a reserved built-in global that mutates `config.defaultNetwork`. It is threaded through programmatic `tasks.run("deploy"/"recipe"/"upgrade", { network })` so the implicit compile fetches imported on-chain sources from the deploying network. An override naming a network absent from `config.networks` throws before any fetch, so an unknown network never silently falls back to `http://127.0.0.1:3030`.
+
 ## Caching
 
 Compilation caching is driven by:

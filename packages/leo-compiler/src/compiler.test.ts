@@ -631,6 +631,119 @@ describe("compilePipeline network dep handling", () => {
     expect(fetchSpy).toHaveBeenCalledWith("credits.aleo", "http://127.0.0.1:3030", "testnet");
   });
 
+  it("retargets the network-dep fetch to an explicit options.network override", async () => {
+    writeProgram(
+      "app",
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
+    );
+
+    const fetchSpy = vi.fn().mockResolvedValue("program credits.aleo;\n");
+    const config = makeConfig({
+      networks: {
+        devnode: {
+          type: "devnode" as const,
+          socketAddr: "127.0.0.1:3030",
+          autoBlock: true,
+          verbosity: 0,
+          accounts: [],
+          network: "testnet" as const,
+          ephemeral: true,
+        },
+        alt: {
+          type: "http" as const,
+          endpoint: "https://api.explorer.provable.com/v1",
+          network: "mainnet" as const,
+          ephemeral: false,
+        },
+      },
+      defaultNetwork: "devnode",
+    });
+
+    try {
+      await compilePipeline(config, { network: "alt" }, fetchSpy);
+    } catch {
+      // leo build will fail
+    }
+
+    // The override retargets the fetch to alt's endpoint + network hint — NOT
+    // the default devnode/testnet that a bare run would use.
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "credits.aleo",
+      "https://api.explorer.provable.com/v1",
+      "mainnet",
+    );
+  });
+
+  it("uses defaultNetwork for the network-dep fetch when no override is given", async () => {
+    writeProgram(
+      "app",
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
+    );
+
+    const fetchSpy = vi.fn().mockResolvedValue("program credits.aleo;\n");
+    const config = makeConfig({
+      networks: {
+        devnode: {
+          type: "devnode" as const,
+          socketAddr: "127.0.0.1:3030",
+          autoBlock: true,
+          verbosity: 0,
+          accounts: [],
+          network: "testnet" as const,
+          ephemeral: true,
+        },
+        alt: {
+          type: "http" as const,
+          endpoint: "https://api.explorer.provable.com/v1",
+          network: "mainnet" as const,
+          ephemeral: false,
+        },
+      },
+      defaultNetwork: "devnode",
+    });
+
+    try {
+      await compilePipeline(config, {}, fetchSpy);
+    } catch {
+      // leo build will fail
+    }
+
+    // No override → fetch follows config.defaultNetwork (devnode/testnet).
+    expect(fetchSpy).toHaveBeenCalledWith("credits.aleo", "http://127.0.0.1:3030", "testnet");
+  });
+
+  it("throws a clear error when options.network is not defined in config", async () => {
+    writeProgram(
+      "app",
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
+    );
+
+    const fetchSpy = vi.fn();
+
+    await expect(compilePipeline(makeConfig(), { network: "ghost" }, fetchSpy)).rejects.toThrow(
+      /Network "ghost" is not defined in config\.networks.*Available networks: devnode/s,
+    );
+    // Validation happens before any fetch — an unknown network never falls into
+    // the localhost endpoint fallback.
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("throws for an explicit empty-string network instead of falling back to localhost", async () => {
+    writeProgram(
+      "app",
+      "import credits.aleo;\nprogram app.aleo {\n  fn main() { credits.aleo::foo(); }\n}\n",
+    );
+
+    const fetchSpy = vi.fn();
+
+    // An explicit `""` is *present* but unknown — it must be rejected, not
+    // skipped (truthiness) and silently resolved to the `127.0.0.1:3030` fallback.
+    await expect(compilePipeline(makeConfig(), { network: "" }, fetchSpy)).rejects.toThrow(
+      /Network "" is not defined in config\.networks.*Available networks: devnode/s,
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("passes http endpoint and network when defaultNetwork is http", async () => {
     writeProgram(
       "app",
