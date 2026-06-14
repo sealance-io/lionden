@@ -114,6 +114,21 @@ export async function compilePipeline(
   options: CompileOptions = {},
   fetchNetworkDep: FetchNetworkDep = defaultFetchNetworkDep,
 ): Promise<CompilePipelineResult> {
+  // Resolve the effective network for network-dep fetch + `.env`. A programmatic
+  // `{ network }` (forwarded from deploy/recipe/upgrade) retargets these from
+  // `config.defaultNetwork` so imported on-chain sources are fetched from the
+  // deploying network. Validate whenever an override is *present* (not just
+  // truthy) before deriving the endpoint/hint — an explicit `""` is still an
+  // unknown network and must throw here rather than slipping through to the
+  // `""`-keyed `config.networks` miss and the `127.0.0.1:3030` fallback below.
+  if (options.network !== undefined && !config.networks[options.network]) {
+    throw new Error(
+      `Network "${options.network}" is not defined in config.networks. ` +
+        `Available networks: ${Object.keys(config.networks).join(", ") || "(none)"}`,
+    );
+  }
+  const effectiveNetwork = options.network ?? config.defaultNetwork;
+
   // 1. Discover
   const allUnits = discoverUnits(config.paths.programs);
 
@@ -139,7 +154,7 @@ export async function compilePipeline(
   // 3. Materialize all packages (needed for dependency linking)
   const packageDirs = new Map<string, string>();
   for (const unit of compileOrder) {
-    const dir = materializePackage(unit, config, graph);
+    const dir = materializePackage(unit, config, graph, effectiveNetwork);
     packageDirs.set(unitId(unit), dir);
   }
 
@@ -155,7 +170,7 @@ export async function compilePipeline(
   }
 
   if (selectedNetworkDeps.size > 0) {
-    const networkConfig = config.networks[config.defaultNetwork];
+    const networkConfig = config.networks[effectiveNetwork];
     const endpoint =
       networkConfig?.type === "http"
         ? networkConfig.endpoint

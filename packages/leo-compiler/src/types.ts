@@ -72,4 +72,12 @@ export interface CompileOptions {
   readonly noTypechain?: boolean;
   /** Compile only this specific program/library */
   readonly program?: string;
+  /**
+   * Internal override: resolve network deps + `.env` for this network instead
+   * of `config.defaultNetwork`. Not a CLI flag (`--network` is a reserved
+   * global that mutates `defaultNetwork`); it is threaded through programmatic
+   * `tasks.run("deploy"/"recipe"/"upgrade", { network })` so the implicit
+   * compile fetches imported on-chain sources from the deploying network.
+   */
+  readonly network?: string;
 }

@@ -172,6 +172,78 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     expect(env).toContain("DEVNET=true");
   });
 
+  it("emits the override network's .env (http branch) instead of the default", () => {
+    writeFile("hello/main.leo", "program hello.aleo {\n  fn main() {}\n}\n");
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+    const config = mockConfig();
+    (config.networks as Record<string, unknown>)["alt"] = {
+      type: "http",
+      endpoint: "https://api.explorer.provable.com/v1",
+      network: "mainnet",
+      privateKey: "APrivateKey1zkpAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAlt",
+      ephemeral: false,
+    };
+
+    const pkgDir = materializePackage(units[0]!, config, graph, "alt");
+
+    const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
+    expect(env).toContain("NETWORK=mainnet");
+    expect(env).toContain("ENDPOINT=https://api.explorer.provable.com/v1");
+    expect(env).toContain(
+      "PRIVATE_KEY=APrivateKey1zkpAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAlt",
+    );
+    // HTTP network → no DEVNET marker
+    expect(env).not.toContain("DEVNET=true");
+  });
+
+  it("emits the override network's .env (devnode branch) when default is http", () => {
+    writeFile("hello/main.leo", "program hello.aleo {\n  fn main() {}\n}\n");
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+    const config = mockConfig();
+    (config.networks as Record<string, unknown>)["alt_devnode"] = {
+      type: "devnode",
+      socketAddr: "127.0.0.1:9999",
+      autoBlock: true,
+      verbosity: 0,
+      accounts: [],
+      network: "testnet",
+      ephemeral: true,
+    };
+
+    const pkgDir = materializePackage(units[0]!, config, graph, "alt_devnode");
+
+    const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
+    expect(env).toContain("NETWORK=testnet");
+    expect(env).toContain("ENDPOINT=http://127.0.0.1:9999");
+    expect(env).toContain("DEVNET=true");
+  });
+
+  it("falls back to defaultNetwork's .env when no override is given", () => {
+    writeFile("hello/main.leo", "program hello.aleo {\n  fn main() {}\n}\n");
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+    const config = mockConfig();
+    (config.networks as Record<string, unknown>)["alt"] = {
+      type: "http",
+      endpoint: "https://api.explorer.provable.com/v1",
+      network: "mainnet",
+      ephemeral: false,
+    };
+
+    // No network arg → defaultNetwork (devnode/testnet), as before.
+    const pkgDir = materializePackage(units[0]!, config, graph);
+
+    const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
+    expect(env).toContain("NETWORK=testnet");
+    expect(env).toContain("ENDPOINT=http://127.0.0.1:3030");
+    expect(env).toContain("DEVNET=true");
+  });
+
   it("materializes library dependency with canonical path", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
     writeFile(

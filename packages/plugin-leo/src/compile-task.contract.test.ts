@@ -158,6 +158,28 @@ describe("compile task contract", () => {
     );
   });
 
+  it("forwards a passthrough network arg into compilePipeline options", async () => {
+    const lre = createTestLre();
+    await lre.tasks.run("compile", { network: "testnet" });
+
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    expect(compilePipeline).toHaveBeenCalledWith(
+      lre.config,
+      expect.objectContaining({ network: "testnet" }),
+    );
+  });
+
+  it("leaves network undefined in compilePipeline options on a default run", async () => {
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockClear();
+
+    const lre = createTestLre();
+    await lre.tasks.run("compile");
+
+    const lastCall = vi.mocked(compilePipeline).mock.calls.at(-1)!;
+    expect((lastCall[1] as { network?: string }).network).toBeUndefined();
+  });
+
   it("generates TypeScript bindings when codegen is enabled", async () => {
     const lre = createTestLre(true);
     await lre.tasks.run("compile");

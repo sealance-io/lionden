@@ -436,6 +436,40 @@ describe("deploy orchestration contract", () => {
     expect(compileSpy).toHaveBeenCalledWith("compile");
   });
 
+  it("forwards an explicit network into the implicit compile", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    (lre.config.networks as Record<string, unknown>)["testnet"] = {
+      ...lre.config.networks.devnode,
+    };
+    vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
+    const compileSpy = vi.spyOn(lre.tasks, "run");
+
+    await deployAction({ program: "hello", network: "testnet" }, lre);
+
+    // The implicit compile must resolve network deps + `.env` for the deploying
+    // network — so the explicit network is threaded through as a passthrough arg.
+    expect(compileSpy).toHaveBeenCalledWith("compile", {
+      program: "hello",
+      network: "testnet",
+    });
+  });
+
+  it("omits network from the implicit compile on a default-network run", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+
+    const compileSpy = vi.spyOn(lre.tasks, "run");
+
+    await deployAction({ program: "hello" }, lre);
+
+    // No explicit network → compile gets no `network` key, so it falls back to
+    // config.defaultNetwork exactly as before.
+    expect(compileSpy).toHaveBeenCalledWith("compile", { program: "hello" });
+  });
+
   it("skips compile when preflight is true", async () => {
     const { lre } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },

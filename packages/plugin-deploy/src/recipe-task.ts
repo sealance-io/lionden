@@ -38,12 +38,23 @@ export async function recipeAction(
     );
   }
   const exportName = (args["export"] as string) ?? "default";
-  const networkName = (args["network"] as string) ?? lre.config.defaultNetwork;
+  // Capture the explicit network separately from the resolved `networkName`: only
+  // an explicitly-supplied network is forwarded into the implicit compile, so a
+  // default run (no `network` arg) leaves compile on `config.defaultNetwork`.
+  const explicitNetwork =
+    typeof args["network"] === "string" ? (args["network"] as string) : undefined;
+  const networkName = explicitNetwork ?? lre.config.defaultNetwork;
   const noCompile = (args["noCompile"] as boolean) ?? false;
 
-  // 1. Compile first (unless --no-compile)
+  // 1. Compile first (unless --no-compile). Forward the explicit network so the
+  // implicit compile resolves imported on-chain sources + `.env` from the
+  // deploying network; omit it on a default run (byte-for-byte unchanged).
   if (!noCompile) {
-    await lre.tasks.run("compile");
+    if (explicitNetwork) {
+      await lre.tasks.run("compile", { network: explicitNetwork });
+    } else {
+      await lre.tasks.run("compile");
+    }
   }
 
   // 2. Connect to network

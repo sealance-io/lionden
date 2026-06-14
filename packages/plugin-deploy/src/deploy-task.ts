@@ -98,10 +98,17 @@ export async function deployAction(
   const programsDir = config.paths.programs;
   const manager = lre.deployments as DeploymentManager | null;
 
-  // 1. Compile first (unless --noCompile or --preflight)
+  // 1. Compile first (unless --noCompile or --preflight). Forward the effective
+  // deployment network (when explicitly supplied) so the implicit compile
+  // resolves imported on-chain sources + `.env` from the deploying network.
+  // Omit it on a default run so compile falls back to `config.defaultNetwork`
+  // (byte-for-byte unchanged).
   if (!options.noCompile && !options.preflight) {
-    if (options.program) {
-      await lre.tasks.run("compile", { program: options.program });
+    const compileArgs: Record<string, unknown> = {};
+    if (options.program) compileArgs["program"] = options.program;
+    if (options.network) compileArgs["network"] = options.network;
+    if (Object.keys(compileArgs).length > 0) {
+      await lre.tasks.run("compile", compileArgs);
     } else {
       await lre.tasks.run("compile");
     }

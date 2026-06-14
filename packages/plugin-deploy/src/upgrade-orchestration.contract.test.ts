@@ -317,6 +317,45 @@ describe("upgrade orchestration contract", () => {
     expect(connect).toHaveBeenCalledWith("testnet");
   });
 
+  it("forwards an explicit network into the implicit compile", async () => {
+    const { lre, fakeNetwork, getCompileArgs } = await createUpgradeFixture({
+      constructorType: "admin",
+    });
+    (lre.config.networks as Record<string, unknown>)["testnet"] = {
+      ...lre.config.networks.devnode,
+    };
+    const manager = lre.deployments as DeploymentManagerImpl;
+    await manager.record(
+      makeRecord({
+        network: "testnet",
+        fingerprint: extractConstructorFingerprint(
+          `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
+          "admin",
+        ),
+      }),
+      "deploy",
+      { abi: makeAbi() },
+    );
+    vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
+
+    await upgradeAction({ program: "hello", network: "testnet" }, lre);
+
+    // The implicit compile must resolve network deps + `.env` for the deploying
+    // network — so the explicit network rides along with the program arg.
+    expect(getCompileArgs()).toEqual({ program: "hello", network: "testnet" });
+  });
+
+  it("omits network from the implicit compile on a default-network run", async () => {
+    const { lre, getCompileArgs } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    // No explicit network → compile gets only the program; it falls back to
+    // config.defaultNetwork exactly as before.
+    expect(getCompileArgs()).toEqual({ program: "hello" });
+    expect(getCompileArgs()).not.toHaveProperty("network");
+  });
+
   it("uses the standard upgrade builder on devnode when prove is requested", async () => {
     const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
 

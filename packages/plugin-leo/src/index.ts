@@ -100,6 +100,12 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       force: args["force"] as boolean | undefined,
       noTypechain: args["noTypechain"] as boolean | undefined,
       program: args["program"] as string | undefined,
+      // Undeclared passthrough: deploy/recipe/upgrade forward the effective
+      // deployment network so the implicit compile resolves network deps + `.env`
+      // for it. We do NOT `.addOption({ name: "network" })` — `network` is a
+      // reserved built-in global (rejected at plugin load); CLI `--network`
+      // mutates `defaultNetwork` pre-dispatch and never lands in `args`.
+      network: typeof args["network"] === "string" ? (args["network"] as string) : undefined,
     };
 
     await preflightLeo(lre.config);

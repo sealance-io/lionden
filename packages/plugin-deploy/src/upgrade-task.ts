@@ -177,8 +177,13 @@ export async function upgradeAction(
     );
   }
 
-  // 6. Compile the updated program
-  await lre.tasks.run("compile", { program: options.program });
+  // 6. Compile the updated program. Forward the effective upgrade network (when
+  // explicitly supplied) so the implicit compile resolves imported on-chain
+  // sources + `.env` from the deploying network; omit it otherwise so compile
+  // falls back to `config.defaultNetwork` (byte-for-byte unchanged).
+  const compileArgs: Record<string, unknown> = { program: options.program };
+  if (options.network) compileArgs["network"] = options.network;
+  await lre.tasks.run("compile", compileArgs);
 
   // 7. Read new ABI from compilation artifacts
   const newAbi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;

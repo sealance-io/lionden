@@ -1,10 +1,13 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import { createMockConnection } from "@lionden/test-internals";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { createCliDeploymentContext } from "./recipe-task.js";
+import { createCliDeploymentContext, recipeAction } from "./recipe-task.js";
 
 function completeRecord(programId: string, txId = "at1cached"): DeploymentRecord {
   return {
@@ -67,6 +70,54 @@ function mockLre(
     },
   } as unknown as LionDenRuntimeEnvironment;
 }
+
+describe("recipe compile network forwarding", () => {
+  let tmpDir: string;
+  let recipeFile: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-recipe-net-"));
+    recipeFile = path.join(tmpDir, "recipe.mjs");
+    fs.writeFileSync(recipeFile, "export default async () => ({ ok: true });\n");
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function mockRecipeLre(defaultNetwork = "devnode"): {
+    lre: LionDenRuntimeEnvironment;
+    run: ReturnType<typeof vi.fn>;
+  } {
+    const run = vi.fn().mockResolvedValue(undefined);
+    const lre = {
+      config: { defaultNetwork, paths: { root: tmpDir } },
+      globalOptions: {},
+      namedAccounts: {},
+      deployments: null,
+      tasks: { run },
+      network: { connect: vi.fn().mockResolvedValue(createMockConnection()) },
+    } as unknown as LionDenRuntimeEnvironment;
+    return { lre, run };
+  }
+
+  it("forwards an explicit network into the implicit compile", async () => {
+    const { lre, run } = mockRecipeLre();
+
+    await recipeAction({ file: recipeFile, network: "testnet" }, lre);
+
+    expect(run).toHaveBeenCalledWith("compile", { network: "testnet" });
+  });
+
+  it("omits network from the implicit compile on a default run", async () => {
+    const { lre, run } = mockRecipeLre();
+
+    await recipeAction({ file: recipeFile }, lre);
+
+    // A default run forwards nothing — compile falls back to config.defaultNetwork.
+    expect(run).toHaveBeenCalledWith("compile");
+  });
+});
 
 describe("recipe deployment context", () => {
   it("returns a cached complete deployment without calling deploy", async () => {

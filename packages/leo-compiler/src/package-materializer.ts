@@ -17,6 +17,7 @@ export function materializePackage(
   unit: DiscoveredUnit,
   config: LionDenResolvedConfig,
   graph: DependencyGraph,
+  network?: string,
 ): string {
   const id = unitId(unit);
   const packageDir = path.join(config.paths.artifacts, ".build", id);
@@ -56,7 +57,7 @@ export function materializePackage(
   );
 
   // Generate .env
-  const env = buildDotEnv(config);
+  const env = buildDotEnv(config, network);
   fs.writeFileSync(path.join(packageDir, ".env"), env);
 
   return packageDir;
@@ -108,8 +109,8 @@ function buildProgramJson(
   };
 }
 
-function buildDotEnv(config: LionDenResolvedConfig): string {
-  const networkConfig = config.networks[config.defaultNetwork];
+function buildDotEnv(config: LionDenResolvedConfig, network?: string): string {
+  const networkConfig = config.networks[network ?? config.defaultNetwork];
   const lines: string[] = [];
 
   // Every resolved network config carries a `network` field — use it directly.
