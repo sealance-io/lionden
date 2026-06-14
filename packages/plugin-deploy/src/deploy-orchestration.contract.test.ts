@@ -149,6 +149,16 @@ describe("deploy orchestration contract", () => {
     expect(connect).toHaveBeenCalledWith("testnet");
   });
 
+  it("rejects a deploy target with no parsable constructor before broadcasting", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([{ name: "hello", annotation: "" }]);
+
+    await expect(deployAction({ program: "hello", noCompile: true }, lre)).rejects.toThrow(
+      "MISSING_CONSTRUCTOR",
+    );
+
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
   it("uses the devnode fast-path when prove is not requested", async () => {
     const { lre, fakeNetwork } = createDeployFixture([
       { name: "hello", annotation: "@noupgrade\n    constructor() {}" },

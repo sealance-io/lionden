@@ -415,7 +415,7 @@ describe("runDeployPreflight", () => {
     expect(result.programs[0]!.action).toBe("deploy");
   });
 
-  it("does not fail when constructor is missing", async () => {
+  it("fails when a deploy target has no parsable constructor", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(null),
     });
@@ -437,8 +437,10 @@ describe("runDeployPreflight", () => {
       graph: makeGraph(),
     });
 
-    expect(result.passed).toBe(true);
-    expect(result.errors).toHaveLength(0);
+    expect(result.passed).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]!.code).toBe("MISSING_CONSTRUCTOR");
+    expect(result.programs[0]!.action).toBe("deploy");
   });
 
   it("skips fee and import checks on devnode", async () => {

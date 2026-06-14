@@ -1,3 +1,5 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { LionDenPlugin } from "@lionden/core";
 import { task } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
@@ -8,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { extractConstructorFingerprint } from "./constructor-parser.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
 import { writeAbiSnapshot } from "./deployment-state.js";
-import type { CompleteDeploymentRecord } from "./deployment-types.js";
+import type { CompleteDeploymentRecord, DeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
 import { UpgradeCompatibilityError, upgradeAction } from "./upgrade-task.js";
 
@@ -141,6 +143,8 @@ describe("upgrade orchestration contract", () => {
     sourceAnnotation?: string;
     /** Compiled Aleo source that compile produces for the new version */
     newAleoSource?: string;
+    /** Optional Leo source rewrite performed by the compile task before upgrade validation. */
+    sourceAfterCompile?: string;
     /** Fingerprint to store in deployment record */
     fingerprint?: string;
   }) {
@@ -176,6 +180,12 @@ describe("upgrade orchestration contract", () => {
           .setAction(async (args, lre) => {
             compileCalled = true;
             compileArgs = args;
+            if (opts?.sourceAfterCompile !== undefined) {
+              fs.writeFileSync(
+                path.join(lre.config.paths.programs, "hello", "main.leo"),
+                opts.sourceAfterCompile,
+              );
+            }
             lre.artifacts.setAbi("hello.aleo", newAbi);
             lre.artifacts.setAleoSource("hello.aleo", aleoSource);
           })
@@ -196,7 +206,7 @@ describe("upgrade orchestration contract", () => {
       ],
     });
 
-    const { lre, fakeNetwork, project } = fixture;
+    const { lre, fakeNetwork } = fixture;
     const deploymentsDir = lre.config.paths.deployments;
 
     // Inject DeploymentManager onto lre.deployments
@@ -537,6 +547,43 @@ describe("upgrade orchestration contract", () => {
       constructorType: "admin",
       sourceAnnotation: "@noupgrade\n    constructor() {}",
     });
+
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
+      "constructor type changed",
+    );
+  });
+
+  it("uses synthesized constructor data for degraded records during upgrade preflight", async () => {
+    const { lre, manager } = await createUpgradeFixture({
+      constructorType: "admin",
+      sourceAfterCompile: `program hello.aleo {
+    @noupgrade
+    constructor() {}
+
+    transition main(a: u32, b: u32) -> u32 {
+        return a + b;
+    }
+}
+`,
+    });
+
+    const degraded: DeploymentRecord = {
+      status: "degraded",
+      programId: "hello.aleo",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      txId: null,
+      blockHeight: null,
+      deployerAddress: null,
+      deployedAt: null,
+      feePaid: null,
+      edition: 0,
+      constructor: { type: null },
+      abiHash: null,
+      updatedAt: "2026-04-01T00:00:00.000Z",
+      historyCount: 1,
+    };
+    (manager as any).networkCache("devnode").set("hello.aleo", degraded);
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
       "constructor type changed",
