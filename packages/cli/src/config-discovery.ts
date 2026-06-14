@@ -46,9 +46,26 @@ export async function loadConfigFile(
 
   let config = module.default;
 
+  // A config file that loads cleanly but has no default export yields
+  // `module.default === undefined`. Fail here, naming the offending file,
+  // instead of letting `undefined` leak downstream and surface as a cryptic
+  // `Cannot read properties of undefined (reading 'plugins')` TypeError.
+  if (config === undefined) {
+    throw new Error(
+      `Config file ${absolutePath} has no default export. ` +
+        "Add `export default defineConfig({ ... })` (or a config object/factory).",
+    );
+  }
+
   // Support factory functions
   if (typeof config === "function") {
     config = await config();
+    if (config === undefined) {
+      throw new Error(
+        `Config file ${absolutePath} default export returned undefined. ` +
+          "Return `defineConfig({ ... })` (or a config object).",
+      );
+    }
   }
 
   return { config, projectRoot };
