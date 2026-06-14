@@ -150,6 +150,43 @@ describe("CLI dispatch contract", () => {
     expect(userConfig.codegen?.enabled).toBe(false);
   });
 
+  it("loadConfigFile throws a clear, file-naming error when the config has no default export", async () => {
+    // A config that loads cleanly but forgets `export default` (e.g. writes
+    // `export const config = ...`) must fail with an actionable message naming
+    // the offending file — not leak a downstream `Cannot read properties of
+    // undefined (reading 'plugins')` TypeError from index.ts.
+    const projectDir = createTempProject(`export const config = { leoVersion: "4.0.0" };`);
+    const configPath = findConfigFile(projectDir)!;
+
+    await expect(loadConfigFile(configPath)).rejects.toThrow(
+      `Config file ${configPath} has no default export`,
+    );
+  });
+
+  it("loadConfigFile throws a clear error when a config factory returns undefined", async () => {
+    const projectDir = createTempProject(`export default () => undefined;`);
+    const configPath = findConfigFile(projectDir)!;
+
+    await expect(loadConfigFile(configPath)).rejects.toThrow(
+      `Config file ${configPath} default export returned undefined`,
+    );
+  });
+
+  it("surfaces the no-default-export error through main() instead of a cryptic TypeError", async () => {
+    const projectDir = createTempProject(`export const config = {};`);
+    const configPath = path.join(projectDir, "lionden.config.ts");
+    const originalArgv = process.argv;
+
+    try {
+      process.argv = ["node", "lionden", "--config", configPath, "compile"];
+
+      await expect(main()).rejects.toThrow("has no default export");
+      await expect(main()).rejects.not.toThrow("reading 'plugins'");
+    } finally {
+      process.argv = originalArgv;
+    }
+  });
+
   it("loadConfigFile derives projectRoot from config path", async () => {
     const projectDir = createTempProject(`export default {};`);
     const nested = path.join(projectDir, "packages", "core");
