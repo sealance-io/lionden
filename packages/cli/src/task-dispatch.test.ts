@@ -97,6 +97,52 @@ describe("parseArgs", () => {
     expect(result.globalArgs.network).toBe("testnet");
   });
 
+  it("consumes a --network value that collides with a task id when a later task follows", () => {
+    // A config network literally named "test" plus a registered "test" task:
+    // `--network test deploy` must set network=test and run deploy, not run the
+    // `test` task with `deploy` as a positional.
+    const result = parseArgs(
+      ["--network", "test", "deploy"],
+      undefined,
+      lookupFor(defineTask({ id: "test" }), defineTask({ id: "deploy" })),
+    );
+    expect(result.taskId).toBe("deploy");
+    expect(result.globalArgs.network).toBe("test");
+    expect(result.taskArgs._positional).toBeUndefined();
+  });
+
+  it("consumes a task-id-named option value for a valued plugin global too", () => {
+    const pluginOpts = new Map<string, { pluginId: string; definition: GlobalOptionDefinition }>([
+      [
+        "env",
+        {
+          pluginId: "core",
+          definition: { name: "env", description: "Environment", type: ArgumentType.STRING },
+        },
+      ],
+    ]);
+    const result = parseArgs(
+      ["--env", "test", "deploy"],
+      pluginOpts,
+      lookupFor(defineTask({ id: "test" }), defineTask({ id: "deploy" })),
+    );
+    expect(result.taskId).toBe("deploy");
+    expect(result.globalArgs.env).toBe("test");
+    expect(result.taskArgs._positional).toBeUndefined();
+  });
+
+  it("treats a lone task-id-named --network value as the task (value-less, no later task)", () => {
+    // No task token follows, so the value-less forgiveness still applies:
+    // `--network test` runs the `test` task rather than swallowing it.
+    const result = parseArgs(
+      ["--network", "test"],
+      undefined,
+      lookupFor(defineTask({ id: "test" })),
+    );
+    expect(result.taskId).toBe("test");
+    expect(result.globalArgs.network).toBeUndefined();
+  });
+
   it("routes --network after the task name into globalArgs", () => {
     const result = parseArgs(["deploy", "--network", "testnet"]);
     expect(result.globalArgs.network).toBe("testnet");
