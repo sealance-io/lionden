@@ -86,6 +86,14 @@ export async function main(): Promise<void> {
     lre.tasks.getTaskDefinition(taskId),
   );
 
+  // Help should render before validating task/global option values. This keeps
+  // recovery/documentation available even when an invocation includes an invalid
+  // value such as `--network ghostnet --help`.
+  if (parsed.globalArgs.help) {
+    printHelp(lre, globalOptionDefs);
+    return;
+  }
+
   // Override default network from CLI. --network is global-only, and is resolved
   // from the task-aware parse — so a value-less `--network` before a task name
   // (e.g. `lionden --network deploy`) does not consume the task token as a bogus
@@ -112,14 +120,6 @@ export async function main(): Promise<void> {
     } else if (definition.defaultValue !== undefined) {
       globalOptions[name] = definition.defaultValue;
     }
-  }
-
-  // Handle help before the collision guard below, so `lionden --help` still
-  // renders even when a config-level task argument collides with a built-in
-  // global option.
-  if (parsed.globalArgs.help) {
-    printHelp(lre, globalOptionDefs);
-    return;
   }
 
   // Reject tasks whose arguments shadow a built-in global option before we
