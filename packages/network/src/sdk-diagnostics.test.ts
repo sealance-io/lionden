@@ -179,18 +179,23 @@ describe("pickRelevantFailure()", () => {
 });
 
 describe("isOpaqueWasmError()", () => {
-  it("treats JS-callback / RuntimeError / unreachable / non-Error as opaque", () => {
+  it("treats JS-callback / RuntimeError unreachable / non-Error as opaque", () => {
     expect(isOpaqueWasmError(new Error("JS callback Promise rejected:"))).toBe(true);
-    const runtime = new Error("trap");
+    expect(isOpaqueWasmError(new WebAssembly.RuntimeError("unreachable"))).toBe(true);
+    const runtime = new Error("unreachable");
     runtime.name = "RuntimeError";
     expect(isOpaqueWasmError(runtime)).toBe(true);
-    expect(isOpaqueWasmError(new Error("unreachable executed"))).toBe(true);
     expect(isOpaqueWasmError({})).toBe(true);
     expect(isOpaqueWasmError("")).toBe(true);
   });
 
   it("treats descriptive errors and non-empty strings as non-opaque", () => {
     expect(isOpaqueWasmError(new Error("Stack evaluation failed: assertion failed"))).toBe(false);
+    expect(isOpaqueWasmError(new Error("Network unreachable"))).toBe(false);
+    expect(isOpaqueWasmError(new Error("unreachable executed"))).toBe(false);
+    const networkRuntime = new Error("Network unreachable");
+    networkRuntime.name = "RuntimeError";
+    expect(isOpaqueWasmError(networkRuntime)).toBe(false);
     expect(isOpaqueWasmError("connection refused")).toBe(false);
   });
 });
@@ -254,6 +259,26 @@ describe("captureSdkCall()", () => {
     await expect(
       captureSdkCall(diag, { operation: "local", programId: "p.aleo", transitionName: "t" }, () =>
         Promise.reject(original),
+      ),
+    ).rejects.toBe(original);
+  });
+
+  it("rethrows network unreachable failures unchanged when no state query failed", async () => {
+    const diag = new SdkDiagnostics();
+    const original = new Error("Network unreachable");
+    await expect(
+      captureSdkCall(
+        diag,
+        { operation: "execute", programId: "token.aleo", transitionName: "transfer" },
+        async () => {
+          diag.record(
+            failure("http://127.0.0.1:3030/testnet/transaction/broadcast", {
+              method: "POST",
+              error: "Network unreachable",
+            }),
+          );
+          throw original;
+        },
       ),
     ).rejects.toBe(original);
   });

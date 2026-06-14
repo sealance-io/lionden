@@ -180,23 +180,26 @@ export function pickRelevantFailure(
 /**
  * Whether `error` is an opaque WASM abort with no usable cause of its own —
  * the wasm-bindgen `"JS callback Promise rejected:"` flattening, a
- * `RuntimeError`/`unreachable` trap, or a non-`Error` thrown value with no
+ * `RuntimeError: unreachable` trap, or a non-`Error` thrown value with no
  * meaningful message. These are the cases worth enriching even when the sink
  * happens to be empty.
  */
 export function isOpaqueWasmError(error: unknown): boolean {
   if (error instanceof Error) {
     const message = error.message ?? "";
-    return (
-      message.includes("JS callback Promise rejected") ||
-      error.name === "RuntimeError" ||
-      message.includes("unreachable")
-    );
+    return message.includes("JS callback Promise rejected") || isRuntimeUnreachableTrap(error);
   }
   // Non-Error thrown value (raw WASM aborts often throw these). Treat as opaque
   // when it carries no usable message string.
   const message = errorMessage(error).trim();
   return message.length === 0 || message === "[object Object]";
+}
+
+function isRuntimeUnreachableTrap(error: Error): boolean {
+  if (error instanceof WebAssembly.RuntimeError) {
+    return error.message === "unreachable";
+  }
+  return error.name === "RuntimeError" && error.message === "unreachable";
 }
 
 function buildSdkExecutionMessage(
