@@ -251,7 +251,8 @@ describe("CLI dispatch contract", () => {
   });
 
   // Mirrors the index.ts boot order: the --network override must be taken from
-  // the task-AWARE parse, after the LRE exists, not the earlier task-unaware one.
+  // the task-AWARE parse, after the LRE exists, not the earlier task-unaware one,
+  // and an unknown network name is rejected centrally before dispatch.
   async function resolveNetworkOverrideThroughBoot(
     argv: string[],
     configContent: string,
@@ -279,7 +280,15 @@ describe("CLI dispatch contract", () => {
       lre.tasks.getTaskDefinition(taskId),
     );
     if (typeof parsed.globalArgs.network === "string") {
-      (config as { defaultNetwork: string }).defaultNetwork = parsed.globalArgs.network;
+      const requestedNetwork = parsed.globalArgs.network;
+      if (!config.networks[requestedNetwork]) {
+        const available = Object.keys(config.networks).join(", ") || "(none)";
+        throw new Error(
+          `Network "${requestedNetwork}" (from --network) is not defined in config.networks. ` +
+            `Available networks: ${available}`,
+        );
+      }
+      (config as { defaultNetwork: string }).defaultNetwork = requestedNetwork;
     }
     return { taskId: parsed.taskId, defaultNetwork: config.defaultNetwork };
   }
@@ -310,11 +319,26 @@ describe("CLI dispatch contract", () => {
   it("still applies a real --network override placed before the task", async () => {
     const { taskId, defaultNetwork } = await resolveNetworkOverrideThroughBoot(
       ["--network", "testnet", "deploy"],
-      `export default { defaultNetwork: "local" };`,
+      `export default {
+        defaultNetwork: "local",
+        networks: {
+          local: { type: "devnode" },
+          testnet: { type: "http", endpoint: "https://api.explorer.provable.com/v1", network: "testnet" },
+        },
+      };`,
     );
 
     expect(taskId).toBe("deploy");
     expect(defaultNetwork).toBe("testnet");
+  });
+
+  it("rejects an unknown --network name centrally before dispatch", async () => {
+    await expect(
+      resolveNetworkOverrideThroughBoot(
+        ["--network", "ghostnet", "deploy"],
+        `export default { defaultNetwork: "local", networks: { local: { type: "devnode" } } };`,
+      ),
+    ).rejects.toThrow('Network "ghostnet" (from --network) is not defined in config.networks');
   });
 
   it("does not promote a task-local boolean flag into lre.globalOptions (task-aware seeding)", async () => {

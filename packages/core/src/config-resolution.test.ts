@@ -252,6 +252,24 @@ describe("resolveConfig", () => {
     expect(resolved.leoVersion).toBe("4.1.0");
   });
 
+  it("tolerates a validation hook that returns undefined instead of an array", async () => {
+    // The typed contract is ConfigValidationError[], but an untyped JS plugin
+    // can return nothing. A stray undefined must not be treated as an error
+    // (which would fail validation spuriously and crash formatErrors).
+    const plugin: LionDenPlugin = {
+      id: "void-validator",
+      hookHandlers: {
+        config: {
+          validateUserConfig: (() => undefined) as never,
+          validateResolvedConfig: (() => undefined) as never,
+        },
+      },
+    };
+
+    const { resolved } = await resolveConfig({}, [plugin], projectRoot);
+    expect(resolved.leoVersion).toBe("4.1.0");
+  });
+
   it("calls lazy config hook factory only once across all stages", async () => {
     const factory = vi.fn(async () => ({
       extendUserConfig: (c: LionDenUserConfig) => c,
