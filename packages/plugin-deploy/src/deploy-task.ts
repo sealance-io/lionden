@@ -26,6 +26,7 @@ import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
 import { createDegradedRecord } from "./on-chain-check.js";
 import { type DeployPreflightResult, runDeployPreflight } from "./preflight.js";
+import { resolveProveOption } from "./prove.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -733,18 +734,6 @@ export { readLeoSourcesFromDir } from "./leo-sources.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function resolveProveOption(
-  args: Record<string, unknown>,
-  lre: LionDenRuntimeEnvironment,
-): boolean {
-  const explicit = args["prove"];
-  if (typeof explicit === "boolean") return explicit;
-
-  if (lre.globalOptions["prove"] === true) return true;
-
-  return process.env["LIONDEN_PROVE"] === "true";
 }
 
 /**

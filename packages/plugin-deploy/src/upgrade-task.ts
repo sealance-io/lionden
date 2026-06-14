@@ -32,6 +32,7 @@ import type {
 import { DeployError } from "./errors.js";
 import { readLeoSourcesFromDir } from "./leo-sources.js";
 import { runUpgradePreflight } from "./preflight.js";
+import { resolveProveOption } from "./prove.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -512,18 +513,6 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function resolveProveOption(
-  args: Record<string, unknown>,
-  lre: LionDenRuntimeEnvironment,
-): boolean {
-  const explicit = args["prove"];
-  if (typeof explicit === "boolean") return explicit;
-
-  if (lre.globalOptions["prove"] === true) return true;
-
-  return process.env["LIONDEN_PROVE"] === "true";
-}
 
 function readAbiFromArtifacts(artifactsDir: string, programId: string): ProgramABI | null {
   const abiPath = path.join(artifactsDir, programId, "abi.json");

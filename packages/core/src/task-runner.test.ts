@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { overrideTask, task } from "./task-builder.js";
 import { TaskNotFoundError, TaskRunnerImpl } from "./task-runner.js";
-import type { LionDenRuntimeEnvironment, TaskDefinition } from "./types.js";
+import { ArgumentType, type LionDenRuntimeEnvironment, type TaskDefinition } from "./types.js";
 
 function makeLre(): LionDenRuntimeEnvironment {
   return {
@@ -285,6 +286,58 @@ describe("TaskRunnerImpl", () => {
       await runner.run("upgrade", {});
       expect(action).toHaveBeenCalledWith(
         expect.objectContaining({ program: "fallback" }),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe("runSuper arg preparation", () => {
+    function runnerWith(...definitions: TaskDefinition[]): TaskRunnerImpl {
+      const runner = new TaskRunnerImpl();
+      for (const definition of definitions) {
+        runner.registerTasks([definition]);
+      }
+      runner.setLre(makeLre());
+      return runner;
+    }
+
+    it("enforces required options through the runSuper path", async () => {
+      const original = task("deploy", "deploy")
+        .addOption({ name: "program", type: "string", description: "program", required: true })
+        .setAction(vi.fn())
+        .build();
+      const override = overrideTask("deploy")
+        .setAction(async (_args, _lre, runSuper) => runSuper({}))
+        .build();
+      const runner = runnerWith(original, override);
+
+      // Top-level run satisfies `program`, but the override re-invokes super with
+      // empty args, so the full pipeline must re-enforce the required option.
+      await expect(runner.run("deploy", { program: "hello" })).rejects.toThrow(
+        /missing required option/,
+      );
+    });
+
+    it("normalizes, coerces, and binds positionals through the runSuper path", async () => {
+      const superAction = vi.fn();
+      const original = task("run", "run")
+        .addOption({ name: "priorityFee", type: "number", description: "fee" })
+        .addPositionalArgument({ name: "script", type: ArgumentType.STRING, description: "script" })
+        .setAction(superAction)
+        .build();
+      const override = overrideTask("run")
+        .setAction(async (_args, _lre, runSuper) =>
+          runSuper({ "priority-fee": "5", _positional: ["x"] }),
+        )
+        .build();
+      const runner = runnerWith(original, override);
+
+      await runner.run("run", {});
+
+      // The super action receives the kebab spelling coerced to a number and the
+      // positional bound by name — proving full-pipeline parity, not just enforcement.
+      expect(superAction).toHaveBeenCalledWith(
+        expect.objectContaining({ priorityFee: 5, script: "x" }),
         expect.anything(),
       );
     });
