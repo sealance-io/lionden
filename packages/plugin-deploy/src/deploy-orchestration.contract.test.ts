@@ -6,7 +6,7 @@
  * constructors from Leo source, and broadcasts through a mocked NetworkConnection.
  */
 
-import { SdkDiagnostics, type NetworkManager } from "@lionden/network";
+import { type NetworkManager, SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeployError, type DeployTaskResult, deployAction } from "./deploy-task.js";
