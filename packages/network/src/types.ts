@@ -218,7 +218,7 @@ export class LocalExecutionWasmTrapError extends Error {
 
   constructor(cause: unknown) {
     super(
-      `Provable SDK local execution trapped outside the pm.run promise: ${
+      `Provable SDK local-WASM execution trapped outside the SDK call promise: ${
         cause instanceof Error ? cause.message : String(cause)
       }`,
       { cause },
