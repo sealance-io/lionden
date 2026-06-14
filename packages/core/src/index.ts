@@ -1,6 +1,7 @@
 // Types
 
 export {
+  argumentFlagName,
   BUILT_IN_GLOBAL_ARGUMENT_NAMES,
   camelToKebab,
   getPublicArgumentNames,

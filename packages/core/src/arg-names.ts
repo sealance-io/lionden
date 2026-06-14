@@ -7,6 +7,14 @@ export function getPublicArgumentNames(name: string): string[] {
   return [...new Set([name, camelToKebab(name)])];
 }
 
+/**
+ * Render an argument name as the flag a user types: single-character names are
+ * short flags (`-h`), everything else is a long flag (`--config`).
+ */
+export function argumentFlagName(name: string): string {
+  return name.length === 1 ? `-${name}` : `--${name}`;
+}
+
 export const BUILT_IN_GLOBAL_ARGUMENT_NAMES = ["config", "network", "verbose", "help", "version"];
 
 const BUILT_IN_GLOBAL_ARGUMENT_ALIASES = new Map<string, readonly string[]>([

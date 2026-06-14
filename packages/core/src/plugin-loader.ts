@@ -1,4 +1,8 @@
-import { getPublicArgumentNames, getReservedBuiltInGlobalArgumentNames } from "./arg-names.js";
+import {
+  argumentFlagName,
+  getPublicArgumentNames,
+  getReservedBuiltInGlobalArgumentNames,
+} from "./arg-names.js";
 import type { GlobalOptionDefinition, LionDenPlugin } from "./types.js";
 
 export class PluginLoadError extends Error {
@@ -91,13 +95,13 @@ export function collectGlobalOptions(
       for (const publicName of getPublicArgumentNames(opt.name)) {
         if (reservedBuiltInNames.has(publicName)) {
           throw new PluginLoadError(
-            `Global option "--${opt.name}" registered by "${plugin.id}" conflicts with built-in global option "--${publicName}"`,
+            `Global option "${argumentFlagName(opt.name)}" registered by "${plugin.id}" conflicts with built-in global option "${argumentFlagName(publicName)}"`,
           );
         }
         const existingPluginId = publicNames.get(publicName);
         if (existingPluginId) {
           throw new PluginLoadError(
-            `Global option "--${opt.name}" registered by both "${existingPluginId}" and "${plugin.id}"`,
+            `Global option "${argumentFlagName(opt.name)}" registered by both "${existingPluginId}" and "${plugin.id}"`,
           );
         }
       }
