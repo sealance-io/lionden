@@ -42,7 +42,7 @@ export async function main(): Promise<void> {
       return;
     }
     logger.error(
-      "No lionden.config.ts found. Run 'lionden init' to create a project, " +
+      "No lionden.config.ts found. Run 'create-lionden' to create a project, " +
         "or use --config to specify a config file.",
     );
     process.exit(1);
