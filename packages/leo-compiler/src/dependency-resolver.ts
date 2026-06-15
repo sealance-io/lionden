@@ -9,18 +9,6 @@ export class CircularDependencyError extends Error {
   }
 }
 
-export class MissingDependencyError extends Error {
-  constructor(
-    public readonly unitId: string,
-    public readonly missingDep: string,
-  ) {
-    super(
-      `Unit "${unitId}" depends on "${missingDep}" which is not a local project unit and not a known network dependency`,
-    );
-    this.name = "MissingDependencyError";
-  }
-}
-
 export interface DependencyGraph {
   /** Units in topological compile order (dependencies before dependents) */
   readonly order: DiscoveredUnit[];
