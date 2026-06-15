@@ -517,7 +517,7 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
 
   throw new DeployError(
     `Unable to upgrade "${programId}": no suitable upgrade method found on ProgramManager. ` +
-      `Ensure @provablehq/sdk@^0.11.0 is installed.`,
+      `Ensure @provablehq/sdk@^0.11.1 is installed.`,
   );
 }
 

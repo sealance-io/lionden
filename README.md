@@ -61,7 +61,7 @@ For contributor workflows and realistic end-to-end runs, assume:
 - Leo CLI v4.1.x available on `PATH` by default. Leo v4.0.x remains an explicit compatibility line, and Leo v3.5.x is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md)
 
 
-Network functionality depends on `@provablehq/sdk@^0.11.0` via `packages/network`.
+Network functionality depends on `@provablehq/sdk@^0.11.1` via `packages/network`.
 
 ## Getting Started
 
