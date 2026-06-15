@@ -191,7 +191,7 @@ jobs:
       - run: npm run build
       - name: Prepare Leo home directory
         run: mkdir -p "$HOME/.aleo"
-      - run: npm run test:smoke # core examples, no --prove
+      - run: npm run test:smoke:all # core examples + aleo ports, no --prove
 
   # Rollup sentinel: a single stable required check for the branch ruleset.
   # Configure the ruleset to require "CI Status" — never the individual jobs (they may skip).
