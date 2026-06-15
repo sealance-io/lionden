@@ -20,7 +20,7 @@ LionDen is in active early development. This guide is anchored to **shipped beha
 - **Leo CLI v4.1.x** available on `PATH` as `leo` by default. Leo v4.0.x remains supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
 - Optional: a v3.5 Leo binary installed side-by-side if you need v3.5 deployable-program compatibility. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
-LionDen also uses `@provablehq/sdk` (currently `^0.11.0`) under the hood through `@lionden/network` for transaction building and broadcasting.
+LionDen also uses `@provablehq/sdk` (currently `^0.11.1`) under the hood through `@lionden/network` for transaction building and broadcasting.
 
 > **npm security**: always install with `--ignore-scripts`. Every install snippet in this guide uses it.
 
