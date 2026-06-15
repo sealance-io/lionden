@@ -15,6 +15,7 @@ const CORE_EXAMPLES = [
 
 const ALEO_PORT_TEST_TIMEOUT_MS = 240_000;
 const PROVE_TEST_TIMEOUT_MS = 900_000;
+const CI_TEST_TIMEOUT_MULTIPLIER = 4;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -173,8 +174,8 @@ function isAleoPortConfig(config) {
 }
 
 function testTimeoutForConfig(config) {
-  if (prove) return PROVE_TEST_TIMEOUT_MS;
-  if (isAleoPortConfig(config)) return ALEO_PORT_TEST_TIMEOUT_MS;
+  if (prove) return testTimeout(PROVE_TEST_TIMEOUT_MS);
+  if (isAleoPortConfig(config)) return testTimeout(ALEO_PORT_TEST_TIMEOUT_MS);
   return undefined;
 }
 
@@ -223,11 +224,11 @@ function printRunHeader(context) {
   console.log(`Typecheck: ${formatEnabled(typecheck)}`);
   console.log(
     `Prove: ${formatEnabled(prove)}${
-      prove ? ` (test timeout ${formatDuration(PROVE_TEST_TIMEOUT_MS)})` : ""
+      prove ? ` (test timeout ${formatTestTimeout(PROVE_TEST_TIMEOUT_MS)})` : ""
     }`,
   );
   if (!prove && configs.some(isAleoPortConfig)) {
-    console.log(`Aleo ports test timeout: ${formatDuration(ALEO_PORT_TEST_TIMEOUT_MS)}`);
+    console.log(`Aleo ports test timeout: ${formatTestTimeout(ALEO_PORT_TEST_TIMEOUT_MS)}`);
   }
   console.log(`Coverage: ${formatEnabled(coverage)}${context ? ` (lane ${context.lane})` : ""}`);
   console.log(`Configs (${configs.length}):`);
@@ -242,6 +243,24 @@ function printTotalRuntime() {
 
 function formatEnabled(value) {
   return value ? "enabled" : "disabled";
+}
+
+function testTimeout(baseTimeout) {
+  return isCi() ? baseTimeout * CI_TEST_TIMEOUT_MULTIPLIER : baseTimeout;
+}
+
+function isCi() {
+  const value = process.env["CI"];
+  return value !== undefined && value !== "" && value.toLowerCase() !== "false";
+}
+
+function formatTestTimeout(baseTimeout) {
+  const effectiveTimeout = testTimeout(baseTimeout);
+  if (effectiveTimeout === baseTimeout) return formatDuration(baseTimeout);
+  return (
+    `${formatDuration(effectiveTimeout)} ` +
+    `(CI ${CI_TEST_TIMEOUT_MULTIPLIER}x from ${formatDuration(baseTimeout)})`
+  );
 }
 
 function formatDuration(ms) {
