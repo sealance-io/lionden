@@ -356,7 +356,7 @@ function resolveNetworkConfig(
         }),
         genesisPath: config.genesisPath,
         network: config.network ?? "testnet",
-        privateKey: config.privateKey,
+        privateKey: resolveStringOrVariable(config.privateKey),
         consensusHeights: config.consensusHeights,
         // provider/binary stay undefined unless the user set them — auto-detect
         // (which can fall back to leo) keys off their absence at start time.

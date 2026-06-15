@@ -67,7 +67,7 @@ export interface DevnodeNetworkConfig {
   /** Aleo network type. Default: "testnet" */
   readonly network?: AleoNetwork;
   /** Private key for the devnode validator. Default: well-known test key */
-  readonly privateKey?: string;
+  readonly privateKey?: string | ConfigVariable;
   /**
    * Consensus heights for devnode startup (e.g., "0,1,2,3,4,5,6,7,8").
    * Required for V9/constructor support on devnode.
