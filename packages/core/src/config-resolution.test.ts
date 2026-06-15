@@ -406,20 +406,20 @@ describe("resolveConfig", () => {
   });
 
   it("resolves configVariable devnode privateKey before runtime startup", async () => {
+    const fallbackKey = "APrivateKey1zkp9NgU7sJRE6TXqgFDfL4QxfvoyHiam1KivDcyDX88jVrf";
     const config: LionDenUserConfig = {
       networks: {
         local: {
           type: "devnode",
-          privateKey: configVariable("LIONDEN_TEST_DEVNODE_PRIVATE_KEY", "APrivateKey1fallback"),
+          privateKey: configVariable("NONEXISTENT_DEVNODE_PRIVATE_KEY_FOR_TEST", fallbackKey),
         },
       },
     };
 
     const resolved = await resolve(config, [], projectRoot);
     const net = resolved.networks["local"]!;
-    if (net.type === "devnode") {
-      expect(net.privateKey).toBe("APrivateKey1fallback");
-    }
+    if (net.type !== "devnode") throw new Error(`expected devnode network, got "${net.type}"`);
+    expect(net.privateKey).toBe(fallbackKey);
   });
 
   it("leaves consensusHeights undefined when not set on explicit devnode", async () => {
