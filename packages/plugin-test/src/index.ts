@@ -188,6 +188,7 @@ const pluginTest: LionDenPlugin = {
 
 export default pluginTest;
 
+export { isProvableSdkConsoleNoise, silenceProvableSdkConsoleNoise } from "./sdk-console-filter.js";
 export type { TestCoverageOptions, TestRunnerOptions, TestRunnerResult } from "./test-runner.js";
 // Re-export test runner for programmatic use
 export { runTests } from "./test-runner.js";

@@ -20,6 +20,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
 import { parseBooleanEnv } from "@lionden/config";
 import type { startVitest as startVitestType } from "vitest/node";
+import { silenceProvableSdkConsoleNoise } from "./sdk-console-filter.js";
 
 type VitestStartOptions = NonNullable<Parameters<typeof startVitestType>[2]>;
 
@@ -143,6 +144,7 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
     testTimeout: options.timeout ?? 120_000,
     hookTimeout: options.timeout ?? 120_000,
     fileParallelism: options.parallel === true,
+    onConsoleLog: silenceProvableSdkConsoleNoise,
     ...(coverage ? { coverage } : {}),
     ...(reporters ? { reporters } : {}),
     ...(alias ? { alias } : {}),
