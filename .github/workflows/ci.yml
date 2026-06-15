@@ -158,14 +158,14 @@ jobs:
       - run: npm run build
       - run: npm test
 
-  # Workflow smoke: compile + typecheck + test each core example against the built-in Leo
-  # devnode (leo devnode start). No prove mode, core examples only, serial (one devnode at a
-  # time on 127.0.0.1:3030). Requires a built repo (examples import @lionden/* from dist).
+  # Workflow smoke: compile + typecheck + test each core and aleo-ports example against the
+  # built-in Leo devnode (leo devnode start). No prove mode, serial (one devnode at a time on
+  # 127.0.0.1:3030). Requires a built repo (examples import @lionden/* from dist).
   smoke:
     needs: [detect-changes, build]
     if: needs.detect-changes.outputs.smoke == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       contents: read
       actions: read # setup-leo-action reads the workflow cache

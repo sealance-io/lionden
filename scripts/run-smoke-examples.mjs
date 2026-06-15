@@ -13,6 +13,7 @@ const CORE_EXAMPLES = [
   "async-escrow",
 ];
 
+const ALEO_PORT_TEST_TIMEOUT_MS = 240_000;
 const PROVE_TEST_TIMEOUT_MS = 900_000;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -124,6 +125,7 @@ printRunHeader(coverageContext);
 
 for (const config of configs) {
   const exampleName = dirname(config);
+  const testTimeout = testTimeoutForConfig(config);
   console.log(`\n==> ${exampleName}`);
 
   run("compile", ["--import", "tsx", "packages/cli/src/bin.ts", "--config", config, "compile"]);
@@ -147,7 +149,8 @@ for (const config of configs) {
       config,
       "test",
       ...(coverage ? ["--coverage"] : []),
-      ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
+      ...(prove ? ["--prove"] : []),
+      ...(testTimeout === undefined ? [] : ["--timeout", String(testTimeout)]),
     ],
     coverageContext ? coverageEnv(coverageContext, config) : undefined,
   );
@@ -167,6 +170,12 @@ printTotalRuntime();
 
 function isAleoPortConfig(config) {
   return config.split(/[\\/]/).includes("aleo-ports");
+}
+
+function testTimeoutForConfig(config) {
+  if (prove) return PROVE_TEST_TIMEOUT_MS;
+  if (isAleoPortConfig(config)) return ALEO_PORT_TEST_TIMEOUT_MS;
+  return undefined;
 }
 
 function createCoverageContext(groups) {
@@ -217,6 +226,9 @@ function printRunHeader(context) {
       prove ? ` (test timeout ${formatDuration(PROVE_TEST_TIMEOUT_MS)})` : ""
     }`,
   );
+  if (!prove && configs.some(isAleoPortConfig)) {
+    console.log(`Aleo ports test timeout: ${formatDuration(ALEO_PORT_TEST_TIMEOUT_MS)}`);
+  }
   console.log(`Coverage: ${formatEnabled(coverage)}${context ? ` (lane ${context.lane})` : ""}`);
   console.log(`Configs (${configs.length}):`);
   for (const config of configs) {
