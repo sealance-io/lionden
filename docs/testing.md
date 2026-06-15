@@ -159,6 +159,17 @@ The programmatic Vitest runner currently:
 
 Vitest remains a peer dependency of `@lionden/plugin-test`. Running `npx vitest` directly is still available, but it bypasses LionDen's compile step, testing hooks, and managed devnode lifecycle.
 
+Direct Vitest users can opt in to the same narrow Provable SDK console-noise filter that LionDen applies to managed test runs:
+
+```ts
+import { defineConfig } from "vitest/config";
+import { silenceProvableSdkConsoleNoise } from "@lionden/plugin-test";
+
+export default defineConfig({
+  test: { onConsoleLog: silenceProvableSdkConsoleNoise },
+});
+```
+
 ## Fixtures And Assertions
 
 `@lionden/testing` re-exports helpers for:

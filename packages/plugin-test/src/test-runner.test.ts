@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { silenceProvableSdkConsoleNoise } from "./sdk-console-filter.js";
 
 // Mock vitest/node so runTests can be invoked without starting real Vitest.
 vi.mock("vitest/node", () => ({
@@ -108,6 +109,18 @@ describe("test-runner", () => {
       expect(mockResult.passed).toBe(10);
       expect(mockResult.failed).toBe(0);
       expect(mockResult.skipped).toBe(1);
+    });
+  });
+
+  describe("vitest options", () => {
+    it("installs the Provable SDK console-noise filter", async () => {
+      await runTests({ root: "/tmp/proj" });
+
+      const { startVitest } = await import("vitest/node");
+      const callArgs = (startVitest as ReturnType<typeof vi.fn>).mock.calls[0]!;
+      const vitestConfig = callArgs[2] as Record<string, unknown>;
+
+      expect(vitestConfig.onConsoleLog).toBe(silenceProvableSdkConsoleNoise);
     });
   });
 });

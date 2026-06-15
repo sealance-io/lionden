@@ -208,6 +208,8 @@ sdk: {
 
 `sdk.logLevel` accepts `"silent"`, `"error"`, `"warn"`, `"info"`, or `"debug"` and defaults to `"warn"`. LionDen calls the SDK's `setLogLevel()` only when the installed SDK exposes it; the SDK setting is process-global, so the most recently initialized connection's level is the active one. Projects that need process-local SDK caching only can opt out with `sdk.keyCache.storage = "memory"`.
 
+SDK bump maintenance: when `@provablehq/sdk` or `@provablehq/wasm` changes, re-audit the SDK/WASM console strings filtered by `packages/plugin-test/src/sdk-console-filter.ts` with a real prove run at `sdk.logLevel: "info"`. Also re-check the SDK parameter-host allowlist and devnode method guards in `packages/network/src/sdk-adapter.ts`.
+
 The default filesystem location is `artifacts/.cache/provable-keys/.aleo`. Custom paths are resolved from the project root unless absolute; when the final path segment is not `.aleo`, LionDen treats the effective path as `<path>/.aleo`, matching the SDK `LocalFileKeyStore` convention.
 
 Filesystem key persistence covers LionDen-managed proven execution transition keys and every named entry in the SDK's `CREDITS_PROGRAM_KEYS` map:
