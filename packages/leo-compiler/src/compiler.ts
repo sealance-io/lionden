@@ -240,7 +240,6 @@ export async function compilePipeline(
 
     if (!cached) {
       await runLeoBuild(pkgDir, id, config);
-      writeCache(cacheDir, id, hash);
     }
 
     if (unit.kind === "program") {
@@ -276,6 +275,9 @@ export async function compilePipeline(
         packageDir: pkgDir,
         buildDir,
       } satisfies LibraryCompilationResult);
+    }
+    if (!cached) {
+      writeCache(cacheDir, id, hash);
     }
   }
 
@@ -321,7 +323,14 @@ function readProgramAbi(buildDir: string, id: string): ProgramABI {
   if (!artifacts.abiPath) {
     throw new CompilationError(id, `ABI file not found under ${buildDir}. Did leo build succeed?`);
   }
-  return parseAbi(fs.readFileSync(artifacts.abiPath, "utf-8"));
+  const abi = parseAbi(fs.readFileSync(artifacts.abiPath, "utf-8"));
+  if (abi.program !== id) {
+    throw new CompilationError(
+      id,
+      `Resolved ABI belongs to program "${abi.program}", expected "${id}".`,
+    );
+  }
+  return abi;
 }
 
 function hasRequiredProgramArtifacts(buildDir: string, id: string): boolean {
@@ -419,32 +428,13 @@ function resolveBuildArtifacts(buildDir: string, id: string): ResolvedBuildArtif
 }
 
 function findBuildUnitDir(buildDir: string, id: string): string {
-  // Prefer legacy root output and exact unit directories. Other sibling
-  // directories are a last-resort fallback so unrelated per-unit outputs cannot
-  // win only because their files have a newer mtime.
   const preferred = preferredBuildUnitDirs(buildDir, id);
-  const preferredMatch = newestBuildArtifactMatch(preferred, id);
-  if (preferredMatch) return preferredMatch;
-
-  const fallbackDirs = otherBuildUnitDirs(buildDir, preferred);
-  return newestBuildArtifactMatch(fallbackDirs, id) ?? buildDir;
+  return newestBuildArtifactMatch(preferred, id) ?? buildDir;
 }
 
 function preferredBuildUnitDirs(buildDir: string, id: string): string[] {
   const base = id.endsWith(".aleo") ? id.slice(0, -".aleo".length) : id;
   return uniqueExistingDirs([buildDir, path.join(buildDir, id), path.join(buildDir, base)]);
-}
-
-function otherBuildUnitDirs(buildDir: string, preferred: readonly string[]): string[] {
-  if (!fs.existsSync(buildDir)) return [];
-  const preferredSet = new Set(preferred);
-  const out: string[] = [];
-  for (const entry of fs.readdirSync(buildDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const dir = path.join(buildDir, entry.name);
-    if (!preferredSet.has(dir)) out.push(dir);
-  }
-  return uniqueExistingDirs(out);
 }
 
 function newestBuildArtifactMatch(dirs: readonly string[], id: string): string | undefined {

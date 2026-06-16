@@ -6,7 +6,7 @@ import type { LionDenResolvedConfig } from "@lionden/config";
 import { keyArtifactsMetadataPath, readKeyArtifactsMetadata } from "@lionden/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computeUnitHash } from "./cache.js";
-import { compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
+import { CompilationError, compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
 import { getCachedNetworkDep, linkNetworkDependency } from "./package-materializer.js";
 
 /** Compute the same cache scope key the pipeline uses. */
@@ -574,6 +574,199 @@ describe("compilePipeline network dep handling", () => {
     // imports/ for a local dependency. This asserts the honest behavior:
     // the library's build/ is empty, the dependent still compiles, and its
     // imports/ never receives a library file.
+    const libDir = path.join(programsDir, "utils");
+    fs.mkdirSync(libDir, { recursive: true });
+    fs.writeFileSync(path.join(libDir, "lib.leo"), "fn helper() {}\n");
+    writeProgram(
+      "app",
+      "import utils.aleo;\nprogram app.aleo {\n  fn main() { utils.aleo::helper(); }\n}\n",
+    );
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit"',
+        'if [ "$id" = "utils" ]; then',
+        "  # Inline-fn library: leo emits no .aleo; build/ stays empty.",
+        "  exit 0",
+        "fi",
+        // The dependent compiles regardless of imports/ contents — leo resolves
+        // the library from its program.json `path`, not from a staged file.
+        '  printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$unit/abi.json"',
+        '  printf \'program %s {}\\n\' "$id" > "$unit/$id"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      await compilePipeline(makeConfig());
+
+      // The dependent program compiled even though the library emitted no .aleo.
+      const artifactDir = path.join(artifactsDir, "app.aleo");
+      expect(fs.readFileSync(path.join(artifactDir, "main.aleo"), "utf-8")).toBe(
+        "program app.aleo {}\n",
+      );
+
+      // No library file was staged into the dependent package's imports/.
+      // materializePackage still mkdirs imports/, so it exists but is empty.
+      const appImportsDir = path.join(artifactsDir, ".build", "app.aleo", "imports");
+      expect(fs.existsSync(path.join(appImportsDir, "utils.aleo"))).toBe(false);
+      expect(fs.readdirSync(appImportsDir)).toEqual([]);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("does not fall back to sibling build directories when expected artifacts are missing", async () => {
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'other="$pkg/build/other.aleo"',
+        'mkdir -p "$other"',
+        'printf \'{"program":"other.aleo","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' > "$other/abi.json"',
+        "printf 'program other.aleo {}\\n' > \"$other/other.aleo\"",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      await expect(compilePipeline(makeConfig())).rejects.toThrow(
+        /ABI file not found under .*build/,
+      );
+      expect(fs.existsSync(path.join(artifactsDir, "app.aleo", "abi.json"))).toBe(false);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("does not cache a successful leo build until artifact validation succeeds", async () => {
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const invocationsLog = path.join(tmpDir, "leo-invocations.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        'printf \'%s\\n\' "$id" >> "$LIONDEN_LEO_INVOCATIONS_LOG"',
+        'invocation=$(wc -l < "$LIONDEN_LEO_INVOCATIONS_LOG")',
+        'mkdir -p "$pkg/build"',
+        'printf \'program %s {}\\n\' "$id" > "$pkg/build/main.aleo"',
+        'if [ "$invocation" -gt 1 ]; then',
+        '  printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[{"name":"main","inputs":[],"outputs":[]}]}\\n\' "$id" > "$pkg/build/abi.json"',
+        "fi",
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.LIONDEN_LEO_INVOCATIONS_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+    process.env.LIONDEN_LEO_INVOCATIONS_LOG = invocationsLog;
+
+    try {
+      await expect(compilePipeline(makeConfig())).rejects.toThrow(
+        /ABI file not found under .*build/,
+      );
+
+      const second = await compilePipeline(makeConfig());
+
+      expect(fs.readFileSync(invocationsLog, "utf-8").trim().split("\n")).toEqual([
+        "app.aleo",
+        "app.aleo",
+      ]);
+      expect(second.results[0]?.cached).toBe(false);
+      expect(fs.existsSync(path.join(artifactsDir, "app.aleo", "abi.json"))).toBe(true);
+      expect(fs.existsSync(path.join(artifactsDir, "app.aleo", "main.aleo"))).toBe(true);
+    } finally {
+      process.env.PATH = originalPath;
+      if (originalLog === undefined) {
+        delete process.env.LIONDEN_LEO_INVOCATIONS_LOG;
+      } else {
+        process.env.LIONDEN_LEO_INVOCATIONS_LOG = originalLog;
+      }
+    }
+  });
+
+  it("rejects an ABI from the expected location when it belongs to another program", async () => {
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit"',
+        'printf \'{"program":"other.aleo","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' > "$unit/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$unit/$id"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+
+    try {
+      try {
+        await compilePipeline(makeConfig());
+        expect.unreachable("should have rejected the mismatched ABI");
+      } catch (err) {
+        expect(err).toBeInstanceOf(CompilationError);
+        expect((err as Error).message).toMatch(
+          /Resolved ABI belongs to program "other\.aleo", expected "app\.aleo"/,
+        );
+      }
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("links local dependencies from normalized artifacts", async () => {
     const libDir = path.join(programsDir, "utils");
     fs.mkdirSync(libDir, { recursive: true });
     fs.writeFileSync(path.join(libDir, "lib.leo"), "fn helper() {}\n");
