@@ -1,0 +1,130 @@
+// COMMITTED authored suite. The adapter copies it into
+// generated/native_runtime_edges/test/ (generated projects are gitignored, so
+// authored tests cannot live inside them). Runtime green requires a devnode;
+// the lane runs it via `lionden test` per generated project (sequential, no
+// proving). Typechecked against the generated bindings.
+//
+// Maps the native runtime-edge surface to the generated error hierarchy:
+//   .locally                      — pure compute
+//   .captureLocalFailure          — LocalTransitionError (overflow/underflow/div0/assert)
+//   .failsLocally                 — asserts a local failure (UnexpectedLocalSuccessError otherwise)
+//   .accepted / .rejected         — on-chain finalizer accept/reject
+//   .accepted on a rejecting tx   — OnChainRejectedError
+import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  Leo,
+  LocalTransitionError,
+  OnChainRejectedError,
+  UnexpectedLocalSuccessError,
+  UnexpectedTransactionStatusError,
+} from "../typechain/BaseContract.js";
+import { createNativeRuntimeEdges } from "../typechain/NativeRuntimeEdges.js";
+
+async function deployNre() {
+  const ctx = await setup();
+  try {
+    // Deploying native_runtime_edges deploys its transitive program deps
+    // (credit_left, credit_right) too; credits.aleo is a network dep already on
+    // the devnode.
+    await ctx.deploy("native_runtime_edges", { noCompile: true });
+    return { ctx };
+  } catch (error) {
+    await ctx.teardown();
+    throw error;
+  }
+}
+
+let ctx: TestContext | undefined;
+const nre = createNativeRuntimeEdges();
+
+beforeAll(async () => {
+  const fixture = await loadFixture(deployNre);
+  ctx = fixture.ctx;
+  nre.connect(ctx.lre);
+});
+
+afterAll(async () => {
+  if (ctx) await ctx.teardown();
+  else clearFixtures();
+});
+
+describe("native_runtime_edges — local compute (.locally)", () => {
+  it("checked_add_overflow(1, 2) = 3", async () => {
+    expect(await nre.checked_add_overflow.locally({ left: 1, right: 2 })).toBe(3);
+  });
+
+  it("transition_assert(true) = true", async () => {
+    expect(await nre.transition_assert.locally({ should_pass: true })).toBe(true);
+  });
+});
+
+describe("native_runtime_edges — local failures → LocalTransitionError", () => {
+  it("checked_add_overflow(255, 1) overflows", async () => {
+    const err = await nre.checked_add_overflow.captureLocalFailure({ left: 255, right: 1 });
+    expect(err).toBeInstanceOf(LocalTransitionError);
+    expect(err.kind).toBe("LocalTransitionError");
+  });
+
+  it("checked_sub_underflow(0, 1) underflows", async () => {
+    const err = await nre.checked_sub_underflow.captureLocalFailure({ left: 0, right: 1 });
+    expect(err.kind).toBe("LocalTransitionError");
+  });
+
+  it("checked_division(1, 0) divides by zero", async () => {
+    const err = await nre.checked_division.captureLocalFailure({ numerator: 1n, denominator: 0n });
+    expect(err.kind).toBe("LocalTransitionError");
+  });
+
+  it("transition_assert(false) fails the off-chain assert", async () => {
+    const err = await nre.transition_assert.captureLocalFailure({ should_pass: false });
+    expect(err.kind).toBe("LocalTransitionError");
+  });
+
+  it(".failsLocally resolves for a genuinely failing input", async () => {
+    await expect(
+      nre.checked_add_overflow.failsLocally({ left: 255, right: 1 }),
+    ).resolves.toBeUndefined();
+  });
+
+  it(".failsLocally on a passing input throws UnexpectedLocalSuccessError", async () => {
+    await expect(nre.transition_assert.failsLocally({ should_pass: true })).rejects.toBeInstanceOf(
+      UnexpectedLocalSuccessError,
+    );
+  });
+});
+
+describe("native_runtime_edges — on-chain finalizer accept/reject", () => {
+  it("finalizer_assert(true) is accepted", async () => {
+    const result = await nre.finalizer_assert.accepted({ should_pass: true });
+    expect(result.status).toBe("accepted");
+    expect(result.txId).toBeTruthy();
+  });
+
+  it("finalizer_assert(false) is rejected", async () => {
+    const result = await nre.finalizer_assert.rejected({ should_pass: false });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("calling .accepted on a rejecting finalizer throws OnChainRejectedError", async () => {
+    await expect(nre.finalizer_assert.accepted({ should_pass: false })).rejects.toBeInstanceOf(
+      OnChainRejectedError,
+    );
+  });
+
+  it("calling .rejected on a passing finalizer throws UnexpectedTransactionStatusError", async () => {
+    await expect(nre.finalizer_assert.rejected({ should_pass: true })).rejects.toBeInstanceOf(
+      UnexpectedTransactionStatusError,
+    );
+  });
+
+  it("missing_mapping_get(404field) rejects on a missing key", async () => {
+    const result = await nre.missing_mapping_get.rejected({ key: Leo.field(404) });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("vector_get_at(99) rejects out-of-bounds", async () => {
+    const result = await nre.vector_get_at.rejected({ index: 99 });
+    expect(result.status).toBe("rejected");
+  });
+});

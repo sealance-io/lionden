@@ -1,0 +1,13 @@
+{
+  "name": "leo-samples-gapfiller",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "compile": "lionden compile",
+    "test": "lionden test"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  }
+}
