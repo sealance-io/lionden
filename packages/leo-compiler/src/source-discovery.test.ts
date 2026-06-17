@@ -51,6 +51,33 @@ describe("extractProgramId", () => {
     fs.writeFileSync(file, "fn helper() -> u32 { return 1u32; }\n");
     expect(extractProgramId(file)).toBeNull();
   });
+
+  it("ignores program declarations in line comments", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, "// program fake.aleo {\n");
+    expect(extractProgramId(file)).toBeNull();
+  });
+
+  it("ignores program declarations in block comments", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, "/* program fake.aleo { */\n");
+    expect(extractProgramId(file)).toBeNull();
+  });
+
+  it("ignores program declarations in string literals", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, 'const message: field = "program fake.aleo {";\n');
+    expect(extractProgramId(file)).toBeNull();
+  });
+
+  it("extracts real program declarations after comment and string noise", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(
+      file,
+      '"program fake.aleo {"\n// program also_fake.aleo {\nprogram real.aleo {\n}\n',
+    );
+    expect(extractProgramId(file)).toBe("real.aleo");
+  });
 });
 
 describe("discoverUnits", () => {

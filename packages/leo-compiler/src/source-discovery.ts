@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { stripCommentsAndStrings } from "./source-scrubber.js";
 import type { DiscoveredLibrary, DiscoveredProgram, DiscoveredUnit } from "./types.js";
 
 export class ProgramFolderNameMismatchError extends Error {
@@ -66,7 +67,7 @@ function scanDir(dir: string, units: DiscoveredUnit[]): void {
  * discovery does not break when new interface-reference forms are introduced.
  */
 export function extractProgramId(mainLeoPath: string): string | null {
-  const content = fs.readFileSync(mainLeoPath, "utf-8");
+  const content = stripCommentsAndStrings(fs.readFileSync(mainLeoPath, "utf-8"));
   const match = content.match(/\bprogram\s+([\w]+\.aleo)\s*(?=[:{])/);
   return match ? match[1]! : null;
 }
