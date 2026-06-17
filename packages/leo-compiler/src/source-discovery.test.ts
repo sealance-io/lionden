@@ -102,6 +102,13 @@ describe("discoverUnits", () => {
     );
   });
 
+  it("throws when main.leo has no valid program declaration", () => {
+    writeFile("broken/main.leo", "fn helper() -> u32 { return 1u32; }\n");
+
+    const mainLeo = path.join(tmpDir, "broken", "main.leo");
+    expect(() => discoverUnits(tmpDir)).toThrow(mainLeo);
+  });
+
   it("discovers a library", () => {
     writeFile("math_utils/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
 

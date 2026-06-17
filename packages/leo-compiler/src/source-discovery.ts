@@ -48,8 +48,7 @@ function scanDir(dir: string, units: DiscoveredUnit[]): void {
 
     if (fs.existsSync(mainLeo)) {
       // Program root — collect sources but don't recurse for more roots
-      const program = discoverProgram(dirPath, mainLeo);
-      if (program) units.push(program);
+      units.push(discoverProgram(dirPath, mainLeo));
     } else if (fs.existsSync(libLeo)) {
       // Library root — collect sources but don't recurse for more roots
       units.push(discoverLibrary(dirPath, libLeo, entry.name));
@@ -72,9 +71,13 @@ export function extractProgramId(mainLeoPath: string): string | null {
   return match ? match[1]! : null;
 }
 
-function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgram | null {
+function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgram {
   const programId = extractProgramId(entryFile);
-  if (!programId) return null;
+  if (!programId) {
+    throw new Error(
+      `Invalid Leo program root: ${entryFile} is missing a program <name>.aleo declaration.`,
+    );
+  }
   validateProgramFolderName(sourceDir, programId);
 
   return {
