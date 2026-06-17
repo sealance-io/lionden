@@ -66,7 +66,7 @@ jobs:
             echo "Docs-only change"
           fi
 
-          if echo "$CHANGED" | grep -qE '^(packages/|examples/|scripts/|vitest\.config\.ts$|tsconfig.*\.json$|package\.json$|package-lock\.json$|\.nvmrc$)'; then
+          if echo "$CHANGED" | grep -qE '^(packages/|examples/|scripts/|test/fixtures/leo-samples/|\.gitmodules$|vitest\.config\.ts$|tsconfig.*\.json$|package\.json$|package-lock\.json$|\.nvmrc$)'; then
             echo "smoke=true" >> "$GITHUB_OUTPUT"
           else
             echo "smoke=false" >> "$GITHUB_OUTPUT"
@@ -193,11 +193,46 @@ jobs:
         run: mkdir -p "$HOME/.aleo"
       - run: npm run test:smoke # core examples, no --prove
 
+  # Adapted leo-samples lane: compile + codegen + generated-binding + runtime-error
+  # coverage on a no-proving devnode. Needs the .upstream submodule. :prove runs
+  # nightly (.github/workflows/leo-samples-nightly.yml), never here.
+  leo-samples:
+    needs: [detect-changes, build]
+    if: needs.detect-changes.outputs.smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read # setup-leo-action reads the workflow cache
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: recursive # test/fixtures/leo-samples/.upstream
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Set up Leo CLI
+        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
+        with:
+          version: "4.1.0" # must match the lane's leoVersion
+          rust-version: "1.96.0" # Leo v4.1.0 minimum toolchain
+          enable-cache: true
+          cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
+          run-audit: true
+          audit-deny-warnings: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run build
+      - name: Prepare Leo home directory
+        run: mkdir -p "$HOME/.aleo"
+      - run: npm run test:smoke:leo-samples # adapted leo-samples lane, no --prove
+
   # Rollup sentinel: a single stable required check for the branch ruleset.
   # Configure the ruleset to require "CI Status" — never the individual jobs (they may skip).
   ci-status:
     name: CI Status
-    needs: [detect-changes, dependency-review, lint-format, build, test, smoke]
+    needs: [detect-changes, dependency-review, lint-format, build, test, smoke, leo-samples]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -217,6 +252,7 @@ jobs:
           echo "build:             $BUILD"
           echo "test:              $TEST"
           echo "smoke:             $SMOKE_RESULT"
+          echo "leo-samples:       $LEO_SAMPLES_RESULT"
           echo "::endgroup::"
 
           # If change detection didn't succeed, its outputs are empty — fail closed rather than
@@ -259,6 +295,12 @@ jobs:
             exit 1
           fi
 
+          # leo-samples: skipped is OK (same gate as smoke); failure/cancelled is not.
+          if [[ "$LEO_SAMPLES_RESULT" == "failure" || "$LEO_SAMPLES_RESULT" == "cancelled" ]]; then
+            echo "::error::leo-samples lane failed"
+            exit 1
+          fi
+
           echo "::notice::All required checks passed"
         env:
           DETECT: ${{ needs.detect-changes.result }}
@@ -269,3 +311,4 @@ jobs:
           BUILD: ${{ needs.build.result }}
           TEST: ${{ needs.test.result }}
           SMOKE_RESULT: ${{ needs.smoke.result }}
+          LEO_SAMPLES_RESULT: ${{ needs.leo-samples.result }}

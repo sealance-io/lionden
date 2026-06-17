@@ -1,0 +1,45 @@
+name: leo-samples nightly (prove)
+
+# The leo-samples lane with real proving on. Too slow for PR CI (proving keys),
+# so it runs nightly and on demand. The no-proving lane runs in ci.yml.
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC daily
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  leo-samples-prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read # setup-leo-action reads the workflow cache
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          submodules: recursive # test/fixtures/leo-samples/.upstream
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Set up Leo CLI
+        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
+        with:
+          version: "4.1.0"
+          rust-version: "1.96.0"
+          enable-cache: true
+          cache-save: never
+          run-audit: true
+          audit-deny-warnings: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run build
+      - name: Prepare Leo home directory
+        run: mkdir -p "$HOME/.aleo"
+      - run: npm run test:smoke:leo-samples:prove
