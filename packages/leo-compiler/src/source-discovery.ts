@@ -85,6 +85,13 @@ function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgra
   };
 }
 
+// Validation runs here, during discovery, so it is intentionally global: every
+// program root under `programsDir` is checked before any `--program` filter or
+// dependency-graph pruning is applied (see compilePipeline). A single misnamed
+// folder therefore fails compile/deploy/upgrade for the whole tree, not just the
+// targeted unit. That fail-fast scope is deliberate — a folder/declaration
+// mismatch is a layout error the user should fix regardless of which program is
+// being built.
 function validateProgramFolderName(sourceDir: string, programId: string): void {
   const actualDirName = path.basename(sourceDir);
   const expectedDirName = programId.replace(/\.aleo$/, "");

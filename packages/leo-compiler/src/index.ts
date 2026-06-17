@@ -62,7 +62,11 @@ export {
   materializePackage,
 } from "./package-materializer.js";
 // Source discovery
-export { discoverUnits, extractProgramId } from "./source-discovery.js";
+export {
+  discoverUnits,
+  extractProgramId,
+  ProgramFolderNameMismatchError,
+} from "./source-discovery.js";
 export type {
   CompilationResult,
   CompilationUnitResult,
