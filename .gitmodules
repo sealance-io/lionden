@@ -1,0 +1,4 @@
+[submodule "test/fixtures/leo-samples/.upstream"]
+	path = test/fixtures/leo-samples/.upstream
+	url = https://github.com/sealance-io/leo-samples.git
+	branch = main
