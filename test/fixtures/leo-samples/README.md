@@ -145,6 +145,16 @@ npm exec -- vitest run --config test/fixtures/leo-samples/vitest.config.ts
 ```
 
 The adapter unit test runs in the normal unit lane (`npm run test:unit`). The
-full lane (adapt → in-process compile/codegen → per-project on-chain suites,
-sequential, no proving) is driven by `scripts/run-leo-samples.mjs` (see the
-`test:smoke:leo-samples` npm scripts).
+full lane is driven by `scripts/run-leo-samples.mjs` (see the
+`test:smoke:leo-samples` npm scripts) and runs, in order:
+
+1. regenerate `generated/**` from the pinned submodule,
+2. run the in-process 0f proof + compile/codegen suites,
+3. typecheck every generated project that has an on-chain suite with
+   `tsc --noEmit -p <project>/tsconfig.json`,
+4. run the per-project on-chain suites sequentially, no proving by default.
+
+Use `--no-onchain` for the no-devnode path that still regenerates, compiles,
+and typechecks. Use `--no-typecheck` only for local debugging when a generated
+binding typecheck is not relevant. Use `--coverage` to merge per-project Vitest
+coverage blobs, and `--prove` for the slow proving lane.
