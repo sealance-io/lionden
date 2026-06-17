@@ -803,6 +803,74 @@ describe("compilePipeline network dep handling", () => {
     }
   });
 
+  it("does not cache a build whose artifacts are present but fail ABI validation", async () => {
+    // Regression guard for the writeCache placement: writeCache must run AFTER
+    // ABI validation + artifact copy, not right after `leo build`. Here the build
+    // emits a COMPLETE artifact set (abi.json + .aleo) every time — so the cache's
+    // hasRequiredProgramArtifacts revalidation is satisfied — but the first build's
+    // ABI belongs to the wrong program and fails validation. If the failed build
+    // were cached, the rerun would short-circuit (cached=true) and keep surfacing
+    // the stale wrong ABI without ever rebuilding. The second build emits the
+    // correct ABI, so a correct (uncached) pipeline must re-invoke leo and succeed.
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const invocationsLog = path.join(tmpDir, "leo-invocations.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        'printf \'%s\\n\' "$id" >> "$LIONDEN_LEO_INVOCATIONS_LOG"',
+        'invocation=$(wc -l < "$LIONDEN_LEO_INVOCATIONS_LOG")',
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit"',
+        'printf \'program %s {}\\n\' "$id" > "$unit/$id"',
+        // First build emits an ABI for the wrong program; later builds emit the
+        // correct one. Both builds leave a full artifact set on disk.
+        'if [ "$invocation" -gt 1 ]; then prog="$id"; else prog="other.aleo"; fi',
+        '  printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$prog" > "$unit/abi.json"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.LIONDEN_LEO_INVOCATIONS_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+    process.env.LIONDEN_LEO_INVOCATIONS_LOG = invocationsLog;
+
+    try {
+      await expect(compilePipeline(makeConfig())).rejects.toThrow(
+        /Resolved ABI belongs to program "other\.aleo", expected "app\.aleo"/,
+      );
+
+      const second = await compilePipeline(makeConfig());
+
+      // The failed first build was not cached, so the rerun rebuilt (two
+      // invocations) and produced the corrected ABI rather than reusing the
+      // stale one.
+      expect(readLogLines(invocationsLog)).toEqual(["app.aleo", "app.aleo"]);
+      expect(second.results[0]?.cached).toBe(false);
+      const abiPath = path.join(artifactsDir, "app.aleo", "abi.json");
+      expect(fs.existsSync(abiPath)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(abiPath, "utf-8")).program).toBe("app.aleo");
+    } finally {
+      process.env.PATH = originalPath;
+      if (originalLog === undefined) {
+        delete process.env.LIONDEN_LEO_INVOCATIONS_LOG;
+      } else {
+        process.env.LIONDEN_LEO_INVOCATIONS_LOG = originalLog;
+      }
+    }
+  });
+
   it("links local dependencies from normalized artifacts", async () => {
     const libDir = path.join(programsDir, "utils");
     fs.mkdirSync(libDir, { recursive: true });
