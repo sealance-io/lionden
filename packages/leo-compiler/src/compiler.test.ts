@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computeUnitHash } from "./cache.js";
 import { CompilationError, compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
 import { getCachedNetworkDep, linkNetworkDependency } from "./package-materializer.js";
+import { ProgramFolderNameMismatchError } from "./source-discovery.js";
 
 /** Compute the same cache scope key the pipeline uses. */
 function cacheScope(network: string, endpoint: string): string {
@@ -365,6 +366,42 @@ describe("compilePipeline network dep handling", () => {
       ? fs.readFileSync(logPath, "utf-8").trim().split("\n").filter(Boolean)
       : [];
   }
+
+  it("validates all program folders before applying a program filter", async () => {
+    writeProgram("good", "program good.aleo {\n  fn main() {}\n}\n");
+    writeProgram("bad_folder", "program bad_decl.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const leoPath = path.join(binDir, "leo");
+    const sentinelPath = path.join(tmpDir, "leo-invoked");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      leoPath,
+      ["#!/bin/sh", 'printf invoked > "$LIONDEN_LEO_SENTINEL"'].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalSentinel = process.env.LIONDEN_LEO_SENTINEL;
+    process.env.LIONDEN_LEO_SENTINEL = sentinelPath;
+
+    try {
+      await compilePipeline(makeConfig({ leoBinary: leoPath }), {
+        program: "good",
+        noTypechain: true,
+      });
+      expect.unreachable("program-folder validation should fail before invoking Leo");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProgramFolderNameMismatchError);
+      expect((err as Error).message).toMatch(/bad_folder.*bad_decl\.aleo/s);
+      expect(fs.existsSync(sentinelPath)).toBe(false);
+    } finally {
+      if (originalSentinel === undefined) {
+        delete process.env.LIONDEN_LEO_SENTINEL;
+      } else {
+        process.env.LIONDEN_LEO_SENTINEL = originalSentinel;
+      }
+    }
+  });
 
   it("passes --disable-update-check before build", async () => {
     writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
