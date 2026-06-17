@@ -9,6 +9,21 @@ export class CircularDependencyError extends Error {
   }
 }
 
+export class UnitNameCollisionError extends Error {
+  constructor(
+    public readonly key: string,
+    public readonly firstUnit: DiscoveredUnit,
+    public readonly secondUnit: DiscoveredUnit,
+  ) {
+    super(
+      `Local unit name collision for "${key}": ${formatUnit(firstUnit)} conflicts with ${formatUnit(
+        secondUnit,
+      )}. Local unit names and program IDs must be unique.`,
+    );
+    this.name = "UnitNameCollisionError";
+  }
+}
+
 export interface DependencyGraph {
   /** Units in topological compile order (dependencies before dependents) */
   readonly order: DiscoveredUnit[];
@@ -26,6 +41,8 @@ export interface DependencyGraph {
  * All other imports (e.g. credits.aleo) are classified as network deps.
  */
 export function resolveDependencies(units: DiscoveredUnit[]): DependencyGraph {
+  validateUniqueLookupKeys(units);
+
   // Build lookup by all possible IDs a unit can be referenced as
   const unitById = new Map<string, DiscoveredUnit>();
   for (const unit of units) {
@@ -99,4 +116,31 @@ export function resolveDependencies(units: DiscoveredUnit[]): DependencyGraph {
   }
 
   return { order, imports: importsMap, networkDeps };
+}
+
+function validateUniqueLookupKeys(units: DiscoveredUnit[]): void {
+  const claimedBy = new Map<string, DiscoveredUnit>();
+
+  for (const unit of units) {
+    for (const key of lookupKeys(unit)) {
+      const existing = claimedBy.get(key);
+      if (existing && existing !== unit) {
+        throw new UnitNameCollisionError(key, existing, unit);
+      }
+      claimedBy.set(key, unit);
+    }
+  }
+}
+
+function lookupKeys(unit: DiscoveredUnit): string[] {
+  const keys = [unitId(unit)];
+  if (unit.kind === "library") {
+    keys.push(`${unit.name}.aleo`);
+  }
+  return keys;
+}
+
+function formatUnit(unit: DiscoveredUnit): string {
+  const label = unit.kind === "program" ? `program ${unit.programId}` : `library ${unit.name}`;
+  return `${label} at ${unit.entryFile}`;
 }

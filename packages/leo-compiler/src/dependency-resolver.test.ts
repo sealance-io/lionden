@@ -3,7 +3,11 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CircularDependencyError, resolveDependencies } from "./dependency-resolver.js";
+import {
+  CircularDependencyError,
+  resolveDependencies,
+  UnitNameCollisionError,
+} from "./dependency-resolver.js";
 import { discoverUnits } from "./source-discovery.js";
 import { unitId } from "./types.js";
 
@@ -90,6 +94,42 @@ program b.aleo { fn y() { a.aleo::x(); } }
 
     const units = discoverUnits(tmpDir);
     expect(() => resolveDependencies(units)).toThrow(CircularDependencyError);
+  });
+
+  it("rejects duplicate program IDs", () => {
+    writeFile("first/main.leo", "program token.aleo { fn main() {} }\n");
+    writeFile("second/main.leo", "program token.aleo { fn main() {} }\n");
+
+    const units = discoverUnits(tmpDir);
+    expect(() => resolveDependencies(units)).toThrow(UnitNameCollisionError);
+    expect(() => resolveDependencies(units)).toThrow(/token\.aleo/);
+    expect(() => resolveDependencies(units)).toThrow(
+      /Local unit names and program IDs must be unique/,
+    );
+  });
+
+  it("rejects duplicate library names", () => {
+    writeFile("first/math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
+    writeFile("second/math/lib.leo", "fn sub(a: u32, b: u32) -> u32 { return a - b; }\n");
+
+    const units = discoverUnits(tmpDir);
+    expect(() => resolveDependencies(units)).toThrow(UnitNameCollisionError);
+    expect(() => resolveDependencies(units)).toThrow(/math/);
+    expect(() => resolveDependencies(units)).toThrow(
+      /Local unit names and program IDs must be unique/,
+    );
+  });
+
+  it("rejects program IDs that collide with library import aliases", () => {
+    writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
+    writeFile("program/main.leo", "program math.aleo { fn main() {} }\n");
+
+    const units = discoverUnits(tmpDir);
+    expect(() => resolveDependencies(units)).toThrow(UnitNameCollisionError);
+    expect(() => resolveDependencies(units)).toThrow(/math\.aleo/);
+    expect(() => resolveDependencies(units)).toThrow(
+      /Local unit names and program IDs must be unique/,
+    );
   });
 
   it("does not treat a self-reference in a comment as a circular dependency", () => {
