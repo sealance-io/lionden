@@ -1,0 +1,6 @@
+# Adapted lionden projects are regenerated idempotently from the .upstream
+# submodule by the adapter (adapter/adapt.ts). Nothing here is hand-authored;
+# do not commit generated output. Authored test suites live in ../suites and
+# are copied in by the adapter.
+*
+!.gitignore
