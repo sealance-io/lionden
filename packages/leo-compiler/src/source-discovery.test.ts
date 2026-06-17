@@ -2,7 +2,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { discoverUnits, extractProgramId } from "./source-discovery.js";
+import {
+  discoverUnits,
+  extractProgramId,
+  ProgramFolderNameMismatchError,
+} from "./source-discovery.js";
 
 let tmpDir: string;
 
@@ -60,6 +64,15 @@ describe("discoverUnits", () => {
       expect(units[0]!.programId).toBe("hello.aleo");
       expect(units[0]!.allSources).toEqual(["main.leo"]);
     }
+  });
+
+  it("throws when a program folder name does not match the declared program name", () => {
+    writeFile("foo/main.leo", "program bar.aleo {\n  fn main() {}\n}\n");
+
+    expect(() => discoverUnits(tmpDir)).toThrow(ProgramFolderNameMismatchError);
+    expect(() => discoverUnits(tmpDir)).toThrow(
+      /folder "foo" declares program "bar\.aleo".*folder names must match.*Rename the folder to "bar".*change the "program \.\.\.".*program foo\.aleo/s,
+    );
   });
 
   it("discovers a library", () => {

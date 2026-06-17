@@ -36,6 +36,8 @@ This is the core reason LionDen materializes temporary Leo packages instead of a
 Current discovery rules:
 
 - a directory containing `main.leo` is a program root
+- the program root directory name must match the declared `program <name>.aleo`
+  name in `main.leo`; mismatches fail source discovery early
 - a directory containing `lib.leo` is a library root
 - once a root is found, its subtree is collected as source files and not scanned for nested roots
 - program IDs are extracted from `program <name>.aleo { ... }` in `main.leo`

@@ -2,6 +2,20 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { DiscoveredLibrary, DiscoveredProgram, DiscoveredUnit } from "./types.js";
 
+export class ProgramFolderNameMismatchError extends Error {
+  constructor(sourceDir: string, programId: string) {
+    const actualDirName = path.basename(sourceDir);
+    const expectedDirName = programId.replace(/\.aleo$/, "");
+    super(
+      `Leo program folder name mismatch: folder "${actualDirName}" declares program "${programId}". ` +
+        `Program folder names must match the declared program name. ` +
+        `Rename the folder to "${expectedDirName}" or change the "program ..."` +
+        ` declaration in main.leo to "program ${actualDirName}.aleo".`,
+    );
+    this.name = "ProgramFolderNameMismatchError";
+  }
+}
+
 /**
  * Recursively scan `programsDir` for Leo program roots (main.leo) and
  * library roots (lib.leo) at any depth. Returns all discovered compilation units.
@@ -60,6 +74,7 @@ export function extractProgramId(mainLeoPath: string): string | null {
 function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgram | null {
   const programId = extractProgramId(entryFile);
   if (!programId) return null;
+  validateProgramFolderName(sourceDir, programId);
 
   return {
     kind: "program",
@@ -68,6 +83,14 @@ function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgra
     entryFile,
     allSources: collectLeoFiles(sourceDir),
   };
+}
+
+function validateProgramFolderName(sourceDir: string, programId: string): void {
+  const actualDirName = path.basename(sourceDir);
+  const expectedDirName = programId.replace(/\.aleo$/, "");
+  if (actualDirName !== expectedDirName) {
+    throw new ProgramFolderNameMismatchError(sourceDir, programId);
+  }
 }
 
 function discoverLibrary(sourceDir: string, entryFile: string, dirName: string): DiscoveredLibrary {
