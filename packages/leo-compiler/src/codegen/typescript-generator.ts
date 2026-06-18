@@ -81,6 +81,7 @@ export function generateBindings(
   const lines: string[] = [];
   const className = resolveContractClassName(abi);
   const ctx = createGenerationContext(abi, allAbis);
+  assertCodegenSupportedTypes(abi);
   assertNoExecutableConstParameters(abi);
 
   const helpers = (options.dynamicRecords ?? []).filter(
@@ -171,6 +172,139 @@ function assertNoExecutableConstParameters(abi: ProgramABI): void {
       );
     }
   }
+}
+
+function assertCodegenSupportedTypes(abi: ProgramABI): void {
+  // Keep this allowlist in sync with the primitive branches that actually emit
+  // bindings and serializer/parser calls below. The validation pass exists so
+  // those lower-level helpers never fall through to unsafe generic codegen.
+  const visitPrimitive = (prim: PrimitiveType, abiPath: string): void => {
+    if (typeof prim === "string") {
+      switch (prim) {
+        case "Address":
+        case "Boolean":
+        case "Field":
+        case "Group":
+        case "Identifier":
+        case "Scalar":
+          return;
+        default:
+          throwUnsupportedPrimitive(abi.program, abiPath, prim);
+      }
+    }
+
+    if (typeof prim === "object" && prim !== null) {
+      if ("UInt" in prim) {
+        switch (prim.UInt) {
+          case "U8":
+          case "U16":
+          case "U32":
+          case "U64":
+          case "U128":
+            return;
+          default:
+            throwUnsupportedPrimitive(abi.program, abiPath, `UInt(${String(prim.UInt)})`);
+        }
+      }
+      if ("Int" in prim) {
+        switch (prim.Int) {
+          case "I8":
+          case "I16":
+          case "I32":
+          case "I64":
+          case "I128":
+            return;
+          default:
+            throwUnsupportedPrimitive(abi.program, abiPath, `Int(${String(prim.Int)})`);
+        }
+      }
+    }
+
+    throwUnsupportedPrimitive(abi.program, abiPath, JSON.stringify(prim)!);
+  };
+
+  const visitPlaintext = (ty: PlaintextType, abiPath: string): void => {
+    if ("Primitive" in ty) {
+      visitPrimitive(ty.Primitive, `${abiPath}.Primitive`);
+      return;
+    }
+    // Struct references are validated at their declaration site in the owning
+    // program's generateBindings() call; unresolved external refs intentionally
+    // remain dynamic/plaintext fallback surfaces.
+    if ("Struct" in ty) return;
+    if ("Array" in ty) {
+      visitPlaintext(ty.Array[0], `${abiPath}.Array[0]`);
+      return;
+    }
+    if ("Optional" in ty) {
+      visitPlaintext(ty.Optional, `${abiPath}.Optional`);
+    }
+  };
+
+  const visitAleo = (ty: AleoType, abiPath: string): void => {
+    if (ty === "DynamicRecord") return;
+    if ("Plaintext" in ty) {
+      visitPlaintext(ty.Plaintext, `${abiPath}.Plaintext`);
+      return;
+    }
+    // Record references follow the same declaration-site validation contract
+    // as struct references.
+    if ("Record" in ty) return;
+    if ("Future" in ty) return;
+  };
+
+  const visitStorage = (ty: StorageType, abiPath: string): void => {
+    if ("Plaintext" in ty) {
+      visitPlaintext(ty.Plaintext, `${abiPath}.Plaintext`);
+      return;
+    }
+    if ("Vector" in ty) {
+      visitStorage(ty.Vector, `${abiPath}.Vector`);
+    }
+  };
+
+  abi.structs.forEach((struct, structIndex) => {
+    struct.fields.forEach((field, fieldIndex) => {
+      visitPlaintext(field.ty, `structs[${structIndex}].fields[${fieldIndex}].ty`);
+    });
+  });
+
+  abi.records.forEach((record, recordIndex) => {
+    record.fields.forEach((field, fieldIndex) => {
+      visitPlaintext(field.ty, `records[${recordIndex}].fields[${fieldIndex}].ty`);
+    });
+  });
+
+  abi.mappings.forEach((mapping, mappingIndex) => {
+    visitPlaintext(mapping.key, `mappings[${mappingIndex}].key`);
+    visitPlaintext(mapping.value, `mappings[${mappingIndex}].value`);
+  });
+
+  abi.storage_variables.forEach((variable, variableIndex) => {
+    visitStorage(variable.ty, `storage_variables[${variableIndex}].ty`);
+  });
+
+  abi.transitions.forEach((transition, transitionIndex) => {
+    transition.inputs.forEach((input, inputIndex) => {
+      visitAleo(input.ty, `transitions[${transitionIndex}].inputs[${inputIndex}].ty`);
+    });
+    transition.outputs.forEach((output, outputIndex) => {
+      visitAleo(output.ty, `transitions[${transitionIndex}].outputs[${outputIndex}].ty`);
+    });
+  });
+}
+
+function throwUnsupportedPrimitive(programId: string, abiPath: string, primitive: string): never {
+  throw new CodegenError(
+    `Code generation for program ${programId} is unsupported at ABI path ${abiPath}: ` +
+      `Primitive::${primitive} is not supported by generated bindings yet.`,
+    {
+      programId,
+      abiPath,
+      primitive,
+      phase: "generate",
+    },
+  );
 }
 
 /**

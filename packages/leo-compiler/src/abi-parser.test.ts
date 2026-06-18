@@ -812,7 +812,7 @@ describe("parseAbi — storage variable normalization", () => {
 // ---------------------------------------------------------------------------
 
 describe("parseAbi — all primitive types", () => {
-  const primitives = ["Address", "Boolean", "Field", "Group", "Identifier", "Scalar"];
+  const primitives = ["Address", "Boolean", "Field", "Group", "Identifier", "Scalar", "Signature"];
 
   for (const prim of primitives) {
     it(`parses ${prim} primitive`, () => {
