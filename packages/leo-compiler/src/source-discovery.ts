@@ -19,9 +19,7 @@ export class ProgramFolderNameMismatchError extends Error {
 
 export class MissingProgramDeclarationError extends Error {
   constructor(entryFile: string) {
-    super(
-      `Invalid Leo program root: ${entryFile} is missing a program <name>.aleo declaration.`,
-    );
+    super(`Invalid Leo program root: ${entryFile} is missing a program <name>.aleo declaration.`);
     this.name = "MissingProgramDeclarationError";
   }
 }
