@@ -97,8 +97,8 @@ program b.aleo { fn y() { a.aleo::x(); } }
   });
 
   it("rejects duplicate program IDs", () => {
-    writeFile("first/main.leo", "program token.aleo { fn main() {} }\n");
-    writeFile("second/main.leo", "program token.aleo { fn main() {} }\n");
+    writeFile("first/token/main.leo", "program token.aleo { fn main() {} }\n");
+    writeFile("second/token/main.leo", "program token.aleo { fn main() {} }\n");
 
     const units = discoverUnits(tmpDir);
     expect(() => resolveDependencies(units)).toThrow(UnitNameCollisionError);
@@ -122,7 +122,7 @@ program b.aleo { fn y() { a.aleo::x(); } }
 
   it("rejects program IDs that collide with library import aliases", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
-    writeFile("program/main.leo", "program math.aleo { fn main() {} }\n");
+    writeFile("program/math/main.leo", "program math.aleo { fn main() {} }\n");
 
     const units = discoverUnits(tmpDir);
     expect(() => resolveDependencies(units)).toThrow(UnitNameCollisionError);
