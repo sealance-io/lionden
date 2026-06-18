@@ -565,7 +565,7 @@ LionDen's TypeScript types (`packages/leo-compiler/src/abi-types.ts`) preserve m
 | `StorageType::Plaintext \| Vector` | `StorageType` | Preserved — `{ Plaintext } \| { Vector }` |
 | `{ Array: { element, length } }` | `{ Array: [PlaintextType, number] }` | Object → tuple normalization |
 | `Mode::Constant` | — | Not in `Mode` union |
-| `Primitive::Signature` | — | Not in `PrimitiveType` |
+| `Primitive::Signature` | `"Signature"` | Preserved by the parser; rejected by codegen with `CodegenError` (no serializer/parser support yet) |
 
 Relevant source files:
 
