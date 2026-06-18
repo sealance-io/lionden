@@ -24,6 +24,28 @@ export class UnitNameCollisionError extends Error {
   }
 }
 
+/**
+ * On-chain program ids that a local unit may never claim. `credits.aleo` is
+ * Aleo's one universal builtin: it must always resolve to the network, never a
+ * local unit. Any other on-chain import is user-supplied and is legitimately
+ * resolved as a network dependency, so it is not reserved here.
+ */
+const RESERVED_BUILTIN_IDS = new Set<string>(["credits.aleo"]);
+
+export class ReservedUnitNameError extends Error {
+  constructor(
+    public readonly reservedId: string,
+    public readonly unit: DiscoveredUnit,
+  ) {
+    super(
+      `Local unit ${formatUnit(unit)} claims the reserved on-chain builtin id "${reservedId}". ` +
+        `"${reservedId}" must resolve to the network, so a local unit may not shadow it. ` +
+        `Rename the local unit so its name (and any ".aleo" alias) does not collide with "${reservedId}".`,
+    );
+    this.name = "ReservedUnitNameError";
+  }
+}
+
 export interface DependencyGraph {
   /** Units in topological compile order (dependencies before dependents) */
   readonly order: DiscoveredUnit[];
@@ -123,6 +145,9 @@ function validateUniqueLookupKeys(units: DiscoveredUnit[]): void {
 
   for (const unit of units) {
     for (const key of lookupKeys(unit)) {
+      if (RESERVED_BUILTIN_IDS.has(key)) {
+        throw new ReservedUnitNameError(key, unit);
+      }
       const existing = claimedBy.get(key);
       if (existing && existing !== unit) {
         throw new UnitNameCollisionError(key, existing, unit);

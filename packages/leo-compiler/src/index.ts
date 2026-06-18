@@ -51,6 +51,7 @@ export {
 export {
   CircularDependencyError,
   type DependencyGraph,
+  ReservedUnitNameError,
   resolveDependencies,
   UnitNameCollisionError,
 } from "./dependency-resolver.js";
