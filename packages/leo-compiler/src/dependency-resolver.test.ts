@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CircularDependencyError,
+  ReservedUnitNameError,
   resolveDependencies,
   UnitNameCollisionError,
 } from "./dependency-resolver.js";
@@ -130,6 +131,39 @@ program b.aleo { fn y() { a.aleo::x(); } }
     expect(() => resolveDependencies(units)).toThrow(
       /Local unit names and program IDs must be unique/,
     );
+  });
+
+  it("rejects a local library that shadows the credits.aleo builtin", () => {
+    // A library named "credits" claims the "credits.aleo" lookup alias, which
+    // would silently resolve `import credits.aleo;` to the local unit and drop
+    // the on-chain builtin from networkDeps. That shadowing must be rejected.
+    writeFile("credits/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
+    writeFile(
+      "app/main.leo",
+      `
+import credits.aleo;
+program app.aleo { fn main() { credits.aleo::transfer_public(1u64); } }
+`,
+    );
+
+    const units = discoverUnits(tmpDir);
+    expect(() => resolveDependencies(units)).toThrow(ReservedUnitNameError);
+    expect(() => resolveDependencies(units)).toThrow(/credits\.aleo/);
+  });
+
+  it("rejects a local program that shadows the credits.aleo builtin", () => {
+    writeFile("credits/main.leo", "program credits.aleo { fn main() {} }\n");
+    writeFile(
+      "app/main.leo",
+      `
+import credits.aleo;
+program app.aleo { fn main() { credits.aleo::transfer_public(1u64); } }
+`,
+    );
+
+    const units = discoverUnits(tmpDir);
+    expect(() => resolveDependencies(units)).toThrow(ReservedUnitNameError);
+    expect(() => resolveDependencies(units)).toThrow(/credits\.aleo/);
   });
 
   it("does not treat a self-reference in a comment as a circular dependency", () => {
