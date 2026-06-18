@@ -17,6 +17,15 @@ export class ProgramFolderNameMismatchError extends Error {
   }
 }
 
+export class MissingProgramDeclarationError extends Error {
+  constructor(entryFile: string) {
+    super(
+      `Invalid Leo program root: ${entryFile} is missing a program <name>.aleo declaration.`,
+    );
+    this.name = "MissingProgramDeclarationError";
+  }
+}
+
 /**
  * Recursively scan `programsDir` for Leo program roots (main.leo) and
  * library roots (lib.leo) at any depth. Returns all discovered compilation units.
@@ -73,10 +82,14 @@ export function extractProgramId(mainLeoPath: string): string | null {
 
 function discoverProgram(sourceDir: string, entryFile: string): DiscoveredProgram {
   const programId = extractProgramId(entryFile);
+  // A directory containing main.leo but no parseable `program <name>.aleo`
+  // declaration is a layout error, not a unit to skip. Like the folder-name
+  // check below, this fails fast at global discovery scope (see comment on
+  // validateProgramFolderName): one broken root aborts compile/deploy/upgrade
+  // for the whole tree rather than silently dropping the program and surfacing
+  // a confusing "program not found" downstream.
   if (!programId) {
-    throw new Error(
-      `Invalid Leo program root: ${entryFile} is missing a program <name>.aleo declaration.`,
-    );
+    throw new MissingProgramDeclarationError(entryFile);
   }
   validateProgramFolderName(sourceDir, programId);
 

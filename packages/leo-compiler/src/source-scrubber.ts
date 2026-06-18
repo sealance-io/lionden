@@ -12,6 +12,11 @@
  * newlines in practice (only addresses, identifiers, and mapping refs), so no
  * escape handling is needed. An unterminated string or block comment is
  * scrubbed to end-of-input defensively rather than throwing.
+ *
+ * The `'...'` branch is defensive: Leo has no single-quoted string or character
+ * literals, so a lone `'` only ever appears inside a comment (already
+ * neutralized above) — treating it as a string delimiter is harmless for both
+ * import detection and program-id extraction.
  */
 export function stripCommentsAndStrings(src: string): string {
   const out: string[] = [];

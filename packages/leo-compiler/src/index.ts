@@ -67,6 +67,7 @@ export {
 export {
   discoverUnits,
   extractProgramId,
+  MissingProgramDeclarationError,
   ProgramFolderNameMismatchError,
 } from "./source-discovery.js";
 export type {
