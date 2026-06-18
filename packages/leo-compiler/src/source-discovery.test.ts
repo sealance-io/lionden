@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   discoverUnits,
   extractProgramId,
+  MissingProgramDeclarationError,
   ProgramFolderNameMismatchError,
 } from "./source-discovery.js";
 
@@ -65,6 +66,9 @@ describe("extractProgramId", () => {
   });
 
   it("ignores program declarations in string literals", () => {
+    // Fixture exercises the scrubber, not Leo validity: the point is that a
+    // `program X.aleo {` token inside a quoted span is neutralized before the
+    // regex runs.
     const file = path.join(tmpDir, "main.leo");
     fs.writeFileSync(file, 'const message: field = "program fake.aleo {";\n');
     expect(extractProgramId(file)).toBeNull();
@@ -106,6 +110,7 @@ describe("discoverUnits", () => {
     writeFile("broken/main.leo", "fn helper() -> u32 { return 1u32; }\n");
 
     const mainLeo = path.join(tmpDir, "broken", "main.leo");
+    expect(() => discoverUnits(tmpDir)).toThrow(MissingProgramDeclarationError);
     expect(() => discoverUnits(tmpDir)).toThrow(mainLeo);
   });
 
