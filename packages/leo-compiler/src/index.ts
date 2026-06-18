@@ -52,6 +52,7 @@ export {
   CircularDependencyError,
   type DependencyGraph,
   resolveDependencies,
+  UnitNameCollisionError,
 } from "./dependency-resolver.js";
 // Import parser
 export { parseImports } from "./import-parser.js";
