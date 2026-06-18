@@ -82,6 +82,26 @@ describe("extractProgramId", () => {
     );
     expect(extractProgramId(file)).toBe("real.aleo");
   });
+
+  it("extracts the program ID when a block comment sits between the keyword and name", () => {
+    // The scrubber rewrites the comment to spaces; the regex's `\s+` then spans
+    // the gap between `program` and `hello.aleo`.
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, "program /* c */ hello.aleo {}\n");
+    expect(extractProgramId(file)).toBe("hello.aleo");
+  });
+
+  it("extracts the program ID when a line comment sits between the keyword and name", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, "program // c\n hello.aleo {}\n");
+    expect(extractProgramId(file)).toBe("hello.aleo");
+  });
+
+  it("returns null when an unterminated block comment swallows the only declaration", () => {
+    const file = path.join(tmpDir, "main.leo");
+    fs.writeFileSync(file, "/* program hello.aleo {\n");
+    expect(extractProgramId(file)).toBeNull();
+  });
 });
 
 describe("discoverUnits", () => {
@@ -112,6 +132,14 @@ describe("discoverUnits", () => {
     const mainLeo = path.join(tmpDir, "broken", "main.leo");
     expect(() => discoverUnits(tmpDir)).toThrow(MissingProgramDeclarationError);
     expect(() => discoverUnits(tmpDir)).toThrow(mainLeo);
+  });
+
+  it("throws when an unterminated block comment swallows the program declaration", () => {
+    // The only `program ...` token lives inside an unterminated block comment,
+    // so the scrubber neutralizes it and discovery finds no declaration.
+    writeFile("broken/main.leo", "/* program broken.aleo {\n");
+
+    expect(() => discoverUnits(tmpDir)).toThrow(MissingProgramDeclarationError);
   });
 
   it("discovers a library", () => {

@@ -9,7 +9,10 @@ import { computeUnitHash } from "./cache.js";
 import { CompilationError, compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
 import { UnitNameCollisionError } from "./index.js";
 import { getCachedNetworkDep, linkNetworkDependency } from "./package-materializer.js";
-import { ProgramFolderNameMismatchError } from "./source-discovery.js";
+import {
+  MissingProgramDeclarationError,
+  ProgramFolderNameMismatchError,
+} from "./source-discovery.js";
 
 /** Compute the same cache scope key the pipeline uses. */
 function cacheScope(network: string, endpoint: string): string {
@@ -401,6 +404,43 @@ describe("compilePipeline network dep handling", () => {
     } catch (err) {
       expect(err).toBeInstanceOf(ProgramFolderNameMismatchError);
       expect((err as Error).message).toMatch(/bad_folder.*bad_decl\.aleo/s);
+      expect(fs.existsSync(sentinelPath)).toBe(false);
+    } finally {
+      if (originalSentinel === undefined) {
+        delete process.env.LIONDEN_LEO_SENTINEL;
+      } else {
+        process.env.LIONDEN_LEO_SENTINEL = originalSentinel;
+      }
+    }
+  });
+
+  it("fails fast on a missing program declaration before applying a program filter", async () => {
+    writeProgram("good", "program good.aleo {\n  fn main() {}\n}\n");
+    // main.leo with no parseable `program <name>.aleo` declaration anywhere.
+    writeProgram("broken", "fn helper() -> u32 { return 1u32; }\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const leoPath = path.join(binDir, "leo");
+    const sentinelPath = path.join(tmpDir, "leo-invoked");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      leoPath,
+      ["#!/bin/sh", 'printf invoked > "$LIONDEN_LEO_SENTINEL"'].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalSentinel = process.env.LIONDEN_LEO_SENTINEL;
+    process.env.LIONDEN_LEO_SENTINEL = sentinelPath;
+
+    try {
+      await compilePipeline(makeConfig({ leoBinary: leoPath }), {
+        program: "good",
+        noTypechain: true,
+      });
+      expect.unreachable("missing-declaration validation should fail before invoking Leo");
+    } catch (err) {
+      expect(err).toBeInstanceOf(MissingProgramDeclarationError);
+      expect((err as Error).message).toMatch(/broken[/\\]main\.leo is missing a program/s);
       expect(fs.existsSync(sentinelPath)).toBe(false);
     } finally {
       if (originalSentinel === undefined) {
