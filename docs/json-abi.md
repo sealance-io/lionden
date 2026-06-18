@@ -75,11 +75,14 @@ Simple variants serialize as bare strings. Wrapper variants serialize as single-
 ```json
 { "Primitive": "Address" }
 { "Primitive": "Boolean" }
+{ "Primitive": "Signature" }
 { "Primitive": { "UInt": "U64" } }
 { "Primitive": { "Int": "I32" } }
 ```
 
 Leo identifier values are represented as single-quoted literals on the wire, for example `'voting_power'`. Generated TypeScript bindings keep identifiers branded: outputs use `LeoIdentifier`, inputs use `IdentifierInput` (`LeoIdentifier`), and callers pass `Leo.identifier("voting_power")` rather than a bare string. The runtime serializer still normalizes bare or already quoted identifier text to the quoted wire form, and outputs parse back to a branded bare name.
+
+LionDen's ABI parser preserves `Signature` exactly as emitted by the Leo compiler JSON ABI. Generated TypeScript bindings intentionally reject `Primitive::Signature` for now because the runtime serializer/parser layer does not yet provide signature-specific support. A compile with typechain enabled fails with `CodegenError` instead of emitting incorrect fallback types. Do not model signatures as `number`, `string`, or a public `SignatureInput` type until dedicated serializer/parser support exists.
 
 ## Plaintext Types
 

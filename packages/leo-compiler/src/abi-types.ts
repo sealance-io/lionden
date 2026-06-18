@@ -13,6 +13,7 @@ export type PrimitiveType =
   | "Group"
   | "Identifier"
   | "Scalar"
+  | "Signature"
   | { UInt: UIntSize }
   | { Int: IntSize };
 

@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import type { ProgramABI, RecordRef, StructRef } from "../abi-types.js";
+import type { PlaintextType, ProgramABI, RecordRef, StructRef } from "../abi-types.js";
+import { CodegenError } from "./codegen-error.js";
 import { generateBaseContract, generateBindings } from "./typescript-generator.js";
 
 /** Shorthand for creating a StructRef in tests */
@@ -165,6 +166,71 @@ const SAMPLE_ABI: ProgramABI = {
   ],
 };
 
+const SIGNATURE_PLAINTEXT = { Primitive: "Signature" } as const satisfies PlaintextType;
+
+function baseUnsupportedPrimitiveAbi(): ProgramABI {
+  return {
+    program: "signature_probe.aleo",
+    structs: [
+      {
+        path: ["Envelope"],
+        fields: [{ name: "payload", ty: { Primitive: { UInt: "U64" } } }],
+      },
+    ],
+    records: [
+      {
+        path: ["Receipt"],
+        fields: [
+          { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+          { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+        ],
+      },
+    ],
+    mappings: [
+      {
+        name: "balances",
+        key: { Primitive: "Address" },
+        value: { Primitive: { UInt: "U64" } },
+      },
+    ],
+    storage_variables: [{ name: "admin", ty: { Plaintext: { Primitive: "Address" } } }],
+    transitions: [
+      {
+        name: "sign",
+        is_async: false,
+        inputs: [
+          {
+            name: "amount",
+            ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+            mode: "None",
+          },
+        ],
+        outputs: [],
+      },
+    ],
+  };
+}
+
+function expectUnsupportedPrimitive(
+  abi: ProgramABI,
+  abiPath: string,
+  primitive = "Signature",
+): void {
+  let caught: unknown;
+  try {
+    generateBindings(abi);
+  } catch (error) {
+    caught = error;
+  }
+
+  expect(caught).toBeInstanceOf(CodegenError);
+  expect((caught as Error).message).toContain(`program ${abi.program}`);
+  expect((caught as Error).message).toContain(`ABI path ${abiPath}`);
+  expect((caught as Error).message).toContain(
+    `Primitive::${primitive} is not supported by generated bindings yet`,
+  );
+}
+
 describe("Leo 4.1 ABI extensions", () => {
   it("rejects executable functions with non-empty const_parameters", () => {
     const abi: ProgramABI = {
@@ -206,6 +272,169 @@ describe("Leo 4.1 ABI extensions", () => {
 
     const output = generateBindings(abi);
     expect(output).not.toContain("readonly balance");
+  });
+});
+
+describe("unsupported primitive validation", () => {
+  it("rejects Signature in transition inputs", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      transitions: [
+        {
+          name: "sign",
+          is_async: false,
+          inputs: [{ name: "signature", ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "None" }],
+          outputs: [],
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "transitions[0].inputs[0].ty.Plaintext.Primitive");
+  });
+
+  it("rejects Signature in transition outputs before emitting unsafe private output bindings", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      transitions: [
+        {
+          name: "sign",
+          is_async: false,
+          inputs: [],
+          outputs: [{ ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "None" }],
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "transitions[0].outputs[0].ty.Plaintext.Primitive");
+  });
+
+  it("rejects Signature in struct fields", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      structs: [{ path: ["Envelope"], fields: [{ name: "signature", ty: SIGNATURE_PLAINTEXT }] }],
+    };
+
+    expectUnsupportedPrimitive(abi, "structs[0].fields[0].ty.Primitive");
+  });
+
+  it("rejects Signature in record fields", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      records: [
+        {
+          path: ["Receipt"],
+          fields: [
+            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+            { name: "signature", ty: SIGNATURE_PLAINTEXT, mode: "Private" },
+          ],
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "records[0].fields[1].ty.Primitive");
+  });
+
+  it("rejects Signature in mapping keys", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      mappings: [
+        {
+          name: "seen",
+          key: SIGNATURE_PLAINTEXT,
+          value: { Primitive: "Boolean" },
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "mappings[0].key.Primitive");
+  });
+
+  it("rejects Signature in mapping values", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      mappings: [
+        {
+          name: "signatures",
+          key: { Primitive: "Address" },
+          value: SIGNATURE_PLAINTEXT,
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "mappings[0].value.Primitive");
+  });
+
+  it("rejects Signature in storage variables", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      storage_variables: [{ name: "stored_signature", ty: { Plaintext: SIGNATURE_PLAINTEXT } }],
+    };
+
+    expectUnsupportedPrimitive(abi, "storage_variables[0].ty.Plaintext.Primitive");
+  });
+
+  it("rejects Signature in array elements", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      structs: [
+        {
+          path: ["Envelope"],
+          fields: [{ name: "signatures", ty: { Array: [SIGNATURE_PLAINTEXT, 2] } }],
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "structs[0].fields[0].ty.Array[0].Primitive");
+  });
+
+  it("rejects Signature in Optional inner types", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      structs: [
+        {
+          path: ["Envelope"],
+          fields: [{ name: "maybe_signature", ty: { Optional: SIGNATURE_PLAINTEXT } }],
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(abi, "structs[0].fields[0].ty.Optional.Primitive");
+  });
+
+  it("rejects future unknown string primitives instead of falling back to generic codegen", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    const abi: ProgramABI = {
+      ...base,
+      transitions: [
+        {
+          name: "future",
+          is_async: false,
+          inputs: [
+            {
+              name: "future",
+              ty: { Plaintext: { Primitive: "FutureSignature" as any } },
+              mode: "None",
+            },
+          ],
+          outputs: [],
+        },
+      ],
+    };
+
+    expectUnsupportedPrimitive(
+      abi,
+      "transitions[0].inputs[0].ty.Plaintext.Primitive",
+      "FutureSignature",
+    );
   });
 });
 
