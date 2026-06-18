@@ -7,6 +7,7 @@ import { keyArtifactsMetadataPath, readKeyArtifactsMetadata } from "@lionden/cor
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computeUnitHash } from "./cache.js";
 import { CompilationError, compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
+import { UnitNameCollisionError } from "./index.js";
 import { getCachedNetworkDep, linkNetworkDependency } from "./package-materializer.js";
 import { ProgramFolderNameMismatchError } from "./source-discovery.js";
 
@@ -366,6 +367,13 @@ describe("compilePipeline network dep handling", () => {
       ? fs.readFileSync(logPath, "utf-8").trim().split("\n").filter(Boolean)
       : [];
   }
+
+  it("throws the public UnitNameCollisionError for duplicate program IDs", async () => {
+    writeProgram("first/token", "program token.aleo {\n  fn main() {}\n}\n");
+    writeProgram("second/token", "program token.aleo {\n  fn main() {}\n}\n");
+
+    await expect(compilePipeline(makeConfig())).rejects.toThrow(UnitNameCollisionError);
+  });
 
   it("validates all program folders before applying a program filter", async () => {
     writeProgram("good", "program good.aleo {\n  fn main() {}\n}\n");
