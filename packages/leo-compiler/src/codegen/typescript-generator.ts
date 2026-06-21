@@ -609,7 +609,7 @@ function generateRecordInterface(record: RecordABI, ctx: GenerationContext): str
   lines.push(`export interface ${name} {`);
   lines.push("  readonly owner: LeoAddress;");
   for (const field of record.fields) {
-    if (field.name === "owner") continue;
+    if (["owner", "_nonce"].includes(field.name)) continue;
     lines.push(`  readonly ${field.name}: ${plaintextToOutputBindingTs(field.ty, ctx)};`);
   }
   lines.push("  readonly _nonce: LeoGroup;");
@@ -979,6 +979,16 @@ function generateContractClass(
     lines.push("  } as const;");
   }
 
+  if (abi.storage_variables.length > 0) {
+    const propKeys = buildStoragePropKeys(abi.storage_variables);
+    lines.push("");
+    lines.push("  readonly storage = {");
+    for (const variable of abi.storage_variables) {
+      lines.push(...indentLines(generateStorageAccessor(variable, propKeys, ctx), "    "));
+    }
+    lines.push("  } as const;");
+  }
+
   lines.push("}");
   lines.push("");
   lines.push(`export function create${className}(options?: BaseContractOptions): ${className} {`);
@@ -1119,6 +1129,35 @@ function generateMappingAccessor(
     `  },`,
     `  tryGet: async (key: ${keyType}): Promise<${valueType} | null> => {`,
     `    const _result = await this.queryMapping("${mapping.name}", ${keySerializer});`,
+    `    if (_result === null) return null;`,
+    `    return ${valueDeserializer};`,
+    `  },`,
+    `},`,
+  ];
+}
+
+function generateStorageAccessor(
+  variable: StorageVariableABI,
+  propKeys: Map<string, string>,
+  ctx: GenerationContext,
+): string[] {
+  const propKey = propKeys.get(variable.name) ?? JSON.stringify(variable.name);
+  const valueType = storageTypeToBindingTs(variable.ty, ctx);
+  const valueDeserializer = deserializeStorageExpr("_result", variable.ty, ctx);
+
+  return [
+    `${propKey}: {`,
+    `  get: async (): Promise<${valueType}> => {`,
+    `    const _result = await this.requireStorageRaw("${variable.name}");`,
+    `    return ${valueDeserializer};`,
+    `  },`,
+    `  getOrUse: async (def: ${valueType}): Promise<${valueType}> => {`,
+    `    const _result = await this.queryStorage("${variable.name}");`,
+    `    if (_result === null) return def;`,
+    `    return ${valueDeserializer};`,
+    `  },`,
+    `  tryGet: async (): Promise<${valueType} | null> => {`,
+    `    const _result = await this.queryStorage("${variable.name}");`,
     `    if (_result === null) return null;`,
     `    return ${valueDeserializer};`,
     `  },`,
@@ -1369,6 +1408,14 @@ function deserializePlaintextExpr(expr: string, ty: PlaintextType, ctx: Generati
   }
   if ("Optional" in ty) {
     return `(() => { const _opt = BaseContract.parseStruct(${expr}); return BaseContract.parseBoolean(_opt["is_some"]!) ? ${deserializePlaintextExpr('_opt["val"]!', ty.Optional, ctx)} : null; })()`;
+  }
+  return expr;
+}
+
+function deserializeStorageExpr(expr: string, ty: StorageType, ctx: GenerationContext): string {
+  if ("Plaintext" in ty) return deserializePlaintextExpr(expr, ty.Plaintext, ctx);
+  if ("Vector" in ty) {
+    return `BaseContract.parseArray(${expr}).map((e: string) => ${deserializeStorageExpr("e", ty.Vector, ctx)})`;
   }
   return expr;
 }
@@ -1853,7 +1900,7 @@ function isValidIdentifier(name: string): boolean {
 }
 
 /**
- * snake_case -> camelCase for mapping property names. Leading underscores are
+ * snake_case -> camelCase for generated state property names. Leading underscores are
  * preserved (`_internal` -> `_internal`); only internal `_x` boundaries are camelCased.
  */
 function toCamelCase(name: string): string {
@@ -1869,12 +1916,12 @@ function toCamelCase(name: string): string {
  * same key, every member of that collision group is emitted under its original
  * Leo name (quoted) so no two mappings produce a duplicate object key.
  */
-function buildMappingPropKeys(mappings: readonly MappingABI[]): Map<string, string> {
+function buildStatePropKeys(entries: readonly { readonly name: string }[]): Map<string, string> {
   const groups = new Map<string, string[]>(); // camelName -> original names
-  for (const mapping of mappings) {
-    const camel = toCamelCase(mapping.name);
+  for (const entry of entries) {
+    const camel = toCamelCase(entry.name);
     const originals = groups.get(camel) ?? [];
-    originals.push(mapping.name);
+    originals.push(entry.name);
     groups.set(camel, originals);
   }
 
@@ -1890,6 +1937,16 @@ function buildMappingPropKeys(mappings: readonly MappingABI[]): Map<string, stri
     }
   }
   return propKeys;
+}
+
+function buildMappingPropKeys(mappings: readonly MappingABI[]): Map<string, string> {
+  return buildStatePropKeys(mappings);
+}
+
+function buildStoragePropKeys(
+  storageVariables: readonly StorageVariableABI[],
+): Map<string, string> {
+  return buildStatePropKeys(storageVariables);
 }
 
 function indentLines(lines: readonly string[], indent: string): string[] {

@@ -21,6 +21,7 @@ let LocalValueDecryptionError: any;
 let RecordDecryptionKeyError: any;
 let TransitionInputError: any;
 let MappingKeyNotFoundError: any;
+let StorageValueNotFoundError: any;
 let createRecordOutputMatcher: any;
 let networkStub: any;
 let tmpDir: string;
@@ -103,6 +104,7 @@ beforeAll(async () => {
   RecordDecryptionKeyError = mod.RecordDecryptionKeyError;
   TransitionInputError = mod.TransitionInputError;
   MappingKeyNotFoundError = mod.MappingKeyNotFoundError;
+  StorageValueNotFoundError = mod.StorageValueNotFoundError;
   createRecordOutputMatcher = mod.createRecordOutputMatcher;
 
   // Import the stub module separately so tests can swap the decryption
@@ -156,6 +158,12 @@ function createTestContract(programId = "test.aleo", options?: { imports?: reado
     async testRequireMappingRaw(...args: any[]) {
       return this.requireMappingRaw(...args);
     }
+    async testQueryStorage(...args: any[]) {
+      return this.queryStorage(...args);
+    }
+    async testRequireStorageRaw(...args: any[]) {
+      return this.requireStorageRaw(...args);
+    }
   }
   return new TestContract(options);
 }
@@ -165,6 +173,7 @@ function mockLre(networkOverrides: Record<string, any> = {}) {
     network: {
       execute: async () => ({ outputs: ["42u32"], txId: "at1mock" }),
       getMappingValue: async () => "100u64",
+      getStorageValue: async () => "100u64",
       ...networkOverrides,
     },
   } as any;
@@ -694,6 +703,120 @@ describe("BaseContract runtime", () => {
       expect(thrown.message).toContain("token.aleo");
       expect(thrown.message).toContain("balances");
       expect(thrown.message).toContain("aleo1abc");
+    });
+  });
+
+  describe("queryStorage()", () => {
+    it("delegates to lre.network.getStorageValue with programId", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("vault.aleo");
+      contract.connect(
+        mockLre({
+          getStorageValue: async (...args: any[]) => {
+            spy.calls.push(args);
+            return "aleo1admin";
+          },
+        }),
+      );
+
+      const value = await contract.testQueryStorage("admin");
+
+      expect(spy.calls[0]).toEqual(["vault.aleo", "admin"]);
+      expect(value).toBe("aleo1admin");
+    });
+
+    it("throws when network is missing", async () => {
+      const contract = createTestContract();
+      contract.connect({ network: null } as any);
+
+      await expect(contract.testQueryStorage("admin")).rejects.toThrow(
+        "Network is not available for test.aleo",
+      );
+    });
+
+    it("throws when getStorageValue is not a function", async () => {
+      const contract = createTestContract();
+      contract.connect({ network: { getStorageValue: 42 } } as any);
+
+      await expect(contract.testQueryStorage("admin")).rejects.toThrow(
+        "Network is not available for test.aleo",
+      );
+    });
+  });
+
+  describe("requireStorageRaw()", () => {
+    it("returns the raw value when the storage value is present", async () => {
+      const contract = createTestContract("vault.aleo");
+      contract.connect(mockLre({ getStorageValue: async () => "aleo1admin" }));
+
+      expect(await contract.testRequireStorageRaw("admin")).toBe("aleo1admin");
+    });
+
+    it("throws StorageValueNotFoundError when the storage value is absent", async () => {
+      const contract = createTestContract("vault.aleo");
+      contract.connect(mockLre({ getStorageValue: async () => null }));
+
+      let thrown: any;
+      try {
+        await contract.testRequireStorageRaw("admin");
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeInstanceOf(StorageValueNotFoundError);
+      expect(thrown.kind).toBe("StorageValueNotFoundError");
+      expect(thrown.phase).toBe("storage");
+      expect(thrown.programId).toBe("vault.aleo");
+      expect(thrown.storage).toBe("admin");
+      expect(thrown.message).toContain("vault.aleo");
+      expect(thrown.message).toContain("admin");
+    });
+  });
+
+  describe("generated storage accessor pattern", () => {
+    function createStorageContract() {
+      class StorageContract extends BaseContract {
+        constructor() {
+          super("vault.aleo");
+        }
+        readonly storage = {
+          count: {
+            get: async (): Promise<bigint> => {
+              const _result = await this.requireStorageRaw("count");
+              return BaseContract.parseBigInt(_result);
+            },
+            getOrUse: async (def: bigint): Promise<bigint> => {
+              const _result = await this.queryStorage("count");
+              if (_result === null) return def;
+              return BaseContract.parseBigInt(_result);
+            },
+            tryGet: async (): Promise<bigint | null> => {
+              const _result = await this.queryStorage("count");
+              if (_result === null) return null;
+              return BaseContract.parseBigInt(_result);
+            },
+          },
+        } as const;
+      }
+      return new StorageContract();
+    }
+
+    it("deserializes present storage values", async () => {
+      const contract = createStorageContract();
+      contract.connect(mockLre({ getStorageValue: async () => "42u64" }));
+
+      await expect(contract.storage.count.get()).resolves.toBe(42n);
+      await expect(contract.storage.count.tryGet()).resolves.toBe(42n);
+      await expect(contract.storage.count.getOrUse(7n)).resolves.toBe(42n);
+    });
+
+    it("handles absent storage values for get, tryGet, and getOrUse", async () => {
+      const contract = createStorageContract();
+      contract.connect(mockLre({ getStorageValue: async () => null }));
+
+      await expect(contract.storage.count.get()).rejects.toBeInstanceOf(StorageValueNotFoundError);
+      await expect(contract.storage.count.tryGet()).resolves.toBeNull();
+      await expect(contract.storage.count.getOrUse(7n)).resolves.toBe(7n);
     });
   });
 

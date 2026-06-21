@@ -1408,6 +1408,67 @@ describe("AleoConnection", () => {
   });
 
   // -------------------------------------------------------------------------
+  // getStorageValue()
+  // -------------------------------------------------------------------------
+
+  describe("getStorageValue()", () => {
+    it("returns string value when storage value exists", async () => {
+      mockGetProgramMappingValue.mockResolvedValue("aleo1admin");
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageValue("vault.aleo", "admin");
+
+      expect(value).toBe("aleo1admin");
+      expect(mockGetProgramMappingValue).toHaveBeenCalledWith("vault.aleo", "admin__", "false");
+    });
+
+    it("returns null when SDK returns undefined", async () => {
+      mockGetProgramMappingValue.mockResolvedValue(undefined);
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageValue("vault.aleo", "admin");
+
+      expect(value).toBeNull();
+    });
+
+    it("returns null when SDK returns null", async () => {
+      mockGetProgramMappingValue.mockResolvedValue(null);
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageValue("vault.aleo", "admin");
+
+      expect(value).toBeNull();
+    });
+
+    it("converts non-string values to string", async () => {
+      mockGetProgramMappingValue.mockResolvedValue(42);
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageValue("vault.aleo", "count");
+
+      expect(value).toBe("42");
+    });
+
+    it("returns null when SDK throws 404 error", async () => {
+      mockGetProgramMappingValue.mockRejectedValue(new Error("HTTP 404: storage not found"));
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageValue("vault.aleo", "admin");
+
+      expect(value).toBeNull();
+    });
+
+    it("rethrows non-404 errors with context message", async () => {
+      mockGetProgramMappingValue.mockRejectedValue(new Error("connection refused"));
+      const connection = createDevnodeConnection();
+
+      await expect(connection.getStorageValue("vault.aleo", "admin")).rejects.toThrow(
+        "Failed to query storage vault.aleo/admin",
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // getBalance()
   // -------------------------------------------------------------------------
 

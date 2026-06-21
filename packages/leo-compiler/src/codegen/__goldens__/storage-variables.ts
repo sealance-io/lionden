@@ -100,6 +100,73 @@ export class Vault extends BaseContract {
       return this.expectRejected("set_admin", _args, options ?? {});
     },
   } as const;
+
+  readonly storage = {
+    admin: {
+      get: async (): Promise<LeoAddress> => {
+        const _result = await this.requireStorageRaw("admin");
+        return BaseContract.parseAddress(_result);
+      },
+      getOrUse: async (def: LeoAddress): Promise<LeoAddress> => {
+        const _result = await this.queryStorage("admin");
+        if (_result === null) return def;
+        return BaseContract.parseAddress(_result);
+      },
+      tryGet: async (): Promise<LeoAddress | null> => {
+        const _result = await this.queryStorage("admin");
+        if (_result === null) return null;
+        return BaseContract.parseAddress(_result);
+      },
+    },
+    whitelist: {
+      get: async (): Promise<LeoAddress[]> => {
+        const _result = await this.requireStorageRaw("whitelist");
+        return BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e));
+      },
+      getOrUse: async (def: LeoAddress[]): Promise<LeoAddress[]> => {
+        const _result = await this.queryStorage("whitelist");
+        if (_result === null) return def;
+        return BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e));
+      },
+      tryGet: async (): Promise<LeoAddress[] | null> => {
+        const _result = await this.queryStorage("whitelist");
+        if (_result === null) return null;
+        return BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e));
+      },
+    },
+    policy: {
+      get: async (): Promise<Policy> => {
+        const _result = await this.requireStorageRaw("policy");
+        return deserializePolicy(_result);
+      },
+      getOrUse: async (def: Policy): Promise<Policy> => {
+        const _result = await this.queryStorage("policy");
+        if (_result === null) return def;
+        return deserializePolicy(_result);
+      },
+      tryGet: async (): Promise<Policy | null> => {
+        const _result = await this.queryStorage("policy");
+        if (_result === null) return null;
+        return deserializePolicy(_result);
+      },
+    },
+    policies: {
+      get: async (): Promise<Policy[]> => {
+        const _result = await this.requireStorageRaw("policies");
+        return BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e));
+      },
+      getOrUse: async (def: Policy[]): Promise<Policy[]> => {
+        const _result = await this.queryStorage("policies");
+        if (_result === null) return def;
+        return BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e));
+      },
+      tryGet: async (): Promise<Policy[] | null> => {
+        const _result = await this.queryStorage("policies");
+        if (_result === null) return null;
+        return BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e));
+      },
+    },
+  } as const;
 }
 
 export function createVault(options?: BaseContractOptions): Vault {

@@ -237,6 +237,17 @@ if (await c.mappings.maybeScore.contains(key)) {
 }
 ```
 
+### Storage accessors
+
+Each ABI storage variable is emitted under a separate per-contract `storage` namespace,
+keyed by the variable's camelCased name. Storage variables are not modeled as mappings,
+so their accessors do not accept a key:
+
+- `get(): Promise<Value>` — returns the deserialized value and throws
+  `StorageValueNotFoundError` when the value is absent.
+- `getOrUse(def): Promise<Value>` — returns `def` when the value is absent.
+- `tryGet(): Promise<Value | null>` — returns `null` when the value is absent.
+
 ## `compile` and `clean`
 
 `packages/plugin-leo/src/index.ts` currently exposes:
