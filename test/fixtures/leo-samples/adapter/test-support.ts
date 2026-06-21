@@ -1,7 +1,7 @@
-import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
+import { networkDepCacheScope } from "@lionden/leo-compiler";
 import { VENDORED_NETWORK_DEPS_DIR } from "./offline-network-dep.js";
 
 /**
@@ -67,29 +67,17 @@ export function upstreamReady(upstreamRoot: string): boolean {
 }
 
 /**
- * The cache scope `compilePipeline` derives for `config.defaultNetwork` —
- * `${networkHint}-${sha256(endpoint).slice(0,8)}`. Kept in lockstep with
- * `compiler.ts` so the seeded snapshots land where the pipeline looks.
- */
-function networkDepCacheScope(config: LionDenResolvedConfig): string {
-  const nc = config.networks[config.defaultNetwork];
-  const endpoint =
-    nc?.type === "http"
-      ? nc.endpoint
-      : nc?.type === "devnode"
-        ? `http://${nc.socketAddr}`
-        : "http://127.0.0.1:3030";
-  const hint = nc?.network;
-  const hash = crypto.createHash("sha256").update(endpoint).digest("hex").slice(0, 8);
-  return `${hint ?? "default"}-${hash}`;
-}
-
-/**
  * Pre-seed the network-dependency cache with vendored snapshots so the real
  * `compile` task (which uses the live REST fetcher, not the offline injector)
  * compiles hermetically — a cache hit means `fetchNetworkDep` is never called.
  * Use this when driving `lre.tasks.run("compile")` for codegen coverage; for
  * pure compile coverage prefer passing `makeOfflineFetchNetworkDep()` directly.
+ *
+ * The cache scope is derived by the compiler's own `networkDepCacheScope` helper
+ * (single source of truth — see `packages/leo-compiler/src/compiler.ts`), so the
+ * seeded snapshots can never drift from where the pipeline reads them. The
+ * compile here is non-overridden, so the effective network is the config's
+ * `defaultNetwork`.
  */
 export function seedNetworkDepCache(
   config: LionDenResolvedConfig,
@@ -97,15 +85,21 @@ export function seedNetworkDepCache(
   vendoredDir: string = VENDORED_NETWORK_DEPS_DIR,
 ): void {
   if (depNames.length === 0) return;
-  const scopeDir = path.join(
-    config.paths.artifacts,
-    ".cache",
-    "network-deps",
-    networkDepCacheScope(config),
-  );
+  const { scope } = networkDepCacheScope(config, config.defaultNetwork);
+  const scopeDir = path.join(config.paths.artifacts, ".cache", "network-deps", scope);
   fs.mkdirSync(scopeDir, { recursive: true });
   for (const dep of depNames) {
     const src = path.join(vendoredDir, dep);
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(scopeDir, dep));
+    // Fail loudly: a missing vendored snapshot would silently fall back to a
+    // live REST fetch on the next compile (network access in CI), defeating the
+    // hermetic guarantee. Surface it as a clear error naming the absent file.
+    if (!fs.existsSync(src)) {
+      throw new Error(
+        `seedNetworkDepCache: no vendored snapshot for "${dep}" at ${src}. ` +
+          `Vendor it under ${vendoredDir} or remove it from the seed list — ` +
+          `otherwise the next compile would fetch it over the network.`,
+      );
+    }
+    fs.copyFileSync(src, path.join(scopeDir, dep));
   }
 }

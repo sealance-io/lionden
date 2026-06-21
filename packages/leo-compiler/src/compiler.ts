@@ -95,6 +95,35 @@ export class CompilationError extends Error {
   }
 }
 
+/**
+ * Derive the network-dependency cache scope for a given network, plus the
+ * endpoint + hint used to fetch from it.
+ *
+ * `compilePipeline` scopes the network-dep cache by effective network+endpoint
+ * (`${networkHint}-${sha256(endpoint).slice(0,8)}`) so switching networks does
+ * not serve stale source. This is the single source of truth for that
+ * derivation — callers that need to pre-seed or locate the cache (e.g. tests)
+ * must use this rather than re-deriving the scope, so the two can never drift.
+ */
+export function networkDepCacheScope(
+  config: LionDenResolvedConfig,
+  networkName: string,
+): { readonly endpoint: string; readonly networkHint: string | undefined; readonly scope: string } {
+  const networkConfig = config.networks[networkName];
+  const endpoint =
+    networkConfig?.type === "http"
+      ? networkConfig.endpoint
+      : networkConfig?.type === "devnode"
+        ? `http://${networkConfig.socketAddr}`
+        : "http://127.0.0.1:3030";
+  const networkHint = networkConfig?.network;
+  // Network+endpoint scope for cache isolation — devnode testnet and HTTP
+  // testnet share the same network name but different sources.
+  const endpointHash = crypto.createHash("sha256").update(endpoint).digest("hex").slice(0, 8);
+  const scope = `${networkHint ?? "default"}-${endpointHash}`;
+  return { endpoint, networkHint, scope };
+}
+
 export interface CompilePipelineResult {
   readonly results: CompilationResult[];
   readonly graph: DependencyGraph;
@@ -169,19 +198,11 @@ export async function compilePipeline(
   }
 
   if (selectedNetworkDeps.size > 0) {
-    const networkConfig = config.networks[effectiveNetwork];
-    const endpoint =
-      networkConfig?.type === "http"
-        ? networkConfig.endpoint
-        : networkConfig?.type === "devnode"
-          ? `http://${networkConfig.socketAddr}`
-          : "http://127.0.0.1:3030";
-    const networkHint = networkConfig?.network;
-
-    // Network+endpoint scope for cache isolation — devnode testnet
-    // and HTTP testnet share the same network name but different sources.
-    const endpointHash = crypto.createHash("sha256").update(endpoint).digest("hex").slice(0, 8);
-    const networkScope = `${networkHint ?? "default"}-${endpointHash}`;
+    const {
+      endpoint,
+      networkHint,
+      scope: networkScope,
+    } = networkDepCacheScope(config, effectiveNetwork);
 
     for (const dep of selectedNetworkDeps) {
       // Fetch once per dep; skip cache when --force is set

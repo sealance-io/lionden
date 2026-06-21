@@ -19,7 +19,7 @@ in the README and `adapter/specs.ts` (`compileOnly`).
 | `TransitionInputError` | gapfiller | `echo_u8(999)` — out of range, rejected before execution |
 | `LocalTransitionError` | native_runtime_edges | overflow `255+1`, underflow `0-1`, div-by-zero `1/0`, off-chain `assert(false)` via `.captureLocalFailure` |
 | `UnexpectedLocalSuccessError` | native_runtime_edges | `.failsLocally` on a passing input |
-| `OnChainRejectedError` | native_runtime_edges, dynamic_dispatch | `.accepted(...)` on a rejecting finalizer / out-of-bounds dispatched vector read |
+| `OnChainRejectedError` | native_runtime_edges, dynamic_dispatch | `.accepted(...)` on a rejecting finalizer — `finalizer_assert(false)`, out-of-bounds vector read (`vector_set_at`, dispatched `assert_history_at`), bare `get(credits.aleo::account, <unfunded>)` via `native_account_required_read` |
 | `UnexpectedTransactionStatusError` | native_runtime_edges | `.rejected(...)` on a *passing* finalizer |
 | `MappingKeyNotFoundError` | dynamic_dispatch | `mappings.lastSplit.get(<unset key>)` |
 | `IdOnlyRecordResolutionError` | dynamic_dispatch | bad source binding on an id-only handle — `transition-not-found` (`.from("not_a_transition")`), `transition-index-out-of-range` (`.at(999, 0)`) |
@@ -45,17 +45,21 @@ end-to-end with two representative reasons.
 
 ## Method shapes → reference count
 
-Counts are total references across the four suites (greppable):
+Counts are **raw greppable references** across the four suites, produced by the
+method-shape block in [How to re-audit](#how-to-re-audit) — they include mentions
+in comments and `it(...)` descriptions, so they are a reference count, not a
+unique call-site count. Re-run that block after editing the suites and update the
+numbers here to match.
 
 | Shape | Count | Where |
 | --- | --- | --- |
-| `.locally` | 18 | all suites — pure compute / view round-trips |
+| `.locally` | 20 | all suites — pure compute / view round-trips, dynamic `call.dynamic`, offline `probe_cast` dyn-record cast |
 | `.captureLocalFailure` | 5 | native_runtime_edges |
 | `.failsLocally` | 5 | native_runtime_edges |
-| `.accepted` | 23 | native_runtime_edges, dynamic_dispatch, upgradability (`version`) |
-| `.rejected` | 7 | native_runtime_edges, dynamic_dispatch |
-| `mappings.*` (`get`/`getOrUse`/`contains`/`tryGet`) | 4 | dynamic_dispatch (`lastSplit`) |
-| id-only `.match` / `.from` / `.at` / `.decrypt` | 3 / 2 / 1 / 8 | dynamic_dispatch, gapfiller |
+| `.accepted` | 30 | native_runtime_edges (finalizer asserts, native `credits.aleo::account` reads, vector/storage edges, `transfer_public_signer_wrap` future), dynamic_dispatch, upgradability (`version`) |
+| `.rejected` | 13 | native_runtime_edges (finalizer/vector/storage/native-read rejects), dynamic_dispatch |
+| `mappings.lastSplit.get` | 5 | dynamic_dispatch — runtime target read-back (the other mapping accessors `getOrUse`/`contains`/`tryGet` are 0 here; covered by `packages/leo-compiler` base-contract unit tests) |
+| id-only `.match` / `.from` / `.at` / `.decrypt` | 3 / 2 / 1 / 9 | dynamic_dispatch, gapfiller |
 | `.submitted` | 0 (gap) | the fire-and-forget primitive that `.accepted`/`.settled` build on; covered by `packages/leo-compiler` base-contract unit tests |
 | `.settled` | 0 (gap) | settle-to-either-status; `.accepted`/`.rejected` (the status-asserting forms) are heavily exercised instead; raw `.settled` covered by unit tests |
 
@@ -67,15 +71,27 @@ capture are `it.skip` with documented reasons).
 
 ## How to re-audit
 
+Two independent passes — the **error-class** table (which suites reference each
+class) and the **method-shape** table (raw reference counts). The error-class
+loop counts *files* (`grep -l`); the method-shape loop counts *occurrences*
+(`grep -oE`). Run both from the lane root after editing the suites.
+
 ```bash
 cd test/fixtures/leo-samples
 SUITES=(suites/*/*.test.ts gapfiller/test/*.test.ts)
-# error classes:
+# error classes (file count → "which suites trigger this class"):
 for E in TransitionInputError LocalTransitionError UnexpectedLocalSuccessError \
   OnChainRejectedError UnexpectedTransactionStatusError MappingKeyNotFoundError \
   IdOnlyRecordResolutionError RecordDecryptionKeyError LocalRecordDecryptionError \
   LocalValueDecryptionError TransitionSubmissionError \
   TransactionConfirmationTimeoutError TransactionShapeError; do
   printf '%-38s' "$E"; grep -lF "$E" "${SUITES[@]}" 2>/dev/null | wc -l
+done
+
+# method shapes (occurrence count → the "Method shapes" table):
+for S in '\.locally' '\.captureLocalFailure' '\.failsLocally' '\.accepted' \
+  '\.rejected' '\.getOrUse' '\.contains' '\.tryGet' \
+  '\.match\(' '\.from\(' '\.at\(' '\.decrypt\(' 'mappings\.[A-Za-z]+\.get\b'; do
+  printf '%-32s' "$S"; grep -roE "$S" "${SUITES[@]}" 2>/dev/null | wc -l | tr -d ' '
 done
 ```

@@ -142,13 +142,17 @@ describe("upgradability — @admin key-gated", () => {
     });
   });
 
-  // The admin-REJECT-with-wrong-key case needs the upgrade signed by a
-  // non-admin key. UpgradeOptions has no per-call signer override (the admin key
-  // is resolved from `namedAccounts.admin` on the LRE config), so driving it
-  // requires a second LRE configured with a different admin + a funded address.
-  // Out of scope for this suite; the reject *policy* path is covered by
-  // frozen_base and checksum_upgrade below.
-  it.skip("admin_upgrade rejects with a non-admin key (needs per-LRE signer)", () => {});
+  // LIONDEN API GAP — no per-upgrade signer override.
+  // The admin-REJECT-with-wrong-key case needs the upgrade transaction signed by
+  // a non-admin key. `UpgradeOptions` (packages/plugin-deploy) exposes no
+  // per-call signer field; the admin key is resolved from `namedAccounts.admin`
+  // on the LRE config, so driving a wrong-key reject requires standing up a
+  // second LRE with a different admin + a funded address. The fix is a per-call
+  // signer override on `UpgradeOptions` (mirroring the per-call options the
+  // execution bindings already accept). Until then the reject *policy* path is
+  // covered by frozen_base and checksum_upgrade. See the lane README
+  // "Known lionden gaps surfaced by this lane".
+  it.skip("admin_upgrade rejects with a non-admin key (needs per-upgrade signer override)", () => {});
 });
 
 describe("upgradability — @checksum governance-gated", () => {
@@ -162,12 +166,18 @@ describe("upgradability — @checksum governance-gated", () => {
     });
   });
 
-  // The accepted path needs the v2 program checksum to call
-  // governance.approve(<checksum>). Capturing it programmatically without
-  // broadcasting (upstream uses `leo upgrade --save` then reads
-  // deployment.program_checksum) has no confirmed lionden task API; the upgrade
-  // task computes the checksum internally but does not surface it pre-broadcast.
-  // Deferred — see UPGRADABILITY_PLAN.md § checksum capture and the lane README.
+  // LIONDEN API GAP — no pre-broadcast v2-checksum accessor.
+  // The accepted path needs the compiled v2 program checksum so the suite can
+  // call `governance.aleo::approve(<checksum>)` BEFORE the upgrade is broadcast.
+  // The upgrade task (packages/plugin-deploy) computes the v2 checksum
+  // internally but does not surface it pre-broadcast, and there is no task that
+  // compiles-and-reports the checksum without broadcasting (upstream captures it
+  // via `leo upgrade --save` then reads `deployment.program_checksum`). The fix
+  // is a pre-broadcast checksum accessor (e.g. an upgrade `dryRun`/`--save` mode
+  // that returns the v2 checksum). Until then `governance.aleo::approve` is never
+  // exercised at runtime and the @checksum *accept* side is unproven (only the
+  // reject-before-approval path runs). See the lane README "Known lionden gaps
+  // surfaced by this lane".
   it.skip("checksum_upgrade accepts after governance.approve(<v2 checksum>)", () => {});
 });
 
