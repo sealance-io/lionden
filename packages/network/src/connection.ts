@@ -305,6 +305,33 @@ export class AleoConnection implements NetworkConnection {
     }
   }
 
+  async getStorageValue(programId: string, variableName: string): Promise<string | null> {
+    this.assertOpen();
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+    const storageMappingName = `${variableName}__`;
+
+    try {
+      const value: string | undefined = await nc.getProgramMappingValue(
+        programId,
+        storageMappingName,
+        "false",
+      );
+      if (value === undefined || value === null) return null;
+      return typeof value === "string" ? value : String(value);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        message.includes("404") ||
+        message.includes("not found") ||
+        message.includes("Not Found")
+      ) {
+        return null;
+      }
+      throw new Error(`Failed to query storage ${programId}/${variableName}: ${message}`);
+    }
+  }
+
   async execute(
     programId: string,
     transitionName: string,

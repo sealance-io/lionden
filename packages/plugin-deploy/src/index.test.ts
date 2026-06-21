@@ -172,6 +172,7 @@ describe("export task", () => {
         getNamedAccounts: vi.fn().mockReturnValue({}),
         execute: vi.fn(),
         getMappingValue: vi.fn(),
+        getStorageValue: vi.fn(),
         waitForConfirmation: vi.fn(),
         getTransitionOutputs: vi.fn(),
       };

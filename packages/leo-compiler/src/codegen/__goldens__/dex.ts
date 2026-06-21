@@ -314,6 +314,25 @@ export class Dex extends BaseContract {
       },
     },
   } as const;
+
+  readonly storage = {
+    admin: {
+      get: async (): Promise<LeoAddress> => {
+        const _result = await this.requireStorageRaw("admin");
+        return BaseContract.parseAddress(_result);
+      },
+      getOrUse: async (def: LeoAddress): Promise<LeoAddress> => {
+        const _result = await this.queryStorage("admin");
+        if (_result === null) return def;
+        return BaseContract.parseAddress(_result);
+      },
+      tryGet: async (): Promise<LeoAddress | null> => {
+        const _result = await this.queryStorage("admin");
+        if (_result === null) return null;
+        return BaseContract.parseAddress(_result);
+      },
+    },
+  } as const;
 }
 
 export function createDex(options?: BaseContractOptions): Dex {

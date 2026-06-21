@@ -1154,15 +1154,24 @@ describe("Optional type handling", () => {
 });
 
 describe("storage variables", () => {
-  it("generates a storage interface for ABI storage variables", () => {
+  it("generates storage interface and runtime accessors for ABI storage variables", () => {
     const abi: ProgramABI = {
       program: "vault.aleo",
-      structs: [],
+      structs: [
+        {
+          path: ["Policy"],
+          fields: [{ name: "limit", ty: { Primitive: { UInt: "U64" } } }],
+        },
+      ],
       records: [],
       mappings: [],
       storage_variables: [
         { name: "admin", ty: { Plaintext: { Primitive: "Address" } } },
         { name: "whitelist", ty: { Vector: { Plaintext: { Primitive: "Address" } } } },
+        {
+          name: "policies",
+          ty: { Vector: { Plaintext: { Struct: { path: ["Policy"], program: null } } } },
+        },
       ],
       transitions: [],
     };
@@ -1170,6 +1179,24 @@ describe("storage variables", () => {
     expect(output).toContain("export interface VaultStorage");
     expect(output).toContain("readonly admin: LeoAddress;");
     expect(output).toContain("readonly whitelist: LeoAddress[];");
+    expect(output).toContain("readonly policies: Policy[];");
+    expect(output).toContain("readonly storage = {");
+    expect(output).toContain("admin: {");
+    expect(output).toContain("get: async (): Promise<LeoAddress> =>");
+    expect(output).toContain("getOrUse: async (def: LeoAddress): Promise<LeoAddress> =>");
+    expect(output).toContain("tryGet: async (): Promise<LeoAddress | null> =>");
+    expect(output).toContain('this.requireStorageRaw("admin")');
+    expect(output).toContain('this.queryStorage("admin")');
+    expect(output).not.toContain("admin: {\n      get: async (key:");
+    expect(output).toContain("return BaseContract.parseAddress(_result);");
+    expect(output).toContain(
+      "BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e))",
+    );
+    expect(output).toContain(
+      "BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e))",
+    );
+    expect(output).toContain("if (_result === null) return def;");
+    expect(output).toContain("if (_result === null) return null;");
   });
 });
 
