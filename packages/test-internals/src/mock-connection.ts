@@ -30,6 +30,7 @@ export function createMockConnection(
     egressPolicy: TEST_DEVNODE_EGRESS_POLICY,
     getBalance: vi.fn().mockResolvedValue(1000n),
     getMappingValue: vi.fn().mockResolvedValue(null),
+    getStorageValue: vi.fn().mockResolvedValue(null),
     execute: vi.fn().mockResolvedValue({ outputs: ["1u32"], txId: "at1mock" }),
     waitForConfirmation: vi.fn().mockResolvedValue({
       txId: "at1mock",
