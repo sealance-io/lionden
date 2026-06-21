@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022"
+  },
+  "include": [
+    "typechain/**/*.ts",
+    "test/**/*.ts",
+    "scripts/**/*.ts",
+    "lionden.config.ts"
+  ]
+}
