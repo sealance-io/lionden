@@ -77,6 +77,15 @@ describe("dynamic_dispatch — local call.dynamic (.locally)", () => {
   });
 });
 
+describe("dynamic_dispatch — offline dyn-record cast (probe_cast)", () => {
+  it("probe_cast casts a Coin to `dyn record` and reads its field offline", async () => {
+    // Self-contained `c as dyn record` cast + field read with no dynamic call —
+    // the off-chain dyn-record-cast regression upstream built it for. Runs under
+    // `leo run` with no ledger.
+    expect(await tokenIface.probe_cast.locally({ amount: 42n })).toBe(42n);
+  });
+});
+
 describe("dynamic_dispatch — runtime target selection is observable", () => {
   it("settle_rebalance against token_iface is accepted and records last_split", async () => {
     const result = await dispatcher.settle_rebalance.accepted({

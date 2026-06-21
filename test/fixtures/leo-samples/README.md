@@ -119,12 +119,37 @@ is therefore *feasible*, but **not built** — the remaining blockers are shared
 ledger / deploy-cache state isolation and CI port allocation, not code. On-chain
 suites stay **sequential** on the shared `127.0.0.1:3030` devnode for now.
 
+### Known lionden gaps surfaced by this lane
+
+Two upgrade-matrix cells are `it.skip` in the upgradability suite because the
+lionden API cannot yet express them (the skips carry the same detail inline). `gh`
+was unavailable when this lane landed, so they are tracked here rather than as
+GitHub issues — file them as product issues when promoting the lane.
+
+1. **No per-upgrade signer override.** Driving an `@admin` upgrade *reject* with a
+   non-admin key needs the upgrade transaction signed by a key other than
+   `namedAccounts.admin`. `UpgradeOptions` (`packages/plugin-deploy`) has no
+   per-call signer field, so the wrong-key reject cannot be expressed without
+   standing up a second LRE. *Fix:* a per-call signer override on `UpgradeOptions`
+   (mirroring the per-call options the execution bindings already accept).
+   *Consequence:* the `@admin` accept side runs (genesis key) but the wrong-key
+   reject is unproven.
+2. **No pre-broadcast v2-checksum accessor.** Driving the `@checksum` upgrade
+   *accept* needs the compiled v2 checksum to call `governance.aleo::approve(...)`
+   before broadcasting. The upgrade task computes the checksum internally but does
+   not surface it pre-broadcast, and no task compiles-and-reports it without
+   broadcasting (upstream uses `leo upgrade --save` then reads
+   `deployment.program_checksum`). *Fix:* a pre-broadcast checksum accessor (e.g.
+   an upgrade `dryRun`/`--save` mode that returns the v2 checksum).
+   *Consequence:* `governance.aleo::approve` is never exercised at runtime and the
+   `@checksum` accept side is unproven (only the reject-before-approval path runs).
+
 ## Curated lane selection (P1)
 
 | Project | Coverage | On-chain? |
 | --- | --- | --- |
 | `abi_surface` | every primitive, structs (nested/array/const-generic), record field modifiers, mappings/storage/vectors, view-fn optionals → codegen breadth | **compile-only** — see Findings |
-| `native_runtime_edges` | overflow/underflow/div-zero/off-chain assert (`LocalTransitionError`), finalizer failures → `OnChainRejectedError`, diamond import, native records/futures | yes |
+| `native_runtime_edges` | overflow/underflow/div-zero/off-chain assert (`LocalTransitionError`), finalizer accept/reject → `OnChainRejectedError`, native `credits.aleo::account` mapping reads (`get_or_use` accept vs bare-`get` reject), storage/vector OOB rejects, a `credits.aleo::transfer_public_as_signer` future wrapper. Diamond import is verified at **compile** time (`compile-codegen`), not at runtime. | yes |
 | `dynamic_dispatch` | interfaces, `@(target)`/`_dynamic_call`, dyn records, dynamic mapping reads, V15 accept/**reject** → `.accepted`/`.rejected`, id-only handles | yes |
 | `upgradability` | `@noupgrade`/`@custom`/`@admin`/`@checksum`/timelock accept-reject matrix → `upgrade` task | yes (many deploys) |
 | `lionden_gapfiller` | `TransitionInputError`, every primitive serializer, hashing/crypto, decryption errors | local |

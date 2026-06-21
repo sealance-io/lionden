@@ -11,6 +11,7 @@
 //   .accepted / .rejected         — on-chain finalizer accept/reject
 //   .accepted on a rejecting tx   — OnChainRejectedError
 import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
+import { PrivateKey } from "@provablehq/sdk/testnet.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   Leo,
@@ -20,6 +21,13 @@ import {
   UnexpectedTransactionStatusError,
 } from "../typechain/BaseContract.js";
 import { createNativeRuntimeEdges } from "../typechain/NativeRuntimeEdges.js";
+
+// A syntactically valid address that is NOT one of the four pre-funded devnode
+// accounts. Those each hold ~23.4T microcredits, so they ALL have a
+// `credits.aleo::account` entry — only a freshly generated, never-funded address
+// has no entry, which is what `native_account_required_read` needs to reject.
+// Wrapped with Leo.address for the binding's AddressInput.
+const UNFUNDED_ADDRESS = Leo.address(new PrivateKey().to_address().to_string());
 
 async function deployNre() {
   const ctx = await setup();
@@ -126,5 +134,73 @@ describe("native_runtime_edges — on-chain finalizer accept/reject", () => {
   it("vector_get_at(99) rejects out-of-bounds", async () => {
     const result = await nre.vector_get_at.rejected({ index: 99 });
     expect(result.status).toBe("rejected");
+  });
+});
+
+describe("native_runtime_edges — native credits mapping reads (diamond-on-credits)", () => {
+  // The point of the diamond-on-credits sample: finalizers that read the native
+  // `credits.aleo::account` mapping cross-program at runtime.
+  it("native_account_safe_read uses get_or_use → accepted for any address", async () => {
+    // Zero state dependency: get_or_use falls back to 0u64, so this is the
+    // guaranteed-robust anchor regardless of funding.
+    const result = await nre.native_account_safe_read.accepted({
+      owner: Leo.address(ctx!.accounts[0]!.address),
+    });
+    expect(result.status).toBe("accepted");
+  });
+
+  it("native_account_required_read rejects for an address with no credits.aleo::account entry", async () => {
+    // Bare get(credits.aleo::account, owner) panics on a missing key.
+    const result = await nre.native_account_required_read.rejected({ owner: UNFUNDED_ADDRESS });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("calling .accepted on the required read of an unfunded address throws OnChainRejectedError", async () => {
+    await expect(
+      nre.native_account_required_read.accepted({ owner: UNFUNDED_ADDRESS }),
+    ).rejects.toBeInstanceOf(OnChainRejectedError);
+  });
+});
+
+describe("native_runtime_edges — storage & vector finalizer edges", () => {
+  // `field_history` / `group_history` are never populated at runtime
+  // (`initialize_runtime_state` is never called) and the storage singletons are
+  // unset — so every index is out of bounds and every unwrap panics.
+  it("vector_set_at(0) rejects out-of-bounds on the empty field_history", async () => {
+    const result = await nre.vector_set_at.rejected({ index: 0, value: Leo.field(7) });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("calling .accepted on the out-of-bounds vector_set_at throws OnChainRejectedError", async () => {
+    await expect(
+      nre.vector_set_at.accepted({ index: 0, value: Leo.field(7) }),
+    ).rejects.toBeInstanceOf(OnChainRejectedError);
+  });
+
+  it("vector_swap_remove_at(0) rejects out-of-bounds on the empty group_history", async () => {
+    const result = await nre.vector_swap_remove_at.rejected({ index: 0 });
+    expect(result.status).toBe("rejected");
+  });
+
+  it("missing_storage_unwrap rejects on the unset required_field singleton", async () => {
+    const result = await nre.missing_storage_unwrap.rejected();
+    expect(result.status).toBe("rejected");
+  });
+});
+
+describe("native_runtime_edges — native credits future composition", () => {
+  it("transfer_public_signer_wrap runs credits.aleo::transfer_public_as_signer and is accepted", async () => {
+    // Wraps `credits.aleo::transfer_public_as_signer(...).run()`, which debits
+    // `self.signer` — the genesis account (accounts[0], the default signer) holds
+    // ~23.4T public microcredits, so the composed credits future settles.
+    // (The sibling `transfer_public_wrapper` uses plain `transfer_public`, which
+    // debits `self.caller` == the *program* in a cross-program `.run()`; the
+    // program is unfunded, so that one deterministically rejects — wrong shape
+    // for an accept test.)
+    const result = await nre.transfer_public_signer_wrap.accepted({
+      recipient: Leo.address(ctx!.accounts[1]!.address),
+      amount: 1n,
+    });
+    expect(result.status).toBe("accepted");
   });
 });

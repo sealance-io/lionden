@@ -48,6 +48,7 @@ export {
   compilePipeline,
   defaultFetchNetworkDep,
   type FetchNetworkDep,
+  networkDepCacheScope,
 } from "./compiler.js";
 // Dependency resolver
 export {
