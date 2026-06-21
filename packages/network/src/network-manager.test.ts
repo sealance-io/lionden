@@ -160,6 +160,25 @@ describe("NetworkManagerImpl", () => {
     );
   });
 
+  it("getStorageValue throws when not connected", async () => {
+    await expect(manager.getStorageValue("test.aleo", "admin")).rejects.toThrow(
+      "No active network connection",
+    );
+  });
+
+  it("getStorageValue delegates to the active connection", async () => {
+    const conn = (await manager.connect("devnode")) as NetworkConnection & {
+      getStorageValue: ReturnType<typeof vi.fn>;
+    };
+    const getStorageValue = vi.fn().mockResolvedValue("aleo1admin");
+    conn.getStorageValue = getStorageValue;
+
+    const value = await manager.getStorageValue("test.aleo", "admin");
+
+    expect(value).toBe("aleo1admin");
+    expect(getStorageValue).toHaveBeenCalledWith("test.aleo", "admin");
+  });
+
   it("devnode connection has advanceBlocks method", async () => {
     const conn = await manager.connect("devnode");
     expect(conn.advanceBlocks).toBeDefined();

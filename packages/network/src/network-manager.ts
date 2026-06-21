@@ -2,7 +2,7 @@
  * NetworkManagerImpl — manages connections to Aleo networks.
  *
  * Injected into lre.network by @lionden/plugin-network.
- * Contract wrappers call execute() and getMappingValue() on this object.
+ * Contract wrappers call execute(), getMappingValue(), and getStorageValue() on this object.
  */
 
 import type {
@@ -174,6 +174,11 @@ export class NetworkManagerImpl implements NetworkManager {
   ): Promise<string | null> {
     const conn = this.requireConnection();
     return conn.getMappingValue(programId, mappingName, key);
+  }
+
+  async getStorageValue(programId: string, variableName: string): Promise<string | null> {
+    const conn = this.requireConnection();
+    return conn.getStorageValue(programId, variableName);
   }
 
   async waitForConfirmation(txId: string, timeout?: number) {

@@ -54,6 +54,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   private balances = new Map<string, bigint>();
   private defaultBalance: bigint;
   private mappings = new Map<string, Map<string, string>>();
+  private storageValues = new Map<string, string>();
   private executeResponses = new Map<string, TransitionCallResult>();
   private defaultExecuteResponse: TransitionCallResult = {
     outputs: ["1u32"],
@@ -98,6 +99,14 @@ export class FakeNetworkConnection implements NetworkConnection {
 
   clearMapping(programId: string, mappingName: string): void {
     this.mappings.delete(`${programId}:${mappingName}`);
+  }
+
+  setStorageValue(programId: string, variableName: string, value: string): void {
+    this.storageValues.set(`${programId}:${variableName}`, value);
+  }
+
+  clearStorageValue(programId: string, variableName: string): void {
+    this.storageValues.delete(`${programId}:${variableName}`);
   }
 
   setExecuteResponse(
@@ -162,6 +171,15 @@ export class FakeNetworkConnection implements NetworkConnection {
     });
     const mapping = this.mappings.get(`${programId}:${mappingName}`);
     return mapping?.get(key) ?? null;
+  }
+
+  async getStorageValue(programId: string, variableName: string): Promise<string | null> {
+    this.calls.push({
+      method: "getStorageValue",
+      args: [programId, variableName],
+      timestamp: Date.now(),
+    });
+    return this.storageValues.get(`${programId}:${variableName}`) ?? null;
   }
 
   async execute(
@@ -362,6 +380,10 @@ export class FakeNetworkManager implements NetworkManager {
     key: string,
   ): Promise<string | null> {
     return this.requireConnection().getMappingValue(programId, mappingName, key);
+  }
+
+  async getStorageValue(programId: string, variableName: string): Promise<string | null> {
+    return this.requireConnection().getStorageValue(programId, variableName);
   }
 
   async waitForConfirmation(txId: string, timeout?: number) {

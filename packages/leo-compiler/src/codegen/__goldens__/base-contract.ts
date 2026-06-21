@@ -493,7 +493,8 @@ export type TypechainErrorKind =
   | "LocalRecordDecryptionError"
   | "LocalValueDecryptionError"
   | "IdOnlyRecordResolutionError"
-  | "MappingKeyNotFoundError";
+  | "MappingKeyNotFoundError"
+  | "StorageValueNotFoundError";
 
 export type TypechainErrorPhase =
   | "input"
@@ -502,7 +503,8 @@ export type TypechainErrorPhase =
   | "confirm"
   | "settled"
   | "shape"
-  | "mapping";
+  | "mapping"
+  | "storage";
 
 export interface TypechainErrorContext {
   readonly phase: TypechainErrorPhase;
@@ -511,6 +513,7 @@ export interface TypechainErrorContext {
   readonly input?: string;
   readonly outputIndex?: number;
   readonly mapping?: string;
+  readonly storage?: string;
   readonly key?: string;
   readonly cause?: unknown;
 }
@@ -523,6 +526,7 @@ export class LionDenTypechainError extends Error {
   readonly input?: string;
   readonly outputIndex?: number;
   readonly mapping?: string;
+  readonly storage?: string;
   readonly key?: string;
 
   constructor(kind: TypechainErrorKind, message: string, context: TypechainErrorContext) {
@@ -535,6 +539,7 @@ export class LionDenTypechainError extends Error {
     this.input = context.input;
     this.outputIndex = context.outputIndex;
     this.mapping = context.mapping;
+    this.storage = context.storage;
     this.key = context.key;
   }
 }
@@ -590,6 +595,12 @@ export class TransactionShapeError extends LionDenTypechainError {
 export class MappingKeyNotFoundError extends LionDenTypechainError {
   constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
     super("MappingKeyNotFoundError", message, { ...context, phase: "mapping" });
+  }
+}
+
+export class StorageValueNotFoundError extends LionDenTypechainError {
+  constructor(message: string, context: Omit<TypechainErrorContext, "phase"> = {}) {
+    super("StorageValueNotFoundError", message, { ...context, phase: "storage" });
   }
 }
 
@@ -1579,6 +1590,31 @@ export abstract class BaseContract {
       throw new MappingKeyNotFoundError(
         'Mapping "' + mappingName + '" on ' + this.programId + ' has no entry for key ' + key + '.',
         { programId: this.programId, mapping: mappingName, key },
+      );
+    }
+    return raw;
+  }
+
+  protected async queryStorage(variableName: string): Promise<string | null> {
+    const lre = this.getLre();
+    const network = (lre as any).network;
+
+    if (!network || typeof network.getStorageValue !== "function") {
+      throw new TransactionShapeError(
+        "Network is not available for " + this.programId + ". Ensure @lionden/plugin-network is loaded and connected before querying storage variables.",
+        { programId: this.programId },
+      );
+    }
+
+    return network.getStorageValue(this.programId, variableName);
+  }
+
+  protected async requireStorageRaw(variableName: string): Promise<string> {
+    const raw = await this.queryStorage(variableName);
+    if (raw === null) {
+      throw new StorageValueNotFoundError(
+        'Storage variable "' + variableName + '" on ' + this.programId + ' has no value.',
+        { programId: this.programId, storage: variableName },
       );
     }
     return raw;

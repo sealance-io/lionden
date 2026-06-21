@@ -359,6 +359,9 @@ export interface NetworkConnection {
   /** Query a mapping value. Returns null if the key has no entry. */
   getMappingValue(programId: string, mappingName: string, key: string): Promise<string | null>;
 
+  /** Query a storage variable value. Returns null if the value has no entry. */
+  getStorageValue(programId: string, variableName: string): Promise<string | null>;
+
   /** Execute a program transition. */
   execute(
     programId: string,
@@ -454,6 +457,12 @@ export interface NetworkManager {
    * Convenience method — delegates to getConnection().getMappingValue().
    */
   getMappingValue(programId: string, mappingName: string, key: string): Promise<string | null>;
+
+  /**
+   * Query a storage variable value on the active connection.
+   * Convenience method — delegates to getConnection().getStorageValue().
+   */
+  getStorageValue(programId: string, variableName: string): Promise<string | null>;
 
   /**
    * Wait for a transaction on the active connection.
