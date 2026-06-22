@@ -255,10 +255,13 @@ do not accept a key. This includes fixed-length plaintext arrays such as
 
 - `len(): Promise<number>` — reads the lowered `<name>__len__` mapping with key `"false"`;
   missing length storage returns `0` to match Leo-level vector semantics.
-- `get(index): Promise<Value>` — reads `<name>__` with key `"<index>u32"` and throws
-  `StorageValueNotFoundError` when the indexed entry is absent.
-- `getOrUse(index, def): Promise<Value>` — returns `def` when the indexed entry is absent.
-- `tryGet(index): Promise<Value | null>` — returns `null` when the indexed entry is absent.
+- `get(index): Promise<Value>` — checks the current length, then reads `<name>__` with
+  key `"<index>u32"` and throws `StorageValueNotFoundError` when the index is outside
+  the current length or the indexed entry is absent.
+- `getOrUse(index, def): Promise<Value>` — returns `def` when the index is outside the
+  current length or the indexed entry is absent.
+- `tryGet(index): Promise<Value | null>` — returns `null` when the index is outside the
+  current length or the indexed entry is absent.
 
 ## `compile` and `clean`
 
