@@ -293,10 +293,18 @@ export class AleoConnection implements NetworkConnection {
     return BigInt(value.replace(/u\d+$/i, ""));
   }
 
-  async getMappingValue(
+  /**
+   * Shared query body for mapping/storage reads. Resolves the SDK network
+   * client, calls `getProgramMappingValue`, coerces undefined/null to `null`,
+   * treats 404/"not found" as `null`, and otherwise rethrows wrapped in a
+   * `Failed to query ${failureLabel}` error. Callers supply the flavored
+   * `failureLabel` ("mapping …" vs "storage …") so error strings stay distinct.
+   */
+  private async queryProgramMappingRaw(
     programId: string,
     mappingName: string,
     key: string,
+    failureLabel: string,
   ): Promise<string | null> {
     this.assertOpen();
     const sdk = await this.getSdkObjects();
@@ -320,35 +328,30 @@ export class AleoConnection implements NetworkConnection {
       ) {
         return null;
       }
-      throw new Error(`Failed to query mapping ${programId}/${mappingName}: ${message}`);
+      throw new Error(`Failed to query ${failureLabel}: ${message}`);
     }
   }
 
-  async getStorageValue(programId: string, variableName: string): Promise<string | null> {
-    this.assertOpen();
-    const sdk = await this.getSdkObjects();
-    const nc = sdk.networkClient as any;
-    const storageMappingName = `${variableName}__`;
+  async getMappingValue(
+    programId: string,
+    mappingName: string,
+    key: string,
+  ): Promise<string | null> {
+    return this.queryProgramMappingRaw(
+      programId,
+      mappingName,
+      key,
+      `mapping ${programId}/${mappingName}`,
+    );
+  }
 
-    try {
-      const value: string | undefined = await nc.getProgramMappingValue(
-        programId,
-        storageMappingName,
-        "false",
-      );
-      if (value === undefined || value === null) return null;
-      return typeof value === "string" ? value : String(value);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (
-        message.includes("404") ||
-        message.includes("not found") ||
-        message.includes("Not Found")
-      ) {
-        return null;
-      }
-      throw new Error(`Failed to query storage ${programId}/${variableName}: ${message}`);
-    }
+  async getStorageValue(programId: string, variableName: string): Promise<string | null> {
+    return this.queryProgramMappingRaw(
+      programId,
+      `${variableName}__`,
+      "false",
+      `storage ${programId}/${variableName}`,
+    );
   }
 
   async getStorageVectorLength(programId: string, variableName: string): Promise<number> {
