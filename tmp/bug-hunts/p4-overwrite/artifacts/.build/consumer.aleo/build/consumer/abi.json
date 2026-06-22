@@ -1,0 +1,73 @@
+{
+  "program": "consumer.aleo",
+  "implements": [],
+  "structs": [],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "relay",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "a",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Alpha"
+                ],
+                "program": "foo_bar.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        },
+        {
+          "name": "b",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Beta"
+                ],
+                "program": "foo__bar.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Alpha"
+                ],
+                "program": "foo_bar.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        },
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Beta"
+                ],
+                "program": "foo__bar.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

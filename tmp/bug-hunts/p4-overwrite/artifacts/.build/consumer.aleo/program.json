@@ -1,0 +1,18 @@
+{
+  "program": "consumer.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "foo_bar.aleo",
+      "location": "local",
+      "path": "/Users/mitzpetel/Workspaces/lionden/tmp/bug-hunts/p4-overwrite/artifacts/.build/foo_bar.aleo"
+    },
+    {
+      "name": "foo__bar.aleo",
+      "location": "local",
+      "path": "/Users/mitzpetel/Workspaces/lionden/tmp/bug-hunts/p4-overwrite/artifacts/.build/foo__bar.aleo"
+    }
+  ]
+}

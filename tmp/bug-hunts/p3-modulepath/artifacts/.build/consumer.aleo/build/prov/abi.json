@@ -1,0 +1,71 @@
+{
+  "program": "prov.aleo",
+  "implements": [],
+  "structs": [
+    {
+      "path": [
+        "sh",
+        "Env"
+      ],
+      "fields": [
+        {
+          "name": "account",
+          "ty": {
+            "Primitive": "Address"
+          }
+        },
+        {
+          "name": "count",
+          "ty": {
+            "Primitive": {
+              "UInt": "U32"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "envelope_echo",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "e",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "sh",
+                  "Env"
+                ],
+                "program": "prov.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "sh",
+                  "Env"
+                ],
+                "program": "prov.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

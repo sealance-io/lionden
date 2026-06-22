@@ -1,0 +1,13 @@
+{
+  "program": "consumer.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "prov.aleo",
+      "location": "local",
+      "path": "/Users/mitzpetel/Workspaces/lionden/tmp/bug-hunts/p3-modulepath/artifacts/.build/prov.aleo"
+    }
+  ]
+}

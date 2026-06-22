@@ -1,0 +1,62 @@
+{
+  "program": "foo__bar.aleo",
+  "implements": [],
+  "structs": [
+    {
+      "path": [
+        "Beta"
+      ],
+      "fields": [
+        {
+          "name": "y",
+          "ty": {
+            "Primitive": {
+              "UInt": "U32"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "echo_beta",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "b",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Beta"
+                ],
+                "program": "foo__bar.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Beta"
+                ],
+                "program": "foo__bar.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "program": "registry.aleo",
+  "implements": [],
+  "structs": [
+    {
+      "path": [
+        "TokenInfo"
+      ],
+      "fields": [
+        {
+          "name": "supply",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          }
+        },
+        {
+          "name": "admin",
+          "ty": {
+            "Primitive": "Address"
+          }
+        }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "echo",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "info",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenInfo"
+                ],
+                "program": "registry.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenInfo"
+                ],
+                "program": "registry.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

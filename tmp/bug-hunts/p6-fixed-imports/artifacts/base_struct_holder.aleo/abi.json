@@ -1,0 +1,59 @@
+{
+  "program": "base_struct_holder.aleo",
+  "implements": [],
+  "structs": [
+    {
+      "path": [
+        "BaseContract"
+      ],
+      "fields": [
+        {
+          "name": "x",
+          "ty": {
+            "Primitive": {
+              "UInt": "U32"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "use_it",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "a",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "BaseContract"
+                ],
+                "program": "base_struct_holder.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U32"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

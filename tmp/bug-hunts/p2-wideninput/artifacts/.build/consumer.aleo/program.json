@@ -1,0 +1,13 @@
+{
+  "program": "consumer.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "dependencies": [
+    {
+      "name": "registry.aleo",
+      "location": "local",
+      "path": "/Users/mitzpetel/Workspaces/lionden/tmp/bug-hunts/p2-wideninput/artifacts/.build/registry.aleo"
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "program": "consumer.aleo",
+  "implements": [],
+  "structs": [
+    {
+      "path": [
+        "WidenInput"
+      ],
+      "fields": [
+        {
+          "name": "n",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "make",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "n",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "WidenInput"
+                ],
+                "program": "consumer.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    },
+    {
+      "name": "relay",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "info",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenInfo"
+                ],
+                "program": "registry.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenInfo"
+                ],
+                "program": "registry.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}

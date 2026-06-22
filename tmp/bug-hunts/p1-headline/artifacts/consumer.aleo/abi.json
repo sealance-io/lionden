@@ -1,0 +1,175 @@
+{
+  "program": "consumer.aleo",
+  "implements": [],
+  "structs": [
+    {
+      "path": [
+        "Registry_TokenInfo"
+      ],
+      "fields": [
+        {
+          "name": "a",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": [
+        "TokenRegistry_Token"
+      ],
+      "fields": [
+        {
+          "name": "b",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "local_info",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "a",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "Registry_TokenInfo"
+                ],
+                "program": "consumer.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    },
+    {
+      "name": "local_tok",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "b",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenRegistry_Token"
+                ],
+                "program": "consumer.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    },
+    {
+      "name": "relay",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "info",
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenInfo"
+                ],
+                "program": "registry.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Struct": {
+                "path": [
+                  "TokenInfo"
+                ],
+                "program": "registry.aleo"
+              }
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    },
+    {
+      "name": "forward",
+      "is_final": false,
+      "const_parameters": [],
+      "inputs": [
+        {
+          "name": "t",
+          "ty": {
+            "Record": {
+              "path": [
+                "Token"
+              ],
+              "program": "token_registry.aleo"
+            }
+          },
+          "mode": "None"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Record": {
+              "path": [
+                "Token"
+              ],
+              "program": "token_registry.aleo"
+            }
+          },
+          "mode": "None"
+        }
+      ]
+    }
+  ]
+}
