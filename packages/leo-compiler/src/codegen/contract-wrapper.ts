@@ -1667,6 +1667,39 @@ export abstract class BaseContract {
     return raw;
   }
 
+  /**
+   * Read every element of a storage vector in logical order. Resolves the
+   * length once, then reads indices [0, length) sequentially (1 + N
+   * round-trips, not 2N), so stale lowered entries beyond the logical length
+   * are never read. A null at any in-range index is a torn read and throws
+   * StorageValueNotFoundError rather than silently truncating.
+   */
+  protected async queryStorageVectorAll(variableName: string): Promise<string[]> {
+    const length = await this.queryStorageVectorLength(variableName);
+    const out: string[] = [];
+    const lre = this.getLre();
+    const network = (lre as any).network;
+
+    if (!network || typeof network.getStorageVectorValue !== "function") {
+      throw new TransactionShapeError(
+        "Network is not available for " + this.programId + ". Ensure @lionden/plugin-network is loaded and connected before querying storage vectors.",
+        { programId: this.programId },
+      );
+    }
+
+    for (let i = 0; i < length; i++) {
+      const raw = await network.getStorageVectorValue(this.programId, variableName, i);
+      if (raw === null) {
+        throw new StorageValueNotFoundError(
+          'Storage vector "' + variableName + '" on ' + this.programId + ' is missing element at index ' + i + ' (length ' + length + ').',
+          { programId: this.programId, storage: variableName + "[" + i + "]" },
+        );
+      }
+      out.push(raw);
+    }
+    return out;
+  }
+
   // ---------------------------------------------------------------------------
   // Leo string to JS value parsers and JS value to Leo string serializers
   // ---------------------------------------------------------------------------

@@ -262,6 +262,11 @@ do not accept a key. This includes fixed-length plaintext arrays such as
   current length or the indexed entry is absent.
 - `tryGet(index): Promise<Value | null>` — returns `null` when the index is outside the
   current length or the indexed entry is absent.
+- `getAll(): Promise<Value[]>` — reads the current length once, then reads indices
+  `[0, length)` in order, returning the deserialized elements. Throws
+  `StorageValueNotFoundError` on a torn read (an in-range index whose entry is absent).
+  Stale lowered entries beyond the current length (left by `pop`/`clear`) are never read.
+- `toArray(): Promise<Value[]>` — alias for `getAll()`.
 
 ## `compile` and `clean`
 

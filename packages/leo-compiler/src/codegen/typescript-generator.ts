@@ -1145,6 +1145,7 @@ function generateStorageAccessor(
   if ("Vector" in variable.ty) {
     const valueType = storageTypeToBindingTs(variable.ty.Vector, ctx);
     const valueDeserializer = deserializeStorageExpr("_result", variable.ty.Vector, ctx);
+    const elementDeserializer = deserializeStorageExpr("e", variable.ty.Vector, ctx);
 
     return [
       `${propKey}: {`,
@@ -1164,6 +1165,14 @@ function generateStorageAccessor(
       `    const _result = await this.queryStorageVector("${variable.name}", index);`,
       `    if (_result === null) return null;`,
       `    return ${valueDeserializer};`,
+      `  },`,
+      `  getAll: async (): Promise<${valueType}[]> => {`,
+      `    const _results = await this.queryStorageVectorAll("${variable.name}");`,
+      `    return _results.map((e: string) => ${elementDeserializer});`,
+      `  },`,
+      `  toArray: async (): Promise<${valueType}[]> => {`,
+      `    const _results = await this.queryStorageVectorAll("${variable.name}");`,
+      `    return _results.map((e: string) => ${elementDeserializer});`,
       `  },`,
       `},`,
     ];

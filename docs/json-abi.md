@@ -138,7 +138,7 @@ distinguishable from fixed-length plaintext arrays:
 | Variant | JSON shape | Generated access |
 |---|---|---|
 | `Plaintext` | `{ "Plaintext": ... }` | zero-argument `get()`, `tryGet()`, `getOrUse(def)` |
-| `Vector` | `{ "Vector": ... }` | `len()`, `get(index)`, `tryGet(index)`, `getOrUse(index, def)` |
+| `Vector` | `{ "Vector": ... }` | `len()`, `get(index)`, `tryGet(index)`, `getOrUse(index, def)`, `getAll()`, `toArray()` |
 
 A `Plaintext.Array` storage variable remains a regular storage value and keeps the
 zero-argument accessor API. Only the top-level `StorageType.Vector` variant gets
