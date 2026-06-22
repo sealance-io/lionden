@@ -435,6 +435,32 @@ function createGenerationContext(
 }
 
 /**
+ * Names this module emits as top-level declarations from the program's own ABI:
+ * the contract class, its `${class}Storage` interface, and every local
+ * struct/record interface. Shared by the external-alias and input-name
+ * disambiguation passes so they reserve an identical base set. `${class}Storage`
+ * is reserved even when the program has no storage variables — harmless
+ * over-reservation that only ever yields more-unique names.
+ */
+function localDeclaredNames(abi: ProgramABI): string[] {
+  const className = resolveContractClassName(abi);
+  return [
+    className,
+    `${className}Storage`,
+    ...abi.structs.map((s) => pathToTsName(s.path)),
+    ...abi.records.map((r) => pathToTsName(r.path)),
+  ];
+}
+
+/**
+ * Stable ordering for external refs by their `externalRefKey`, so underscore
+ * disambiguation is deterministic across runs.
+ */
+function sortRefsByKey<T extends StructRef | RecordRef>(refs: Iterable<T>): T[] {
+  return [...refs].sort((a, b) => externalRefKey(a).localeCompare(externalRefKey(b)));
+}
+
+/**
  * Build deterministic external type/helper aliases before emission so imports,
  * type annotations, serializers, and deserializers all use the same resolved
  * names. The preferred alias is `${ProgramClass}_${TypeName}`; underscores are
@@ -445,21 +471,16 @@ function resolveExternalInfos(
   externalStructRefs: ReadonlyMap<string, StructRef>,
   externalRecordRefs: ReadonlyMap<string, RecordRef>,
 ): Map<string, ExternalRefInfo> {
-  const className = resolveContractClassName(abi);
-  const reserved = new Set<string>([
-    className,
-    `${className}Storage`,
-    ...abi.structs.map((s) => pathToTsName(s.path)),
-    ...abi.records.map((r) => pathToTsName(r.path)),
-  ]);
+  const reserved = new Set<string>(localDeclaredNames(abi));
+  // Structs and records share one map keyed by `externalRefKey` (program+path).
+  // Leo keeps structs and records in a single type namespace, so no struct and
+  // record can share a program+path — entries never alias each other here.
   const infoByKey = new Map<string, ExternalRefInfo>();
-  const sortByKey = <T extends StructRef | RecordRef>(refs: Iterable<T>): T[] =>
-    [...refs].sort((a, b) => externalRefKey(a).localeCompare(externalRefKey(b)));
 
   const claim = (ref: StructRef | RecordRef, baseName: string): void => {
     const programId = ref.program!;
-    const className = programIdToClassName(programId);
-    const preferred = `${className}_${baseName}`;
+    const programClass = programIdToClassName(programId);
+    const preferred = `${programClass}_${baseName}`;
     let typeName = preferred;
     let underscores = 1;
     while (reserved.has(typeName)) {
@@ -469,7 +490,7 @@ function resolveExternalInfos(
     reserved.add(typeName);
     infoByKey.set(externalRefKey(ref), {
       programId,
-      className,
+      className: programClass,
       baseName,
       typeName,
       serializerName: `serialize${typeName}`,
@@ -477,8 +498,8 @@ function resolveExternalInfos(
     });
   };
 
-  for (const ref of sortByKey(externalStructRefs.values())) claim(ref, structRefName(ref));
-  for (const ref of sortByKey(externalRecordRefs.values())) claim(ref, recordRefName(ref));
+  for (const ref of sortRefsByKey(externalStructRefs.values())) claim(ref, structRefName(ref));
+  for (const ref of sortRefsByKey(externalRecordRefs.values())) claim(ref, recordRefName(ref));
 
   return infoByKey;
 }
@@ -509,17 +530,11 @@ function resolveInputNames(
   externalRecordRefs: ReadonlyMap<string, RecordRef>,
   externalInfoByKey: ReadonlyMap<string, ExternalRefInfo>,
 ): { inputNameByKey: Map<string, string>; widenInputAlias: string } {
-  const className = resolveContractClassName(abi);
   // `declared` = names this module emits as top-level declarations (interfaces,
   // class, storage, external re-exports, and the input aliases claimed below).
   // Kept distinct from the fixed imports so the WidenInput import alias can be
   // checked against genuine declaration collisions only.
-  const declared = new Set<string>([
-    className,
-    `${className}Storage`,
-    ...abi.structs.map((s) => pathToTsName(s.path)),
-    ...abi.records.map((r) => pathToTsName(r.path)),
-  ]);
+  const declared = new Set<string>(localDeclaredNames(abi));
   for (const ref of externalStructRefs.values()) {
     declared.add(externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
@@ -540,12 +555,10 @@ function resolveInputNames(
   // external structs and records sorted by their stable ref key.
   for (const struct of abi.structs) claim(pathKey(struct.path), pathToTsName(struct.path));
   for (const record of abi.records) claim(pathKey(record.path), pathToTsName(record.path));
-  const sortByKey = <T extends StructRef | RecordRef>(refs: Iterable<T>): T[] =>
-    [...refs].sort((a, b) => externalRefKey(a).localeCompare(externalRefKey(b)));
-  for (const ref of sortByKey(externalStructRefs.values())) {
+  for (const ref of sortRefsByKey(externalStructRefs.values())) {
     claim(externalRefKey(ref), externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
-  for (const ref of sortByKey(externalRecordRefs.values())) {
+  for (const ref of sortRefsByKey(externalRecordRefs.values())) {
     claim(externalRefKey(ref), externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
 
