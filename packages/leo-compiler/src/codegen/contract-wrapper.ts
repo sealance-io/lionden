@@ -1640,6 +1640,9 @@ export abstract class BaseContract {
 
   protected async queryStorageVector(variableName: string, index: number): Promise<string | null> {
     BaseContract.serializeUInt(index, 32, { programId: this.programId, input: variableName + " index" });
+    const length = await this.queryStorageVectorLength(variableName);
+    if (index >= length) return null;
+
     const lre = this.getLre();
     const network = (lre as any).network;
 

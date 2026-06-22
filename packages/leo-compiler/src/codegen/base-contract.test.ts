@@ -808,6 +808,7 @@ describe("BaseContract runtime", () => {
       const contract = createTestContract("vault.aleo");
       contract.connect(
         mockLre({
+          getStorageVectorLength: async () => 8,
           getStorageVectorValue: async (...args: any[]) => {
             spy.calls.push(args);
             return "true";
@@ -819,6 +820,21 @@ describe("BaseContract runtime", () => {
 
       expect(value).toBe("true");
       expect(spy.calls[0]).toEqual(["vault.aleo", "bool_vector", 7]);
+    });
+
+    it("treats indexes outside the current vector length as absent", async () => {
+      const getStorageVectorValue = vi.fn().mockResolvedValue("true");
+      const contract = createTestContract("vault.aleo");
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 2,
+          getStorageVectorValue,
+        }),
+      );
+
+      await expect(contract.testQueryStorageVector("bool_vector", 2)).resolves.toBeNull();
+      await expect(contract.testQueryStorageVector("bool_vector", 3)).resolves.toBeNull();
+      expect(getStorageVectorValue).not.toHaveBeenCalled();
     });
 
     it("validates vector indexes before delegating", async () => {
@@ -959,6 +975,25 @@ describe("BaseContract runtime", () => {
       );
       await expect(contract.storage.boolVector.tryGet(0)).resolves.toBeNull();
       await expect(contract.storage.boolVector.getOrUse(0, false)).resolves.toBe(false);
+    });
+
+    it("ignores stale lowered entries outside the current vector length", async () => {
+      const getStorageVectorValue = vi.fn().mockResolvedValue("true");
+      const contract = createStorageVectorContract();
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 0,
+          getStorageVectorValue,
+        }),
+      );
+
+      await expect(contract.storage.boolVector.len()).resolves.toBe(0);
+      await expect(contract.storage.boolVector.get(0)).rejects.toBeInstanceOf(
+        StorageValueNotFoundError,
+      );
+      await expect(contract.storage.boolVector.tryGet(0)).resolves.toBeNull();
+      await expect(contract.storage.boolVector.getOrUse(0, false)).resolves.toBe(false);
+      expect(getStorageVectorValue).not.toHaveBeenCalled();
     });
   });
 
