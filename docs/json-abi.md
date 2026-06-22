@@ -130,6 +130,22 @@ Wraps a `Plaintext` type. In Leo source this is `T?`. In compiled Aleo bytecode,
 { "Optional": { "Primitive": { "UInt": "U64" } } }
 ```
 
+## Storage Types
+
+Storage variables use `StorageType`, not plain `Plaintext`, so vector storage is
+distinguishable from fixed-length plaintext arrays:
+
+| Variant | JSON shape | Generated access |
+|---|---|---|
+| `Plaintext` | `{ "Plaintext": ... }` | zero-argument `get()`, `tryGet()`, `getOrUse(def)` |
+| `Vector` | `{ "Vector": ... }` | `len()`, `get(index)`, `tryGet(index)`, `getOrUse(index, def)` |
+
+A `Plaintext.Array` storage variable remains a regular storage value and keeps the
+zero-argument accessor API. Only the top-level `StorageType.Vector` variant gets
+indexed accessors. Vector storage reads use Leo's lowered mapping representation:
+length is `<name>__len__` at key `"false"` and elements are `<name>__` at key
+`"<index>u32"`. Missing vector length is surfaced as `0`.
+
 ## Structs
 
 Structs are custom composite types defined at the global scope (outside `program {}`).

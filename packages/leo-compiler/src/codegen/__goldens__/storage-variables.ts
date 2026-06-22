@@ -119,19 +119,22 @@ export class Vault extends BaseContract {
       },
     },
     whitelist: {
-      get: async (): Promise<LeoAddress[]> => {
-        const _result = await this.requireStorageRaw("whitelist");
-        return BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e));
+      len: async (): Promise<number> => {
+        return this.queryStorageVectorLength("whitelist");
       },
-      getOrUse: async (def: LeoAddress[]): Promise<LeoAddress[]> => {
-        const _result = await this.queryStorage("whitelist");
+      get: async (index: number): Promise<LeoAddress> => {
+        const _result = await this.requireStorageVectorRaw("whitelist", index);
+        return BaseContract.parseAddress(_result);
+      },
+      getOrUse: async (index: number, def: LeoAddress): Promise<LeoAddress> => {
+        const _result = await this.queryStorageVector("whitelist", index);
         if (_result === null) return def;
-        return BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e));
+        return BaseContract.parseAddress(_result);
       },
-      tryGet: async (): Promise<LeoAddress[] | null> => {
-        const _result = await this.queryStorage("whitelist");
+      tryGet: async (index: number): Promise<LeoAddress | null> => {
+        const _result = await this.queryStorageVector("whitelist", index);
         if (_result === null) return null;
-        return BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e));
+        return BaseContract.parseAddress(_result);
       },
     },
     policy: {
@@ -151,19 +154,22 @@ export class Vault extends BaseContract {
       },
     },
     policies: {
-      get: async (): Promise<Policy[]> => {
-        const _result = await this.requireStorageRaw("policies");
-        return BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e));
+      len: async (): Promise<number> => {
+        return this.queryStorageVectorLength("policies");
       },
-      getOrUse: async (def: Policy[]): Promise<Policy[]> => {
-        const _result = await this.queryStorage("policies");
+      get: async (index: number): Promise<Policy> => {
+        const _result = await this.requireStorageVectorRaw("policies", index);
+        return deserializePolicy(_result);
+      },
+      getOrUse: async (index: number, def: Policy): Promise<Policy> => {
+        const _result = await this.queryStorageVector("policies", index);
         if (_result === null) return def;
-        return BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e));
+        return deserializePolicy(_result);
       },
-      tryGet: async (): Promise<Policy[] | null> => {
-        const _result = await this.queryStorage("policies");
+      tryGet: async (index: number): Promise<Policy | null> => {
+        const _result = await this.queryStorageVector("policies", index);
         if (_result === null) return null;
-        return BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e));
+        return deserializePolicy(_result);
       },
     },
   } as const;

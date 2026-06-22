@@ -84,6 +84,25 @@ export class TransactionShapeParseError extends Error {
 
 const DEFAULT_CONFIRMATION_TIMEOUT_MS = 60_000;
 const CONFIRMATION_POLL_INTERVAL_MS = 1_000;
+const U32_MAX = 0xffffffff;
+
+function formatStorageVectorIndex(index: number): string {
+  if (!Number.isSafeInteger(index) || index < 0 || index > U32_MAX) {
+    throw new Error(
+      `Storage vector index must be a non-negative safe integer in range 0..${U32_MAX}.`,
+    );
+  }
+  return `${index}u32`;
+}
+
+function parseStorageVectorLength(value: string): number {
+  const stripped = value.replace(/u32(?:\.(?:public|private))?$/i, "");
+  const length = Number(stripped);
+  if (!Number.isSafeInteger(length) || length < 0 || length > U32_MAX) {
+    throw new Error(`Invalid storage vector length: ${value}`);
+  }
+  return length;
+}
 
 /**
  * Process-wide serialization for local-WASM trap capture.
@@ -330,6 +349,19 @@ export class AleoConnection implements NetworkConnection {
       }
       throw new Error(`Failed to query storage ${programId}/${variableName}: ${message}`);
     }
+  }
+
+  async getStorageVectorLength(programId: string, variableName: string): Promise<number> {
+    const value = await this.getMappingValue(programId, `${variableName}__len__`, "false");
+    return value === null ? 0 : parseStorageVectorLength(value);
+  }
+
+  async getStorageVectorValue(
+    programId: string,
+    variableName: string,
+    index: number,
+  ): Promise<string | null> {
+    return this.getMappingValue(programId, `${variableName}__`, formatStorageVectorIndex(index));
   }
 
   async execute(

@@ -1468,6 +1468,65 @@ describe("AleoConnection", () => {
     });
   });
 
+  describe("getStorageVectorLength()", () => {
+    it("queries the lowered length mapping", async () => {
+      mockGetProgramMappingValue.mockResolvedValue("7u32");
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageVectorLength("vault.aleo", "bool_vector");
+
+      expect(value).toBe(7);
+      expect(mockGetProgramMappingValue).toHaveBeenCalledWith(
+        "vault.aleo",
+        "bool_vector__len__",
+        "false",
+      );
+    });
+
+    it("returns 0 when the lowered length entry is absent", async () => {
+      mockGetProgramMappingValue.mockResolvedValue(null);
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageVectorLength("vault.aleo", "bool_vector");
+
+      expect(value).toBe(0);
+    });
+  });
+
+  describe("getStorageVectorValue()", () => {
+    it("queries the lowered element mapping with a u32 index key", async () => {
+      mockGetProgramMappingValue.mockResolvedValue("true");
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageVectorValue("vault.aleo", "bool_vector", 7);
+
+      expect(value).toBe("true");
+      expect(mockGetProgramMappingValue).toHaveBeenCalledWith(
+        "vault.aleo",
+        "bool_vector__",
+        "7u32",
+      );
+    });
+
+    it("returns null when the indexed entry is absent", async () => {
+      mockGetProgramMappingValue.mockResolvedValue(undefined);
+      const connection = createDevnodeConnection();
+
+      const value = await connection.getStorageVectorValue("vault.aleo", "bool_vector", 0);
+
+      expect(value).toBeNull();
+    });
+
+    it("rejects invalid indexes before querying", async () => {
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.getStorageVectorValue("vault.aleo", "bool_vector", -1),
+      ).rejects.toThrow(/Storage vector index/);
+      expect(mockGetProgramMappingValue).not.toHaveBeenCalled();
+    });
+  });
+
   // -------------------------------------------------------------------------
   // getBalance()
   // -------------------------------------------------------------------------

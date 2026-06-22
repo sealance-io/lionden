@@ -362,6 +362,16 @@ export interface NetworkConnection {
   /** Query a storage variable value. Returns null if the value has no entry. */
   getStorageValue(programId: string, variableName: string): Promise<string | null>;
 
+  /** Query a vector storage variable length. Returns 0 if the length entry is absent. */
+  getStorageVectorLength(programId: string, variableName: string): Promise<number>;
+
+  /** Query a vector storage variable element. Returns null if the indexed entry is absent. */
+  getStorageVectorValue(
+    programId: string,
+    variableName: string,
+    index: number,
+  ): Promise<string | null>;
+
   /** Execute a program transition. */
   execute(
     programId: string,
@@ -463,6 +473,22 @@ export interface NetworkManager {
    * Convenience method — delegates to getConnection().getStorageValue().
    */
   getStorageValue(programId: string, variableName: string): Promise<string | null>;
+
+  /**
+   * Query a vector storage variable length on the active connection.
+   * Convenience method — delegates to getConnection().getStorageVectorLength().
+   */
+  getStorageVectorLength(programId: string, variableName: string): Promise<number>;
+
+  /**
+   * Query a vector storage variable element on the active connection.
+   * Convenience method — delegates to getConnection().getStorageVectorValue().
+   */
+  getStorageVectorValue(
+    programId: string,
+    variableName: string,
+    index: number,
+  ): Promise<string | null>;
 
   /**
    * Wait for a transaction on the active connection.

@@ -1142,6 +1142,33 @@ function generateStorageAccessor(
   ctx: GenerationContext,
 ): string[] {
   const propKey = propKeys.get(variable.name) ?? JSON.stringify(variable.name);
+  if ("Vector" in variable.ty) {
+    const valueType = storageTypeToBindingTs(variable.ty.Vector, ctx);
+    const valueDeserializer = deserializeStorageExpr("_result", variable.ty.Vector, ctx);
+
+    return [
+      `${propKey}: {`,
+      `  len: async (): Promise<number> => {`,
+      `    return this.queryStorageVectorLength("${variable.name}");`,
+      `  },`,
+      `  get: async (index: number): Promise<${valueType}> => {`,
+      `    const _result = await this.requireStorageVectorRaw("${variable.name}", index);`,
+      `    return ${valueDeserializer};`,
+      `  },`,
+      `  getOrUse: async (index: number, def: ${valueType}): Promise<${valueType}> => {`,
+      `    const _result = await this.queryStorageVector("${variable.name}", index);`,
+      `    if (_result === null) return def;`,
+      `    return ${valueDeserializer};`,
+      `  },`,
+      `  tryGet: async (index: number): Promise<${valueType} | null> => {`,
+      `    const _result = await this.queryStorageVector("${variable.name}", index);`,
+      `    if (_result === null) return null;`,
+      `    return ${valueDeserializer};`,
+      `  },`,
+      `},`,
+    ];
+  }
+
   const valueType = storageTypeToBindingTs(variable.ty, ctx);
   const valueDeserializer = deserializeStorageExpr("_result", variable.ty, ctx);
 

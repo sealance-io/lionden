@@ -173,6 +173,8 @@ describe("export task", () => {
         execute: vi.fn(),
         getMappingValue: vi.fn(),
         getStorageValue: vi.fn(),
+        getStorageVectorLength: vi.fn().mockResolvedValue(0),
+        getStorageVectorValue: vi.fn().mockResolvedValue(null),
         waitForConfirmation: vi.fn(),
         getTransitionOutputs: vi.fn(),
       };
