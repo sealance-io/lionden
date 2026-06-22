@@ -365,7 +365,16 @@ export interface NetworkConnection {
   /** Query a vector storage variable length. Returns 0 if the length entry is absent. */
   getStorageVectorLength(programId: string, variableName: string): Promise<number>;
 
-  /** Query a vector storage variable element. Returns null if the indexed entry is absent. */
+  /**
+   * Query a vector storage variable element. Returns null if the indexed entry
+   * is absent.
+   *
+   * This is a raw read: it returns whatever is stored at the indexed key,
+   * including stale entries left behind by `pop`/`clear` (which only decrement
+   * the length mapping and never delete element entries). Callers that want a
+   * logical-length-bounded read should use the generated `BaseContract` storage
+   * accessor, which checks the length first.
+   */
   getStorageVectorValue(
     programId: string,
     variableName: string,
@@ -483,6 +492,12 @@ export interface NetworkManager {
   /**
    * Query a vector storage variable element on the active connection.
    * Convenience method — delegates to getConnection().getStorageVectorValue().
+   *
+   * This is a raw read: it returns whatever is stored at the indexed key,
+   * including stale entries left behind by `pop`/`clear` (which only decrement
+   * the length mapping and never delete element entries). Callers that want a
+   * logical-length-bounded read should use the generated `BaseContract` storage
+   * accessor, which checks the length first.
    */
   getStorageVectorValue(
     programId: string,
