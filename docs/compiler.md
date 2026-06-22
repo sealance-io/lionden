@@ -144,6 +144,13 @@ For cross-program references, the consuming wrapper emits a local alias
 rather than importing a separate input interface — no extra cross-program import is
 needed.
 
+When generated wrappers can resolve cross-program struct or record references at
+codegen time, LionDen imports them under synthesized aliases such as
+`${ProgramClass}_${TypeName}`. If such an alias would collide with a local
+declaration in the same generated module, the emitter appends underscores
+deterministically until the name is unique, preserving valid TypeScript without
+changing non-collision output.
+
 Address caveat: `AddressInput` is `LeoAddress | { readonly address: string }`. A
 record `owner` or an address-typed field accepts a wrapper object (`{ address:
 "aleo1…" }`) or `Leo.address("aleo1…")`, but not a bare `aleo1…` string — wrap it.
