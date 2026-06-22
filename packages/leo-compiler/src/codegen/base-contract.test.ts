@@ -995,6 +995,29 @@ describe("BaseContract runtime", () => {
       await expect(contract.storage.boolVector.getOrUse(0, false)).resolves.toBe(false);
       expect(getStorageVectorValue).not.toHaveBeenCalled();
     });
+
+    it("ignores a stale entry at index >= length after pop (length > 0)", async () => {
+      // Post-pop shape: logical length is 2, but the lowered element entry at
+      // index 2 still holds a stale value (pop only decremented the __len__
+      // mapping). The accessor must treat index 2 as absent via the length
+      // guard and never read the stale element.
+      const getStorageVectorValue = vi.fn().mockResolvedValue("true");
+      const contract = createStorageVectorContract();
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 2,
+          getStorageVectorValue,
+        }),
+      );
+
+      await expect(contract.storage.boolVector.len()).resolves.toBe(2);
+      await expect(contract.storage.boolVector.get(2)).rejects.toBeInstanceOf(
+        StorageValueNotFoundError,
+      );
+      await expect(contract.storage.boolVector.tryGet(2)).resolves.toBeNull();
+      await expect(contract.storage.boolVector.getOrUse(2, false)).resolves.toBe(false);
+      expect(getStorageVectorValue).not.toHaveBeenCalled();
+    });
   });
 
   // -------------------------------------------------------------------------
