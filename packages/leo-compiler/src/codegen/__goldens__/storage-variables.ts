@@ -136,6 +136,14 @@ export class Vault extends BaseContract {
         if (_result === null) return null;
         return BaseContract.parseAddress(_result);
       },
+      getAll: async (): Promise<LeoAddress[]> => {
+        const _results = await this.queryStorageVectorAll("whitelist");
+        return _results.map((e: string) => BaseContract.parseAddress(e));
+      },
+      toArray: async (): Promise<LeoAddress[]> => {
+        const _results = await this.queryStorageVectorAll("whitelist");
+        return _results.map((e: string) => BaseContract.parseAddress(e));
+      },
     },
     policy: {
       get: async (): Promise<Policy> => {
@@ -170,6 +178,14 @@ export class Vault extends BaseContract {
         const _result = await this.queryStorageVector("policies", index);
         if (_result === null) return null;
         return deserializePolicy(_result);
+      },
+      getAll: async (): Promise<Policy[]> => {
+        const _results = await this.queryStorageVectorAll("policies");
+        return _results.map((e: string) => deserializePolicy(e));
+      },
+      toArray: async (): Promise<Policy[]> => {
+        const _results = await this.queryStorageVectorAll("policies");
+        return _results.map((e: string) => deserializePolicy(e));
       },
     },
   } as const;

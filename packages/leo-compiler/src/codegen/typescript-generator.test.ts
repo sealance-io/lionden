@@ -1217,6 +1217,15 @@ describe("storage variables", () => {
     expect(output).toContain("return deserializePolicy(_result);");
     expect(output).toContain("if (_result === null) return def;");
     expect(output).toContain("if (_result === null) return null;");
+    // Whole-vector accessors: getAll plus its toArray alias, reading via the
+    // length-bounded queryStorageVectorAll helper.
+    expect(output).toContain("getAll: async (): Promise<boolean[]> =>");
+    expect(output).toContain("toArray: async (): Promise<boolean[]> =>");
+    expect(output).toContain('this.queryStorageVectorAll("bool_vector");');
+    expect(output).toContain('this.queryStorageVectorAll("policies");');
+    expect(output).toContain(
+      "return _results.map((e: string) => BaseContract.parseBoolean(e));",
+    );
   });
 });
 

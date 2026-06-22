@@ -173,6 +173,9 @@ function createTestContract(programId = "test.aleo", options?: { imports?: reado
     async testRequireStorageVectorRaw(...args: any[]) {
       return this.requireStorageVectorRaw(...args);
     }
+    async testQueryStorageVectorAll(...args: any[]) {
+      return this.queryStorageVectorAll(...args);
+    }
   }
   return new TestContract(options);
 }
@@ -864,6 +867,55 @@ describe("BaseContract runtime", () => {
       expect(thrown.phase).toBe("storage");
       expect(thrown.programId).toBe("vault.aleo");
       expect(thrown.storage).toBe("bool_vector[2]");
+    });
+
+    it("reads every vector element in order via queryStorageVectorAll", async () => {
+      const getStorageVectorValue = vi
+        .fn()
+        .mockResolvedValueOnce("true")
+        .mockResolvedValueOnce("false");
+      const contract = createTestContract("vault.aleo");
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 2,
+          getStorageVectorValue,
+        }),
+      );
+
+      const values = await contract.testQueryStorageVectorAll("bool_vector");
+
+      expect(values).toEqual(["true", "false"]);
+      expect(getStorageVectorValue).toHaveBeenCalledTimes(2);
+      expect(getStorageVectorValue.mock.calls).toEqual([
+        ["vault.aleo", "bool_vector", 0],
+        ["vault.aleo", "bool_vector", 1],
+      ]);
+    });
+
+    it("throws StorageValueNotFoundError on a torn read inside the length", async () => {
+      const getStorageVectorValue = vi
+        .fn()
+        .mockResolvedValueOnce("true")
+        .mockResolvedValueOnce(null);
+      const contract = createTestContract("vault.aleo");
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 2,
+          getStorageVectorValue,
+        }),
+      );
+
+      let thrown: any;
+      try {
+        await contract.testQueryStorageVectorAll("bool_vector");
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeInstanceOf(StorageValueNotFoundError);
+      expect(thrown.phase).toBe("storage");
+      expect(thrown.programId).toBe("vault.aleo");
+      expect(thrown.storage).toBe("bool_vector[1]");
     });
   });
 
