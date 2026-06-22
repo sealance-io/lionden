@@ -1223,9 +1223,7 @@ describe("storage variables", () => {
     expect(output).toContain("toArray: async (): Promise<boolean[]> =>");
     expect(output).toContain('this.queryStorageVectorAll("bool_vector");');
     expect(output).toContain('this.queryStorageVectorAll("policies");');
-    expect(output).toContain(
-      "return _results.map((e: string) => BaseContract.parseBoolean(e));",
-    );
+    expect(output).toContain("return _results.map((e: string) => BaseContract.parseBoolean(e));");
   });
 });
 
