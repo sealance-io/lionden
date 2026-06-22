@@ -164,6 +164,15 @@ function createTestContract(programId = "test.aleo", options?: { imports?: reado
     async testRequireStorageRaw(...args: any[]) {
       return this.requireStorageRaw(...args);
     }
+    async testQueryStorageVectorLength(...args: any[]) {
+      return this.queryStorageVectorLength(...args);
+    }
+    async testQueryStorageVector(...args: any[]) {
+      return this.queryStorageVector(...args);
+    }
+    async testRequireStorageVectorRaw(...args: any[]) {
+      return this.requireStorageVectorRaw(...args);
+    }
   }
   return new TestContract(options);
 }
@@ -174,6 +183,8 @@ function mockLre(networkOverrides: Record<string, any> = {}) {
       execute: async () => ({ outputs: ["42u32"], txId: "at1mock" }),
       getMappingValue: async () => "100u64",
       getStorageValue: async () => "100u64",
+      getStorageVectorLength: async () => 0,
+      getStorageVectorValue: async () => null,
       ...networkOverrides,
     },
   } as any;
@@ -773,6 +784,73 @@ describe("BaseContract runtime", () => {
     });
   });
 
+  describe("storage vector helpers", () => {
+    it("delegates vector length lookup with programId", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("vault.aleo");
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async (...args: any[]) => {
+            spy.calls.push(args);
+            return 3;
+          },
+        }),
+      );
+
+      const value = await contract.testQueryStorageVectorLength("bool_vector");
+
+      expect(value).toBe(3);
+      expect(spy.calls[0]).toEqual(["vault.aleo", "bool_vector"]);
+    });
+
+    it("delegates vector element lookup with programId and index", async () => {
+      const spy = { calls: [] as any[] };
+      const contract = createTestContract("vault.aleo");
+      contract.connect(
+        mockLre({
+          getStorageVectorValue: async (...args: any[]) => {
+            spy.calls.push(args);
+            return "true";
+          },
+        }),
+      );
+
+      const value = await contract.testQueryStorageVector("bool_vector", 7);
+
+      expect(value).toBe("true");
+      expect(spy.calls[0]).toEqual(["vault.aleo", "bool_vector", 7]);
+    });
+
+    it("validates vector indexes before delegating", async () => {
+      const getStorageVectorValue = vi.fn();
+      const contract = createTestContract("vault.aleo");
+      contract.connect(mockLre({ getStorageVectorValue }));
+
+      await expect(contract.testQueryStorageVector("bool_vector", -1)).rejects.toThrow(
+        /u32 in range/,
+      );
+      expect(getStorageVectorValue).not.toHaveBeenCalled();
+    });
+
+    it("throws StorageValueNotFoundError when a vector element is absent", async () => {
+      const contract = createTestContract("vault.aleo");
+      contract.connect(mockLre({ getStorageVectorValue: async () => null }));
+
+      let thrown: any;
+      try {
+        await contract.testRequireStorageVectorRaw("bool_vector", 2);
+      } catch (err) {
+        thrown = err;
+      }
+
+      expect(thrown).toBeInstanceOf(StorageValueNotFoundError);
+      expect(thrown.kind).toBe("StorageValueNotFoundError");
+      expect(thrown.phase).toBe("storage");
+      expect(thrown.programId).toBe("vault.aleo");
+      expect(thrown.storage).toBe("bool_vector[2]");
+    });
+  });
+
   describe("generated storage accessor pattern", () => {
     function createStorageContract() {
       class StorageContract extends BaseContract {
@@ -817,6 +895,70 @@ describe("BaseContract runtime", () => {
       await expect(contract.storage.count.get()).rejects.toBeInstanceOf(StorageValueNotFoundError);
       await expect(contract.storage.count.tryGet()).resolves.toBeNull();
       await expect(contract.storage.count.getOrUse(7n)).resolves.toBe(7n);
+    });
+  });
+
+  describe("generated storage vector accessor pattern", () => {
+    function createStorageVectorContract() {
+      class StorageVectorContract extends BaseContract {
+        constructor() {
+          super("vault.aleo");
+        }
+        readonly storage = {
+          boolVector: {
+            len: async (): Promise<number> => {
+              return this.queryStorageVectorLength("bool_vector");
+            },
+            get: async (index: number): Promise<boolean> => {
+              const _result = await this.requireStorageVectorRaw("bool_vector", index);
+              return BaseContract.parseBoolean(_result);
+            },
+            getOrUse: async (index: number, def: boolean): Promise<boolean> => {
+              const _result = await this.queryStorageVector("bool_vector", index);
+              if (_result === null) return def;
+              return BaseContract.parseBoolean(_result);
+            },
+            tryGet: async (index: number): Promise<boolean | null> => {
+              const _result = await this.queryStorageVector("bool_vector", index);
+              if (_result === null) return null;
+              return BaseContract.parseBoolean(_result);
+            },
+          },
+        } as const;
+      }
+      return new StorageVectorContract();
+    }
+
+    it("deserializes present vector values and length", async () => {
+      const contract = createStorageVectorContract();
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 2,
+          getStorageVectorValue: async () => "true",
+        }),
+      );
+
+      await expect(contract.storage.boolVector.len()).resolves.toBe(2);
+      await expect(contract.storage.boolVector.get(0)).resolves.toBe(true);
+      await expect(contract.storage.boolVector.tryGet(0)).resolves.toBe(true);
+      await expect(contract.storage.boolVector.getOrUse(0, false)).resolves.toBe(true);
+    });
+
+    it("handles absent vector values for get, tryGet, and getOrUse", async () => {
+      const contract = createStorageVectorContract();
+      contract.connect(
+        mockLre({
+          getStorageVectorLength: async () => 0,
+          getStorageVectorValue: async () => null,
+        }),
+      );
+
+      await expect(contract.storage.boolVector.len()).resolves.toBe(0);
+      await expect(contract.storage.boolVector.get(0)).rejects.toBeInstanceOf(
+        StorageValueNotFoundError,
+      );
+      await expect(contract.storage.boolVector.tryGet(0)).resolves.toBeNull();
+      await expect(contract.storage.boolVector.getOrUse(0, false)).resolves.toBe(false);
     });
   });
 

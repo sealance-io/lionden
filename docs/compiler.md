@@ -240,13 +240,25 @@ if (await c.mappings.maybeScore.contains(key)) {
 ### Storage accessors
 
 Each ABI storage variable is emitted under a separate per-contract `storage` namespace,
-keyed by the variable's camelCased name. Storage variables are not modeled as mappings,
-so their accessors do not accept a key:
+keyed by the variable's camelCased name.
+
+Regular `StorageType.Plaintext` variables are not modeled as mappings, so their accessors
+do not accept a key. This includes fixed-length plaintext arrays such as
+`Plaintext.Array`:
 
 - `get(): Promise<Value>` — returns the deserialized value and throws
   `StorageValueNotFoundError` when the value is absent.
 - `getOrUse(def): Promise<Value>` — returns `def` when the value is absent.
 - `tryGet(): Promise<Value | null>` — returns `null` when the value is absent.
+
+`StorageType.Vector` variables expose vector-specific accessors instead:
+
+- `len(): Promise<number>` — reads the lowered `<name>__len__` mapping with key `"false"`;
+  missing length storage returns `0` to match Leo-level vector semantics.
+- `get(index): Promise<Value>` — reads `<name>__` with key `"<index>u32"` and throws
+  `StorageValueNotFoundError` when the indexed entry is absent.
+- `getOrUse(index, def): Promise<Value>` — returns `def` when the indexed entry is absent.
+- `tryGet(index): Promise<Value | null>` — returns `null` when the indexed entry is absent.
 
 ## `compile` and `clean`
 

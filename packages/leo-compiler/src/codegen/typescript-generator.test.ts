@@ -1167,7 +1167,13 @@ describe("storage variables", () => {
       mappings: [],
       storage_variables: [
         { name: "admin", ty: { Plaintext: { Primitive: "Address" } } },
-        { name: "whitelist", ty: { Vector: { Plaintext: { Primitive: "Address" } } } },
+        {
+          name: "bool_arr",
+          ty: {
+            Plaintext: { Array: [{ Primitive: "Boolean" }, 3] },
+          },
+        },
+        { name: "bool_vector", ty: { Vector: { Plaintext: { Primitive: "Boolean" } } } },
         {
           name: "policies",
           ty: { Vector: { Plaintext: { Struct: { path: ["Policy"], program: null } } } },
@@ -1178,7 +1184,8 @@ describe("storage variables", () => {
     const output = generateBindings(abi);
     expect(output).toContain("export interface VaultStorage");
     expect(output).toContain("readonly admin: LeoAddress;");
-    expect(output).toContain("readonly whitelist: LeoAddress[];");
+    expect(output).toContain("readonly bool_arr: ReadonlyArray<boolean>;");
+    expect(output).toContain("readonly bool_vector: boolean[];");
     expect(output).toContain("readonly policies: Policy[];");
     expect(output).toContain("readonly storage = {");
     expect(output).toContain("admin: {");
@@ -1189,12 +1196,25 @@ describe("storage variables", () => {
     expect(output).toContain('this.queryStorage("admin")');
     expect(output).not.toContain("admin: {\n      get: async (key:");
     expect(output).toContain("return BaseContract.parseAddress(_result);");
+    expect(output).toContain("boolArr: {");
+    expect(output).toContain("get: async (): Promise<ReadonlyArray<boolean>> =>");
+    expect(output).toContain('this.requireStorageRaw("bool_arr")');
+    expect(output).toContain('this.queryStorage("bool_arr")');
     expect(output).toContain(
-      "BaseContract.parseArray(_result).map((e: string) => BaseContract.parseAddress(e))",
+      "BaseContract.parseArray(_result).map((e: string) => BaseContract.parseBoolean(e))",
     );
-    expect(output).toContain(
-      "BaseContract.parseArray(_result).map((e: string) => deserializePolicy(e))",
-    );
+    expect(output).toContain("boolVector: {");
+    expect(output).toContain("len: async (): Promise<number> =>");
+    expect(output).toContain('return this.queryStorageVectorLength("bool_vector");');
+    expect(output).toContain("get: async (index: number): Promise<boolean> =>");
+    expect(output).toContain('this.requireStorageVectorRaw("bool_vector", index)');
+    expect(output).toContain("getOrUse: async (index: number, def: boolean): Promise<boolean> =>");
+    expect(output).toContain('this.queryStorageVector("bool_vector", index)');
+    expect(output).toContain("tryGet: async (index: number): Promise<boolean | null> =>");
+    expect(output).not.toContain('this.requireStorageRaw("bool_vector")');
+    expect(output).toContain("get: async (index: number): Promise<Policy> =>");
+    expect(output).toContain('this.requireStorageVectorRaw("policies", index)');
+    expect(output).toContain("return deserializePolicy(_result);");
     expect(output).toContain("if (_result === null) return def;");
     expect(output).toContain("if (_result === null) return null;");
   });

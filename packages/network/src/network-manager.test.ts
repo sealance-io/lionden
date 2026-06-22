@@ -179,6 +179,44 @@ describe("NetworkManagerImpl", () => {
     expect(getStorageValue).toHaveBeenCalledWith("test.aleo", "admin");
   });
 
+  it("getStorageVectorLength throws when not connected", async () => {
+    await expect(manager.getStorageVectorLength("test.aleo", "items")).rejects.toThrow(
+      "No active network connection",
+    );
+  });
+
+  it("getStorageVectorLength delegates to the active connection", async () => {
+    const conn = (await manager.connect("devnode")) as NetworkConnection & {
+      getStorageVectorLength: ReturnType<typeof vi.fn>;
+    };
+    const getStorageVectorLength = vi.fn().mockResolvedValue(4);
+    conn.getStorageVectorLength = getStorageVectorLength;
+
+    const value = await manager.getStorageVectorLength("test.aleo", "items");
+
+    expect(value).toBe(4);
+    expect(getStorageVectorLength).toHaveBeenCalledWith("test.aleo", "items");
+  });
+
+  it("getStorageVectorValue throws when not connected", async () => {
+    await expect(manager.getStorageVectorValue("test.aleo", "items", 2)).rejects.toThrow(
+      "No active network connection",
+    );
+  });
+
+  it("getStorageVectorValue delegates to the active connection", async () => {
+    const conn = (await manager.connect("devnode")) as NetworkConnection & {
+      getStorageVectorValue: ReturnType<typeof vi.fn>;
+    };
+    const getStorageVectorValue = vi.fn().mockResolvedValue("true");
+    conn.getStorageVectorValue = getStorageVectorValue;
+
+    const value = await manager.getStorageVectorValue("test.aleo", "items", 2);
+
+    expect(value).toBe("true");
+    expect(getStorageVectorValue).toHaveBeenCalledWith("test.aleo", "items", 2);
+  });
+
   it("devnode connection has advanceBlocks method", async () => {
     const conn = await manager.connect("devnode");
     expect(conn.advanceBlocks).toBeDefined();

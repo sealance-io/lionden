@@ -182,6 +182,29 @@ export class FakeNetworkConnection implements NetworkConnection {
     return this.storageValues.get(`${programId}:${variableName}`) ?? null;
   }
 
+  async getStorageVectorLength(programId: string, variableName: string): Promise<number> {
+    this.calls.push({
+      method: "getStorageVectorLength",
+      args: [programId, variableName],
+      timestamp: Date.now(),
+    });
+    const raw = await this.getMappingValue(programId, `${variableName}__len__`, "false");
+    return raw === null ? 0 : Number(raw.replace(/u32(?:\.(?:public|private))?$/i, ""));
+  }
+
+  async getStorageVectorValue(
+    programId: string,
+    variableName: string,
+    index: number,
+  ): Promise<string | null> {
+    this.calls.push({
+      method: "getStorageVectorValue",
+      args: [programId, variableName, index],
+      timestamp: Date.now(),
+    });
+    return this.getMappingValue(programId, `${variableName}__`, `${index}u32`);
+  }
+
   async execute(
     programId: string,
     transitionName: string,
@@ -384,6 +407,18 @@ export class FakeNetworkManager implements NetworkManager {
 
   async getStorageValue(programId: string, variableName: string): Promise<string | null> {
     return this.requireConnection().getStorageValue(programId, variableName);
+  }
+
+  async getStorageVectorLength(programId: string, variableName: string): Promise<number> {
+    return this.requireConnection().getStorageVectorLength(programId, variableName);
+  }
+
+  async getStorageVectorValue(
+    programId: string,
+    variableName: string,
+    index: number,
+  ): Promise<string | null> {
+    return this.requireConnection().getStorageVectorValue(programId, variableName, index);
   }
 
   async waitForConfirmation(txId: string, timeout?: number) {

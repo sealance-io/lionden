@@ -1624,6 +1624,46 @@ export abstract class BaseContract {
     return raw;
   }
 
+  protected async queryStorageVectorLength(variableName: string): Promise<number> {
+    const lre = this.getLre();
+    const network = (lre as any).network;
+
+    if (!network || typeof network.getStorageVectorLength !== "function") {
+      throw new TransactionShapeError(
+        "Network is not available for " + this.programId + ". Ensure @lionden/plugin-network is loaded and connected before querying storage vectors.",
+        { programId: this.programId },
+      );
+    }
+
+    return network.getStorageVectorLength(this.programId, variableName);
+  }
+
+  protected async queryStorageVector(variableName: string, index: number): Promise<string | null> {
+    BaseContract.serializeUInt(index, 32, { programId: this.programId, input: variableName + " index" });
+    const lre = this.getLre();
+    const network = (lre as any).network;
+
+    if (!network || typeof network.getStorageVectorValue !== "function") {
+      throw new TransactionShapeError(
+        "Network is not available for " + this.programId + ". Ensure @lionden/plugin-network is loaded and connected before querying storage vectors.",
+        { programId: this.programId },
+      );
+    }
+
+    return network.getStorageVectorValue(this.programId, variableName, index);
+  }
+
+  protected async requireStorageVectorRaw(variableName: string, index: number): Promise<string> {
+    const raw = await this.queryStorageVector(variableName, index);
+    if (raw === null) {
+      throw new StorageValueNotFoundError(
+        'Storage vector "' + variableName + '" on ' + this.programId + ' has no entry at index ' + index + '.',
+        { programId: this.programId, storage: variableName + "[" + index + "]" },
+      );
+    }
+    return raw;
+  }
+
   // ---------------------------------------------------------------------------
   // Leo string to JS value parsers and JS value to Leo string serializers
   // ---------------------------------------------------------------------------

@@ -39,7 +39,7 @@ Current responsibilities:
 - expose named accounts for the active network (`getNamedAccounts()` returns a shallow copy)
 - disconnect all open connections and clear named account state
 - expose devnode accounts
-- proxy `execute()` and `getMappingValue()` to the active connection
+- proxy `execute()`, mapping reads, and storage reads to the active connection
 
 `connect()` is transactional: if named-account resolution fails after a new connection is created, only the new connection is closed and the previous active connection and named accounts are preserved. Switching back to a previously-connected network restores named accounts from the per-network cache without re-resolving.
 
@@ -51,6 +51,12 @@ Connection creation currently maps:
 `packages/network/src/connection.ts` provides `AleoConnection`, including REST/SDK-backed helpers for execution, mapping reads, balance checks, block height, transaction broadcasting, transaction confirmation, and deployed program source fetching.
 
 `NetworkConnection.getProgramSource(programId)` returns compiled Aleo source for deployed programs and `null` for missing programs. Deployment preflight, deployment-state validation, and compiler network dependency fetching rely on this behavior.
+
+`NetworkConnection.getStorageValue(programId, variableName)` reads regular
+`StorageType.Plaintext` storage through the lowered `<name>__` mapping at key `"false"`.
+Vector storage uses explicit helpers instead: `getStorageVectorLength()` reads
+`<name>__len__` at key `"false"` and returns `0` when absent, while
+`getStorageVectorValue()` reads `<name>__` at key `"<index>u32"`.
 
 ### `execute()` and transition outputs
 
