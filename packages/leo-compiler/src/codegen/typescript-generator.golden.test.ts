@@ -363,3 +363,144 @@ describe("composite input widening typechecks", () => {
     });
   });
 });
+
+describe("external alias collisions", () => {
+  it("disambiguates external struct aliases that collide with local declarations", () => {
+    const registry = parseAbi(
+      JSON.stringify({
+        program: "registry.aleo",
+        structs: [
+          {
+            path: ["TokenInfo"],
+            fields: [{ name: "supply", ty: { Primitive: { UInt: "U64" } } }],
+          },
+        ],
+        records: [],
+        mappings: [],
+        storage_variables: [],
+        transitions: [],
+      }),
+    );
+    const consumer = parseAbi(
+      JSON.stringify({
+        program: "consumer.aleo",
+        structs: [
+          {
+            path: ["Registry_TokenInfo"],
+            fields: [{ name: "local_id", ty: { Primitive: "Field" } }],
+          },
+        ],
+        records: [],
+        mappings: [],
+        storage_variables: [],
+        transitions: [
+          {
+            name: "submit",
+            is_async: false,
+            inputs: [
+              {
+                name: "info",
+                ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+                mode: "None",
+              },
+              {
+                name: "local",
+                ty: {
+                  Plaintext: { Struct: { path: ["Registry_TokenInfo"], program: null } },
+                },
+                mode: "None",
+              },
+            ],
+            outputs: [
+              {
+                ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+                mode: "None",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const consumerOutput = generateBindings(consumer, [consumer, registry]);
+    expect(consumerOutput).toContain("type TokenInfo as Registry_TokenInfo_");
+    expect(consumerOutput).toContain("serializeTokenInfo as serializeRegistry_TokenInfo_");
+    expect(consumerOutput).toContain("deserializeTokenInfo as deserializeRegistry_TokenInfo_");
+    expect(consumerOutput).toContain("export interface Registry_TokenInfo {");
+    expect(consumerOutput).toContain("readonly info: Registry_TokenInfo_");
+    expect(consumerOutput).toContain(
+      'serializeRegistry_TokenInfo_(args.info as Registry_TokenInfo_Input, this.inputContext("submit", "info"))',
+    );
+    expectModulesToTypecheck({
+      Registry: generateBindings(registry, [registry, consumer]),
+      Consumer: consumerOutput,
+    });
+  });
+
+  it("disambiguates external record aliases that collide with local declarations", () => {
+    const tokenRegistry = parseAbi(
+      JSON.stringify({
+        program: "token_registry.aleo",
+        structs: [],
+        records: [
+          {
+            path: ["Token"],
+            fields: [
+              { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+              { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+            ],
+          },
+        ],
+        mappings: [],
+        storage_variables: [],
+        transitions: [],
+      }),
+    );
+    const consumer = parseAbi(
+      JSON.stringify({
+        program: "consumer.aleo",
+        structs: [
+          {
+            path: ["TokenRegistry_Token"],
+            fields: [{ name: "local_id", ty: { Primitive: "Field" } }],
+          },
+        ],
+        records: [],
+        mappings: [],
+        storage_variables: [],
+        transitions: [
+          {
+            name: "forward",
+            is_async: false,
+            inputs: [
+              {
+                name: "token",
+                ty: { Record: { path: ["Token"], program: "token_registry.aleo" } },
+                mode: "None",
+              },
+            ],
+            outputs: [
+              {
+                ty: { Record: { path: ["Token"], program: "token_registry.aleo" } },
+                mode: "None",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const consumerOutput = generateBindings(consumer, [consumer, tokenRegistry]);
+    expect(consumerOutput).toContain("type Token as _TokenRegistry_Token_");
+    expect(consumerOutput).toContain("serializeToken as serializeTokenRegistry_Token_");
+    expect(consumerOutput).toContain("deserializeToken as deserializeTokenRegistry_Token_");
+    expect(consumerOutput).toContain("export interface TokenRegistry_Token {");
+    expect(consumerOutput).toContain("export type TokenRegistry_Token_ = _TokenRegistry_Token_;");
+    expect(consumerOutput).toContain("export const TokenRegistry_Token_ = {");
+    expect(consumerOutput).toContain("readonly token: TokenRegistry_Token_");
+    expectModulesToTypecheck({
+      TokenRegistry: generateBindings(tokenRegistry, [tokenRegistry, consumer]),
+      Consumer: consumerOutput,
+    });
+  });
+});

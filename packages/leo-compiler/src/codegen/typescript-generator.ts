@@ -376,6 +376,13 @@ interface GenerationContext {
   readonly externalStructRefs: ReadonlyMap<string, StructRef>;
   readonly externalRecordRefs: ReadonlyMap<string, RecordRef>;
   /**
+   * Resolved import aliases for external struct/record refs, keyed by
+   * `externalRefKey`. This is the single source of truth for external type
+   * aliases and their serializer/deserializer aliases, so emission does not
+   * recompute `${ProgramClass}_${TypeName}` at each call site.
+   */
+  readonly externalInfoByKey: ReadonlyMap<string, ExternalRefInfo>;
+  /**
    * Resolved `${Name}Input` identifier for every local struct/record (keyed by
    * `pathKey`) and external struct/record ref (keyed by `externalRefKey`). The
    * single source of truth for input-type names — interface/alias emitters,
@@ -406,10 +413,12 @@ function createGenerationContext(
   const externalRecordRefs = new Map<string, RecordRef>();
   collectExternalRefs(abi, programsById, externalStructRefs, externalRecordRefs);
 
+  const externalInfoByKey = resolveExternalInfos(abi, externalStructRefs, externalRecordRefs);
   const { inputNameByKey, widenInputAlias } = resolveInputNames(
     abi,
     externalStructRefs,
     externalRecordRefs,
+    externalInfoByKey,
   );
 
   return {
@@ -419,9 +428,59 @@ function createGenerationContext(
     recordsByKey: new Map(abi.records.map((record) => [pathKey(record.path), record])),
     externalStructRefs,
     externalRecordRefs,
+    externalInfoByKey,
     inputNameByKey,
     widenInputAlias,
   };
+}
+
+/**
+ * Build deterministic external type/helper aliases before emission so imports,
+ * type annotations, serializers, and deserializers all use the same resolved
+ * names. The preferred alias is `${ProgramClass}_${TypeName}`; underscores are
+ * appended only when needed to avoid a local declaration in this module.
+ */
+function resolveExternalInfos(
+  abi: ProgramABI,
+  externalStructRefs: ReadonlyMap<string, StructRef>,
+  externalRecordRefs: ReadonlyMap<string, RecordRef>,
+): Map<string, ExternalRefInfo> {
+  const className = resolveContractClassName(abi);
+  const reserved = new Set<string>([
+    className,
+    `${className}Storage`,
+    ...abi.structs.map((s) => pathToTsName(s.path)),
+    ...abi.records.map((r) => pathToTsName(r.path)),
+  ]);
+  const infoByKey = new Map<string, ExternalRefInfo>();
+  const sortByKey = <T extends StructRef | RecordRef>(refs: Iterable<T>): T[] =>
+    [...refs].sort((a, b) => externalRefKey(a).localeCompare(externalRefKey(b)));
+
+  const claim = (ref: StructRef | RecordRef, baseName: string): void => {
+    const programId = ref.program!;
+    const className = programIdToClassName(programId);
+    const preferred = `${className}_${baseName}`;
+    let typeName = preferred;
+    let underscores = 1;
+    while (reserved.has(typeName)) {
+      typeName = `${preferred}${"_".repeat(underscores)}`;
+      underscores++;
+    }
+    reserved.add(typeName);
+    infoByKey.set(externalRefKey(ref), {
+      programId,
+      className,
+      baseName,
+      typeName,
+      serializerName: `serialize${typeName}`,
+      deserializerName: `deserialize${typeName}`,
+    });
+  };
+
+  for (const ref of sortByKey(externalStructRefs.values())) claim(ref, structRefName(ref));
+  for (const ref of sortByKey(externalRecordRefs.values())) claim(ref, recordRefName(ref));
+
+  return infoByKey;
 }
 
 /**
@@ -448,6 +507,7 @@ function resolveInputNames(
   abi: ProgramABI,
   externalStructRefs: ReadonlyMap<string, StructRef>,
   externalRecordRefs: ReadonlyMap<string, RecordRef>,
+  externalInfoByKey: ReadonlyMap<string, ExternalRefInfo>,
 ): { inputNameByKey: Map<string, string>; widenInputAlias: string } {
   const className = resolveContractClassName(abi);
   // `declared` = names this module emits as top-level declarations (interfaces,
@@ -461,10 +521,10 @@ function resolveInputNames(
     ...abi.records.map((r) => pathToTsName(r.path)),
   ]);
   for (const ref of externalStructRefs.values()) {
-    declared.add(externalInfo(ref.program!, structRefName(ref)).typeName);
+    declared.add(externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
   for (const ref of externalRecordRefs.values()) {
-    declared.add(externalInfo(ref.program!, recordRefName(ref)).typeName);
+    declared.add(externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
   const reserved = new Set<string>([...RESERVED_INPUT_IMPORTS, ...declared]);
 
@@ -483,10 +543,10 @@ function resolveInputNames(
   const sortByKey = <T extends StructRef | RecordRef>(refs: Iterable<T>): T[] =>
     [...refs].sort((a, b) => externalRefKey(a).localeCompare(externalRefKey(b)));
   for (const ref of sortByKey(externalStructRefs.values())) {
-    claim(externalRefKey(ref), externalInfo(ref.program!, structRefName(ref)).typeName);
+    claim(externalRefKey(ref), externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
   for (const ref of sortByKey(externalRecordRefs.values())) {
-    claim(externalRefKey(ref), externalInfo(ref.program!, recordRefName(ref)).typeName);
+    claim(externalRefKey(ref), externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
 
   // Choose a local name for the imported `WidenInput` that no generated
@@ -1686,34 +1746,13 @@ function isLocalRecordRef(ref: RecordRef, ctx: GenerationContext): boolean {
 function externalStructInfo(ref: StructRef, ctx: GenerationContext): ExternalRefInfo | null {
   const programId = ref.program;
   if (!programId || programId === ctx.programId) return null;
-
-  const abi = ctx.programsById.get(programId);
-  if (!abi?.structs.some((struct) => pathKey(struct.path) === pathKey(ref.path))) return null;
-
-  return externalInfo(programId, structRefName(ref));
+  return ctx.externalInfoByKey.get(externalRefKey(ref)) ?? null;
 }
 
 function externalRecordInfo(ref: RecordRef, ctx: GenerationContext): ExternalRefInfo | null {
   const programId = ref.program;
   if (!programId || programId === ctx.programId) return null;
-
-  const abi = ctx.programsById.get(programId);
-  if (!abi?.records.some((record) => pathKey(record.path) === pathKey(ref.path))) return null;
-
-  return externalInfo(programId, recordRefName(ref));
-}
-
-function externalInfo(programId: string, baseName: string): ExternalRefInfo {
-  const className = programIdToClassName(programId);
-  const typeName = `${className}_${baseName}`;
-  return {
-    programId,
-    className,
-    baseName,
-    typeName,
-    serializerName: `serialize${typeName}`,
-    deserializerName: `deserialize${typeName}`,
-  };
+  return ctx.externalInfoByKey.get(externalRefKey(ref)) ?? null;
 }
 
 function pathKey(path: readonly string[]): string {
