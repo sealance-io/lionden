@@ -80,13 +80,23 @@ export function generateBindings(
 ): string {
   const lines: string[] = [];
   const className = resolveContractClassName(abi);
-  const ctx = createGenerationContext(abi, allAbis);
-  assertCodegenSupportedTypes(abi);
-  assertNoExecutableConstParameters(abi);
 
   const helpers = (options.dynamicRecords ?? []).filter(
     (helper) => helper.sourceProgram === abi.program,
   );
+
+  // Helper names are module-level `export const`s; reserve them so derived
+  // external aliases/value bindings (e.g. `GoldToken_Token`) bump away from a
+  // helper that happens to share that name, instead of redeclaring it (TS2451).
+  const ctx = createGenerationContext(
+    abi,
+    allAbis,
+    helpers.map((helper) => helper.helperName),
+  );
+  assertCodegenSupportedTypes(abi);
+  assertNoExecutableConstParameters(abi);
+  assertNoReservedLocalTypeNames(abi);
+  assertNoReservedContractMembers(abi);
 
   const hasExternalRefs = ctx.externalStructRefs.size + ctx.externalRecordRefs.size > 0;
 
@@ -368,6 +378,145 @@ function baseContractImport(includeLeo: boolean, widenImport: string | null): st
   return `import { ${names.join(", ")} } from "./BaseContract.js";`;
 }
 
+/**
+ * Bare local-binding names introduced by `baseContractImport` (values + the
+ * `type X` names). A generated contract class, its `create${class}` factory, or
+ * a local struct/record interface whose name equals one of these collides with
+ * the import (TS2440 / TS2300). Keep in sync with `baseContractImport`.
+ *
+ * `WidenInput` is deliberately excluded: it is the one fixed import that is
+ * already alias-aware (`widenInputAlias` re-imports it as `WidenInput_` when a
+ * local declaration shadows it), so a local `WidenInput` is handled, not
+ * rejected.
+ */
+const RESERVED_BASE_CONTRACT_IMPORT_NAMES: readonly string[] = [
+  "BaseContract",
+  "Leo",
+  "createRecordOutputMatcher",
+  "AcceptedTransition",
+  "AddressInput",
+  "BaseContractOptions",
+  "CapturedRecord",
+  "ConfirmedTransitionRecord",
+  "DecryptionKey",
+  "DynamicRecordInput",
+  "EncryptedRecord",
+  "EncryptedValue",
+  "FieldInput",
+  "GroupInput",
+  "IdentifierInput",
+  "IdOnlyDynamicRecordHandle",
+  "IdOnlyExternalRecordHandle",
+  "IdOnlyRecordSource",
+  "LeoAddress",
+  "LeoDynamicRecord",
+  "LeoField",
+  "LeoGroup",
+  "LeoIdentifier",
+  "LeoPlaintext",
+  "LeoScalar",
+  "LocalExecutionOptions",
+  "LocalTransitionError",
+  "OnChainExecutionOptions",
+  "PlaintextInput",
+  "RawTransitionOutput",
+  "RecordDecryptionKey",
+  "RecordOutputMatcher",
+  "RejectedTransition",
+  "ScalarInput",
+  "SettledTransition",
+  "SubmittedTransition",
+  "TransitionInputContext",
+];
+
+/**
+ * Instance members (public + protected + private) of the `BaseContract` class
+ * in contract-wrapper.ts. A transition whose generated `readonly ${name}`
+ * accessor equals one of these redeclares an inherited member (TS2416/2425),
+ * and several are also called by generated transition bodies via `this.${name}`.
+ * The `mappings`/`storage` containers are reserved separately (only when the
+ * program actually emits them). Keep in sync with the BaseContract class.
+ */
+const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
+  // properties
+  "programId",
+  "instanceImports",
+  "lre",
+  "signer",
+  // public methods
+  "connect",
+  "address",
+  "withSigner",
+  // protected / private methods
+  "inputContext",
+  "getLre",
+  "getNetwork",
+  "executeLocal",
+  "expectLocalFailure",
+  "submitTransition",
+  "settleTransition",
+  "expectAccepted",
+  "expectRejected",
+  "settleTyped",
+  "expectAcceptedTyped",
+  "runProjector",
+  "outputAt",
+  "executeRaw",
+  "buildEffectiveOptions",
+  "queryMapping",
+  "mappingContains",
+  "requireMappingRaw",
+  "queryStorage",
+  "requireStorageRaw",
+  "queryStorageVectorLength",
+  "queryStorageVector",
+  "requireStorageVectorRaw",
+  "queryStorageVectorAll",
+  "selectAcceptedTransition",
+  "selectRejectedTransitionOutputs",
+];
+
+/**
+ * P6: a local struct/record whose generated interface name equals a fixed
+ * BaseContract import (e.g. `LeoField`, `BaseContract`) collides with that
+ * import (TS2440). Interface names mirror the Leo declaration and can't be
+ * silently renamed like the contract class, so fail with a clear message.
+ */
+function assertNoReservedLocalTypeNames(abi: ProgramABI): void {
+  const reserved = new Set<string>(RESERVED_BASE_CONTRACT_IMPORT_NAMES);
+  const check = (kind: "struct" | "record", path: readonly string[]): void => {
+    const name = pathToTsName(path);
+    if (reserved.has(name)) {
+      throw new CodegenError(
+        `Program ${abi.program} declares a ${kind} '${name}', whose generated interface collides with the reserved binding '${name}' imported from BaseContract. Rename the ${kind}.`,
+        { programId: abi.program, typeName: name, kind, phase: "generate" },
+      );
+    }
+  };
+  for (const struct of abi.structs) check("struct", struct.path);
+  for (const record of abi.records) check("record", record.path);
+}
+
+/**
+ * P7: a transition whose generated `readonly ${name}` accessor collides with an
+ * inherited BaseContract member, or with the `mappings`/`storage` container when
+ * the program has mappings/storage. These can't be auto-renamed without changing
+ * the public call API (`contract.${name}`), so fail with a clear message.
+ */
+function assertNoReservedContractMembers(abi: ProgramABI): void {
+  const reserved = new Set<string>(RESERVED_CONTRACT_INSTANCE_MEMBERS);
+  if (abi.mappings.length > 0) reserved.add("mappings");
+  if (abi.storage_variables.length > 0) reserved.add("storage");
+  for (const transition of abi.transitions) {
+    if (reserved.has(transition.name)) {
+      throw new CodegenError(
+        `Program ${abi.program} has a transition '${transition.name}' whose generated accessor collides with a reserved contract member (inherited BaseContract members such as connect/withSigner/address/programId, or the mappings/storage container). Rename the transition.`,
+        { programId: abi.program, transition: transition.name, phase: "generate" },
+      );
+    }
+  }
+}
+
 interface GenerationContext {
   readonly programId: string;
   readonly programsById: ReadonlyMap<string, ProgramABI>;
@@ -402,6 +551,7 @@ interface GenerationContext {
 function createGenerationContext(
   abi: ProgramABI,
   allAbis: readonly ProgramABI[],
+  reservedHelperNames: readonly string[] = [],
 ): GenerationContext {
   const programsById = new Map<string, ProgramABI>();
   for (const programAbi of allAbis) {
@@ -413,12 +563,18 @@ function createGenerationContext(
   const externalRecordRefs = new Map<string, RecordRef>();
   collectExternalRefs(abi, programsById, externalStructRefs, externalRecordRefs);
 
-  const externalInfoByKey = resolveExternalInfos(abi, externalStructRefs, externalRecordRefs);
+  const externalInfoByKey = resolveExternalInfos(
+    abi,
+    externalStructRefs,
+    externalRecordRefs,
+    reservedHelperNames,
+  );
   const { inputNameByKey, widenInputAlias } = resolveInputNames(
     abi,
     externalStructRefs,
     externalRecordRefs,
     externalInfoByKey,
+    reservedHelperNames,
   );
 
   return {
@@ -470,8 +626,9 @@ function resolveExternalInfos(
   abi: ProgramABI,
   externalStructRefs: ReadonlyMap<string, StructRef>,
   externalRecordRefs: ReadonlyMap<string, RecordRef>,
+  reservedHelperNames: readonly string[] = [],
 ): Map<string, ExternalRefInfo> {
-  const reserved = new Set<string>(localDeclaredNames(abi));
+  const reserved = new Set<string>([...localDeclaredNames(abi), ...reservedHelperNames]);
   // Structs and records share one map keyed by `externalRefKey` (program+path).
   // Leo keeps structs and records in a single type namespace, so no struct and
   // record can share a program+path — entries never alias each other here.
@@ -529,12 +686,14 @@ function resolveInputNames(
   externalStructRefs: ReadonlyMap<string, StructRef>,
   externalRecordRefs: ReadonlyMap<string, RecordRef>,
   externalInfoByKey: ReadonlyMap<string, ExternalRefInfo>,
+  reservedHelperNames: readonly string[] = [],
 ): { inputNameByKey: Map<string, string>; widenInputAlias: string } {
   // `declared` = names this module emits as top-level declarations (interfaces,
-  // class, storage, external re-exports, and the input aliases claimed below).
-  // Kept distinct from the fixed imports so the WidenInput import alias can be
-  // checked against genuine declaration collisions only.
-  const declared = new Set<string>(localDeclaredNames(abi));
+  // class, storage, external re-exports, dynamic-record helper consts, and the
+  // input aliases claimed below). Kept distinct from the fixed imports so the
+  // WidenInput import alias can be checked against genuine declaration
+  // collisions only.
+  const declared = new Set<string>([...localDeclaredNames(abi), ...reservedHelperNames]);
   for (const ref of externalStructRefs.values()) {
     declared.add(externalInfoByKey.get(externalRefKey(ref))!.typeName);
   }
@@ -1957,7 +2116,7 @@ function projectorElementExpr(
   return rawExpr;
 }
 
-function programIdToClassName(programId: string): string {
+export function programIdToClassName(programId: string): string {
   const name = programId.replace(/\.aleo$/, "");
   return name
     .split(/[_\-.]/)
@@ -1965,10 +2124,68 @@ function programIdToClassName(programId: string): string {
     .join("");
 }
 
-/** Derive a class name that does not collide with struct/record interface names. */
+/**
+ * Typechain file stems the emitter always writes besides per-program modules.
+ * A program whose class name equals one of these would overwrite that file.
+ */
+const RESERVED_TYPECHAIN_FILE_STEMS: readonly string[] = ["BaseContract", "index"];
+
+/**
+ * Assert that every program id maps to a distinct typechain module file
+ * (`${programIdToClassName(id)}.ts`) and that none collides with a reserved
+ * emitter file (`BaseContract.ts`, `index.ts`).
+ *
+ * `programIdToClassName` is non-injective — it splits on `[_\-.]` and
+ * CamelCases — so e.g. `foo_bar.aleo` and `foo__bar.aleo` both yield `FooBar`,
+ * and `base_contract.aleo` yields `BaseContract`. The per-program emit loop
+ * writes `${stem}.ts` with no cross-program dedup, so a collision silently
+ * overwrites another program's bindings (or the runtime `BaseContract.ts`),
+ * leaving the generated module set internally inconsistent.
+ *
+ * Comparison is case-insensitive: the common dev filesystems (macOS APFS,
+ * Windows NTFS) are case-insensitive, so `Index.ts` would overwrite the barrel
+ * `index.ts`, and two programs whose class names differ only by case (e.g.
+ * `ab.aleo` → `Ab`, `a_b.aleo` → `AB`) would share one file. This guard turns
+ * any such collision into a clear build-time `CodegenError` instead.
+ */
+export function assertTypechainModuleNamesUnique(programIds: readonly string[]): void {
+  // Keyed by lower-cased stem (case-insensitive FS); value preserves the
+  // original casing for the error message.
+  const reserved = new Map<string, string>(
+    RESERVED_TYPECHAIN_FILE_STEMS.map((stem) => [stem.toLowerCase(), stem]),
+  );
+  const seen = new Map<string, string>(); // lower stem -> first program id claiming it
+  for (const programId of programIds) {
+    const stem = programIdToClassName(programId);
+    const key = stem.toLowerCase();
+    const reservedStem = reserved.get(key);
+    if (reservedStem !== undefined) {
+      throw new CodegenError(
+        `Program '${programId}' generates typechain/${stem}.ts, which collides with the reserved generated file '${reservedStem}.ts' (file names are compared case-insensitively). Rename the program (its id maps to the class name '${stem}').`,
+        { programId, fileStem: stem, reservedFile: reservedStem, phase: "generate" },
+      );
+    }
+    const existing = seen.get(key);
+    if (existing !== undefined) {
+      throw new CodegenError(
+        `Programs '${existing}' and '${programId}' both generate typechain/${stem}.ts (file names are compared case-insensitively): their program ids map to the same module file. Rename one of them so each program maps to a distinct typechain module.`,
+        { programId, conflictsWith: existing, fileStem: stem, phase: "generate" },
+      );
+    }
+    seen.set(key, programId);
+  }
+}
+
+/**
+ * Derive a class name that does not collide with struct/record interface names
+ * or the fixed BaseContract imports. The latter also keeps the `create${class}`
+ * factory clear of the imported `createRecordOutputMatcher` (e.g.
+ * `record_output_matcher.aleo` → `RecordOutputMatcherContract`).
+ */
 export function resolveContractClassName(abi: ProgramABI): string {
   const base = programIdToClassName(abi.program);
   const typeNames = new Set<string>([
+    ...RESERVED_BASE_CONTRACT_IMPORT_NAMES,
     ...abi.structs.map((s) => pathToTsName(s.path)),
     ...abi.records.map((r) => pathToTsName(r.path)),
   ]);
