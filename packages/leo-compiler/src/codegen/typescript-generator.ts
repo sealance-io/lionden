@@ -379,20 +379,29 @@ function baseContractImport(includeLeo: boolean, widenImport: string | null): st
 }
 
 /**
- * Bare local-binding names introduced by `baseContractImport` (values + the
- * `type X` names). A generated contract class, its `create${class}` factory, or
- * a local struct/record interface whose name equals one of these collides with
- * the import (TS2440 / TS2300). Keep in sync with `baseContractImport`.
+ * Bare value-binding names introduced by `baseContractImport`. A generated
+ * contract class or its `create${class}` factory must avoid these, but local
+ * interfaces can coexist with value-only imports such as `Leo` and
+ * `createRecordOutputMatcher`.
+ */
+const RESERVED_BASE_CONTRACT_VALUE_IMPORT_NAMES: readonly string[] = [
+  "BaseContract",
+  "Leo",
+  "createRecordOutputMatcher",
+];
+
+/**
+ * Bare type-binding names introduced by `baseContractImport`. A local
+ * struct/record interface whose name equals one of these collides with the
+ * import (TS2440 / TS2300). Keep in sync with `baseContractImport`.
  *
  * `WidenInput` is deliberately excluded: it is the one fixed import that is
  * already alias-aware (`widenInputAlias` re-imports it as `WidenInput_` when a
  * local declaration shadows it), so a local `WidenInput` is handled, not
  * rejected.
  */
-const RESERVED_BASE_CONTRACT_IMPORT_NAMES: readonly string[] = [
+const RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES: readonly string[] = [
   "BaseContract",
-  "Leo",
-  "createRecordOutputMatcher",
   "AcceptedTransition",
   "AddressInput",
   "BaseContractOptions",
@@ -427,6 +436,13 @@ const RESERVED_BASE_CONTRACT_IMPORT_NAMES: readonly string[] = [
   "SettledTransition",
   "SubmittedTransition",
   "TransitionInputContext",
+];
+
+const RESERVED_BASE_CONTRACT_IMPORT_NAMES: readonly string[] = [
+  ...new Set([
+    ...RESERVED_BASE_CONTRACT_VALUE_IMPORT_NAMES,
+    ...RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES,
+  ]),
 ];
 
 /**
@@ -483,7 +499,7 @@ const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
  * silently renamed like the contract class, so fail with a clear message.
  */
 function assertNoReservedLocalTypeNames(abi: ProgramABI): void {
-  const reserved = new Set<string>(RESERVED_BASE_CONTRACT_IMPORT_NAMES);
+  const reserved = new Set<string>(RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES);
   const check = (kind: "struct" | "record", path: readonly string[]): void => {
     const name = pathToTsName(path);
     if (reserved.has(name)) {
