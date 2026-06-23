@@ -2390,6 +2390,55 @@ describe("reserved-name guards (P6/P7)", () => {
     expect(() => generateBindings(abi)).toThrow(CodegenError);
   });
 
+  it("P6: allows a local record named Leo when no dynamic-record helpers import Leo", () => {
+    const abi = baseAbi({
+      program: "value_named_record.aleo",
+      records: [
+        {
+          path: ["Leo"],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" }],
+        },
+      ],
+    });
+    const out = generateBindings(abi);
+    expect(out).not.toContain("import { BaseContract, Leo,");
+    expect(out).toContain("export interface Leo");
+    expectGeneratedToTypecheck("ValueNamedRecord", out);
+  });
+
+  it("P6: allows local types matching value-only imports when helpers import Leo", () => {
+    const abi = baseAbi({
+      program: "value_named_helpers.aleo",
+      structs: [
+        {
+          path: ["createRecordOutputMatcher"],
+          fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }],
+        },
+      ],
+      records: [
+        {
+          path: ["Leo"],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" }],
+        },
+      ],
+    });
+    const out = generateBindings(abi, [abi], {
+      dynamicRecords: [
+        {
+          helperName: "asLeo",
+          sourceProgram: "value_named_helpers.aleo",
+          sourceRecord: "Leo",
+          schema: { owner: "address.private", _nonce: "group.public" },
+        },
+      ],
+    });
+    expect(out).toContain("import { BaseContract, Leo, createRecordOutputMatcher,");
+    expect(out).toContain("export interface createRecordOutputMatcher");
+    expect(out).toContain("export interface Leo");
+    expect(out).toContain("return Leo.dynamicRecord(value, {");
+    expectGeneratedToTypecheck("ValueNamedHelpers", out);
+  });
+
   it("P6: auto-renames a class colliding with a fixed import (record_output_matcher.aleo)", () => {
     const abi = baseAbi({
       program: "record_output_matcher.aleo",
