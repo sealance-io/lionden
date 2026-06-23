@@ -2,7 +2,11 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import type { PlaintextType, ProgramABI, RecordRef, StructRef } from "../abi-types.js";
 import { CodegenError } from "./codegen-error.js";
-import { generateBaseContract, generateBindings } from "./typescript-generator.js";
+import {
+  assertTypechainModuleNamesUnique,
+  generateBaseContract,
+  generateBindings,
+} from "./typescript-generator.js";
 
 /** Shorthand for creating a StructRef in tests */
 function sref(name: string, program: string | null = null): StructRef {
@@ -2279,5 +2283,153 @@ describe("mode-gated plaintext output emission", () => {
     expect(out).toContain(
       'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 1), tpk, "mixed_mode.aleo", "demo", 2, BaseContract.parseBigInt)',
     );
+  });
+});
+
+describe("assertTypechainModuleNamesUnique", () => {
+  it("accepts program ids that map to distinct module file names", () => {
+    // FooBar / Widget / Baz — distinct even when lower-cased.
+    expect(() =>
+      assertTypechainModuleNamesUnique(["foo_bar.aleo", "widget.aleo", "baz.aleo"]),
+    ).not.toThrow();
+  });
+
+  it("rejects two program ids that collapse to the same class name (overwrite)", () => {
+    // `foo_bar.aleo` and `foo__bar.aleo` both → `FooBar` → `FooBar.ts`, so the
+    // second write would silently overwrite the first.
+    let caught: unknown;
+    try {
+      assertTypechainModuleNamesUnique(["foo_bar.aleo", "foo__bar.aleo"]);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CodegenError);
+    expect((caught as CodegenError).message).toContain("FooBar.ts");
+    expect((caught as CodegenError).message).toContain("foo_bar.aleo");
+    expect((caught as CodegenError).message).toContain("foo__bar.aleo");
+    expect((caught as CodegenError).context).toMatchObject({
+      fileStem: "FooBar",
+      conflictsWith: "foo_bar.aleo",
+    });
+  });
+
+  it("also catches trailing-underscore ids that collapse together", () => {
+    expect(() => assertTypechainModuleNamesUnique(["foobar.aleo", "foobar_.aleo"])).toThrow(
+      CodegenError,
+    );
+  });
+
+  it("rejects a program id colliding with the reserved BaseContract file", () => {
+    // `base_contract.aleo` → `BaseContract` → would overwrite the runtime
+    // `BaseContract.ts` written by the emitter.
+    let caught: unknown;
+    try {
+      assertTypechainModuleNamesUnique(["base_contract.aleo"]);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CodegenError);
+    expect((caught as CodegenError).message).toContain("BaseContract.ts");
+    expect((caught as CodegenError).message).toContain("reserved");
+  });
+
+  it("rejects a program id colliding with the reserved index file (case-insensitive)", () => {
+    // `index.aleo` → `Index` → `Index.ts`, which on a case-insensitive FS
+    // (macOS/Windows) overwrites the barrel `index.ts`.
+    expect(() => assertTypechainModuleNamesUnique(["index.aleo"])).toThrow(CodegenError);
+  });
+
+  it("rejects two program ids whose class names differ only by case", () => {
+    // `ab.aleo` → `Ab`, `a_b.aleo` → `AB`: distinct on Linux, same file on
+    // macOS/Windows.
+    expect(() => assertTypechainModuleNamesUnique(["ab.aleo", "a_b.aleo"])).toThrow(CodegenError);
+  });
+
+  it("does not over-reserve unrelated names (record_output_matcher is fine)", () => {
+    // Only `BaseContract`/`index` file stems are reserved; a program whose class
+    // name is `RecordOutputMatcher` gets its own distinct module file.
+    expect(() => assertTypechainModuleNamesUnique(["record_output_matcher.aleo"])).not.toThrow();
+  });
+});
+
+describe("reserved-name guards (P6/P7)", () => {
+  const baseAbi = (over: Partial<ProgramABI>): ProgramABI => ({
+    program: "p.aleo",
+    structs: [],
+    records: [],
+    mappings: [],
+    storage_variables: [],
+    transitions: [],
+    ...over,
+  });
+  const u32Plaintext = { Plaintext: { Primitive: { UInt: "U32" } } } as const;
+  const u32Transition = (name: string): ProgramABI["transitions"][number] => ({
+    name,
+    is_async: false,
+    inputs: [{ name: "a", ty: u32Plaintext, mode: "Public" }],
+    outputs: [{ ty: u32Plaintext, mode: "Public" }],
+  });
+
+  it("P6: rejects a local struct named like a fixed BaseContract import (LeoField)", () => {
+    const abi = baseAbi({
+      program: "leo_field_holder.aleo",
+      structs: [
+        { path: ["LeoField"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] },
+      ],
+    });
+    expect(() => generateBindings(abi)).toThrow(CodegenError);
+    expect(() => generateBindings(abi)).toThrow(/LeoField/);
+  });
+
+  it("P6: rejects a local struct named BaseContract", () => {
+    const abi = baseAbi({
+      structs: [
+        { path: ["BaseContract"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] },
+      ],
+    });
+    expect(() => generateBindings(abi)).toThrow(CodegenError);
+  });
+
+  it("P6: auto-renames a class colliding with a fixed import (record_output_matcher.aleo)", () => {
+    const abi = baseAbi({
+      program: "record_output_matcher.aleo",
+      transitions: [u32Transition("identity")],
+    });
+    const out = generateBindings(abi);
+    // The class + factory are suffixed away from the imported names, so the
+    // generated module typechecks.
+    expect(out).toContain("export class RecordOutputMatcherContract extends BaseContract");
+    expect(out).toContain("export function createRecordOutputMatcherContract(");
+    expectGeneratedToTypecheck("RecordOutputMatcher", out);
+  });
+
+  it("P7: rejects transitions colliding with inherited members", () => {
+    for (const name of ["connect", "withSigner", "programId", "address", "executeLocal"]) {
+      const abi = baseAbi({ transitions: [u32Transition(name)] });
+      expect(() => generateBindings(abi), name).toThrow(CodegenError);
+    }
+  });
+
+  it("P7: rejects a transition named `mappings` when the program has mappings", () => {
+    const abi = baseAbi({
+      mappings: [
+        { name: "counts", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
+      ],
+      transitions: [u32Transition("mappings")],
+    });
+    expect(() => generateBindings(abi)).toThrow(/mappings/);
+  });
+
+  it("P7: allows a transition named `mappings` when the program has no mappings", () => {
+    const abi = baseAbi({ transitions: [u32Transition("mappings")] });
+    expect(() => generateBindings(abi)).not.toThrow();
+  });
+
+  it("does not reject ordinary type or transition names", () => {
+    const abi = baseAbi({
+      structs: [{ path: ["Note"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] }],
+      transitions: [u32Transition("transfer")],
+    });
+    expect(() => generateBindings(abi)).not.toThrow();
   });
 });

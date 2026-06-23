@@ -34,9 +34,11 @@ export { CodegenError } from "./codegen/codegen-error.js";
 export { aleoTypeToTs, pathToTsName, plaintextToTs, primitiveToTs } from "./codegen/type-mapper.js";
 // Codegen
 export {
+  assertTypechainModuleNamesUnique,
   type GenerateBindingsOptions,
   generateBaseContract,
   generateBindings,
+  programIdToClassName,
   resolveContractClassName,
 } from "./codegen/typescript-generator.js";
 // Compiler pipeline

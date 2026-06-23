@@ -9,6 +9,7 @@ import {
   task,
 } from "@lionden/core";
 import {
+  assertTypechainModuleNamesUnique,
   CodegenError,
   type CompileOptions,
   compilePipeline,
@@ -17,6 +18,7 @@ import {
   generateBindings,
   type ProgramCompilationResult,
   pathToTsName,
+  programIdToClassName,
   resolveContractClassName as resolveGeneratedContractClassName,
 } from "@lionden/leo-compiler";
 
@@ -126,6 +128,11 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
 
     // Generate TypeScript bindings for programs
     if (!options.noTypechain && lre.config.codegen.enabled) {
+      // Fail fast if two programs (or a program and a reserved emitter file)
+      // map to the same typechain module file, which would otherwise silently
+      // overwrite one program's bindings during the write loop below.
+      assertTypechainModuleNamesUnique(programResults.map((r) => r.unit.programId));
+
       const typechainDir = lre.config.paths.typechain;
       fs.mkdirSync(typechainDir, { recursive: true });
 
@@ -188,14 +195,6 @@ export default pluginLeo;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function programIdToClassName(programId: string): string {
-  const name = programId.replace(/\.aleo$/, "");
-  return name
-    .split(/[_\-.]/)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join("");
-}
 
 function buildTypechainIndex(
   programResults: readonly ProgramCompilationResult[],

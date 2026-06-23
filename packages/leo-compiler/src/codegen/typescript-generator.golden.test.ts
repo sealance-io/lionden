@@ -503,4 +503,93 @@ describe("external alias collisions", () => {
       Consumer: consumerOutput,
     });
   });
+
+  it("disambiguates an external record value binding that collides with a dynamic-record helper", () => {
+    // The consumer references an external record (`gold_token.aleo::Token`),
+    // which emits `export const GoldToken_Token` (the external record value
+    // binding). It ALSO configures a dynamic-record helper whose `helperName`
+    // is exactly `GoldToken_Token`, which emits `export const GoldToken_Token`
+    // (the callable). Without reserving helper names against external aliases
+    // both land in the same module → duplicate `const` (TS2451). The fix bumps
+    // the external alias to `GoldToken_Token_`.
+    const goldToken = parseAbi(
+      JSON.stringify({
+        program: "gold_token.aleo",
+        structs: [],
+        records: [
+          {
+            path: ["Token"],
+            fields: [
+              { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+              { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+            ],
+          },
+        ],
+        mappings: [],
+        storage_variables: [],
+        transitions: [],
+      }),
+    );
+    const consumer = parseAbi(
+      JSON.stringify({
+        program: "consumer.aleo",
+        structs: [],
+        records: [
+          {
+            path: ["Receipt"],
+            fields: [
+              { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+              { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+            ],
+          },
+        ],
+        mappings: [],
+        storage_variables: [],
+        transitions: [
+          {
+            name: "forward",
+            is_async: false,
+            inputs: [
+              {
+                name: "t",
+                ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
+                mode: "None",
+              },
+            ],
+            outputs: [
+              {
+                ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
+                mode: "None",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const consumerOutput = generateBindings(consumer, [consumer, goldToken], {
+      dynamicRecords: [
+        {
+          helperName: "GoldToken_Token",
+          sourceRecord: "Receipt",
+          sourceProgram: "consumer.aleo",
+          schema: {
+            owner: "address.private",
+            amount: "u64.private",
+            _nonce: "group.private",
+          },
+        },
+      ],
+    });
+    // External record alias bumped past the helper name.
+    expect(consumerOutput).toContain("type Token as _GoldToken_Token_");
+    expect(consumerOutput).toContain("export type GoldToken_Token_ = _GoldToken_Token_;");
+    expect(consumerOutput).toContain("export const GoldToken_Token_ = {");
+    // The helper keeps the un-bumped name.
+    expect(consumerOutput).toContain("export const GoldToken_Token = Object.assign(");
+    expectModulesToTypecheck({
+      GoldToken: generateBindings(goldToken, [goldToken, consumer]),
+      Consumer: consumerOutput,
+    });
+  });
 });
