@@ -124,9 +124,9 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     const configPath = typeof globalConfigPath === "string" ? globalConfigPath : undefined;
 
     // Canonicalize/clear LIONDEN_PROVE BEFORE suiteSetup so testing hooks and
-    // Vitest workers observe the same resolved value (fixes P1). Workers read
-    // the strict `=== "true"` wrapper check, so canonicalize a truthy env to
-    // exactly "true" here.
+    // Vitest workers observe the same resolved value. Workers read the strict
+    // `=== "true"` wrapper check, so canonicalize a truthy env to exactly
+    // "true" here.
     if (effectiveProve) process.env["LIONDEN_PROVE"] = "true";
     else delete process.env["LIONDEN_PROVE"];
 
