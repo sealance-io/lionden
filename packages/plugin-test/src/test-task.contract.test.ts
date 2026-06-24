@@ -333,7 +333,7 @@ describe("test task contract", () => {
       expect(process.env["LIONDEN_PROVE"]).toBeUndefined();
     });
 
-    it("resolves and canonicalizes LIONDEN_PROVE BEFORE suiteSetup runs (P1)", async () => {
+    it("resolves and canonicalizes LIONDEN_PROVE BEFORE suiteSetup runs", async () => {
       // A testing.suiteSetup hook must observe the already-resolved env value,
       // not whatever ambient value preceded resolution.
       process.env["LIONDEN_PROVE"] = "yes"; // truthy spelling, not yet canonical

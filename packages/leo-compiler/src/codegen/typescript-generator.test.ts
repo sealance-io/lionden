@@ -2352,7 +2352,7 @@ describe("assertTypechainModuleNamesUnique", () => {
   });
 });
 
-describe("reserved-name guards (P6/P7)", () => {
+describe("reserved-name guards", () => {
   const baseAbi = (over: Partial<ProgramABI>): ProgramABI => ({
     program: "p.aleo",
     structs: [],
@@ -2370,7 +2370,7 @@ describe("reserved-name guards (P6/P7)", () => {
     outputs: [{ ty: u32Plaintext, mode: "Public" }],
   });
 
-  it("P6: rejects a local struct named like a fixed BaseContract import (LeoField)", () => {
+  it("rejects a local struct named like a fixed BaseContract import (LeoField)", () => {
     const abi = baseAbi({
       program: "leo_field_holder.aleo",
       structs: [
@@ -2381,7 +2381,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expect(() => generateBindings(abi)).toThrow(/LeoField/);
   });
 
-  it("P6: rejects a local struct named BaseContract", () => {
+  it("rejects a local struct named BaseContract", () => {
     const abi = baseAbi({
       structs: [
         { path: ["BaseContract"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] },
@@ -2390,7 +2390,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expect(() => generateBindings(abi)).toThrow(CodegenError);
   });
 
-  it("P6: allows a local record named Leo when no dynamic-record helpers import Leo", () => {
+  it("allows a local record named Leo when no dynamic-record helpers import Leo", () => {
     const abi = baseAbi({
       program: "value_named_record.aleo",
       records: [
@@ -2406,7 +2406,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expectGeneratedToTypecheck("ValueNamedRecord", out);
   });
 
-  it("P6: allows local types matching value-only imports when helpers import Leo", () => {
+  it("allows local types matching value-only imports when helpers import Leo", () => {
     const abi = baseAbi({
       program: "value_named_helpers.aleo",
       structs: [
@@ -2439,7 +2439,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expectGeneratedToTypecheck("ValueNamedHelpers", out);
   });
 
-  it("P6: auto-renames a class colliding with a fixed import (record_output_matcher.aleo)", () => {
+  it("auto-renames a class colliding with a fixed import (record_output_matcher.aleo)", () => {
     const abi = baseAbi({
       program: "record_output_matcher.aleo",
       transitions: [u32Transition("identity")],
@@ -2452,7 +2452,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expectGeneratedToTypecheck("RecordOutputMatcher", out);
   });
 
-  it("P6: preserves Leo/createLeo for leo.aleo when helpers do not import Leo", () => {
+  it("preserves Leo/createLeo for leo.aleo when helpers do not import Leo", () => {
     const abi = baseAbi({
       program: "leo.aleo",
       transitions: [u32Transition("identity")],
@@ -2467,7 +2467,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expectGeneratedToTypecheck("Leo", out);
   });
 
-  it("P6: auto-renames leo.aleo class only when helpers import Leo", () => {
+  it("auto-renames leo.aleo class only when helpers import Leo", () => {
     const abi = baseAbi({
       program: "leo.aleo",
       records: [
@@ -2500,14 +2500,14 @@ describe("reserved-name guards (P6/P7)", () => {
     expectGeneratedToTypecheck("Leo", out);
   });
 
-  it("P7: rejects transitions colliding with inherited members", () => {
+  it("rejects transitions colliding with inherited members", () => {
     for (const name of ["connect", "withSigner", "programId", "address", "executeLocal"]) {
       const abi = baseAbi({ transitions: [u32Transition(name)] });
       expect(() => generateBindings(abi), name).toThrow(CodegenError);
     }
   });
 
-  it("P7: rejects a transition named `mappings` when the program has mappings", () => {
+  it("rejects a transition named `mappings` when the program has mappings", () => {
     const abi = baseAbi({
       mappings: [
         { name: "counts", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
@@ -2517,7 +2517,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expect(() => generateBindings(abi)).toThrow(/mappings/);
   });
 
-  it("P7: allows a transition named `mappings` when the program has no mappings", () => {
+  it("allows a transition named `mappings` when the program has no mappings", () => {
     const abi = baseAbi({ transitions: [u32Transition("mappings")] });
     expect(() => generateBindings(abi)).not.toThrow();
   });
@@ -2530,7 +2530,7 @@ describe("reserved-name guards (P6/P7)", () => {
     expect(() => generateBindings(abi)).not.toThrow();
   });
 
-  it("P7: reserved member list stays in sync with BaseContract instance members", () => {
+  it("reserved member list stays in sync with BaseContract instance members", () => {
     // Derive the actual instance-member set from the emitted BaseContract class
     // source. If a member is added/removed without updating the reserved list (a
     // silent collision regression), the matching transition stops throwing and
