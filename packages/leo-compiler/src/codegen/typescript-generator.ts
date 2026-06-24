@@ -387,14 +387,14 @@ const BASE_CONTRACT_TYPE_IMPORT_NAMES: readonly string[] = [
  * only when the module emits dynamic-record helpers; `WidenInput` only when the
  * module has external struct/record refs (which alias to `WidenInput<…>`), and
  * under a collision-safe local name (`widenImport`, normally `"WidenInput"`).
- * The type list is alphabetical, matching the historically-emitted order so
- * modules without those features produce byte-identical imports.
+ * The value names come from `baseContractValueImportNames` (the single source
+ * shared with the collision guard); the type list is alphabetical, matching the
+ * historically-emitted order so modules without those features produce
+ * byte-identical imports.
  */
 function baseContractImport(includeLeo: boolean, widenImport: string | null): string {
   const names: string[] = [
-    "BaseContract",
-    ...(includeLeo ? ["Leo"] : []),
-    "createRecordOutputMatcher",
+    ...baseContractValueImportNames(includeLeo),
     ...BASE_CONTRACT_TYPE_IMPORT_NAMES.map((name) => `type ${name}`),
     ...(widenImport === null
       ? []
@@ -403,21 +403,20 @@ function baseContractImport(includeLeo: boolean, widenImport: string | null): st
   return `import { ${names.join(", ")} } from "./BaseContract.js";`;
 }
 
-const BASE_CONTRACT_VALUE_IMPORT_NAMES: readonly string[] = [
-  "BaseContract",
-  "createRecordOutputMatcher",
-];
-
 /**
- * Bare value-binding names introduced by `baseContractImport`. A generated
- * contract class or its `create${class}` factory must avoid these, but local
- * interfaces can coexist with value-only imports such as `Leo` and
- * `createRecordOutputMatcher`.
+ * Bare value-binding names introduced by `baseContractImport`, in emitted order:
+ * `BaseContract`, then `Leo` (only when the module emits dynamic-record helpers),
+ * then `createRecordOutputMatcher`. Single source of truth shared by
+ * `baseContractImport` (the emitted import line) and the collision guard
+ * (`reservedBaseContractImportNames` / `assertNoReservedHelperNames`), so the
+ * emitted value imports and the reserved set cannot drift apart — the same
+ * single-source treatment the type list gets via `BASE_CONTRACT_TYPE_IMPORT_NAMES`.
+ *
+ * A generated contract class or its `create${class}` factory must avoid all of
+ * these; local interfaces can still coexist with the value-only imports.
  */
 function baseContractValueImportNames(includeLeo: boolean): readonly string[] {
-  return includeLeo
-    ? ["BaseContract", "Leo", "createRecordOutputMatcher"]
-    : BASE_CONTRACT_VALUE_IMPORT_NAMES;
+  return ["BaseContract", ...(includeLeo ? ["Leo"] : []), "createRecordOutputMatcher"];
 }
 
 /**
