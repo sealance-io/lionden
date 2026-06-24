@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { parseAbi } from "../abi-parser.js";
+import { CodegenError } from "./codegen-error.js";
 import { generateBaseContract, generateBindings } from "./typescript-generator.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -591,5 +592,85 @@ describe("external alias collisions", () => {
       GoldToken: generateBindings(goldToken, [goldToken, consumer]),
       Consumer: consumerOutput,
     });
+  });
+
+  it("rejects a dynamic-record helper colliding with an external serializer alias", () => {
+    // The consumer imports `serialize${Base} as serializeGoldToken_Token` for the
+    // external `gold_token.aleo::Token` ref. A helper literally named
+    // `serializeGoldToken_Token` would emit `export const serializeGoldToken_Token`,
+    // duplicating that import. The serializer/deserializer aliases have no bump
+    // path (only the type alias bumps), so the helper (user config) is rejected.
+    const goldToken = parseAbi(
+      JSON.stringify({
+        program: "gold_token.aleo",
+        structs: [],
+        records: [
+          {
+            path: ["Token"],
+            fields: [
+              { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+              { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+            ],
+          },
+        ],
+        mappings: [],
+        storage_variables: [],
+        transitions: [],
+      }),
+    );
+    const consumer = parseAbi(
+      JSON.stringify({
+        program: "consumer.aleo",
+        structs: [],
+        records: [
+          {
+            path: ["Receipt"],
+            fields: [
+              { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+              { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" },
+            ],
+          },
+        ],
+        mappings: [],
+        storage_variables: [],
+        transitions: [
+          {
+            name: "forward",
+            is_async: false,
+            inputs: [
+              {
+                name: "t",
+                ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
+                mode: "None",
+              },
+            ],
+            outputs: [
+              {
+                ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
+                mode: "None",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    const build = (helperName: string) =>
+      generateBindings(consumer, [consumer, goldToken], {
+        dynamicRecords: [
+          {
+            helperName,
+            sourceRecord: "Receipt",
+            sourceProgram: "consumer.aleo",
+            schema: { owner: "address.private", amount: "u64.private", _nonce: "group.private" },
+          },
+        ],
+      });
+
+    expect(() => build("serializeGoldToken_Token")).toThrow(CodegenError);
+    expect(() => build("serializeGoldToken_Token")).toThrow(/serializeGoldToken_Token/);
+    expect(() => build("deserializeGoldToken_Token")).toThrow(CodegenError);
+    // A non-colliding helper on the same external-ref consumer still works.
+    expect(() => build("asReceipt")).not.toThrow();
   });
 });

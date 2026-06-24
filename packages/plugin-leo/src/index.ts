@@ -241,7 +241,13 @@ function getProgramExports(
   const abi = result.abi;
   const types = new Set<string>();
   const values = new Set<string>();
-  const className = resolveGeneratedContractClassName(result.abi);
+  // Match the class name the module actually emits: when the program emits
+  // dynamic-record helpers it value-imports `Leo`, which can bump the class name
+  // (e.g. `leo.aleo` -> `LeoContract`). Resolving without this flag would export
+  // a class/factory name the module no longer declares.
+  const className = resolveGeneratedContractClassName(result.abi, {
+    includeLeoValueImport: helpers.length > 0,
+  });
 
   for (const struct of abi.structs ?? []) {
     const name = pathToTsName(struct.path);
