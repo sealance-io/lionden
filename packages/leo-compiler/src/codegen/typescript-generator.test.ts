@@ -2587,4 +2587,125 @@ describe("reserved-name guards (P6/P7)", () => {
       expect(() => generateBindings(abi), member).toThrow(CodegenError);
     }
   });
+
+  // A dynamic-record helper emits `export const ${helperName}`. When that name
+  // equals another module-level value binding — the contract class, its
+  // `create${class}` factory, a fixed BaseContract value import (`Leo` etc.), or
+  // a per-type serialize/deserialize/decrypt const — the module would declare
+  // the same identifier twice (TS2451/TS2440). Those bindings either can't be
+  // renamed (fixed imports) or are the public call API (class/factory), so the
+  // helper (user config) is rejected rather than silently bumped.
+  // `consumer.aleo` → class `Consumer`, factory `createConsumer`.
+  const consumerAbi = baseAbi({
+    program: "consumer.aleo",
+    records: [
+      {
+        path: ["Receipt"],
+        fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" }],
+      },
+    ],
+  });
+  const helperConfig = (helperName: string) => ({
+    dynamicRecords: [
+      {
+        helperName,
+        sourceProgram: "consumer.aleo",
+        sourceRecord: "Receipt",
+        schema: { owner: "address.private", _nonce: "group.private" },
+      },
+    ],
+  });
+
+  it("rejects a dynamic-record helper named like the contract class", () => {
+    // A helper `Consumer` would emit a second `export const Consumer`.
+    expect(() => generateBindings(consumerAbi, [consumerAbi], helperConfig("Consumer"))).toThrow(
+      CodegenError,
+    );
+    expect(() => generateBindings(consumerAbi, [consumerAbi], helperConfig("Consumer"))).toThrow(
+      /Consumer/,
+    );
+  });
+
+  it("rejects a dynamic-record helper named like the create-factory", () => {
+    // A helper `createConsumer` would emit a second `export const createConsumer`.
+    let caught: unknown;
+    try {
+      generateBindings(consumerAbi, [consumerAbi], helperConfig("createConsumer"));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CodegenError);
+    expect((caught as CodegenError).message).toContain("createConsumer");
+    expect((caught as CodegenError).context).toMatchObject({ helperName: "createConsumer" });
+  });
+
+  it("rejects a dynamic-record helper named like a fixed BaseContract value import", () => {
+    // Any helper-emitting module value-imports `Leo`; a helper `Leo` would emit a
+    // second `export const Leo`. `BaseContract`/`createRecordOutputMatcher` are
+    // always imported.
+    for (const name of ["Leo", "BaseContract", "createRecordOutputMatcher"]) {
+      expect(() => generateBindings(consumerAbi, [consumerAbi], helperConfig(name)), name).toThrow(
+        CodegenError,
+      );
+    }
+  });
+
+  it("rejects a dynamic-record helper named like a generated serialize/decrypt const", () => {
+    // `consumer.aleo` declares record `Receipt`, emitting `serializeReceipt` /
+    // `deserializeReceipt` / `decryptReceipt` value consts.
+    for (const name of ["serializeReceipt", "deserializeReceipt", "decryptReceipt"]) {
+      expect(() => generateBindings(consumerAbi, [consumerAbi], helperConfig(name)), name).toThrow(
+        CodegenError,
+      );
+    }
+  });
+
+  it("rejects a dynamic-record helper named like another helper's backing impl function", () => {
+    // Helper `asReceipt` emits `function _asReceiptImpl`; a second helper literally
+    // named `_asReceiptImpl` would emit `export const _asReceiptImpl` → duplicate.
+    const twoHelpers = {
+      dynamicRecords: [
+        {
+          helperName: "asReceipt",
+          sourceProgram: "consumer.aleo",
+          sourceRecord: "Receipt",
+          schema: { owner: "address.private", _nonce: "group.private" },
+        },
+        {
+          helperName: "_asReceiptImpl",
+          sourceProgram: "consumer.aleo",
+          sourceRecord: "Receipt",
+          schema: { owner: "address.private", _nonce: "group.private" },
+        },
+      ],
+    };
+    let caught: unknown;
+    try {
+      generateBindings(consumerAbi, [consumerAbi], twoHelpers);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(CodegenError);
+    expect((caught as CodegenError).message).toContain("_asReceiptImpl");
+    expect((caught as CodegenError).message).toContain("asReceipt");
+    expect((caught as CodegenError).context).toMatchObject({ helperName: "_asReceiptImpl" });
+  });
+
+  it("allows two helpers whose names don't collide with each other's impl", () => {
+    const twoHelpers = {
+      dynamicRecords: ["asReceipt", "asReceiptToo"].map((helperName) => ({
+        helperName,
+        sourceProgram: "consumer.aleo",
+        sourceRecord: "Receipt",
+        schema: { owner: "address.private", _nonce: "group.private" },
+      })),
+    };
+    expect(() => generateBindings(consumerAbi, [consumerAbi], twoHelpers)).not.toThrow();
+  });
+
+  it("allows a dynamic-record helper whose name differs from every emitted binding", () => {
+    expect(() =>
+      generateBindings(consumerAbi, [consumerAbi], helperConfig("asReceipt")),
+    ).not.toThrow();
+  });
 });

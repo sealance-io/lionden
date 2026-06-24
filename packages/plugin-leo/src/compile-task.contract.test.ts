@@ -94,17 +94,26 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
     generateBindings: vi.fn().mockReturnValue("// generated bindings\n"),
     generateBaseContract: vi.fn().mockReturnValue("// base contract\n"),
     resolveContractClassName: vi.fn(
-      (abi: {
-        program: string;
-        structs?: { path: string[] }[];
-        records?: { path: string[] }[];
-      }) => {
+      (
+        abi: {
+          program: string;
+          structs?: { path: string[] }[];
+          records?: { path: string[] }[];
+        },
+        options?: { includeLeoValueImport?: boolean },
+      ) => {
         const base = abi.program
           .replace(/\.aleo$/, "")
           .split(/[_\-.]/)
           .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
           .join("");
         const typeNames = new Set([
+          // Faithful to the real impl: when the module value-imports `Leo`
+          // (i.e. it emits dynamic-record helpers) the class name must also bump
+          // away from the fixed value imports.
+          ...(options?.includeLeoValueImport
+            ? ["BaseContract", "Leo", "createRecordOutputMatcher"]
+            : []),
           ...(abi.structs ?? []).map((s) => s.path.join("_")),
           ...(abi.records ?? []).map((r) => r.path.join("_")),
         ]);
@@ -247,6 +256,73 @@ describe("compile task contract", () => {
     expect(indexContent).not.toContain("export type { Token }");
     expect(indexContent).toContain("export { GoldToken, createGoldToken }");
     expect(indexContent).toContain("export { SilverToken, createSilverToken }");
+  });
+
+  it("barrel exports the helper-bumped class name (leo.aleo + dynamic-record helper)", async () => {
+    // `leo.aleo` emits a dynamic-record helper, so the module value-imports `Leo`
+    // and its class bumps to `LeoContract`/`createLeoContract`. The barrel must
+    // re-export those bumped names, not the un-bumped `Leo`/`createLeo` the
+    // module no longer declares.
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockResolvedValueOnce({
+      results: [
+        {
+          unit: {
+            kind: "program" as const,
+            programId: "leo.aleo",
+            sourceDir: "/tmp/test/programs/leo",
+            entryFile: "/tmp/test/programs/leo/main.leo",
+            allSources: ["main.leo"],
+          },
+          cached: false,
+          packageDir: "/tmp/test/.cache/leo",
+          buildDir: "/tmp/test/.cache/leo/build",
+          abi: {
+            program: "leo.aleo",
+            structs: [],
+            records: [
+              {
+                path: ["Token"],
+                fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }],
+              },
+            ],
+            mappings: [],
+            storage_variables: [],
+            transitions: [],
+          },
+          aleoSource: "",
+        },
+      ],
+    } as any);
+
+    result = createContractLre({
+      plugins: [pluginLeo],
+      configOverrides: {
+        codegen: {
+          enabled: true,
+          outDir: "typechain",
+          dynamicRecords: {
+            asToken: {
+              helperName: "asToken",
+              sourceProgram: "leo.aleo",
+              sourceRecord: "Token",
+              schema: { owner: "address.private", amount: "u64.private", _nonce: "group.public" },
+            },
+          },
+        },
+      },
+    });
+    await result.lre.tasks.run("compile");
+
+    const indexContent = fs.readFileSync(
+      path.join(result.lre.config.paths.typechain, "index.ts"),
+      "utf-8",
+    );
+    // Bumped names are re-exported from the (raw-named) module file.
+    expect(indexContent).toContain("LeoContract, createLeoContract");
+    expect(indexContent).toContain('from "./Leo.js";');
+    // The un-bumped factory must not appear (the module exports createLeoContract).
+    expect(indexContent).not.toMatch(/\bcreateLeo\b/);
   });
 
   it("skips TypeScript bindings when --noTypechain is set", async () => {

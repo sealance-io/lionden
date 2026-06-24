@@ -99,6 +99,13 @@ export function generateBindings(
   assertNoExecutableConstParameters(abi);
   assertNoReservedLocalTypeNames(abi);
   assertNoReservedContractMembers(abi);
+  assertNoReservedHelperNames(
+    abi,
+    className,
+    includeLeoValueImport,
+    helpers,
+    ctx.externalInfoByKey.values(),
+  );
 
   const hasExternalRefs = ctx.externalStructRefs.size + ctx.externalRecordRefs.size > 0;
 
@@ -528,6 +535,83 @@ function assertNoReservedContractMembers(abi: ProgramABI): void {
       throw new CodegenError(
         `Program ${abi.program} has a transition '${transition.name}' whose generated accessor collides with a reserved contract member (inherited BaseContract members such as connect/withSigner/address/programId, or the mappings/storage container). Rename the transition.`,
         { programId: abi.program, transition: transition.name, phase: "generate" },
+      );
+    }
+  }
+}
+
+/**
+ * A dynamic-record helper is emitted as a module-level `export const
+ * ${helperName} = Object.assign(_${helperName}Impl, …)`, backed by a sibling
+ * `function _${helperName}Impl(…)`. Reject a helper whose name equals any other
+ * module-level value binding the generator emits, since two `const`s (or a
+ * `const`/`function` and an imported value) of the same name is a duplicate
+ * declaration (TS2451/TS2440):
+ *   - the fixed BaseContract value imports (`BaseContract`,
+ *     `createRecordOutputMatcher`, and `Leo` whenever helpers are emitted),
+ *   - the contract class and its `create${class}` factory,
+ *   - the per-type `serialize`/`deserialize`/`decrypt` consts,
+ *   - the external ref serializer/deserializer aliases and record value bindings
+ *     imported/re-exported for cross-program types (e.g. `serializeGoldToken_Token`),
+ *   - the `_${otherHelper}Impl` backing function of any other helper (e.g. a
+ *     helper `_asReceiptImpl` clashes with helper `asReceipt`'s impl function).
+ * The contract class is silently suffixed away from such collisions, but a
+ * helper name is user-chosen config (`codegen.dynamicRecords`) that can't be
+ * renamed without changing the call API, so fail with a clear message instead.
+ */
+function assertNoReservedHelperNames(
+  abi: ProgramABI,
+  className: string,
+  includeLeoValueImport: boolean,
+  helpers: readonly { readonly helperName: string }[],
+  externalInfos: Iterable<ExternalRefInfo>,
+): void {
+  if (helpers.length === 0) return;
+  // Reserved value-binding name -> short description of what it would clash with.
+  const reserved = new Map<string, string>();
+  for (const name of baseContractValueImportNames(includeLeoValueImport)) {
+    reserved.set(name, `the '${name}' value imported from BaseContract`);
+  }
+  reserved.set(className, `the contract class '${className}'`);
+  reserved.set(`create${className}`, `the contract factory 'create${className}'`);
+  for (const struct of abi.structs) {
+    const name = pathToTsName(struct.path);
+    reserved.set(`serialize${name}`, `the generated 'serialize${name}'`);
+    reserved.set(`deserialize${name}`, `the generated 'deserialize${name}'`);
+  }
+  for (const record of abi.records) {
+    const name = pathToTsName(record.path);
+    reserved.set(`serialize${name}`, `the generated 'serialize${name}'`);
+    reserved.set(`deserialize${name}`, `the generated 'deserialize${name}'`);
+    reserved.set(`decrypt${name}`, `the generated 'decrypt${name}'`);
+  }
+  // External refs import `serialize${Base} as ${serializerName}` /
+  // `deserialize${Base} as ${deserializerName}` and (for records) re-export
+  // `export const ${typeName}`. The type aliases already bump away from helper
+  // names, but the serializer/deserializer value aliases do not — reserve them.
+  for (const info of externalInfos) {
+    reserved.set(info.serializerName, `the imported external serializer '${info.serializerName}'`);
+    reserved.set(
+      info.deserializerName,
+      `the imported external deserializer '${info.deserializerName}'`,
+    );
+    reserved.set(info.typeName, `the external type binding '${info.typeName}'`);
+  }
+  // Each helper also emits a `function _${helperName}Impl` backing declaration.
+  // `_${helperName}Impl` is never equal to its own helper's name, so this only
+  // catches one helper's name colliding with another helper's impl function.
+  for (const helper of helpers) {
+    reserved.set(
+      `_${helper.helperName}Impl`,
+      `the backing function of dynamic-record helper '${helper.helperName}'`,
+    );
+  }
+  for (const helper of helpers) {
+    const clashesWith = reserved.get(helper.helperName);
+    if (clashesWith !== undefined) {
+      throw new CodegenError(
+        `Program ${abi.program} configures a dynamic-record helper '${helper.helperName}', whose generated 'export const ${helper.helperName}' collides with ${clashesWith}. Rename the helper (codegen.dynamicRecords).`,
+        { programId: abi.program, helperName: helper.helperName, phase: "generate" },
       );
     }
   }
