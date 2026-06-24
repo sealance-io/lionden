@@ -2452,6 +2452,54 @@ describe("reserved-name guards (P6/P7)", () => {
     expectGeneratedToTypecheck("RecordOutputMatcher", out);
   });
 
+  it("P6: preserves Leo/createLeo for leo.aleo when helpers do not import Leo", () => {
+    const abi = baseAbi({
+      program: "leo.aleo",
+      transitions: [u32Transition("identity")],
+    });
+
+    const out = generateBindings(abi);
+    expect(out).not.toContain("import { BaseContract, Leo,");
+    expect(out).toContain("export class Leo extends BaseContract");
+    expect(out).toContain("export function createLeo(");
+    expect(out).not.toContain("export class LeoContract");
+    expect(out).not.toContain("export function createLeoContract(");
+    expectGeneratedToTypecheck("Leo", out);
+  });
+
+  it("P6: auto-renames leo.aleo class only when helpers import Leo", () => {
+    const abi = baseAbi({
+      program: "leo.aleo",
+      records: [
+        {
+          path: ["Token"],
+          fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" }],
+        },
+      ],
+    });
+
+    const out = generateBindings(abi, [abi], {
+      dynamicRecords: [
+        {
+          helperName: "asToken",
+          sourceProgram: "leo.aleo",
+          sourceRecord: "Token",
+          schema: {
+            owner: "address.private",
+            amount: "u64.private",
+            _nonce: "group.public",
+          },
+        },
+      ],
+    });
+
+    expect(out).toContain("import { BaseContract, Leo, createRecordOutputMatcher,");
+    expect(out).toContain("export class LeoContract extends BaseContract");
+    expect(out).toContain("export function createLeoContract(");
+    expect(out).not.toContain("export class Leo extends BaseContract");
+    expectGeneratedToTypecheck("Leo", out);
+  });
+
   it("P7: rejects transitions colliding with inherited members", () => {
     for (const name of ["connect", "withSigner", "programId", "address", "executeLocal"]) {
       const abi = baseAbi({ transitions: [u32Transition(name)] });
