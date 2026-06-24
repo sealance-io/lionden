@@ -2531,52 +2531,50 @@ describe("reserved-name guards", () => {
   });
 
   it("reserved member list stays in sync with BaseContract instance members", () => {
-    // Derive the actual instance-member set from the emitted BaseContract class
-    // source. If a member is added/removed without updating the reserved list (a
-    // silent collision regression), the matching transition stops throwing and
-    // this test fails.
+    // Derive the actual instance-member set from the emitted BaseContract class by
+    // walking its AST. If a member is added/removed without updating the reserved
+    // list (a silent collision regression), the matching transition stops throwing
+    // and this test fails. Parsing the AST (rather than the source text) keeps the
+    // extractor immune to brace/indentation quirks in generated method bodies.
     const source = generateBaseContract();
-    const classStart = source.indexOf("export abstract class BaseContract {");
-    expect(classStart).toBeGreaterThanOrEqual(0);
-    // The class body runs to its column-0 closing `}`; method-body braces are
-    // indented, so the first "\n}" terminates the class.
-    const fromClass = source.slice(classStart);
-    const classBody = fromClass.slice(0, fromClass.indexOf("\n}"));
+    const sourceFile = ts.createSourceFile(
+      "BaseContract.ts",
+      source,
+      ts.ScriptTarget.ES2024,
+      /* setParentNodes */ true,
+    );
 
-    const modifiers = [
-      "public ",
-      "protected ",
-      "private ",
-      "abstract ",
-      "override ",
-      "static ",
-      "readonly ",
-      "async ",
-      "get ",
-      "set ",
-    ];
-    const members = new Set<string>();
-    for (const line of classBody.split("\n")) {
-      // Class members sit at exactly two-space indentation; deeper indentation is
-      // method-body code and continuation lines start with `)`/`}`/etc.
-      const indented = /^ {2}([A-Za-z].*)$/.exec(line);
-      if (indented === null) continue;
-      let decl = indented[1];
-      let isStatic = false;
-      for (let changed = true; changed; ) {
-        changed = false;
-        for (const mod of modifiers) {
-          if (decl.startsWith(mod)) {
-            if (mod === "static ") isStatic = true;
-            decl = decl.slice(mod.length);
-            changed = true;
-          }
-        }
+    let classDecl: ts.ClassDeclaration | undefined;
+    sourceFile.forEachChild((node) => {
+      if (ts.isClassDeclaration(node) && node.name?.text === "BaseContract") {
+        classDecl = node;
       }
-      if (isStatic) continue; // statics don't collide with instance accessors
-      const nameMatch = /^([A-Za-z_$][\w$]*)\s*[(<:?;=]/.exec(decl);
-      if (nameMatch === null) continue;
-      members.add(nameMatch[1]);
+    });
+    expect(classDecl, "BaseContract class declaration not found").toBeDefined();
+
+    const members = new Set<string>();
+    for (const member of (classDecl as ts.ClassDeclaration).members) {
+      // The generated subclass always emits its own `constructor(options?)`, so a
+      // transition named `constructor` would redeclare it (and `readonly
+      // constructor = …` is itself a class-field syntax error). A
+      // ConstructorDeclaration has no `member.name`, so capture it explicitly
+      // rather than dropping it at the `name === undefined` check below.
+      if (ts.isConstructorDeclaration(member)) {
+        members.add("constructor");
+        continue;
+      }
+      // Statics don't collide with instance accessors; index signatures and
+      // static blocks have no colliding name.
+      const isStatic = (ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static) !== 0;
+      if (isStatic) continue;
+      const name = member.name;
+      if (name === undefined) continue;
+      // `#private` fields are ECMAScript-private — never inherited, so they can't
+      // collide with a generated subclass accessor. Soft-`private` keyword members
+      // do collide and carry a plain identifier/string name.
+      if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+        members.add(name.text);
+      }
     }
 
     // Guard against a broken extractor silently asserting nothing.
