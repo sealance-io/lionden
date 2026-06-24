@@ -325,83 +325,16 @@ export function generateBaseContract(): string {
 }
 
 /**
- * Build the fixed `import { … } from "./BaseContract.js"` line. `Leo` is added
- * only when the module emits dynamic-record helpers; `WidenInput` only when the
- * module has external struct/record refs (which alias to `WidenInput<…>`), and
- * under a collision-safe local name (`widenImport`, normally `"WidenInput"`).
- * The type list is alphabetical, matching the historically-emitted order so
- * modules without those features produce byte-identical imports.
- */
-function baseContractImport(includeLeo: boolean, widenImport: string | null): string {
-  const names: string[] = [
-    "BaseContract",
-    ...(includeLeo ? ["Leo"] : []),
-    "createRecordOutputMatcher",
-    "type AcceptedTransition",
-    "type AddressInput",
-    "type BaseContractOptions",
-    "type CapturedRecord",
-    "type ConfirmedTransitionRecord",
-    "type DecryptionKey",
-    "type DynamicRecordInput",
-    "type EncryptedRecord",
-    "type EncryptedValue",
-    "type FieldInput",
-    "type GroupInput",
-    "type IdentifierInput",
-    "type IdOnlyDynamicRecordHandle",
-    "type IdOnlyExternalRecordHandle",
-    "type IdOnlyRecordSource",
-    "type LeoAddress",
-    "type LeoDynamicRecord",
-    "type LeoField",
-    "type LeoGroup",
-    "type LeoIdentifier",
-    "type LeoPlaintext",
-    "type LeoScalar",
-    "type LocalExecutionOptions",
-    "type LocalTransitionError",
-    "type OnChainExecutionOptions",
-    "type PlaintextInput",
-    "type RawTransitionOutput",
-    "type RecordDecryptionKey",
-    "type RecordOutputMatcher",
-    "type RejectedTransition",
-    "type ScalarInput",
-    "type SettledTransition",
-    "type SubmittedTransition",
-    "type TransitionInputContext",
-    ...(widenImport === null
-      ? []
-      : [widenImport === "WidenInput" ? "type WidenInput" : `type WidenInput as ${widenImport}`]),
-  ];
-  return `import { ${names.join(", ")} } from "./BaseContract.js";`;
-}
-
-/**
- * Bare value-binding names introduced by `baseContractImport`. A generated
- * contract class or its `create${class}` factory must avoid these, but local
- * interfaces can coexist with value-only imports such as `Leo` and
- * `createRecordOutputMatcher`.
- */
-const RESERVED_BASE_CONTRACT_VALUE_IMPORT_NAMES: readonly string[] = [
-  "BaseContract",
-  "Leo",
-  "createRecordOutputMatcher",
-];
-
-/**
- * Bare type-binding names introduced by `baseContractImport`. A local
- * struct/record interface whose name equals one of these collides with the
- * import (TS2440 / TS2300). Keep in sync with `baseContractImport`.
+ * Type-level bindings `baseContractImport` always imports from
+ * `./BaseContract.js`, in the historically-emitted alphabetical order. Single
+ * source of truth shared by `baseContractImport` (which prefixes each with
+ * `type `) and `RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES`, so the emitted import
+ * list and the collision-guard list cannot drift apart.
  *
- * `WidenInput` is deliberately excluded: it is the one fixed import that is
- * already alias-aware (`widenInputAlias` re-imports it as `WidenInput_` when a
- * local declaration shadows it), so a local `WidenInput` is handled, not
- * rejected.
+ * Excludes `BaseContract` (imported as a value, reserved separately) and
+ * `WidenInput` (conditional + alias-aware, deliberately not reserved).
  */
-const RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES: readonly string[] = [
-  "BaseContract",
+const BASE_CONTRACT_TYPE_IMPORT_NAMES: readonly string[] = [
   "AcceptedTransition",
   "AddressInput",
   "BaseContractOptions",
@@ -438,6 +371,56 @@ const RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES: readonly string[] = [
   "TransitionInputContext",
 ];
 
+/**
+ * Build the fixed `import { … } from "./BaseContract.js"` line. `Leo` is added
+ * only when the module emits dynamic-record helpers; `WidenInput` only when the
+ * module has external struct/record refs (which alias to `WidenInput<…>`), and
+ * under a collision-safe local name (`widenImport`, normally `"WidenInput"`).
+ * The type list is alphabetical, matching the historically-emitted order so
+ * modules without those features produce byte-identical imports.
+ */
+function baseContractImport(includeLeo: boolean, widenImport: string | null): string {
+  const names: string[] = [
+    "BaseContract",
+    ...(includeLeo ? ["Leo"] : []),
+    "createRecordOutputMatcher",
+    ...BASE_CONTRACT_TYPE_IMPORT_NAMES.map((name) => `type ${name}`),
+    ...(widenImport === null
+      ? []
+      : [widenImport === "WidenInput" ? "type WidenInput" : `type WidenInput as ${widenImport}`]),
+  ];
+  return `import { ${names.join(", ")} } from "./BaseContract.js";`;
+}
+
+/**
+ * Bare value-binding names introduced by `baseContractImport`. A generated
+ * contract class or its `create${class}` factory must avoid these, but local
+ * interfaces can coexist with value-only imports such as `Leo` and
+ * `createRecordOutputMatcher`.
+ */
+const RESERVED_BASE_CONTRACT_VALUE_IMPORT_NAMES: readonly string[] = [
+  "BaseContract",
+  "Leo",
+  "createRecordOutputMatcher",
+];
+
+/**
+ * Bare type-binding names introduced by `baseContractImport`. A local
+ * struct/record interface whose name equals one of these collides with the
+ * import (TS2440 / TS2300). Keep in sync with `baseContractImport`.
+ *
+ * `WidenInput` is deliberately excluded: it is the one fixed import that is
+ * already alias-aware (`widenInputAlias` re-imports it as `WidenInput_` when a
+ * local declaration shadows it), so a local `WidenInput` is handled, not
+ * rejected.
+ */
+const RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES: readonly string[] = [
+  // `BaseContract` is imported as a value but is also usable as a type (a local
+  // `interface BaseContract` collides with it), so reserve it here too.
+  "BaseContract",
+  ...BASE_CONTRACT_TYPE_IMPORT_NAMES,
+];
+
 const RESERVED_BASE_CONTRACT_IMPORT_NAMES: readonly string[] = [
   ...new Set([
     ...RESERVED_BASE_CONTRACT_VALUE_IMPORT_NAMES,
@@ -451,9 +434,15 @@ const RESERVED_BASE_CONTRACT_IMPORT_NAMES: readonly string[] = [
  * accessor equals one of these redeclares an inherited member (TS2416/2425),
  * and several are also called by generated transition bodies via `this.${name}`.
  * The `mappings`/`storage` containers are reserved separately (only when the
- * program actually emits them). Keep in sync with the BaseContract class.
+ * program actually emits them). Kept in sync with the BaseContract class by the
+ * "stays in sync with BaseContract instance members" test in
+ * typescript-generator.test.ts, which derives the member set from the emitted
+ * class source and asserts every member is rejected here.
  */
 const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
+  // the generated class always emits `constructor(options?)`, so a transition
+  // named `constructor` would redeclare it
+  "constructor",
   // properties
   "programId",
   "instanceImports",

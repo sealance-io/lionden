@@ -2481,4 +2481,62 @@ describe("reserved-name guards (P6/P7)", () => {
     });
     expect(() => generateBindings(abi)).not.toThrow();
   });
+
+  it("P7: reserved member list stays in sync with BaseContract instance members", () => {
+    // Derive the actual instance-member set from the emitted BaseContract class
+    // source. If a member is added/removed without updating the reserved list (a
+    // silent collision regression), the matching transition stops throwing and
+    // this test fails.
+    const source = generateBaseContract();
+    const classStart = source.indexOf("export abstract class BaseContract {");
+    expect(classStart).toBeGreaterThanOrEqual(0);
+    // The class body runs to its column-0 closing `}`; method-body braces are
+    // indented, so the first "\n}" terminates the class.
+    const fromClass = source.slice(classStart);
+    const classBody = fromClass.slice(0, fromClass.indexOf("\n}"));
+
+    const modifiers = [
+      "public ",
+      "protected ",
+      "private ",
+      "abstract ",
+      "override ",
+      "static ",
+      "readonly ",
+      "async ",
+      "get ",
+      "set ",
+    ];
+    const members = new Set<string>();
+    for (const line of classBody.split("\n")) {
+      // Class members sit at exactly two-space indentation; deeper indentation is
+      // method-body code and continuation lines start with `)`/`}`/etc.
+      const indented = /^ {2}([A-Za-z].*)$/.exec(line);
+      if (indented === null) continue;
+      let decl = indented[1];
+      let isStatic = false;
+      for (let changed = true; changed; ) {
+        changed = false;
+        for (const mod of modifiers) {
+          if (decl.startsWith(mod)) {
+            if (mod === "static ") isStatic = true;
+            decl = decl.slice(mod.length);
+            changed = true;
+          }
+        }
+      }
+      if (isStatic) continue; // statics don't collide with instance accessors
+      const nameMatch = /^([A-Za-z_$][\w$]*)\s*[(<:?;=]/.exec(decl);
+      if (nameMatch === null) continue;
+      members.add(nameMatch[1]);
+    }
+
+    // Guard against a broken extractor silently asserting nothing.
+    expect(members.size).toBeGreaterThan(20);
+
+    for (const member of members) {
+      const abi = baseAbi({ transitions: [u32Transition(member)] });
+      expect(() => generateBindings(abi), member).toThrow(CodegenError);
+    }
+  });
 });
