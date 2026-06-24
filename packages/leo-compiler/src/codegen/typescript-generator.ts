@@ -500,7 +500,7 @@ const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
 ];
 
 /**
- * P6: a local struct/record whose generated interface name equals a fixed
+ * A local struct/record whose generated interface name equals a fixed
  * BaseContract import (e.g. `LeoField`, `BaseContract`) collides with that
  * import (TS2440). Interface names mirror the Leo declaration and can't be
  * silently renamed like the contract class, so fail with a clear message.
@@ -521,7 +521,7 @@ function assertNoReservedLocalTypeNames(abi: ProgramABI): void {
 }
 
 /**
- * P7: a transition whose generated `readonly ${name}` accessor collides with an
+ * A transition whose generated `readonly ${name}` accessor collides with an
  * inherited BaseContract member, or with the `mappings`/`storage` container when
  * the program has mappings/storage. These can't be auto-renamed without changing
  * the public call API (`contract.${name}`), so fail with a clear message.
