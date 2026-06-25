@@ -14,6 +14,7 @@ const DEFAULT_PRIVATE_KEY = "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgX
 const HEALTH_CHECK_INTERVAL_MS = 200;
 const HEALTH_CHECK_TIMEOUT_MS = 30_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
+const EXIT_DRAIN_GRACE_MS = 1_000;
 const LOG_BUFFER_BYTES = 64 * 1024;
 const LOG_TAIL_RENDER_BYTES = 4 * 1024;
 
@@ -132,6 +133,7 @@ export class DevnodeManager {
   private _exitResolve?: (info: ExitInfo) => void;
   private _terminal = false;
   private _exitInfo?: ExitInfo;
+  private _exitDrainTimer?: NodeJS.Timeout;
   private _shutdownInitiated = false;
   private _startResolved = false;
   private _diagnosticEmitted = false;
@@ -170,10 +172,11 @@ export class DevnodeManager {
   }
 
   /**
-   * Resolves with the child's terminal exit info. Resolves on `close`, after
-   * stdio drains, or — if the child fires `error` without ever closing — with
-   * `{ code: null, signal: null }`. Throws synchronously if called before
-   * `start()`. Idempotent: every call after termination receives the same info.
+   * Resolves with the child's terminal exit info. Resolves on `close` (or a
+   * bounded fallback after `exit` if the child never closes), or — if the child
+   * fires `error` without ever closing — with `{ code: null, signal: null }`.
+   * Throws synchronously if called before `start()`. Idempotent: every call
+   * after termination receives the same info.
    */
   waitForExit(): Promise<ExitInfo> {
     if (!this._exitPromise) {
@@ -233,6 +236,14 @@ export class DevnodeManager {
 
     proc.once("exit", (code, signal) => {
       this._exitInfo = { code: code ?? null, signal: signal ?? null };
+      // `close` normally follows `exit` once stdio drains. Bound the wait so a
+      // grandchild holding a pipe open can't hang stop()/waitForExit() forever.
+      this._exitDrainTimer = setTimeout(() => {
+        if (!this._terminal) {
+          this.markTerminal(this._exitInfo!.code, this._exitInfo!.signal);
+        }
+      }, EXIT_DRAIN_GRACE_MS);
+      this._exitDrainTimer.unref?.();
     });
     proc.once("close", (code, signal) => {
       const exitInfo = this._exitInfo ?? { code: code ?? null, signal: signal ?? null };
@@ -287,8 +298,9 @@ export class DevnodeManager {
 
   /**
    * Stop the devnode process gracefully.
-   * Sends SIGTERM, then SIGKILL after a timeout. Awaits the canonical close
-   * event before returning so `markTerminal` is the sole writer of
+   * Sends SIGTERM, then SIGKILL after a timeout. Awaits the terminal exit
+   * (resolved on `close`, or a bounded fallback after `exit` if the child never
+   * closes) before returning so `markTerminal` is the sole writer of
    * `this.process`.
    */
   async stop(): Promise<void> {
@@ -309,6 +321,8 @@ export class DevnodeManager {
     this.clearStartDerivedState();
     this._terminal = false;
     this._exitInfo = undefined;
+    clearTimeout(this._exitDrainTimer);
+    this._exitDrainTimer = undefined;
     this._shutdownInitiated = false;
     this._startResolved = false;
     this._diagnosticEmitted = false;
@@ -323,6 +337,10 @@ export class DevnodeManager {
   private markTerminal(code: number | null, signal: NodeJS.Signals | null): void {
     if (this._terminal) return;
     this._terminal = true;
+    if (this._exitDrainTimer) {
+      clearTimeout(this._exitDrainTimer);
+      this._exitDrainTimer = undefined;
+    }
     this._exitInfo = { code, signal };
     this.process = null;
     this._exitResolve?.({ code, signal });
