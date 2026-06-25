@@ -86,9 +86,8 @@ export function generateBindings(
   const includeLeoValueImport = helpers.length > 0;
   const className = resolveContractClassName(abi, { includeLeoValueImport });
 
-  // Helper names are module-level `export const`s; reserve them so derived
-  // external aliases/value bindings (e.g. `GoldToken_Token`) bump away from a
-  // helper that happens to share that name, instead of redeclaring it (TS2451).
+  // Helper names are module-level `export const`s; reserve them for generated
+  // input aliases so they do not redeclare a helper value binding.
   const ctx = createGenerationContext(
     abi,
     allAbis,
@@ -97,7 +96,7 @@ export function generateBindings(
   );
   assertCodegenSupportedTypes(abi);
   assertNoExecutableConstParameters(abi);
-  assertNoReservedLocalTypeNames(abi);
+  assertNoReservedLocalTypeNames(abi, className);
   assertNoReservedContractMembers(abi);
   assertNoReservedHelperNames(
     abi,
@@ -504,13 +503,20 @@ const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
  * import (TS2440). Interface names mirror the Leo declaration and can't be
  * silently renamed like the contract class, so fail with a clear message.
  */
-function assertNoReservedLocalTypeNames(abi: ProgramABI): void {
+function assertNoReservedLocalTypeNames(abi: ProgramABI, className: string): void {
   const reserved = new Set<string>(RESERVED_BASE_CONTRACT_TYPE_IMPORT_NAMES);
   const check = (kind: "struct" | "record", path: readonly string[]): void => {
     const name = pathToTsName(path);
     if (reserved.has(name)) {
       throw new CodegenError(
         `Program ${abi.program} declares a ${kind} '${name}', whose generated interface collides with the reserved binding '${name}' imported from BaseContract. Rename the ${kind}.`,
+        { programId: abi.program, typeName: name, kind, phase: "generate" },
+      );
+    }
+    const storageInterfaceName = `${className}Storage`;
+    if (abi.storage_variables.length > 0 && name === storageInterfaceName) {
+      throw new CodegenError(
+        `Program ${abi.program} declares a ${kind} '${name}', whose generated interface collides with the generated storage interface '${storageInterfaceName}'. Rename the ${kind}.`,
         { programId: abi.program, typeName: name, kind, phase: "generate" },
       );
     }
@@ -585,16 +591,19 @@ function assertNoReservedHelperNames(
     reserved.set(`decrypt${name}`, `the generated 'decrypt${name}'`);
   }
   // External refs import `serialize${Base} as ${serializerName}` /
-  // `deserialize${Base} as ${deserializerName}` and (for records) re-export
-  // `export const ${typeName}`. The type aliases already bump away from helper
-  // names, but the serializer/deserializer value aliases do not — reserve them.
+  // `deserialize${Base} as ${deserializerName}` and external records re-export
+  // `export const ${typeName}`. Struct type-only aliases can share a helper
+  // value name, but serializer/deserializer aliases and record value bindings
+  // cannot.
   for (const info of externalInfos) {
     reserved.set(info.serializerName, `the imported external serializer '${info.serializerName}'`);
     reserved.set(
       info.deserializerName,
       `the imported external deserializer '${info.deserializerName}'`,
     );
-    reserved.set(info.typeName, `the external type binding '${info.typeName}'`);
+    if (info.emitsValueBinding) {
+      reserved.set(info.typeName, `the external record binding '${info.typeName}'`);
+    }
   }
   // Each helper also emits a `function _${helperName}Impl` backing declaration.
   // `_${helperName}Impl` is never equal to its own helper's name, so this only
@@ -731,22 +740,25 @@ function resolveExternalInfos(
   reservedHelperNames: readonly string[] = [],
   includeLeoValueImport = false,
 ): Map<string, ExternalRefInfo> {
-  const reserved = new Set<string>([
-    ...localDeclaredNames(abi, includeLeoValueImport),
-    ...reservedHelperNames,
-  ]);
+  const reserved = new Set<string>([...localDeclaredNames(abi, includeLeoValueImport)]);
   // Structs and records share one map keyed by `externalRefKey` (program+path).
   // Leo keeps structs and records in a single type namespace, so no struct and
   // record can share a program+path — entries never alias each other here.
   const infoByKey = new Map<string, ExternalRefInfo>();
 
-  const claim = (ref: StructRef | RecordRef, baseName: string): void => {
-    const programId = ref.program!;
+  const claim = (
+    ref: StructRef | RecordRef,
+    baseName: string,
+    emitsValueBinding: boolean,
+    extraReserved: readonly string[] = [],
+  ): void => {
+    const programId = ref.program;
+    if (programId === null) return;
     const programClass = programIdToClassName(programId);
     const preferred = `${programClass}_${baseName}`;
     let typeName = preferred;
     let underscores = 1;
-    while (reserved.has(typeName)) {
+    while (reserved.has(typeName) || extraReserved.includes(typeName)) {
       typeName = `${preferred}${"_".repeat(underscores)}`;
       underscores++;
     }
@@ -758,11 +770,16 @@ function resolveExternalInfos(
       typeName,
       serializerName: `serialize${typeName}`,
       deserializerName: `deserialize${typeName}`,
+      emitsValueBinding,
     });
   };
 
-  for (const ref of sortRefsByKey(externalStructRefs.values())) claim(ref, structRefName(ref));
-  for (const ref of sortRefsByKey(externalRecordRefs.values())) claim(ref, recordRefName(ref));
+  for (const ref of sortRefsByKey(externalStructRefs.values())) {
+    claim(ref, structRefName(ref), false, reservedHelperNames);
+  }
+  for (const ref of sortRefsByKey(externalRecordRefs.values())) {
+    claim(ref, recordRefName(ref), true);
+  }
 
   return infoByKey;
 }
@@ -1938,6 +1955,7 @@ interface ExternalRefInfo {
   readonly typeName: string;
   readonly serializerName: string;
   readonly deserializerName: string;
+  readonly emitsValueBinding: boolean;
 }
 
 function generateExternalImports(ctx: GenerationContext): string[] {

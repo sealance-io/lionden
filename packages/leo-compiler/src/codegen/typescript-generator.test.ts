@@ -18,11 +18,10 @@ function rref(name: string, program: string | null = null): RecordRef {
   return { path: [name], program };
 }
 
-function expectGeneratedToTypecheck(programName: string, output: string): void {
+function expectGeneratedModulesToTypecheck(outputs: Record<string, string>): void {
   const files: Record<string, string> = {
     "/virtual/package.json": '{ "type": "module" }',
     "/virtual/BaseContract.ts": generateBaseContract(),
-    [`/virtual/${programName}.ts`]: output,
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
     "/virtual/network.d.ts": [
       'export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
@@ -47,6 +46,9 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
       "}",
     ].join("\n"),
   };
+  for (const [programName, output] of Object.entries(outputs)) {
+    files[`/virtual/${programName}.ts`] = output;
+  }
 
   const options: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2024,
@@ -87,6 +89,12 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
           extension: ts.Extension.Ts,
         };
       }
+      if (moduleName.startsWith("./") && moduleName.endsWith(".js")) {
+        return {
+          resolvedFileName: `/virtual/${moduleName.slice(2, -3)}.ts`,
+          extension: ts.Extension.Ts,
+        };
+      }
       return ts.resolveModuleName(moduleName, containingFile, options, host).resolvedModule;
     });
 
@@ -102,6 +110,10 @@ function expectGeneratedToTypecheck(programName: string, output: string): void {
         });
 
   expect(message).toBe("");
+}
+
+function expectGeneratedToTypecheck(programName: string, output: string): void {
+  expectGeneratedModulesToTypecheck({ [programName]: output });
 }
 
 const SAMPLE_ABI: ProgramABI = {
@@ -2390,6 +2402,30 @@ describe("reserved-name guards", () => {
     expect(() => generateBindings(abi)).toThrow(CodegenError);
   });
 
+  it("rejects a local type named like the emitted storage interface", () => {
+    const abi = baseAbi({
+      program: "vault.aleo",
+      structs: [
+        { path: ["VaultStorage"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] },
+      ],
+      storage_variables: [{ name: "admin", ty: { Plaintext: { Primitive: "Address" } } }],
+    });
+
+    expect(() => generateBindings(abi)).toThrow(CodegenError);
+    expect(() => generateBindings(abi)).toThrow(/VaultStorage/);
+  });
+
+  it("allows a local type named like the storage interface when no storage is emitted", () => {
+    const abi = baseAbi({
+      program: "vault.aleo",
+      structs: [
+        { path: ["VaultStorage"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] },
+      ],
+    });
+
+    expect(() => generateBindings(abi)).not.toThrow();
+  });
+
   it("allows a local record named Leo when no dynamic-record helpers import Leo", () => {
     const abi = baseAbi({
       program: "value_named_record.aleo",
@@ -2656,6 +2692,85 @@ describe("reserved-name guards", () => {
         CodegenError,
       );
     }
+  });
+
+  it("allows a dynamic-record helper named like an external struct type-only alias", () => {
+    const registryAbi = baseAbi({
+      program: "registry.aleo",
+      structs: [
+        {
+          path: ["TokenInfo"],
+          fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } } }],
+        },
+      ],
+    });
+    const consumerWithExternalStruct = baseAbi({
+      program: "consumer.aleo",
+      records: consumerAbi.records,
+      transitions: [
+        {
+          name: "submit",
+          is_async: false,
+          inputs: [
+            {
+              name: "info",
+              ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
+              mode: "None",
+            },
+          ],
+          outputs: [],
+        },
+      ],
+    });
+    const options = helperConfig("Registry_TokenInfo");
+
+    expect(() =>
+      generateBindings(
+        consumerWithExternalStruct,
+        [registryAbi, consumerWithExternalStruct],
+        options,
+      ),
+    ).not.toThrow();
+
+    const registryOut = generateBindings(registryAbi, [registryAbi, consumerWithExternalStruct]);
+    const consumerOut = generateBindings(
+      consumerWithExternalStruct,
+      [registryAbi, consumerWithExternalStruct],
+      options,
+    );
+    expectGeneratedModulesToTypecheck({ Registry: registryOut, Consumer: consumerOut });
+  });
+
+  it("rejects a dynamic-record helper named like an external record value binding", () => {
+    const registryAbi = baseAbi({
+      program: "registry.aleo",
+      records: [
+        {
+          path: ["Token"],
+          fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "Private" }],
+        },
+      ],
+    });
+    const consumerWithExternalRecord = baseAbi({
+      program: "consumer.aleo",
+      records: consumerAbi.records,
+      transitions: [
+        {
+          name: "submit",
+          is_async: false,
+          inputs: [{ name: "token", ty: { Record: rref("Token", "registry.aleo") }, mode: "None" }],
+          outputs: [],
+        },
+      ],
+    });
+
+    expect(() =>
+      generateBindings(
+        consumerWithExternalRecord,
+        [registryAbi, consumerWithExternalRecord],
+        helperConfig("Registry_Token"),
+      ),
+    ).toThrow(CodegenError);
   });
 
   it("rejects a dynamic-record helper named like another helper's backing impl function", () => {
