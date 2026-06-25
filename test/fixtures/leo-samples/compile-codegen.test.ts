@@ -40,10 +40,11 @@ function programIdToClassName(programId: string): string {
 
 async function compileProject(
   name: string,
+  opts: { codegen?: boolean } = {},
 ): Promise<{ project: AdaptedProject; abis: ProgramABI[] }> {
   const project = await adaptSampleGroup(getSpec(name));
   const config = makeResolvedConfig(project.projectDir, project.programsDir, {
-    codegen: { enabled: true, outDir: "typechain", dynamicRecords: {} },
+    codegen: { enabled: opts.codegen ?? true, outDir: "typechain", dynamicRecords: {} },
   });
   seedNetworkDepCache(config, project.manifest.networkDeps);
   const lre = createLre({ config, plugins: PLUGINS });
@@ -107,7 +108,10 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
   });
 
   it("abi_surface — full ABI breadth + view optionals", async () => {
-    const { project, abis } = await compileProject("abi_surface");
+    // abi_surface is compile-only: codegen rejects its binding (see the finding
+    // lock below), so compile with codegen disabled to exercise the ABI breadth
+    // itself — the ABI is emitted by the compiler independently of codegen.
+    const { abis } = await compileProject("abi_surface", { codegen: false });
     const [abi] = abis;
     expect(abi.program).toBe("abi_surface.aleo");
     expect(abi.structs.length).toBeGreaterThan(0);
@@ -116,25 +120,24 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
     expect(abi.storage_variables.length).toBeGreaterThan(0);
     expect(abi.transitions.length).toBeGreaterThan(0);
     expect(abi.views?.length ?? 0).toBeGreaterThan(0);
-    assertTypechainEmitted(project, abis);
+    // No assertTypechainEmitted: codegen can't emit a binding for this program.
   });
 
-  // LOCKS the abi_surface compile-only codegen finding (see specs.ts): the
-  // const-generic struct `Slot::[N]` is emitted verbatim as a TypeScript type
-  // identifier, which is invalid TS. The whole AbiSurface.ts module therefore
-  // fails to parse, so abi_surface cannot have an on-chain suite that imports
-  // its binding (hence `compileOnly`). If this assertion ever flips (lionden
-  // sanitizes const-generic struct names), promote abi_surface to the on-chain
-  // set and author its runtime suite.
-  it("abi_surface — emitted binding carries the invalid const-generic identifier (finding)", async () => {
-    const { project, abis } = await compileProject("abi_surface");
+  // LOCKS the abi_surface compile-only codegen finding (see specs.ts).
+  // Originally this locked a const-generic struct `Slot::[N]` being emitted
+  // verbatim as an invalid TypeScript type identifier. Codegen now rejects
+  // `Primitive::Signature` EARLIER — in assertCodegenSupportedTypes, before any
+  // binding is emitted (typescript-generator.ts) — so that const-generic gap is
+  // now masked behind this stricter primitive check. abi_surface therefore
+  // stays compile-only and cannot have an on-chain suite that imports its
+  // binding (hence `compileOnly`). If Signature support lands in codegen, this
+  // assertion flips: re-lock the (then-resurfaced) `Slot::[N]` const-generic
+  // finding and re-evaluate promoting abi_surface to the on-chain set.
+  it("abi_surface — codegen rejects the binding (compile-only finding)", async () => {
     expect(getSpec("abi_surface").compileOnly).toBe(true);
-    const wrapper = fs.readFileSync(
-      path.join(project.projectDir, "typechain", `${programIdToClassName(abis[0]!.program)}.ts`),
-      "utf-8",
+    await expect(compileProject("abi_surface", { codegen: true })).rejects.toThrow(
+      /Primitive::Signature is not supported/,
     );
-    // `Slot::[` is not a valid TS identifier head — its presence proves the gap.
-    expect(wrapper).toContain("Slot::[");
   });
 
   it("native_runtime_edges — diamond import of credits.aleo + native records", async () => {
