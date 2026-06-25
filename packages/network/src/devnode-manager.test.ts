@@ -695,6 +695,40 @@ describe("DevnodeManager", () => {
 
     await expect(manager.start()).rejects.toThrow(/late fatal tail/);
   });
+
+  // ---------------------------------------------------------------------------
+  // Exit→close drain fallback: terminal state must not hang if `close` is
+  // withheld (e.g. a grandchild keeps an inherited stdio pipe open).
+  // ---------------------------------------------------------------------------
+
+  it("terminal state resolves via the drain fallback when close is withheld", async () => {
+    const mockProc = createMockProcess();
+    // Emit `exit` but NOT `close`, simulating a grandchild holding a pipe open.
+    mockProc.kill = vi.fn(() => {
+      mockProc.exitCode = 0;
+      mockProc.emit("exit", 0, null);
+      return true;
+    });
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start();
+    expect(manager.isRunning()).toBe(true);
+
+    // Scope fake timers to after a successful start so only the drain timer is
+    // in play (health-check timers already ran with real timers).
+    vi.useFakeTimers();
+    try {
+      const stopP = manager.stop();
+      // `close` never fires; advance past the bounded grace (private constant,
+      // hard-coded to 1_000 ms here) so the drain fallback forces terminal state.
+      await vi.advanceTimersByTimeAsync(1_000);
+      await expect(stopP).resolves.toBeUndefined();
+      expect(manager.isRunning()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
