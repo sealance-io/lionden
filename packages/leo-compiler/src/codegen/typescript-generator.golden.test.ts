@@ -505,14 +505,13 @@ describe("external alias collisions", () => {
     });
   });
 
-  it("disambiguates an external record value binding that collides with a dynamic-record helper", () => {
+  it("rejects a dynamic-record helper that collides with an external record value binding", () => {
     // The consumer references an external record (`gold_token.aleo::Token`),
     // which emits `export const GoldToken_Token` (the external record value
     // binding). It ALSO configures a dynamic-record helper whose `helperName`
     // is exactly `GoldToken_Token`, which emits `export const GoldToken_Token`
-    // (the callable). Without reserving helper names against external aliases
-    // both land in the same module → duplicate `const` (TS2451). The fix bumps
-    // the external alias to `GoldToken_Token_`.
+    // (the callable). The helper is rejected because external record bindings
+    // are value bindings, unlike external struct type-only aliases.
     const goldToken = parseAbi(
       JSON.stringify({
         program: "gold_token.aleo",
@@ -568,30 +567,22 @@ describe("external alias collisions", () => {
       }),
     );
 
-    const consumerOutput = generateBindings(consumer, [consumer, goldToken], {
-      dynamicRecords: [
-        {
-          helperName: "GoldToken_Token",
-          sourceRecord: "Receipt",
-          sourceProgram: "consumer.aleo",
-          schema: {
-            owner: "address.private",
-            amount: "u64.private",
-            _nonce: "group.private",
+    expect(() =>
+      generateBindings(consumer, [consumer, goldToken], {
+        dynamicRecords: [
+          {
+            helperName: "GoldToken_Token",
+            sourceRecord: "Receipt",
+            sourceProgram: "consumer.aleo",
+            schema: {
+              owner: "address.private",
+              amount: "u64.private",
+              _nonce: "group.private",
+            },
           },
-        },
-      ],
-    });
-    // External record alias bumped past the helper name.
-    expect(consumerOutput).toContain("type Token as _GoldToken_Token_");
-    expect(consumerOutput).toContain("export type GoldToken_Token_ = _GoldToken_Token_;");
-    expect(consumerOutput).toContain("export const GoldToken_Token_ = {");
-    // The helper keeps the un-bumped name.
-    expect(consumerOutput).toContain("export const GoldToken_Token = Object.assign(");
-    expectModulesToTypecheck({
-      GoldToken: generateBindings(goldToken, [goldToken, consumer]),
-      Consumer: consumerOutput,
-    });
+        ],
+      }),
+    ).toThrow(CodegenError);
   });
 
   it("rejects a dynamic-record helper colliding with an external serializer alias", () => {
