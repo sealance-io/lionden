@@ -114,7 +114,7 @@ When `storagePath` is set, the standalone devnode persists its ledger and `Devno
 
 - `snapshot(name?)` → `POST /<network>/snapshot` (always sends a JSON body). Returns `{ name, height }`.
 - `listSnapshots()` → `GET /<network>/snapshots`.
-- `restore(name)` → offline flow: stop the devnode, run `aleo-devnode restore --snapshot <name> --storage <dir>` (the private key is forwarded via the `PRIVATE_KEY` env var, never argv), then restart with the same options. Restores **chain state only** — callers must invalidate their own deployment cache.
+- `restore(name)` → offline flow: stop the devnode, run `aleo-devnode restore --snapshot <name> --storage <dir>` (the private key is forwarded via the `PRIVATE_KEY` env var, never argv), then restart with the original start options — except `clearStorage`, which is forced off so the restart can't wipe the ledger the restore just rebuilt. Restores **chain state only** — callers must invalidate their own deployment cache.
 
 For snapshot-based fast reset in tests, see [`testing.md`](testing.md) (`setup({ snapshotReset: true })`).
 

@@ -928,6 +928,33 @@ describe("DevnodeManager snapshot/restore", () => {
     expect(manager.isRunning()).toBe(true);
   });
 
+  it("restore() does not re-clear storage on the post-restore restart", async () => {
+    vi.mocked(spawn).mockImplementation((_cmd: any, argv: any) => {
+      const p = createMockProcess();
+      if (Array.isArray(argv) && argv[0] === "restore") {
+        setTimeout(() => {
+          p.emit("exit", 0, null);
+          p.emit("close", 0, null);
+        }, 0);
+      }
+      return p as any;
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ provider: "standalone", storagePath: "/tmp/l", clearStorage: true });
+    await manager.restore("snap");
+
+    const startArgvs = vi
+      .mocked(spawn)
+      .mock.calls.map((c) => c[1] as string[])
+      .filter((argv) => Array.isArray(argv) && argv[0] === "start");
+    expect(startArgvs.length).toBe(2);
+    // First start honors clearStorage; runRestoreCommand rebuilds the ledger, so
+    // the post-restore restart must NOT re-emit --clear-storage (would wipe it).
+    expect(startArgvs[0]).toContain("--clear-storage");
+    expect(startArgvs[1]).not.toContain("--clear-storage");
+  });
+
   it("restore() works after a successful standalone start exits unexpectedly", async () => {
     const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const order: string[] = [];
