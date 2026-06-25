@@ -132,7 +132,7 @@ export class NetworkManagerImpl implements NetworkManager {
   }
 
   getConnection(): NetworkConnection | null {
-    return this.activeConnection;
+    return this.getUsableActiveConnection();
   }
 
   async disconnectAll(): Promise<void> {
@@ -151,6 +151,9 @@ export class NetworkManagerImpl implements NetworkManager {
   }
 
   getNamedAccounts(): NamedAccounts {
+    if (!this.getUsableActiveConnection()) {
+      return {};
+    }
     return { ...this.activeNamedAccounts };
   }
 
@@ -228,13 +231,32 @@ export class NetworkManagerImpl implements NetworkManager {
   }
 
   private requireConnection(): NetworkConnection {
-    if (!this.activeConnection) {
+    const connection = this.getUsableActiveConnection();
+    if (!connection) {
       throw new Error(
         "No active network connection. Call connect() first, or ensure " +
           "the network plugin has established a connection.",
       );
     }
-    return this.activeConnection;
+    return connection;
+  }
+
+  private getUsableActiveConnection(): NetworkConnection | null {
+    const connection = this.activeConnection;
+    if (!connection) {
+      return null;
+    }
+
+    if (!connection.closed) {
+      return connection;
+    }
+
+    this.activeConnection = null;
+    this.activeNamedAccounts = {};
+    if (this.connections.get(connection.name) === connection) {
+      this.connections.delete(connection.name);
+    }
+    return null;
   }
 
   private createConnection(name: string, config: ResolvedNetworkConfig): NetworkConnection {

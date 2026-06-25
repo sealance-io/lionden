@@ -123,6 +123,35 @@ describe("NetworkManagerImpl", () => {
     expect(conn!.name).toBe("devnode");
   });
 
+  it("getConnection returns null after the active connection is closed directly", async () => {
+    const conn = await manager.connect("devnode");
+
+    await conn.close();
+
+    expect(manager.getConnection()).toBeNull();
+  });
+
+  it("manager convenience methods throw the standard no-active-connection error after direct close", async () => {
+    const conn = await manager.connect("devnode");
+
+    await conn.close();
+
+    await expect(manager.execute("test.aleo", "foo", [])).rejects.toThrow(
+      "No active network connection. Call connect() first, or ensure the network plugin has established a connection.",
+    );
+  });
+
+  it("reconnecting after direct close creates a fresh usable connection", async () => {
+    const conn1 = await manager.connect("devnode");
+
+    await conn1.close();
+    const conn2 = await manager.connect("devnode");
+
+    expect(conn2).not.toBe(conn1);
+    expect(conn2.closed).toBe(false);
+    expect(manager.getConnection()).toBe(conn2);
+  });
+
   it("disconnectAll clears all connections", async () => {
     await manager.connect("devnode");
     await manager.connect("testnet");
@@ -399,6 +428,16 @@ describe("NetworkManagerImpl — named account lifecycle", () => {
       address: DEPLOYER_ADDR_0,
       privateKey: DEPLOYER_KEY_0,
     });
+  });
+
+  it("getNamedAccounts returns {} after the active connection is closed directly", async () => {
+    const mgr = new NetworkManagerImpl(namedAccountsConfig);
+    const conn = await mgr.connect("netA");
+    expect(mgr.getNamedAccounts()["deployer"]!.address).toBe(DEPLOYER_ADDR_0);
+
+    await conn.close();
+
+    expect(mgr.getNamedAccounts()).toEqual({});
   });
 
   it("switching networks restores correct cached named accounts", async () => {
