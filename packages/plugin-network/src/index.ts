@@ -135,7 +135,10 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     const devnode = new DevnodeManager();
 
     // Handle graceful shutdown
+    let shuttingDown = false;
     const shutdown = async () => {
+      if (shuttingDown) return;
+      shuttingDown = true;
       console.log("\nStopping devnode...");
       await devnode.stop();
       process.exit(0);
