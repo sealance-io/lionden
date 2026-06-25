@@ -102,6 +102,19 @@ describe("NetworkManagerImpl", () => {
     expect(conn1).toBe(conn2);
   });
 
+  it("shares one in-flight connection for overlapping connects to the same network", async () => {
+    const createConnection = vi.spyOn(manager as any, "createConnection");
+
+    const [conn1, conn2] = await Promise.all([
+      manager.connect("devnode"),
+      manager.connect("devnode"),
+    ]);
+
+    expect(conn1).toBe(conn2);
+    expect(manager.getConnection()).toBe(conn1);
+    expect(createConnection).toHaveBeenCalledTimes(1);
+  });
+
   it("getConnection returns active connection after connect", async () => {
     await manager.connect("devnode");
     const conn = manager.getConnection();
