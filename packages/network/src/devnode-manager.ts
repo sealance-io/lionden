@@ -501,9 +501,10 @@ export class DevnodeManager {
   /**
    * Restore the ledger to a previously taken snapshot. This is an offline
    * operation: the running devnode is stopped, `aleo-devnode restore` rewrites
-   * the storage dir, then the devnode is restarted with the same options.
-   * Restores chain state only — callers managing a deployment cache must
-   * invalidate it separately.
+   * the storage dir, then the devnode is restarted with the original start
+   * options — except `clearStorage`, which is forced off so the restart can't
+   * wipe the ledger the restore just rebuilt. Restores chain state only —
+   * callers managing a deployment cache must invalidate it separately.
    */
   async restore(name: string): Promise<void> {
     const options = this._lastStartOptions;
@@ -518,7 +519,9 @@ export class DevnodeManager {
     const privateKey = options.privateKey ?? DEFAULT_PRIVATE_KEY;
     await this.stop();
     await this.runRestoreCommand(binary, name, storagePath, privateKey);
-    await this.start(options);
+    // Never clear storage on the post-restore restart — runRestoreCommand just
+    // rebuilt the ledger from the snapshot; --clear-storage would wipe it.
+    await this.start({ ...options, clearStorage: false });
   }
 
   private runRestoreCommand(
