@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   devnodeStart: vi.fn(),
   devnodeStop: vi.fn(),
+  devnodeWaitForExit: vi.fn(),
   resolveDevnodeBackend: vi.fn(),
   preflightDevnode: vi.fn(),
 }));
@@ -16,6 +17,7 @@ vi.mock("@lionden/network", () => ({
       endpoint: "http://127.0.0.1:3030",
       start: mocks.devnodeStart,
       stop: mocks.devnodeStop,
+      waitForExit: mocks.devnodeWaitForExit,
     };
   }),
   resolveDevnodeBackend: mocks.resolveDevnodeBackend,
@@ -83,6 +85,7 @@ describe("node task devnode preflight", () => {
     vi.clearAllMocks();
     mocks.devnodeStart.mockRejectedValue(new Error("stop after start"));
     mocks.devnodeStop.mockResolvedValue(undefined);
+    mocks.devnodeWaitForExit.mockImplementation(() => new Promise(() => {}));
     mocks.resolveDevnodeBackend.mockResolvedValue(leoBackend);
     mocks.preflightDevnode.mockResolvedValue(undefined);
   });
@@ -148,5 +151,40 @@ describe("node task devnode preflight", () => {
     await expect(
       nodeTask!.action({ port: 3030, manualBlocks: false, clearStorage: true }, lre),
     ).rejects.toThrow(/--clear-storage requires --persist/);
+  });
+
+  it("runs shutdown only once across repeated signals", async () => {
+    mocks.devnodeStart.mockResolvedValue(undefined);
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
+    const handlers = new Map<string, () => void>();
+    const processOn = vi.spyOn(process, "on").mockImplementation((event, listener) => {
+      if (event === "SIGINT" || event === "SIGTERM") {
+        handlers.set(event, listener as () => void);
+      }
+      return process;
+    });
+    const processExit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      void nodeTask!.action({ port: 3030, manualBlocks: false }, lre);
+      await vi.waitFor(() => expect(handlers.size).toBe(2));
+
+      handlers.get("SIGINT")?.();
+      handlers.get("SIGTERM")?.();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(consoleLog).toHaveBeenCalledWith("\nStopping devnode...");
+      expect(
+        consoleLog.mock.calls.filter((call) => call[0] === "\nStopping devnode..."),
+      ).toHaveLength(1);
+      expect(mocks.devnodeStop).toHaveBeenCalledTimes(1);
+    } finally {
+      processOn.mockRestore();
+      processExit.mockRestore();
+      consoleLog.mockRestore();
+    }
   });
 });
