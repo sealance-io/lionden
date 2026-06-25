@@ -25,7 +25,8 @@ function createMockProcess(): MockProc {
   proc.exitCode = null;
   proc.kill = vi.fn((signal?: string) => {
     proc.exitCode = signal === "SIGKILL" ? 137 : 0;
-    proc.emit("exit", proc.exitCode);
+    proc.emit("exit", proc.exitCode, null);
+    proc.emit("close", proc.exitCode, null);
     return true;
   });
   proc.stdout = new EventEmitter();
@@ -224,7 +225,8 @@ describe("DevnodeManager", () => {
 
     setTimeout(() => {
       mockProc.exitCode = 1;
-      mockProc.emit("exit", 1);
+      mockProc.emit("exit", 1, null);
+      mockProc.emit("close", 1, null);
     }, 10);
 
     await expect(manager.start()).rejects.toThrow("Devnode exited (code 1)");
@@ -490,6 +492,7 @@ describe("DevnodeManager", () => {
       mockProc.kill = vi.fn(() => {
         mockProc.exitCode = null;
         mockProc.emit("exit", null, "SIGKILL");
+        mockProc.emit("close", null, "SIGKILL");
         return true;
       });
       vi.mocked(spawn).mockReturnValue(mockProc as any);
@@ -500,6 +503,7 @@ describe("DevnodeManager", () => {
       await manager.start();
       // Emit exit AFTER start resolved, unexpectedly (not via stop()).
       mockProc.emit("exit", null, "SIGKILL");
+      mockProc.emit("close", null, "SIGKILL");
 
       await expect(manager.waitForExit()).resolves.toEqual({
         code: null,
@@ -538,6 +542,7 @@ describe("DevnodeManager", () => {
       await manager.start();
       mockProc.stderr.emit("data", Buffer.from("fatal: out of memory\n"));
       mockProc.emit("exit", 137, null);
+      mockProc.emit("close", 137, null);
 
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
@@ -577,6 +582,7 @@ describe("DevnodeManager", () => {
       setTimeout(() => {
         mockProc.exitCode = 1;
         mockProc.emit("exit", 1, null);
+        mockProc.emit("close", 1, null);
       }, 10);
 
       await expect(manager.start()).rejects.toThrow("Devnode exited");
@@ -598,6 +604,7 @@ describe("DevnodeManager", () => {
 
       await manager.start({ logMode: "inherit" });
       mockProc.emit("exit", 1, null);
+      mockProc.emit("close", 1, null);
 
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
@@ -631,6 +638,7 @@ describe("DevnodeManager", () => {
       await manager.start();
       proc2.stderr.emit("data", Buffer.from("second-run\n"));
       proc2.emit("exit", 137, null);
+      proc2.emit("close", 137, null);
 
       // waitForExit resolves with the SECOND run's exit info, not stale 0.
       await expect(manager.waitForExit()).resolves.toEqual({
@@ -666,10 +674,26 @@ describe("DevnodeManager", () => {
     setTimeout(() => {
       mockProc.stderr.emit("data", Buffer.from("fatal: out of memory\n"));
       mockProc.exitCode = 1;
-      mockProc.emit("exit", 1);
+      mockProc.emit("exit", 1, null);
+      mockProc.emit("close", 1, null);
     }, 10);
 
     await expect(manager.start()).rejects.toThrow(/fatal: out of memory/);
+  });
+
+  it("non-zero exit error includes stderr drained after exit and before close", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockRejectedValue(new Error("connection refused"));
+
+    setTimeout(() => {
+      mockProc.exitCode = 1;
+      mockProc.emit("exit", 1, null);
+      mockProc.stderr.emit("data", Buffer.from("late fatal tail\n"));
+      mockProc.emit("close", 1, null);
+    }, 10);
+
+    await expect(manager.start()).rejects.toThrow(/late fatal tail/);
   });
 });
 
@@ -763,6 +787,13 @@ describe("DevnodeManager standalone backend", () => {
     ).rejects.toThrow(/consensusHeights is not supported/);
     expect(spawn).not.toHaveBeenCalled();
   });
+
+  it("rejects clearStorage without storagePath before spawning", async () => {
+    await expect(manager.start({ provider: "standalone", clearStorage: true })).rejects.toThrow(
+      /clearStorage requires storagePath/,
+    );
+    expect(spawn).not.toHaveBeenCalled();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -840,7 +871,10 @@ describe("DevnodeManager snapshot/restore", () => {
       const p = createMockProcess();
       if (Array.isArray(argv) && argv[0] === "restore") {
         order.push("restore");
-        setTimeout(() => p.emit("exit", 0), 0);
+        setTimeout(() => {
+          p.emit("exit", 0, null);
+          p.emit("close", 0, null);
+        }, 0);
       } else {
         order.push("start");
       }
@@ -862,5 +896,92 @@ describe("DevnodeManager snapshot/restore", () => {
     expect(env["PRIVATE_KEY"]).toBe("APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
     expect(order).toEqual(["start", "restore", "start"]);
     expect(manager.isRunning()).toBe(true);
+  });
+
+  it("restore() works after a successful standalone start has stopped", async () => {
+    const order: string[] = [];
+    vi.mocked(spawn).mockImplementation((_cmd: any, argv: any) => {
+      const p = createMockProcess();
+      if (Array.isArray(argv) && argv[0] === "restore") {
+        order.push("restore");
+        setTimeout(() => {
+          p.emit("exit", 0, null);
+          p.emit("close", 0, null);
+        }, 0);
+      } else {
+        order.push("start");
+      }
+      return p as any;
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ provider: "standalone", storagePath: "/tmp/l" });
+    await manager.stop();
+    await manager.restore("snap");
+
+    const restoreCall = vi
+      .mocked(spawn)
+      .mock.calls.find((c) => Array.isArray(c[1]) && (c[1] as string[])[0] === "restore");
+    expect(restoreCall).toBeDefined();
+    expect(restoreCall![1]).toEqual(["restore", "--snapshot", "snap", "--storage", "/tmp/l"]);
+    expect(order).toEqual(["start", "restore", "start"]);
+    expect(manager.isRunning()).toBe(true);
+  });
+
+  it("restore() works after a successful standalone start exits unexpectedly", async () => {
+    const writeSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const order: string[] = [];
+    let firstStart: MockProc | undefined;
+    vi.mocked(spawn).mockImplementation((_cmd: any, argv: any) => {
+      const p = createMockProcess();
+      if (Array.isArray(argv) && argv[0] === "restore") {
+        order.push("restore");
+        setTimeout(() => {
+          p.emit("exit", 0, null);
+          p.emit("close", 0, null);
+        }, 0);
+      } else {
+        order.push("start");
+        firstStart ??= p;
+      }
+      return p as any;
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ provider: "standalone", storagePath: "/tmp/l" });
+    firstStart!.emit("exit", 1, null);
+    firstStart!.emit("close", 1, null);
+
+    await expect(manager.restore("snap")).resolves.toBeUndefined();
+
+    const restoreCall = vi
+      .mocked(spawn)
+      .mock.calls.find((c) => Array.isArray(c[1]) && (c[1] as string[])[0] === "restore");
+    expect(restoreCall).toBeDefined();
+    expect(restoreCall![1]).toEqual(["restore", "--snapshot", "snap", "--storage", "/tmp/l"]);
+    expect(order).toEqual(["start", "restore", "start"]);
+    expect(manager.isRunning()).toBe(true);
+
+    writeSpy.mockRestore();
+  });
+
+  it("failed standalone start does not expose snapshot/restore state", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockRejectedValue(new Error("connection refused"));
+
+    setTimeout(() => {
+      mockProc.exitCode = 1;
+      mockProc.emit("exit", 1, null);
+      mockProc.emit("close", 1, null);
+    }, 10);
+
+    await expect(manager.start({ provider: "standalone", storagePath: "/tmp/l" })).rejects.toThrow(
+      "Devnode exited",
+    );
+    expect(manager.capabilities.snapshot).toBe(false);
+    await expect(manager.restore("snap")).rejects.toThrow(
+      "Cannot restore: devnode was never started.",
+    );
   });
 });

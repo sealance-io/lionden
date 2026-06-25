@@ -170,8 +170,8 @@ export class DevnodeManager {
   }
 
   /**
-   * Resolves with the child's terminal exit info. Resolves on `exit`, or — if
-   * the child fires `error` without ever firing `exit` — with
+   * Resolves with the child's terminal exit info. Resolves on `close`, after
+   * stdio drains, or — if the child fires `error` without ever closing — with
    * `{ code: null, signal: null }`. Throws synchronously if called before
    * `start()`. Idempotent: every call after termination receives the same info.
    */
@@ -197,7 +197,7 @@ export class DevnodeManager {
     this._logMode = mode;
 
     const socketAddr = options.socketAddr ?? DEFAULT_SOCKET_ADDR;
-    this._endpoint = `http://${socketAddr}`;
+    const endpoint = `http://${socketAddr}`;
 
     const provider = options.provider ?? "leo";
     // Standalone is TestnetV0-only with consensus heights compiled in. Reject
@@ -217,12 +217,13 @@ export class DevnodeManager {
             `(consensus heights are compiled in). Remove consensusHeights or use provider: "leo".`,
         );
       }
+      if (options.clearStorage === true && options.storagePath === undefined) {
+        throw new Error(
+          `clearStorage requires storagePath on the standalone aleo-devnode backend.`,
+        );
+      }
     }
-    this._provider = provider;
-    this._storagePath = options.storagePath;
-    this._lastStartOptions = options;
     const network = provider === "standalone" ? "testnet" : (options.network ?? "testnet");
-    this._network = network;
 
     const { command, argv } = this.buildSpawn(provider, options);
 
@@ -231,7 +232,11 @@ export class DevnodeManager {
     this._logging = setupChildLogging(proc, mode, callbacks);
 
     proc.once("exit", (code, signal) => {
-      this.markTerminal(code ?? null, signal ?? null);
+      this._exitInfo = { code: code ?? null, signal: signal ?? null };
+    });
+    proc.once("close", (code, signal) => {
+      const exitInfo = this._exitInfo ?? { code: code ?? null, signal: signal ?? null };
+      this.markTerminal(exitInfo.code, exitInfo.signal);
     });
     proc.once("error", (err) => {
       const hint =
@@ -242,13 +247,13 @@ export class DevnodeManager {
       if (!this._terminal) this.markTerminal(null, null);
     });
 
-    // `earlyExitSignal` resolves (never rejects) when the child exits. Used by
-    // the start-time race to detect a pre-health-check death. Designed to
-    // never reject so a later exit from a normal `stop()` can't surface as an
-    // unhandled rejection.
+    // `earlyExitSignal` resolves (never rejects) when the child reaches its
+    // terminal state. Used by the start-time race to detect a pre-health-check
+    // death. Designed to never reject so a later exit from a normal `stop()`
+    // can't surface as an unhandled rejection.
     const earlyExitSignal = this._exitPromise!.then(() => undefined);
 
-    const healthCheck = this.waitForHealthy(network);
+    const healthCheck = this.waitForHealthy(endpoint, network);
 
     try {
       await Promise.race([healthCheck, earlyExitSignal]);
@@ -273,11 +278,16 @@ export class DevnodeManager {
     }
 
     this._startResolved = true;
+    this._provider = provider;
+    this._storagePath = options.storagePath;
+    this._lastStartOptions = options;
+    this._network = network;
+    this._endpoint = endpoint;
   }
 
   /**
    * Stop the devnode process gracefully.
-   * Sends SIGTERM, then SIGKILL after a timeout. Awaits the canonical exit
+   * Sends SIGTERM, then SIGKILL after a timeout. Awaits the canonical close
    * event before returning so `markTerminal` is the sole writer of
    * `this.process`.
    */
@@ -296,6 +306,7 @@ export class DevnodeManager {
 
   /** Reset all per-process state so a stop/start cycle is clean. */
   private resetPerProcessState(): void {
+    this.clearStartDerivedState();
     this._terminal = false;
     this._exitInfo = undefined;
     this._shutdownInitiated = false;
@@ -320,6 +331,14 @@ export class DevnodeManager {
       this._diagnosticEmitted = true;
       this.emitUnexpectedExitDiagnostic(code, signal);
     }
+  }
+
+  private clearStartDerivedState(): void {
+    this._provider = "leo";
+    this._storagePath = undefined;
+    this._lastStartOptions = undefined;
+    this._network = "testnet";
+    this._endpoint = "";
   }
 
   private emitUnexpectedExitDiagnostic(code: number | null, signal: NodeJS.Signals | null): void {
@@ -487,11 +506,11 @@ export class DevnodeManager {
    * invalidate it separately.
    */
   async restore(name: string): Promise<void> {
-    this.assertSnapshotCapable("restore");
     const options = this._lastStartOptions;
     if (!options) {
       throw new Error("Cannot restore: devnode was never started.");
     }
+    this.assertSnapshotCapable("restore");
     const binary = options.devnodeBinary ?? DEFAULT_STANDALONE_BINARY;
     const storagePath = this._storagePath!;
     // Match the key start() used (it defaults to DEFAULT_PRIVATE_KEY) so the
@@ -540,8 +559,8 @@ export class DevnodeManager {
   }
 
   /** Poll the REST API until it responds or timeout. */
-  private async waitForHealthy(network: string): Promise<void> {
-    const url = `${this._endpoint}/${network}/block/height/latest`;
+  private async waitForHealthy(endpoint: string, network: string): Promise<void> {
+    const url = `${endpoint}/${network}/block/height/latest`;
     const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
 
     while (Date.now() < deadline) {
