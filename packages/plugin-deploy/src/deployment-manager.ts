@@ -437,9 +437,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
       // Write deployment record
       writeDeploymentRecord(this.deploymentsDir, net, record);
 
-      // Degraded records have unknown ABI (abiHash: null). Delete any existing snapshot so
-      // a subsequent upgradeAction() cannot validate against a stale prior-edition ABI.
-      if (record.status === "degraded") {
+      // Degraded and recovered records have no trusted ABI snapshot unless this call
+      // supplied one. Delete any existing snapshot so upgradeAction() cannot validate
+      // against a stale prior-edition ABI after out-of-band discovery or recovery.
+      if (!options?.abi && record.status !== "complete") {
         deleteAbiSnapshot(this.deploymentsDir, net, programId);
       }
 
@@ -457,13 +458,13 @@ export class DeploymentManagerImpl implements DeploymentManager {
     // ProgramABI with `transitions` (not the compiler's `functions` format). The artifact
     // store's lazy disk fallback returns raw JSON.parse() output (compiler format), so
     // options.abi may arrive un-normalized when it came through lre.artifacts.getAbi().
-    // Degraded records have an unknown ABI — clear any stale cached entry so
-    // getCachedAbi() cannot return an ABI the degraded record no longer trusts.
+    // Degraded/recovered records have no trusted ABI unless supplied here — clear
+    // any stale cached entry so getCachedAbi() cannot return a prior-edition ABI.
     if (options?.abi) {
       const raw = options.abi as ProgramABI;
       const normalized = parseAbi(JSON.stringify(raw));
       this.networkAbiCache(net).set(programId, normalized);
-    } else if (record.status === "degraded") {
+    } else if (record.status !== "complete") {
       this.networkAbiCache(net).delete(programId);
     }
 
@@ -517,17 +518,38 @@ export class DeploymentManagerImpl implements DeploymentManager {
         continue;
       }
 
-      // On-chain — build RecoveredDeploymentRecord
+      const recoveredEdition = edition ?? marker.expectedEdition ?? 0;
+      const existing =
+        this.networkCache(network).get(programId) ??
+        readDeploymentRecord(this.deploymentsDir, network, programId);
+
+      if (
+        (existing?.status === "complete" || existing?.status === "recovered") &&
+        existing.endpoint === connection.endpoint &&
+        existing.edition >= recoveredEdition
+      ) {
+        this.networkCache(network).set(programId, existing);
+        deletePendingMarker(this.deploymentsDir, network, programId);
+        console.info(
+          `[DeploymentManager] Pending ${marker.action} for "${programId}" is already ` +
+            `covered by a ${existing.status} deployment record at edition ${existing.edition}. ` +
+            `Clearing pending marker.`,
+        );
+        continue;
+      }
+
+      // On-chain — build RecoveredDeploymentRecord. historyCount tracks the
+      // number of persisted history entries; recovery appends one entry below.
       const recoveredRecord: RecoveredDeploymentRecord = {
         status: "recovered",
         programId,
-        edition: edition ?? marker.expectedEdition ?? 0,
+        edition: recoveredEdition,
         constructor: marker.constructor,
         abiHash: marker.abiHash,
         network,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),
-        historyCount: 0,
+        historyCount: readHistory(this.deploymentsDir, network, programId).length + 1,
         txId: null,
         blockHeight: null,
         deployerAddress: marker.deployerAddress,
