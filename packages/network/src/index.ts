@@ -18,6 +18,7 @@ export {
   type CreateSdkObjectsOptions,
   type CreateSignerSdkObjectsOptions,
   checkDevnodeSdkSupport,
+  computeProgramChecksum,
   createExecutionKeysFromBytes,
   createSdkObjects,
   createSignerSdkObjects,

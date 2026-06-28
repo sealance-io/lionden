@@ -19,6 +19,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { computeUpgradeChecksum, formatChecksumLiteral } from "@lionden/plugin-deploy";
 import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFrozenBase } from "../typechain/FrozenBase.js";
@@ -179,19 +180,36 @@ describe("upgradability — @checksum governance-gated", () => {
     });
   });
 
-  // LIONDEN API GAP — no pre-broadcast v2-checksum accessor.
-  // The accepted path needs the compiled v2 program checksum so the suite can
-  // call `governance.aleo::approve(<checksum>)` BEFORE the upgrade is broadcast.
-  // The upgrade task (packages/plugin-deploy) computes the v2 checksum
-  // internally but does not surface it pre-broadcast, and there is no task that
-  // compiles-and-reports the checksum without broadcasting (upstream captures it
-  // via `leo upgrade --save` then reads `deployment.program_checksum`). The fix
-  // is a pre-broadcast checksum accessor (e.g. an upgrade `dryRun`/`--save` mode
-  // that returns the v2 checksum). Until then `governance.aleo::approve` is never
-  // exercised at runtime and the @checksum *accept* side is unproven (only the
-  // reject-before-approval path runs). See the lane README "Known lionden gaps
-  // surfaced by this lane".
-  it.skip("checksum_upgrade accepts after governance.approve(<v2 checksum>)", () => {});
+  // Accepted path — uses the pre-broadcast v2-checksum accessor
+  // (`computeUpgradeChecksum` + `formatChecksumLiteral` from @lionden/plugin-deploy,
+  // wrapping the SDK's `programChecksum`). The suite compiles the swapped-in v2 to
+  // materialize its `.aleo`, computes the checksum, approves it via
+  // `governance.aleo::approve(<[u8; 32]>)`, then runs the upgrade. The @checksum
+  // constructor reads `approved_checksum[true]` and asserts it equals the
+  // deploying v2's own `self.checksum` — so the accept proves the SDK's
+  // `programChecksum` matches the on-chain deployment checksum (the open format
+  // question). Exercises `governance.aleo::approve` at runtime.
+  it("checksum_upgrade accepts after governance.approve(<v2 checksum>)", async () => {
+    await ctx!.deploy("checksum_upgrade", { noCompile: true });
+    const entry = v2Entry("checksum_upgrade.aleo");
+    const artifactsDir = path.join(
+      path.dirname(path.dirname(entry.targetUnitDir)),
+      "artifacts",
+    );
+    await withV2Swapped("checksum_upgrade.aleo", async () => {
+      // Compile the swapped-in v2 so artifacts/checksum_upgrade.aleo/main.aleo is
+      // the v2 bytecode the upgrade will broadcast (deterministic → same checksum).
+      await ctx!.lre.tasks.run("compile", {
+        program: "checksum_upgrade",
+        network: ctx!.network,
+      });
+      const checksum = await computeUpgradeChecksum(artifactsDir, "checksum_upgrade.aleo");
+      // Pre-broadcast: approve the v2 checksum so the @checksum constructor passes.
+      await ctx!.raw.execute("governance.aleo", "approve", [formatChecksumLiteral(checksum)]);
+      const edition = await runUpgrade(ctx!, "checksum_upgrade");
+      expect(edition).toBe(1);
+    });
+  });
 });
 
 // Keep the frozen-base binding import referenced (version read-back smoke for the
