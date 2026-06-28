@@ -134,7 +134,13 @@ describe("upgradability — @admin key-gated", () => {
   it("admin_upgrade upgrades with the admin (genesis) key", async () => {
     // The @admin address baked into admin_upgrade is the devnode genesis
     // address (== accounts[0]), which is also the default deploy/upgrade signer,
-    // so the upgrade is accepted without extra key wiring.
+    // so the upgrade is accepted without extra key wiring. The generated config
+    // declares `namedAccounts.admin: { default: 0 }`, so the resolved admin role
+    // is the signable genesis key — assert that wiring resolves (exercises the
+    // named-account resolution path the upgrade task reads).
+    const admin = ctx!.named.signer("admin");
+    expect(admin.privateKey).toBe(ctx!.accounts[0]!.privateKey);
+    expect(admin.address).toBe(ctx!.accounts[0]!.address);
     await ctx!.deploy("admin_upgrade", { noCompile: true });
     await withV2Swapped("admin_upgrade.aleo", async () => {
       const edition = await runUpgrade(ctx!, "admin_upgrade");

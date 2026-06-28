@@ -60,6 +60,13 @@ export interface SampleGroupSpec {
    */
   readonly compileOnly?: boolean;
   /**
+   * Emit `namedAccounts: { admin: { default: 0 } }` into the generated config —
+   * devnode account index 0 (the genesis key the `@admin` programs bake in).
+   * Lights up the admin-signer resolution branch in upgrade-task.ts +
+   * network/named-account-manager.ts with no new transaction.
+   */
+  readonly namedAdminAccount?: boolean;
+  /**
    * When set, the group is a documented lionden finding: adaptation works but
    * `leo build` does not, so it is excluded from compile-codegen + on-chain
    * lanes (the 0f proof still locks the finding).
@@ -77,18 +84,19 @@ export const SPECS: readonly SampleGroupSpec[] = [
     packages: ["abi_surface"],
     timeout: DEVNODE_TIMEOUT,
     // COMPILE-ONLY — documented lionden codegen finding. abi_surface compiles
-    // and its JSON ABI parses, but its emitted TypeScript binding is unusable:
-    // the const-generic struct `Slot::[N]` is emitted verbatim as a TS type
-    // identifier (`export interface Slot::[2u32] { ... }`, `serializeSlot::[2u32]`),
-    // which is invalid TypeScript — neither tsc nor esbuild can parse the module,
-    // so no on-chain suite can import it. `isValidIdentifier` in
-    // packages/leo-compiler/src/codegen/typescript-generator.ts is applied to
-    // method/field names but NOT to struct/interface *type* names, which pass
-    // through from the ABI path unsanitized. The finding is locked by an
-    // assertion in compile-codegen.test.ts (the emitted binding contains the
-    // invalid `Slot::[` token). Remediation is a lionden codegen change
-    // (sanitize const-generic struct type names). Until then abi_surface stays
-    // in the compile/codegen lane (full ABI breadth) but out of the on-chain set.
+    // and its JSON ABI parses, but codegen cannot emit a usable TypeScript
+    // binding for it, so no on-chain suite can import one. Codegen now rejects
+    // the program EARLY — in `assertCodegenSupportedTypes` (typescript-generator.ts)
+    // — with `Primitive::Signature is not supported`, before any binding is
+    // emitted. That stricter primitive check masks the older const-generic
+    // finding (the struct `Slot::[N]` was emitted verbatim as an invalid TS type
+    // identifier `Slot::[2u32]`, because `isValidIdentifier` sanitizes method/field
+    // names but not struct/interface *type* names). The finding is locked by an
+    // assertion in compile-codegen.test.ts that expects the Signature rejection;
+    // if Signature support lands in codegen, that assertion flips — re-lock the
+    // resurfaced `Slot::[N]` const-generic finding and re-evaluate promoting
+    // abi_surface to the on-chain set. Until then abi_surface stays in the
+    // compile/codegen lane (full ABI breadth) but out of the on-chain set.
     compileOnly: true,
     expected: {
       units: ["abi_surface.aleo"],
@@ -206,6 +214,9 @@ export const SPECS: readonly SampleGroupSpec[] = [
       { upstreamDir: "upgradability/checksum_upgrade_v2", programId: "checksum_upgrade.aleo" },
       { upstreamDir: "upgradability/timelock_upgrade_v2", programId: "timelock_upgrade.aleo" },
     ],
+    // The @admin programs bake in the devnode genesis address (== accounts[0]);
+    // surface it as namedAccounts.admin so the admin-signer resolution path runs.
+    namedAdminAccount: true,
     timeout: DEVNODE_TIMEOUT,
     expected: {
       units: [
