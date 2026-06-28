@@ -104,6 +104,7 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
       "native_runtime_edges",
       "dynamic_dispatch",
       "upgradability",
+      "abi_break",
     ]);
   });
 
@@ -182,6 +183,19 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
       // Constructor policy lives in bytecode + manifest, never the ABI.
       expect(abi.transitions.some((t) => t.name === "constructor")).toBe(false);
     }
+    assertTypechainEmitted(project, abis);
+  });
+
+  it("abi_break — single program compiles + emits the binding the reject suite imports", async () => {
+    const { project, abis } = await compileProject("abi_break");
+    expect(abis.map((a) => a.program)).toEqual(["abi_break.aleo"]);
+    const [abi] = abis;
+    const version = abi.transitions.find((t) => t.name === "version");
+    expect(version, "abi_break must expose version()").toBeDefined();
+    // v1 version() returns u8 — the output type the breaking v2 (u32) violates.
+    expect(JSON.stringify(version!.outputs)).toContain("U8");
+    // Constructor policy lives in bytecode + manifest, never the ABI.
+    expect(abi.transitions.some((t) => t.name === "constructor")).toBe(false);
     assertTypechainEmitted(project, abis);
   });
 

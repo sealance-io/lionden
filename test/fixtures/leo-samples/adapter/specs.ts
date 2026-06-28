@@ -238,6 +238,23 @@ export const SPECS: readonly SampleGroupSpec[] = [
       networkDeps: [],
     },
   },
+  {
+    // Dedicated single-program group (kept out of the `upgradability` matrix to
+    // keep that suite's accept/reject taxonomy clean). Drives the end-to-end
+    // ABI-compat REJECT path: deploy v1 → swap the breaking v2 → upgrade →
+    // UpgradeCompatibilityError. The @custom always-allow constructor means the
+    // abi-compat preflight is the ONLY reason the upgrade is refused. v2 changes
+    // `version()`'s output type (u8 → u32), a `transition_modified` violation.
+    name: "abi_break",
+    packages: ["upgradability/abi_break"],
+    v2Packages: [{ upstreamDir: "upgradability/abi_break_v2", programId: "abi_break.aleo" }],
+    timeout: DEVNODE_TIMEOUT,
+    expected: {
+      units: ["abi_break.aleo"],
+      imports: { "abi_break.aleo": [] },
+      networkDeps: [],
+    },
+  },
 ] as const;
 
 /**
