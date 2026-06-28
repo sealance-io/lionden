@@ -83,32 +83,33 @@ non-`.aleo` materialization, or Leo support for library type paths). Until then
 the lane proceeds with the other four projects, and the 0f proof locks this
 finding so a future toolchain that fixes it trips the gate for re-evaluation.
 
-### `abi_surface` is compile-only — const-generic struct types break codegen
+### `abi_surface` is compile-only — codegen rejects an unsupported primitive
 
-`abi_surface` compiles and its JSON ABI parses, but its emitted TypeScript
-binding is **unusable**. The const-generic struct `Slot::[N]` is emitted verbatim
-as a TS type identifier:
+`abi_surface` compiles and its JSON ABI parses, but codegen cannot emit a usable
+TypeScript binding, so no on-chain suite can `import` one. Codegen now rejects
+the program **early** — in `assertCodegenSupportedTypes`
+(`packages/leo-compiler/src/codegen/typescript-generator.ts`), before any binding
+is written:
 
-```ts
-export interface Slot::[2u32] { ... }   // invalid TypeScript
-const _x = serializeSlot::[2u32](...);  // invalid TypeScript
+```
+Primitive::Signature is not supported
 ```
 
-`::[2u32]` is not a legal identifier, so the whole `AbiSurface.ts` module fails
-to parse — neither `tsc` nor esbuild can load it, so no on-chain suite can
-`import` it. `isValidIdentifier` in
-`packages/leo-compiler/src/codegen/typescript-generator.ts` is applied to
-method/field names but **not** to struct/interface *type* names, which pass
-through from the ABI path unsanitized.
+This stricter primitive check **masks** the older const-generic finding: the
+struct `Slot::[N]` used to be emitted verbatim as an invalid TS type identifier
+(`export interface Slot::[2u32] { ... }`, `serializeSlot::[2u32]`) because
+`isValidIdentifier` sanitizes method/field names but **not** struct/interface
+*type* names. Codegen never gets that far now — it throws on `Signature` first.
 
 `abi_surface` therefore stays in the **compile/codegen** lane (it still proves
 the full ABI breadth: every primitive, nested/array/const-generic structs,
 record field modifiers, mappings/storage/vectors, view-fn optionals) but is
 marked `compileOnly` and has **no** on-chain suite. The finding is locked by an
-assertion in `compile-codegen.test.ts` (the emitted binding contains the invalid
-`Slot::[` token); fixing lionden's codegen (sanitize const-generic struct type
-names) trips that assertion and signals the project can be promoted to the
-on-chain set.
+assertion in `compile-codegen.test.ts` that expects the
+`Primitive::Signature is not supported` rejection; if `Signature` support lands
+in codegen, that assertion flips — re-lock the resurfaced `Slot::[N]`
+const-generic finding and re-evaluate promoting `abi_surface` to the on-chain
+set.
 
 ### Port override (0e) is confirmed; multi-devnode parallelism is out of scope
 
