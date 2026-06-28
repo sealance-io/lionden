@@ -148,17 +148,24 @@ describe("upgradability — @admin key-gated", () => {
     });
   });
 
-  // LIONDEN API GAP — no per-upgrade signer override.
-  // The admin-REJECT-with-wrong-key case needs the upgrade transaction signed by
-  // a non-admin key. `UpgradeOptions` (packages/plugin-deploy) exposes no
-  // per-call signer field; the admin key is resolved from `namedAccounts.admin`
-  // on the LRE config, so driving a wrong-key reject requires standing up a
-  // second LRE with a different admin + a funded address. The fix is a per-call
-  // signer override on `UpgradeOptions` (mirroring the per-call options the
-  // execution bindings already accept). Until then the reject *policy* path is
-  // covered by frozen_base and checksum_upgrade. See the lane README
-  // "Known lionden gaps surfaced by this lane".
-  it.skip("admin_upgrade rejects with a non-admin key (needs per-upgrade signer override)", () => {});
+  // Wrong-key reject — the per-upgrade signer override (`UpgradeOptions.signerKey`)
+  // lets the suite drive the upgrade with a non-admin devnode key. lionden now
+  // wires `validateAdminSigner` into `runUpgradePreflight`, so the mismatch is
+  // rejected locally (fail-fast) before any broadcast, rather than being signed
+  // and rejected on-chain by the @admin constructor.
+  it("admin_upgrade rejects an upgrade signed by a non-admin key", async () => {
+    await ctx!.deploy("admin_upgrade", { noCompile: true });
+    const nonAdminKey = ctx!.accounts[1]!.privateKey;
+    await withV2Swapped("admin_upgrade.aleo", async () => {
+      await expect(
+        ctx!.lre.tasks.run("upgrade", {
+          program: "admin_upgrade",
+          network: ctx!.network,
+          signerKey: nonAdminKey,
+        }),
+      ).rejects.toThrow(/Only the admin address can upgrade/);
+    });
+  });
 });
 
 describe("upgradability — @checksum governance-gated", () => {

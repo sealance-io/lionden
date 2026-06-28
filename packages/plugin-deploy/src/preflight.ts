@@ -15,6 +15,7 @@ import type {
 import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
 import { checkAbiCompatibility } from "./abi-compat.js";
+import { validateAdminSigner } from "./admin-signer.js";
 import type { ConstructorInfo } from "./constructor-parser.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { checkProgramOnChain, fetchImportSources } from "./on-chain-check.js";
@@ -604,11 +605,21 @@ export interface RunUpgradePreflightOptions {
   connection: NetworkConnection;
   config: LionDenResolvedConfig;
   networkName: string;
+  /**
+   * Resolved upgrade signer key (per-call override or `namedAccounts.admin`).
+   * Required to prevalidate @admin authorization; when omitted the admin check
+   * falls back to the network config's default signer.
+   */
+  adminSignerKey?: string;
 }
 
 /**
  * Run pre-flight validation for an upgrade.
- * Pure — never writes state.
+ *
+ * Pure — never writes state. Structural failures (ABI, constructor immutability,
+ * edition) accumulate in `errors`. The @admin authorization check runs only once
+ * those pass and throws a {@link DeployError} on signer mismatch (a fail-fast
+ * local rejection that pre-empts the slower on-chain @admin constructor reject).
  */
 export async function runUpgradePreflight(
   opts: RunUpgradePreflightOptions,
@@ -623,6 +634,7 @@ export async function runUpgradePreflight(
     connection,
     config,
     networkName,
+    adminSignerKey,
   } = opts;
 
   const isDevnode = config.networks[networkName]?.type === "devnode";
@@ -641,6 +653,21 @@ export async function runUpgradePreflight(
   if (!isDevnode && oldRecord.status === "complete") {
     const editionErr = await checkEditionContinuity(connection, programId, oldRecord.edition);
     if (editionErr) errors.push(editionErr);
+  }
+
+  // 4. @admin signer authorization. Only run once the structural checks pass, so
+  // a constructor-changed/ABI failure surfaces as a recoverable PreflightError
+  // (preserving error precedence) rather than this throwing first. Derives the
+  // signer address via the SDK and throws on mismatch.
+  if (errors.length === 0 && newConstructor.type === "admin" && newConstructor.adminAddress) {
+    await validateAdminSigner(
+      connection,
+      config,
+      networkName,
+      newConstructor.adminAddress,
+      programId,
+      adminSignerKey,
+    );
   }
 
   return {
