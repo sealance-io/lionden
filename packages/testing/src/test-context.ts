@@ -22,6 +22,7 @@ import {
 } from "@lionden/core";
 import type {
   DevnodeAccount,
+  DevnodeProvider,
   DevnodeStartOptions,
   NetworkConnection,
   NetworkManager,
@@ -36,6 +37,23 @@ import { clearFixtures } from "./fixtures.js";
 import { createTestLre } from "./lre-factory.js";
 
 const MANUAL_DEVNODE_HEALTH_TIMEOUT_MS = 5_000;
+
+/**
+ * Optional CI/runner override for the auto-started devnode backend. Auto-detect
+ * (a `aleo-devnode --version` probe on PATH) is the default mechanism; this env
+ * var lets a runner force `standalone` (or `leo`) without editing the generated
+ * config — e.g. to pin the standalone backend even when `leo devnode` is also
+ * present. Ignored when unset; throws on an unrecognized value so a typo fails
+ * loudly rather than silently auto-detecting.
+ */
+function resolveDevnodeProviderEnv(): DevnodeProvider | undefined {
+  const raw = process.env["LIONDEN_DEVNODE_PROVIDER"]?.trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw === "leo" || raw === "standalone") return raw;
+  throw new Error(
+    `LIONDEN_DEVNODE_PROVIDER must be "leo" or "standalone", got "${process.env["LIONDEN_DEVNODE_PROVIDER"]}".`,
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -223,6 +241,9 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   if (willAutoStartDevnode) {
     const overrides: DevnodeStartOptions = {};
     if (autoBlock !== undefined) overrides.autoBlock = autoBlock;
+    // Optional CI/runner backend pin (auto-detect is the default mechanism).
+    const providerOverride = resolveDevnodeProviderEnv();
+    if (providerOverride !== undefined) overrides.provider = providerOverride;
     if (snapshotReset) {
       snapshotStorageParent = mkdtempSync(path.join(tmpdir(), "lionden-devnode-"));
       // requiresPersistence is derived from storagePath, forcing the standalone

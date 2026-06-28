@@ -184,13 +184,24 @@ describe("dynamic_dispatch — IdOnlyRecordResolutionError (bad source binding)"
 });
 
 describe("dynamic_dispatch — V15 record-existence rejection", () => {
-  it("unbacked_dyn outputs only a locally-minted dyn record and does not succeed", async () => {
-    // The V15 local record-existence check rejects this: the backing static
-    // Receipt is never output. The chain surfaces it as a broadcast-time
-    // execution-verification failure (not a finalizer reject), so the only
-    // robust assertion is that .accepted does NOT resolve.
-    await expect(dispatcher.unbacked_dyn.accepted({ amount: 9n })).rejects.toThrow();
-  });
+  // The V15 local record-existence check rejects this: the backing static
+  // Receipt is never output. The chain surfaces it as a broadcast-time
+  // execution-verification failure (not a finalizer reject), so the only robust
+  // assertion is that .accepted does NOT resolve.
+  //
+  // This check is an INCLUSION/proving-time concern. The no-prove devnode
+  // fast-path skips it, and the two backends diverge there: `leo devnode`
+  // happens to reject anyway, but the standalone `aleo-devnode` no-prove path
+  // ACCEPTS the unbacked record. Verified (Jun 2026) that under `--prove` BOTH
+  // backends reject it. So gate the assertion on proving — it is deterministic
+  // and backend-independent under `--prove`, and a no-prove run can't enforce it
+  // on the standalone backend. (See README § Findings.)
+  it.skipIf(process.env["LIONDEN_PROVE"] !== "true")(
+    "unbacked_dyn outputs only a locally-minted dyn record and does not succeed",
+    async () => {
+      await expect(dispatcher.unbacked_dyn.accepted({ amount: 9n })).rejects.toThrow();
+    },
+  );
 });
 
 describe("dynamic_dispatch — dispatched mapping/vector reads (finalizer)", () => {
