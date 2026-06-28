@@ -110,14 +110,35 @@ printHeader();
 assertSubmodule();
 regen();
 
-// (3) In-process suites: 0f proof gate + compile/codegen coverage.
-run("in-process (proof + compile-codegen)", [
-  join(repoRoot, "node_modules", "vitest", "vitest.mjs"),
-  "run",
-  "--config",
-  laneVitestConfig,
-  ...(coverage ? ["--coverage"] : []),
-]);
+// Coverage context: created exactly ONCE, here — before the in-process step —
+// so the in-process blob and the per-project on-chain blobs land in the same
+// blobDir for the final `--merge-reports`. Gated on `onChain` too: the merge
+// step runs only inside `if (onChain)` below, so a `--coverage --no-onchain`
+// run would orphan the in-process blob (no merge, no HTML). createCoverageContext()
+// also `rmSync`es + recreates the blob dirs, so creating it under --no-onchain
+// would wipe/scaffold directories nothing will merge. The supported coverage
+// path is therefore the full lane (`npm run test:smoke:leo-samples:coverage`);
+// `--coverage --no-onchain` yields only the in-process text-summary.
+const coverageContext = coverage && onChain ? createCoverageContext() : undefined;
+
+// (3) In-process suites: 0f proof gate + compile/codegen coverage. When merging,
+// emit the in-process run's coverage as a distinct blob (`in-process.json`) into
+// the shared blobDir so the merge step unions the codegen-path coverage the
+// on-chain `lionden test` cache-skips. Filename can't collide with on-chain ids
+// (project basenames).
+run(
+  "in-process (proof + compile-codegen)",
+  [
+    join(repoRoot, "node_modules", "vitest", "vitest.mjs"),
+    "run",
+    "--config",
+    laneVitestConfig,
+    ...(coverage ? ["--coverage"] : []),
+  ],
+  coverageContext
+    ? { LEO_SAMPLES_INPROC_COVERAGE_BLOB: join(coverageContext.blobDir, "in-process.json") }
+    : undefined,
+);
 
 // (3b) Typecheck each on-chain project against its freshly-emitted bindings.
 // `lionden test` runs Vitest through transpilation only, so a type-only
@@ -136,7 +157,6 @@ if (typecheck) {
 
 // (4) On-chain suites, sequential (shared devnode).
 if (onChain) {
-  const coverageContext = coverage ? createCoverageContext() : undefined;
   for (const projectDir of onChainProjects()) {
     const name = basename(projectDir);
     console.log(`\n==> ${name}`);
@@ -152,7 +172,7 @@ if (onChain) {
         ...(coverage ? ["--coverage"] : []),
         ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
       ],
-      coverageContext ? coverageEnv(coverageContext, name) : undefined,
+      coverageContext ? coverageEnv(coverageContext, name, projectDir) : undefined,
     );
   }
   if (coverageContext) {
@@ -187,14 +207,21 @@ function createCoverageContext() {
   return { blobDir, runsDir, finalReportsDirectory };
 }
 
-function coverageEnv(context, id) {
+function coverageEnv(context, id, projectDir) {
   const reportsDirectory = join(context.runsDir, id);
   const blobOutputFile = join(context.blobDir, `${id}.json`);
   mkdirSync(reportsDirectory, { recursive: true });
+  // Credit this project's *executed* generated bindings to coverage. The glob is
+  // per-project (each <project>/typechain/ is a distinct absolute path), so it
+  // never double-counts another project's wrappers and it reaches the gap-filler,
+  // whose typechain lives at gapfiller/typechain (outside generated/). Resolved
+  // against the source root (repoRoot) by the plugin-test coverage builder.
+  const extraInclude = `${relative(repoRoot, projectDir)}/typechain/**/*.ts`.replaceAll("\\", "/");
   return {
     LIONDEN_TEST_COVERAGE_SOURCE_ROOT: repoRoot,
     LIONDEN_TEST_COVERAGE_REPORTS_DIRECTORY: reportsDirectory,
     LIONDEN_TEST_COVERAGE_BLOB_OUTPUT_FILE: blobOutputFile,
+    LIONDEN_TEST_COVERAGE_EXTRA_INCLUDE: extraInclude,
   };
 }
 
