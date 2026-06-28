@@ -56,6 +56,9 @@ const testingHooks: TestingHookHandlers = {};
 const coverageSourceRootEnv = "LIONDEN_TEST_COVERAGE_SOURCE_ROOT";
 const coverageReportsDirectoryEnv = "LIONDEN_TEST_COVERAGE_REPORTS_DIRECTORY";
 const coverageBlobOutputFileEnv = "LIONDEN_TEST_COVERAGE_BLOB_OUTPUT_FILE";
+// Extra coverage include glob (single pattern). Wrapped as a one-element array
+// rather than comma-split — coverage globs use commas in brace expansion.
+const coverageExtraIncludeEnv = "LIONDEN_TEST_COVERAGE_EXTRA_INCLUDE";
 
 // ---------------------------------------------------------------------------
 // Tasks
@@ -196,9 +199,11 @@ export { runTests } from "./test-runner.js";
 function resolveCoverageOptions(enabled: boolean): false | TestCoverageOptions {
   if (!enabled) return false;
 
+  const extraInclude = process.env[coverageExtraIncludeEnv];
   return {
     sourceRoot: process.env[coverageSourceRootEnv] ?? process.cwd(),
     reportsDirectory: process.env[coverageReportsDirectoryEnv],
     blobOutputFile: process.env[coverageBlobOutputFileEnv],
+    extraInclude: extraInclude ? [extraInclude] : undefined,
   };
 }
