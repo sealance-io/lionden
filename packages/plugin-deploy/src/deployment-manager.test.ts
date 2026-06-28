@@ -677,10 +677,259 @@ describe("recoverPendingDeployments", () => {
     expect(recovered).toHaveLength(1);
     expect(recovered[0]!.status).toBe("recovered");
     expect(recovered[0]!.programId).toBe("hello.aleo");
+    expect(recovered[0]!.historyCount).toBe(1);
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("recovered");
+    expect(onDisk?.historyCount).toBe(1);
+    expect(readHistory(config.paths.deployments, "devnode", "hello.aleo")).toHaveLength(1);
 
     // Marker cleared
     const marker = readPendingMarker(config.paths.deployments, "devnode", "hello.aleo");
     expect(marker).toBeNull();
+  });
+
+  it("does not replace an already complete same-edition record during pending recovery", async () => {
+    const source = "program hello.aleo;\nconstructor:\n    assert.eq edition 1u16;\n";
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(source),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+
+    const pending: PendingDeployment = {
+      programId: "hello.aleo",
+      action: "deploy",
+      startedAt: "2026-01-01T00:00:01.000Z",
+      expectedEdition: 1,
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      constructor: { type: "noupgrade" },
+      abiHash: "abc123",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    };
+    await dm.setPending(pending);
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+    expect(recovered).toHaveLength(0);
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("complete");
+    expect((onDisk as CompleteDeploymentRecord).txId).toBe("at1abc");
+    expect(readHistory(config.paths.deployments, "devnode", "hello.aleo")).toHaveLength(1);
+    expect(readPendingMarker(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+  });
+
+  it("does not replace an already complete newer-edition record during pending recovery", async () => {
+    const source = "program hello.aleo;\nconstructor:\n    assert.eq edition 2u16;\n";
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(source),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    const edition2Record: CompleteDeploymentRecord = {
+      ...completeRecord,
+      edition: 2,
+      historyCount: 2,
+      txId: "at1edition2",
+      blockHeight: 99,
+    };
+    writeDeploymentRecord(config.paths.deployments, "devnode", edition2Record);
+
+    const pending: PendingDeployment = {
+      programId: "hello.aleo",
+      action: "upgrade",
+      startedAt: "2026-01-01T00:00:01.000Z",
+      expectedEdition: 1,
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      constructor: { type: "noupgrade" },
+      abiHash: "abc123",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    };
+    await dm.setPending(pending);
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+    expect(recovered).toHaveLength(0);
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("complete");
+    expect(onDisk?.edition).toBe(2);
+    expect((onDisk as CompleteDeploymentRecord).txId).toBe("at1edition2");
+    expect(readPendingMarker(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+  });
+
+  it("does not re-recover an already recovered same-edition record during pending recovery", async () => {
+    const source = "program hello.aleo;\nconstructor:\n    assert.eq edition 2u16;\n";
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(source),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    const recoveredRecord: RecoveredDeploymentRecord = {
+      status: "recovered",
+      programId: "hello.aleo",
+      edition: 2,
+      constructor: { type: "noupgrade" },
+      abiHash: "new-abi-hash",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: "2026-01-01T00:00:02.000Z",
+      historyCount: 1,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: "aleo1abc",
+      deployedAt: "2026-01-01T00:00:01.000Z",
+      feePaid: null,
+    };
+    await dm.record(recoveredRecord, "upgrade", {
+      historyEntry: { action: "upgrade", previousEdition: 1 },
+    });
+
+    const pending: PendingDeployment = {
+      programId: "hello.aleo",
+      action: "upgrade",
+      startedAt: "2026-01-01T00:00:01.000Z",
+      expectedEdition: 2,
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      constructor: { type: "noupgrade" },
+      abiHash: "new-abi-hash",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    };
+    await dm.setPending(pending);
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+    expect(recovered).toHaveLength(0);
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("recovered");
+    expect(onDisk?.edition).toBe(2);
+    expect(onDisk?.historyCount).toBe(1);
+    expect(readHistory(config.paths.deployments, "devnode", "hello.aleo")).toHaveLength(1);
+    expect(readPendingMarker(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+  });
+
+  it("does not re-recover an already recovered newer-edition record during pending recovery", async () => {
+    const source = "program hello.aleo;\nconstructor:\n    assert.eq edition 3u16;\n";
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(source),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    const recoveredRecord: RecoveredDeploymentRecord = {
+      status: "recovered",
+      programId: "hello.aleo",
+      edition: 3,
+      constructor: { type: "noupgrade" },
+      abiHash: "newer-abi-hash",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+      updatedAt: "2026-01-01T00:00:03.000Z",
+      historyCount: 2,
+      txId: null,
+      blockHeight: null,
+      deployerAddress: "aleo1abc",
+      deployedAt: "2026-01-01T00:00:02.000Z",
+      feePaid: null,
+    };
+    writeDeploymentRecord(config.paths.deployments, "devnode", recoveredRecord);
+
+    const pending: PendingDeployment = {
+      programId: "hello.aleo",
+      action: "upgrade",
+      startedAt: "2026-01-01T00:00:01.000Z",
+      expectedEdition: 2,
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      constructor: { type: "noupgrade" },
+      abiHash: "new-abi-hash",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    };
+    await dm.setPending(pending);
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+    expect(recovered).toHaveLength(0);
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("recovered");
+    expect(onDisk?.edition).toBe(3);
+    expect(onDisk?.historyCount).toBe(2);
+    expect(readHistory(config.paths.deployments, "devnode", "hello.aleo")).toHaveLength(0);
+    expect(readPendingMarker(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+  });
+
+  it("clears stale ABI snapshot when recovering an interrupted upgrade", async () => {
+    const source = "program hello.aleo;\nconstructor:\n    assert.eq edition 2u16;\n";
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(source),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
+    writeAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo", mockAbi);
+    expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).not.toBeNull();
+
+    const pending: PendingDeployment = {
+      programId: "hello.aleo",
+      action: "upgrade",
+      startedAt: "2026-01-01T00:00:01.000Z",
+      expectedEdition: 2,
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      constructor: { type: "noupgrade" },
+      abiHash: "new-abi-hash",
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    };
+    await dm.setPending(pending);
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]!.edition).toBe(2);
+    expect(recovered[0]!.historyCount).toBe(1);
+
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("recovered");
+    expect(onDisk?.edition).toBe(2);
+    expect(onDisk?.abiHash).toBe("new-abi-hash");
+    expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+    expect(dm.getCachedAbi("hello.aleo", "devnode")).toBeNull();
   });
 
   it("clears marker when program not on-chain (never broadcast)", async () => {
