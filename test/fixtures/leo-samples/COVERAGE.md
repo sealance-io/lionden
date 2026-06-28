@@ -95,3 +95,126 @@ for S in '\.locally' '\.captureLocalFailure' '\.failsLocally' '\.accepted' \
   printf '%-32s' "$S"; grep -roE "$S" "${SUITES[@]}" 2>/dev/null | wc -l | tr -d ' '
 done
 ```
+
+## Code-coverage opportunities
+
+The matrix above audits *binding-method shapes*. This section audits **Istanbul
+line/branch coverage** of the three core modules the lane drives — leo-compiler
+(incl. codegen), network, plugin-deploy — and ranks low-runtime ways to raise it.
+
+**How to produce the report.** Run the coverage lane and open the HTML:
+
+```bash
+npm run build                               # on-chain CLI resolves plugins via dist
+npm run test:smoke:leo-samples:coverage     # = run-leo-samples.mjs --coverage
+open coverage/smoke/leo-samples/index.html  # per-package / per-file pages
+```
+
+`--coverage` requires the full lane (devnode + on-chain suites): the runner
+writes one coverage **blob** per on-chain project plus one `in-process.json` blob
+for the compile/codegen suite, all into
+`.vitest/smoke-coverage/leo-samples/blobs/`, then `vitest --merge-reports` unions
+them into the HTML. `--coverage --no-onchain` is *not* a supported coverage path
+— it produces only the in-process text-summary (no merged HTML), because the
+merge step runs only on the on-chain pass.
+
+### What the three structural fixes changed
+
+Three measurement gaps suppressed the headline numbers; the fixes are
+~zero-runtime:
+
+1. **In-process compile/codegen coverage was discarded.** The runner ran the
+   in-process `compile-codegen.test.ts` *with* `--coverage` but never captured a
+   blob, so only on-chain blobs were merged — and the on-chain `lionden test`
+   compile **cache-skips** codegen. The report therefore credited near-zero to
+   the codegen source the lane already fully exercises in-process. The runner now
+   emits an `in-process.json` blob (gated on `--coverage` + on-chain) that the
+   merge unions, crediting the codegen path it actually runs. The in-process
+   `vitest.config.ts` additionally aliases `@lionden/*` → each package's
+   `src/index.ts` under the same env gate (mirroring the on-chain
+   `resolveCoverageAliases`); without it the suite resolves to built `dist` (the
+   packages' only `exports` entry), V8 credits `dist`, and the `src`-targeted
+   include reports 0% — *and* the in-process blob would key coverage to different
+   files than the src-keyed on-chain blobs, so the merge could not union them.
+2. **Executed typechain bindings were never instrumented.** The per-project
+   generated `typechain/` wrappers are imported (tsx-transpiled) and **executed**
+   by the on-chain suites, but the coverage include was hardcoded to
+   `packages/*/src/**`. The lane now passes a **per-project** extra include
+   (`LIONDEN_TEST_COVERAGE_EXTRA_INCLUDE` →
+   `<project>/typechain/**/*.ts`) so V8 credits each project's executed wrappers.
+3. **abi_surface has no measurable binding.** It is compile-only: codegen rejects
+   it early with `Primitive::Signature is not supported`
+   (`assertCodegenSupportedTypes`), before any binding is emitted, so there is
+   nothing to instrument — by design.
+
+### Baseline (pre-fix, on-chain-only merged report)
+
+Reconstructed from the on-disk Istanbul report. Regenerate post-fix numbers with
+the command above; the codegen rows should move from near-zero to the codegen
+path the in-process suite runs, and per-project `typechain/` dirs should appear.
+
+Measured in-process contribution (the `in-process.json` blob alone, merged): the
+codegen rows it lifts are `typescript-generator.ts` ≈ 79% lines (718/908, up from
+~40% on-chain-only), `type-mapper.ts` ~23% lines (10/44, up from ~5% — the 5
+functions `typescript-generator` actually calls), and `codegen-error.ts` 100%
+(3/3). `abi-types.ts` is a types-only module (no executable statements), so it
+contributes no line denominator. The full merged report ORs this with the
+on-chain blobs, so the merged codegen numbers are at least these.
+
+| Module | Stmt % (pre-fix) | Notable cold spots (pre-fix) |
+| --- | --- | --- |
+| leo-compiler (overall) | 66.7% | codegen sub-tree 38.9% |
+| codegen: `type-mapper.ts` | ~5% | only the 5 fns `typescript-generator` calls run on-chain |
+| codegen: `typescript-generator.ts` | ~40% | struct/record/serializer emission cache-skipped on-chain |
+| codegen: `codegen-error.ts` | 0% | error paths not hit on-chain |
+| codegen: `abi-types.ts` | 0% | parsed in-process only |
+| network (overall) | 47.9% | `transition-selector` 0%, `file-io` 0%, `named-account-manager` 31%, `sdk-diagnostics` 33% |
+| plugin-deploy (overall) | 38.0% | `admin-signer`/`deployment-state`/`deploy-manifest`/`recipe-task` 0%; `deployment-manager` 24%, `preflight` 28%, `abi-compat` 30% |
+
+### Opportunity ledger (ranked by value ÷ runtime)
+
+| # | Target | Class | Runtime | Status |
+| --- | --- | --- | --- | --- |
+| 1 | codegen source (`type-mapper`, `typescript-generator`, `abi-types`, `codegen-error`) | **reachable-in-lane** — captured by the in-process blob | ~0 (already paid) | **done** (Task 1) |
+| 2 | executed per-project `typechain/**` wrappers + `BaseContract.ts` | **reachable-in-lane** — instrumented on-chain | ~0 (already executed) | **done** (Task 2) |
+| 3 | `named-account-manager.resolveForNetwork` admin branch + `upgrade-task` admin-signer resolution | **reachable-in-lane** — `namedAccounts.admin: { default: 0 }` on `upgradability` | ~0 (no new tx) | **done** (Task 3A) |
+| 4 | `abi-compat.ts` comparators (ABI-break reject path) | **blocked-on-adapter-work** — needs an ABI-breaking v2 (current v2s are logic-only; `generated/**` is gitignored/regenerated from `.upstream`) | +1 deploy +1 rejected no-prove upgrade | **needs validation** (Task 3B) |
+| 5 | `transition-selector` reentrancy, `file-io`, `sdk-diagnostics`, the 3 network/internal error classes | **delegated-to-unit** | n/a | out of scope |
+| 6 | `type-mapper` `primitiveToTs` / `plaintextToTs` / `aleoTypeToTs` | **delegated-to-unit** — no production caller; public API only (`leo-compiler/src/index.ts`) | n/a | out of scope |
+
+### Unit-test delegation boundary
+
+These have dedicated unit coverage and are deliberately **not** re-covered by the
+lane (re-covering them adds runtime for no marginal signal):
+
+- mapping accessors `.getOrUse` / `.contains` / `.tryGet`, and `.submitted` /
+  `.settled` — `packages/leo-compiler/src/codegen/base-contract.test.ts`.
+- the 4 remaining `IdOnlyRecordResolutionReason` reasons (`transition-not-unique`,
+  `transition-match-index-out-of-range`, `program-mismatch`, `not-a-ciphertext`)
+  — same base-contract unit tests.
+- the 3 network/internal error classes (`TransitionSubmissionError`,
+  `TransactionConfirmationTimeoutError`, `TransactionShapeError`) — see the
+  Error-classes table above.
+- `type-mapper`'s `primitiveToTs` / `plaintextToTs` / `aleoTypeToTs` — public-API
+  re-exports with no production caller; they belong to type-mapper unit tests,
+  not the lane.
+
+### Blocked on documented product gaps
+
+Two upgrade-matrix cells stay `it.skip` because the lionden API cannot yet
+express them; they also block the cheap path to the related deploy-side coverage.
+Both are detailed in the lane [`README.md`](README.md) §"Known lionden gaps
+surfaced by this lane":
+
+- **No per-upgrade signer override** → the `@admin` *reject*-with-wrong-key path
+  (and its `admin-signer` mismatch branch) is unreachable without a second LRE.
+- **No pre-broadcast v2-checksum accessor** → the `@checksum` *accept* path (and
+  `governance.aleo::approve`) is unreachable.
+
+### Caveat — per-project `BaseContract.ts`
+
+Every project emits its **own** `BaseContract.ts`, so the merged report lists it
+once per project and the roll-up % is conservative (the same ~2.2k lines counted
+N times in the denominator). Per-file numbers are sound; the roll-up is not.
+**Do not exclude** `BaseContract.ts` — that would drop real binding coverage.
+Emitting one shared `BaseContract` is a separate codegen change, out of scope.
