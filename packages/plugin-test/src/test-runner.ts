@@ -37,6 +37,13 @@ export interface TestCoverageOptions {
    * When set, Vitest uses only the blob reporter for test results.
    */
   blobOutputFile?: string;
+  /**
+   * Extra coverage include globs, appended to the default package-source set and
+   * resolved against `sourceRoot` like the built-in patterns. Used to credit
+   * coverage to executed code outside the default package-source glob (e.g. a
+   * project's generated typechain bindings). `allowExternal` is already enabled.
+   */
+  extraInclude?: string[];
 }
 
 export interface TestRunnerOptions {
@@ -235,11 +242,15 @@ function resolveCoverageOptions(
 
   const sourceRoot = coverageOptions.sourceRoot ?? options.root;
 
+  const include = [...coverageInclude, ...(coverageOptions.extraInclude ?? [])].map((pattern) =>
+    toCoverageGlob(sourceRoot, pattern),
+  );
+
   return {
     provider: "v8" as const,
     enabled: true,
     allowExternal: true,
-    include: coverageInclude.map((pattern) => toCoverageGlob(sourceRoot, pattern)),
+    include,
     exclude: coverageExclude.map((pattern) => toCoverageGlob(sourceRoot, pattern)),
     reportsDirectory: coverageOptions.reportsDirectory ?? join(sourceRoot, "coverage"),
     reporter: ["text-summary", "html", "lcov"],
