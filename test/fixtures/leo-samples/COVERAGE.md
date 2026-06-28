@@ -8,9 +8,9 @@ uncovered (with where they *are* covered instead). It is a manual audit;
 re-run the greps in this file after editing the suites.
 
 Suites audited: `suites/native_runtime_edges/`, `suites/dynamic_dispatch/`,
-`suites/upgradability/`, `gapfiller/test/` (the gap-filler is hand-authored,
-not adapted). `abi_surface` has **no** on-chain suite — see the codegen finding
-in the README and `adapter/specs.ts` (`compileOnly`).
+`suites/upgradability/`, `suites/abi_break/`, `gapfiller/test/` (the gap-filler is
+hand-authored, not adapted). `abi_surface` has **no** on-chain suite — see the
+codegen finding in the README and `adapter/specs.ts` (`compileOnly`).
 
 ## Error classes → trigger
 
@@ -65,9 +65,11 @@ numbers here to match.
 
 The upgrade lifecycle (`deploy` v1 → in-place v2 swap → `upgrade` task →
 accept/reject by constructor policy) is exercised by the upgradability suite
-across `@noupgrade` / `@custom` / `@admin` / `@checksum` (the two upgrade
-sub-cases that need a per-LRE signer override or a pre-broadcast checksum
-capture are `it.skip` with documented reasons).
+across `@noupgrade` / `@custom` / `@admin` / `@checksum`, now including the
+`@admin` wrong-key reject (per-upgrade `signerKey` + preflight `validateAdminSigner`)
+and the `@checksum` accept (pre-broadcast `computeUpgradeChecksum` +
+`governance.aleo::approve`). The dedicated `abi_break` suite adds the end-to-end
+ABI-compat reject (`UpgradeCompatibilityError`).
 
 ## How to re-audit
 
@@ -102,11 +104,16 @@ The matrix above audits *binding-method shapes*. This section audits **Istanbul
 line/branch coverage** of the three core modules the lane drives — leo-compiler
 (incl. codegen), network, plugin-deploy — and ranks low-runtime ways to raise it.
 
-**How to produce the report.** Run the coverage lane and open the HTML:
+**How to produce the report.** The `--coverage` lane runs the on-chain suites, so
+it needs a **working devnode backend** (see the README § Prerequisites). The
+standalone `aleo-devnode` is preferred and auto-detected when on `PATH`; on hosts
+where `leo devnode start` panics, put `aleo-devnode` on `PATH` first. Then run the
+lane and open the HTML:
 
 ```bash
 npm run build                               # on-chain CLI resolves plugins via dist
-npm run test:smoke:leo-samples:coverage     # = run-leo-samples.mjs --coverage
+PATH="/path/to/aleo-devnode/dir:$PATH" \
+  npm run test:smoke:leo-samples:coverage   # = run-leo-samples.mjs --coverage
 open coverage/smoke/leo-samples/index.html  # per-package / per-file pages
 ```
 
@@ -171,14 +178,36 @@ on-chain blobs, so the merged codegen numbers are at least these.
 | network (overall) | 47.9% | `transition-selector` 0%, `file-io` 0%, `named-account-manager` 31%, `sdk-diagnostics` 33% |
 | plugin-deploy (overall) | 38.0% | `admin-signer`/`deployment-state`/`deploy-manifest`/`recipe-task` 0%; `deployment-manager` 24%, `preflight` 28%, `abi-compat` 30% |
 
+### Current (post-fix, full lane on the standalone `aleo-devnode` backend)
+
+Merged report (`coverage/smoke/leo-samples/index.html`), full `--coverage` lane
+(in-process + all on-chain suites), measured Jun 2026: **Stmts 33.0%
+(4063/12307), Branches 24.5%, Functions 31.0%, Lines 34.2%** (the roll-up is
+conservative — `BaseContract.ts` is counted once per project; see the caveat
+below).
+
+The cells the follow-up workstreams lit up (statement %), vs the pre-fix baseline:
+
+| Module | Stmt % (post-fix) | What now exercises it |
+| --- | --- | --- |
+| plugin-deploy: `admin-signer.ts` | **40.9%** (was 0%) | `validateAdminSigner` wired into preflight — `@admin` accept (genesis key) + wrong-key reject (`signerKey`) |
+| plugin-deploy: `checksum.ts` | **77.8%** (new) | `computeUpgradeChecksum` + `formatChecksumLiteral` in the `@checksum` accept |
+| plugin-deploy: `abi-compat.ts` | **32.1%** (was 30%) | the `abi_break` integration reject (`transition_modified`); exhaustive branches stay in `abi-compat.test.ts` |
+| plugin-deploy: `preflight.ts` | **32%** (was 28%) | the new admin-signer preflight step + the abi-compat reject |
+| network: `sdk-adapter.ts` | **43.2%** | `computeProgramChecksum` (the SDK `programChecksum` wrapper) |
+
+The codegen rows and per-project `typechain/` dirs (incl. `generated/abi_break/typechain/`)
+appear as the structural fixes intended; `BaseContract.ts` is present once per
+project (5 projects).
+
 ### Opportunity ledger (ranked by value ÷ runtime)
 
 | # | Target | Class | Runtime | Status |
 | --- | --- | --- | --- | --- |
 | 1 | codegen source (`type-mapper`, `typescript-generator`, `abi-types`, `codegen-error`) | **reachable-in-lane** — captured by the in-process blob | ~0 (already paid) | **done** (Task 1) |
 | 2 | executed per-project `typechain/**` wrappers + `BaseContract.ts` | **reachable-in-lane** — instrumented on-chain | ~0 (already executed) | **done** (Task 2) |
-| 3 | `named-account-manager.resolveForNetwork` admin branch + `upgrade-task` admin-signer resolution | **reachable-in-lane** — `namedAccounts.admin: { default: 0 }` on `upgradability` | ~0 (no new tx) | **done** (Task 3A) |
-| 4 | `abi-compat.ts` comparators (ABI-break reject path) | **blocked-on-adapter-work** — needs an ABI-breaking v2 (current v2s are logic-only; `generated/**` is gitignored/regenerated from `.upstream`) | +1 deploy +1 rejected no-prove upgrade | **needs validation** (Task 3B) |
+| 3 | `named-account-manager.resolveForNetwork` admin branch + `upgrade-task` admin-signer resolution + `admin-signer.validateAdminSigner` (now wired into preflight) | **reachable-in-lane** — `namedAccounts.admin: { default: 0 }` + the `@admin` wrong-key reject (`signerKey`) on `upgradability` | ~0 (no new tx for accept; +1 local-rejected upgrade for the wrong-key case) | **done** (Task 3A + signer override) |
+| 4 | `abi-compat.ts` comparators (ABI-break reject path) + `preflight.checkAbiCompatible` + `UpgradeCompatibilityError` | **reachable-in-lane** — the dedicated `abi_break` group (upstream sample; v2 changes `version()`'s output type u8 → u32) | +1 deploy +1 locally-rejected upgrade | **done** (Task 3B / abi_break group) |
 | 5 | `transition-selector` reentrancy, `file-io`, `sdk-diagnostics`, the 3 network/internal error classes | **delegated-to-unit** | n/a | out of scope |
 | 6 | `type-mapper` `primitiveToTs` / `plaintextToTs` / `aleoTypeToTs` | **delegated-to-unit** — no production caller; public API only (`leo-compiler/src/index.ts`) | n/a | out of scope |
 
@@ -199,17 +228,19 @@ lane (re-covering them adds runtime for no marginal signal):
   re-exports with no production caller; they belong to type-mapper unit tests,
   not the lane.
 
-### Blocked on documented product gaps
+### Product gaps surfaced by this lane (both now resolved)
 
-Two upgrade-matrix cells stay `it.skip` because the lionden API cannot yet
-express them; they also block the cheap path to the related deploy-side coverage.
-Both are detailed in the lane [`README.md`](README.md) §"Known lionden gaps
-surfaced by this lane":
+The two upgrade-matrix cells that were `it.skip` are now implemented and run; the
+related deploy-side coverage they gated is reachable. Both are detailed in the lane
+[`README.md`](README.md) §"lionden gaps surfaced by this lane":
 
-- **No per-upgrade signer override** → the `@admin` *reject*-with-wrong-key path
-  (and its `admin-signer` mismatch branch) is unreachable without a second LRE.
-- **No pre-broadcast v2-checksum accessor** → the `@checksum` *accept* path (and
-  `governance.aleo::approve`) is unreachable.
+- **Per-upgrade signer override — RESOLVED.** `UpgradeOptions.signerKey` +
+  `validateAdminSigner` wired into `runUpgradePreflight` make the `@admin`
+  wrong-key reject (and its `admin-signer` mismatch branch) reachable in-lane.
+- **Pre-broadcast v2-checksum accessor — RESOLVED.** `computeProgramChecksum`
+  (`@lionden/network`) + `computeUpgradeChecksum`/`formatChecksumLiteral`
+  (`@lionden/plugin-deploy`) make the `@checksum` *accept* path (and
+  `governance.aleo::approve`) reachable in-lane.
 
 ### Caveat — per-project `BaseContract.ts`
 
