@@ -38,18 +38,33 @@ test/fixtures/leo-samples/
     is on `PATH` (a `aleo-devnode --version` probe in `resolveDevnodeBackend`).
   - **`leo devnode start`** — the fallback when `aleo-devnode` is absent.
 
-  The on-chain lane needs whichever backend actually boots on the host. On some
-  platforms `leo devnode start` panics (e.g. an internal rocksdb error on recent
-  macOS), in which case install the standalone `aleo-devnode` binary and put it on
-  `PATH` so auto-detect selects it:
-  ```bash
-  PATH="/path/to/aleo-devnode/dir:$PATH" npm run test:smoke:leo-samples:coverage
-  ```
+  The on-chain lane needs a devnode that can bind the REST port. Two independent
+  things can stop it, and they have different fixes:
+
+  - **Bind permission.** If devnode startup fails with `Failed to bind TCP port …
+    Operation not permitted (os error 1)`, the host is refusing the localhost bind
+    (e.g. a seccomp/sandbox). This affects *either* backend — switching to
+    `aleo-devnode` does not fix it. Run the lane in an environment allowed to bind
+    `127.0.0.1:3030`.
+  - **Backend selection.** Once binding works, pick a backend. Auto-detect uses the
+    standalone `aleo-devnode` when its `--version` runs, else falls back to
+    `leo devnode start`. To select a standalone build that is on `PATH`:
+    ```bash
+    PATH="/path/to/aleo-devnode/dir:$PATH" npm run test:smoke:leo-samples:coverage
+    ```
+    For a standalone build that is *not* on `PATH`, point the runner straight at it:
+    ```bash
+    LIONDEN_DEVNODE_BINARY=/abs/path/to/aleo-devnode npm run test:smoke:leo-samples
+    ```
+
   Backend selection is config-driven and never pinned in the generated projects
-  (so a `leo`-only CI keeps working): auto-detect (PATH) is the mechanism. To force
-  a backend without editing config, set `provider`/`binary` on the devnode network,
-  or export `LIONDEN_DEVNODE_PROVIDER=standalone|leo` (read by `setup()` for the
-  auto-started devnode). See `docs/network.md` for the backend model.
+  (so a `leo`-only CI keeps working): auto-detect (PATH) is the default mechanism.
+  To force a backend without editing config, set `provider`/`binary` on the devnode
+  network, export `LIONDEN_DEVNODE_PROVIDER=standalone|leo`, or set
+  `LIONDEN_DEVNODE_BINARY=<path>` to pin a specific off-`PATH` `aleo-devnode` (both
+  read by `setup()` for the auto-started devnode). None of these grant bind
+  permission — they only choose *which* devnode runs. See `docs/network.md` for the
+  backend model.
 - **Initialize the submodule** (CI and contributors):
   ```bash
   git submodule update --init test/fixtures/leo-samples/.upstream
