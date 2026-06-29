@@ -192,10 +192,7 @@ describe("upgradability — @checksum governance-gated", () => {
   it("checksum_upgrade accepts after governance.approve(<v2 checksum>)", async () => {
     await ctx!.deploy("checksum_upgrade", { noCompile: true });
     const entry = v2Entry("checksum_upgrade.aleo");
-    const artifactsDir = path.join(
-      path.dirname(path.dirname(entry.targetUnitDir)),
-      "artifacts",
-    );
+    const artifactsDir = path.join(path.dirname(path.dirname(entry.targetUnitDir)), "artifacts");
     await withV2Swapped("checksum_upgrade.aleo", async () => {
       // Compile the swapped-in v2 so artifacts/checksum_upgrade.aleo/main.aleo is
       // the v2 bytecode the upgrade will broadcast (deterministic → same checksum).

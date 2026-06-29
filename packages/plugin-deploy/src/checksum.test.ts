@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { DeployError } from "./errors.js";
 import { formatChecksumLiteral, readCompiledAleoSource } from "./checksum.js";
+import { DeployError } from "./errors.js";
 
 describe("formatChecksumLiteral", () => {
   it("renders 32 bytes as a Leo [u8; 32] array literal", () => {
@@ -17,7 +17,12 @@ describe("formatChecksumLiteral", () => {
     // 32 elements, comma-separated.
     expect(literal.split(",")).toHaveLength(32);
     // Every element is a u8 literal.
-    expect(literal.replace(/[[\]]/g, "").split(", ").every((t) => /^\d{1,3}u8$/.test(t))).toBe(true);
+    expect(
+      literal
+        .replace(/[[\]]/g, "")
+        .split(", ")
+        .every((t) => /^\d{1,3}u8$/.test(t)),
+    ).toBe(true);
   });
 
   it("throws on a non-32-byte checksum", () => {
