@@ -52,6 +52,7 @@ export class NetworkManagerImpl implements NetworkManager {
   private readonly namedAccountManager: NamedAccountManager;
   /** Per-network named account cache (survives connection close/reopen). */
   private readonly resolvedNamedAccountsCache = new Map<string, NamedAccounts>();
+  private readonly inFlightConnects = new Map<string, Promise<NetworkConnection>>();
   private activeNamedAccounts: NamedAccounts = {};
 
   constructor(config: LionDenResolvedConfig) {
@@ -85,37 +86,53 @@ export class NetworkManagerImpl implements NetworkManager {
       }
     }
 
-    // Create new connection first (may throw)
-    const connection = this.createConnection(networkName, networkConfig);
-
-    // Resolve named accounts — if this throws, close only the new connection
-    // and preserve the previous active state (transactional).
-    let resolvedAccounts: NamedAccounts;
-    try {
-      resolvedAccounts = await this.namedAccountManager.resolveForNetwork({
-        networkName,
-        networkType: networkConfig.type,
-        networkId: networkConfig.network,
-        endpoint: connection.endpoint,
-        apiKey: networkConfig.type === "http" ? networkConfig.apiKey : undefined,
-        egressPolicy: connection.egressPolicy,
-      });
-    } catch (err) {
-      await connection.close().catch(() => {});
-      throw err;
+    const inFlight = this.inFlightConnects.get(networkName);
+    if (inFlight) {
+      return inFlight;
     }
 
-    // Both connection creation and named-account resolution succeeded — swap state.
-    this.connections.set(networkName, connection);
-    this.activeConnection = connection;
-    this.resolvedNamedAccountsCache.set(networkName, resolvedAccounts);
-    this.activeNamedAccounts = resolvedAccounts;
+    const connectPromise = (async () => {
+      // Create new connection first (may throw)
+      const connection = this.createConnection(networkName, networkConfig);
 
-    return connection;
+      // Resolve named accounts — if this throws, close only the new connection
+      // and preserve the previous active state (transactional).
+      let resolvedAccounts: NamedAccounts;
+      try {
+        resolvedAccounts = await this.namedAccountManager.resolveForNetwork({
+          networkName,
+          networkType: networkConfig.type,
+          networkId: networkConfig.network,
+          endpoint: connection.endpoint,
+          apiKey: networkConfig.type === "http" ? networkConfig.apiKey : undefined,
+          egressPolicy: connection.egressPolicy,
+        });
+      } catch (err) {
+        await connection.close().catch(() => {});
+        throw err;
+      }
+
+      // Both connection creation and named-account resolution succeeded — swap state.
+      this.connections.set(networkName, connection);
+      this.activeConnection = connection;
+      this.resolvedNamedAccountsCache.set(networkName, resolvedAccounts);
+      this.activeNamedAccounts = resolvedAccounts;
+
+      return connection;
+    })();
+
+    this.inFlightConnects.set(networkName, connectPromise);
+    try {
+      return await connectPromise;
+    } finally {
+      if (this.inFlightConnects.get(networkName) === connectPromise) {
+        this.inFlightConnects.delete(networkName);
+      }
+    }
   }
 
   getConnection(): NetworkConnection | null {
-    return this.activeConnection;
+    return this.getUsableActiveConnection();
   }
 
   async disconnectAll(): Promise<void> {
@@ -134,6 +151,9 @@ export class NetworkManagerImpl implements NetworkManager {
   }
 
   getNamedAccounts(): NamedAccounts {
+    if (!this.getUsableActiveConnection()) {
+      return {};
+    }
     return { ...this.activeNamedAccounts };
   }
 
@@ -211,13 +231,32 @@ export class NetworkManagerImpl implements NetworkManager {
   }
 
   private requireConnection(): NetworkConnection {
-    if (!this.activeConnection) {
+    const connection = this.getUsableActiveConnection();
+    if (!connection) {
       throw new Error(
         "No active network connection. Call connect() first, or ensure " +
           "the network plugin has established a connection.",
       );
     }
-    return this.activeConnection;
+    return connection;
+  }
+
+  private getUsableActiveConnection(): NetworkConnection | null {
+    const connection = this.activeConnection;
+    if (!connection) {
+      return null;
+    }
+
+    if (!connection.closed) {
+      return connection;
+    }
+
+    this.activeConnection = null;
+    this.activeNamedAccounts = {};
+    if (this.connections.get(connection.name) === connection) {
+      this.connections.delete(connection.name);
+    }
+    return null;
   }
 
   private createConnection(name: string, config: ResolvedNetworkConfig): NetworkConnection {
