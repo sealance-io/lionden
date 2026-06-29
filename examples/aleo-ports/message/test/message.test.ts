@@ -38,7 +38,7 @@ describe("message.aleo", () => {
   it("main returns first + second", async () => {
     expect(
       await message.main.locally({
-        m: { first: 2n, second: 3n },
+        arg0: { first: 2n, second: 3n },
       }),
     ).toBe("5field");
   });
@@ -46,7 +46,7 @@ describe("message.aleo", () => {
   it("handles zero values", async () => {
     expect(
       await message.main.locally({
-        m: { first: 0n, second: 0n },
+        arg0: { first: 0n, second: 0n },
       }),
     ).toBe("0field");
   });

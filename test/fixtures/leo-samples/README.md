@@ -3,7 +3,7 @@
 A rigorous smoke lane that maximizes compilation + codegen + generated-binding +
 runtime-error + deploy/upgrade coverage at minimum runtime, by adapting the
 purpose-built [`sealance-io/leo-samples`](https://github.com/sealance-io/leo-samples)
-ABI/runtime-edge fixture set (Leo 4.1.0, consensus V15) into lionden's
+ABI/runtime-edge fixture set (Leo 4.2.0, consensus V15) into lionden's
 source-first projects and driving lionden's **programmatic** APIs in-process on a
 no-proving devnode.
 
@@ -32,7 +32,39 @@ test/fixtures/leo-samples/
 
 ## Prerequisites
 
-- **Leo 4.1.0** and a devnode backend (`leo devnode`) on `PATH`.
+- **Leo 4.2.0** on `PATH`.
+- **A working devnode backend** for the on-chain suites. lionden drives two:
+  - **standalone `aleo-devnode`** (preferred) — auto-detected when `aleo-devnode`
+    is on `PATH` (a `aleo-devnode --version` probe in `resolveDevnodeBackend`).
+  - **`leo devnode start`** — the fallback when `aleo-devnode` is absent.
+
+  The on-chain lane needs a devnode that can bind the REST port. Two independent
+  things can stop it, and they have different fixes:
+
+  - **Bind permission.** If devnode startup fails with `Failed to bind TCP port …
+    Operation not permitted (os error 1)`, the host is refusing the localhost bind
+    (e.g. a seccomp/sandbox). This affects *either* backend — switching to
+    `aleo-devnode` does not fix it. Run the lane in an environment allowed to bind
+    `127.0.0.1:3030`.
+  - **Backend selection.** Once binding works, pick a backend. Auto-detect uses the
+    standalone `aleo-devnode` when its `--version` runs, else falls back to
+    `leo devnode start`. To select a standalone build that is on `PATH`:
+    ```bash
+    PATH="/path/to/aleo-devnode/dir:$PATH" npm run test:smoke:leo-samples:coverage
+    ```
+    For a standalone build that is *not* on `PATH`, point the runner straight at it:
+    ```bash
+    LIONDEN_DEVNODE_BINARY=/abs/path/to/aleo-devnode npm run test:smoke:leo-samples
+    ```
+
+  Backend selection is config-driven and never pinned in the generated projects
+  (so a `leo`-only CI keeps working): auto-detect (PATH) is the default mechanism.
+  To force a backend without editing config, set `provider`/`binary` on the devnode
+  network, export `LIONDEN_DEVNODE_PROVIDER=standalone|leo`, or set
+  `LIONDEN_DEVNODE_BINARY=<path>` to pin a specific off-`PATH` `aleo-devnode` (both
+  read by `setup()` for the auto-started devnode). None of these grant bind
+  permission — they only choose *which* devnode runs. See `docs/network.md` for the
+  backend model.
 - **Initialize the submodule** (CI and contributors):
   ```bash
   git submodule update --init test/fixtures/leo-samples/.upstream
@@ -120,30 +152,44 @@ is therefore *feasible*, but **not built** — the remaining blockers are shared
 ledger / deploy-cache state isolation and CI port allocation, not code. On-chain
 suites stay **sequential** on the shared `127.0.0.1:3030` devnode for now.
 
-### Known lionden gaps surfaced by this lane
+### Devnode-backend divergence — V15 record-existence reject needs `--prove`
 
-Two upgrade-matrix cells are `it.skip` in the upgradability suite because the
-lionden API cannot yet express them (the skips carry the same detail inline). `gh`
-was unavailable when this lane landed, so they are tracked here rather than as
-GitHub issues — file them as product issues when promoting the lane.
+The on-chain suites run on whichever devnode backend boots (standalone
+`aleo-devnode` by auto-detect, else `leo devnode`). One assertion diverges across
+backends in the default **no-prove** lane: `dynamic_dispatch`'s `unbacked_dyn`,
+which expects the V15 **local record-existence** check to reject a transaction
+that outputs a dyn record whose backing static `Receipt` is never produced. That
+check is an inclusion/proving-time concern — the no-prove devnode fast-path skips
+it. `leo devnode` happens to reject anyway, but the standalone `aleo-devnode`
+no-prove path **accepts** the unbacked record (its consensus is compiled-in,
+distinct from `leo devnode`'s). Under `--prove`, **both** backends reject it
+(verified Jun 2026). The test is therefore gated on `LIONDEN_PROVE` — it runs in
+the `--prove` lane (deterministic, backend-independent) and is skipped in the
+no-prove lane, so the default lane is green on either backend. All other on-chain
+rejects in the lane are **finalizer** rejects, which both backends enforce without
+proving.
 
-1. **No per-upgrade signer override.** Driving an `@admin` upgrade *reject* with a
-   non-admin key needs the upgrade transaction signed by a key other than
-   `namedAccounts.admin`. `UpgradeOptions` (`packages/plugin-deploy`) has no
-   per-call signer field, so the wrong-key reject cannot be expressed without
-   standing up a second LRE. *Fix:* a per-call signer override on `UpgradeOptions`
-   (mirroring the per-call options the execution bindings already accept).
-   *Consequence:* the `@admin` accept side runs (genesis key) but the wrong-key
-   reject is unproven.
-2. **No pre-broadcast v2-checksum accessor.** Driving the `@checksum` upgrade
-   *accept* needs the compiled v2 checksum to call `governance.aleo::approve(...)`
-   before broadcasting. The upgrade task computes the checksum internally but does
-   not surface it pre-broadcast, and no task compiles-and-reports it without
-   broadcasting (upstream uses `leo upgrade --save` then reads
-   `deployment.program_checksum`). *Fix:* a pre-broadcast checksum accessor (e.g.
-   an upgrade `dryRun`/`--save` mode that returns the v2 checksum).
-   *Consequence:* `governance.aleo::approve` is never exercised at runtime and the
-   `@checksum` accept side is unproven (only the reject-before-approval path runs).
+### lionden gaps surfaced by this lane (both now resolved)
+
+Two upgrade-matrix cells were originally `it.skip` because the lionden API could
+not express them. Both are now implemented and the tests run:
+
+1. **Per-upgrade signer override — RESOLVED.** `UpgradeOptions.signerKey`
+   (`packages/plugin-deploy`) is a programmatic per-call signer that takes
+   precedence over `namedAccounts.admin`. lionden also wires the previously-dead
+   `validateAdminSigner` into `runUpgradePreflight`, so an `@admin` upgrade signed
+   by a non-admin key is rejected **locally** (fail-fast) before broadcast rather
+   than being signed and rejected on-chain by the constructor. The upgradability
+   suite drives the wrong-key reject with `ctx.accounts[1].privateKey`, expecting
+   `/Only the admin address can upgrade/`.
+2. **Pre-broadcast v2-checksum accessor — RESOLVED.** `@lionden/network` exports
+   `computeProgramChecksum` (wrapping the SDK's `programChecksum`), and
+   `@lionden/plugin-deploy` adds `computeUpgradeChecksum` (reads
+   `artifacts/<id>/main.aleo`) + `formatChecksumLiteral` (the `[u8; 32]` literal
+   for `approve`). The `@checksum` accept test compiles v2, computes the checksum,
+   calls `governance.aleo::approve(<[u8; 32]>)`, then upgrades — the on-chain
+   accept confirms the SDK checksum matches the deployment checksum the constructor
+   compares (no `leo upgrade --save` fallback needed).
 
 ## Curated lane selection (P1)
 
@@ -152,7 +198,8 @@ GitHub issues — file them as product issues when promoting the lane.
 | `abi_surface` | every primitive, structs (nested/array/const-generic), record field modifiers, mappings/storage/vectors, view-fn optionals → codegen breadth | **compile-only** — see Findings |
 | `native_runtime_edges` | overflow/underflow/div-zero/off-chain assert (`LocalTransitionError`), finalizer accept/reject → `OnChainRejectedError`, native `credits.aleo::account` mapping reads (`get_or_use` accept vs bare-`get` reject), storage/vector OOB rejects, a `credits.aleo::transfer_public_as_signer` future wrapper. Diamond import is verified at **compile** time (`compile-codegen`), not at runtime. | yes |
 | `dynamic_dispatch` | interfaces, `@(target)`/`_dynamic_call`, dyn records, dynamic mapping reads, V15 accept/**reject** → `.accepted`/`.rejected`, id-only handles | yes |
-| `upgradability` | `@noupgrade`/`@custom`/`@admin`/`@checksum`/timelock accept-reject matrix → `upgrade` task | yes (many deploys) |
+| `upgradability` | `@noupgrade`/`@custom`/`@admin`/`@checksum`/timelock accept-reject matrix → `upgrade` task. Includes the `@admin` wrong-key reject (per-upgrade `signerKey` + preflight `validateAdminSigner`) and the `@checksum` accept (pre-broadcast checksum + `governance.aleo::approve`). | yes (many deploys) |
+| `abi_break` | end-to-end ABI-compat **reject** → `UpgradeCompatibilityError` (`transition_modified`): a `@custom` always-allow upgrade whose v2 changes `version()`'s output type (u8 → u32), so abi-compat preflight is the only gate | yes |
 | `lionden_gapfiller` | `TransitionInputError`, every primitive serializer, hashing/crypto, decryption errors | local |
 | ~~`external_composition`~~ | **excluded** — see Findings | — |
 

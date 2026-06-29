@@ -6,19 +6,26 @@
  * - Structs can be ADDED but not deleted or modified (fields must match exactly)
  * - Records can be ADDED but not deleted or modified (fields must match exactly)
  * - Transitions can be ADDED; existing transitions cannot be deleted and their
- *   input/output signatures must remain unchanged (logic-only changes are fine)
+ *   input/output signatures must remain unchanged (logic-only changes are fine).
+ *   Inputs are compared POSITIONALLY (by mode + type), matching Leo's
+ *   `--satisfies`; parameter names are not part of the signature.
  * - Views can be ADDED; existing views cannot be deleted and their signatures
  *   must remain unchanged
- * - Implemented interfaces can be ADDED; existing interface refs cannot be
- *   deleted or modified
  * - Storage variables can be ADDED but not deleted or modified
+ *
+ * Version-agnostic: both ABIs are routed back through `parseAbi` at entry, so a
+ * stored Leo 4.1 snapshot (mode `None`, named inputs, explicit `implements`/
+ * `const_parameters`, `null` self-refs) and a fresh Leo 4.2 ABI for the same
+ * program canonicalize to the same internal shape before comparison. The two
+ * fields Leo 4.2 removed — `implements` (interface conformance now lives in
+ * `leo abi --satisfies`) and `const_parameters` — are intentionally NOT
+ * enforced, so a legitimate 4.1 → 4.2 upgrade does not falsely flag.
  */
 
 import type {
   AbiInput,
   AbiOutput,
   AleoType,
-  InterfaceRefABI,
   MappingABI,
   PlaintextType,
   ProgramABI,
@@ -31,6 +38,7 @@ import type {
   TransitionABI,
   ViewABI,
 } from "@lionden/leo-compiler";
+import { parseAbi } from "@lionden/leo-compiler";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,8 +56,6 @@ export interface AbiViolation {
     | "transition_modified"
     | "view_deleted"
     | "view_modified"
-    | "interface_deleted"
-    | "interface_modified"
     | "storage_variable_deleted"
     | "storage_variable_modified";
   readonly name: string;
@@ -71,30 +77,31 @@ export interface AbiCompatResult {
 export function checkAbiCompatibility(oldAbi: ProgramABI, newAbi: ProgramABI): AbiCompatResult {
   const violations: AbiViolation[] = [];
 
+  // Canonicalize both sides through the parser before comparing. parseAbi is
+  // idempotent on the internal shape and applies the version-agnostic
+  // canonicalization (mode None→Private/Public, self-ref→null, name synthesis)
+  // to a stored 4.1 snapshot, so old/new modes, self-refs, and input shapes
+  // align across the 4.1 → 4.2 boundary.
+  const o = parseAbi(JSON.stringify(oldAbi));
+  const n = parseAbi(JSON.stringify(newAbi));
+
   // Check mappings
-  checkNamedItems(
-    oldAbi.mappings,
-    newAbi.mappings,
-    "mapping",
-    compareMappings,
-    violations,
-    (m) => m.name,
-  );
+  checkNamedItems(o.mappings, n.mappings, "mapping", compareMappings, violations, (m) => m.name);
 
   // Check structs (keyed by full path to avoid module collisions)
-  checkNamedItems(oldAbi.structs, newAbi.structs, "struct", compareStructs, violations, (s) =>
+  checkNamedItems(o.structs, n.structs, "struct", compareStructs, violations, (s) =>
     s.path.join("::"),
   );
 
   // Check records (keyed by full path to avoid module collisions)
-  checkNamedItems(oldAbi.records, newAbi.records, "record", compareRecords, violations, (r) =>
+  checkNamedItems(o.records, n.records, "record", compareRecords, violations, (r) =>
     r.path.join("::"),
   );
 
   // Check transitions (can be added; cannot be deleted or have signature modified)
   checkNamedItems(
-    oldAbi.transitions,
-    newAbi.transitions,
+    o.transitions,
+    n.transitions,
     "transition",
     compareTransitionSignatures,
     violations,
@@ -102,27 +109,23 @@ export function checkAbiCompatibility(oldAbi: ProgramABI, newAbi: ProgramABI): A
   );
 
   checkNamedItems(
-    oldAbi.views ?? [],
-    newAbi.views ?? [],
+    o.views ?? [],
+    n.views ?? [],
     "view",
     compareViewSignatures,
     violations,
     (view) => view.name,
   );
 
-  checkNamedItems(
-    oldAbi.implements ?? [],
-    newAbi.implements ?? [],
-    "interface",
-    compareInterfaceRefs,
-    violations,
-    interfaceRefKey,
-  );
+  // Implemented interfaces are intentionally NOT checked: Leo 4.2 removed
+  // `Program.implements` from the ABI, so a 4.1 snapshot carrying `implements`
+  // vs. a 4.2 ABI without it must not flag. Interface conformance is enforced
+  // by `leo abi --satisfies` instead.
 
   // Check storage variables
   checkNamedItems(
-    oldAbi.storage_variables,
-    newAbi.storage_variables,
+    o.storage_variables,
+    n.storage_variables,
     "storage_variable",
     compareStorageVariables,
     violations,
@@ -188,7 +191,7 @@ function compareTransitionSignatures(oldT: TransitionABI, newT: TransitionABI): 
     const oldIn = oldT.inputs[i]!;
     const newIn = newT.inputs[i]!;
     if (!transitionInputsEqual(oldIn, newIn)) {
-      return `transition "${oldT.name}" input "${oldIn.name}" changed`;
+      return `transition "${oldT.name}" input[${i}] changed`;
     }
   }
   for (let i = 0; i < oldT.outputs.length; i++) {
@@ -198,9 +201,9 @@ function compareTransitionSignatures(oldT: TransitionABI, newT: TransitionABI): 
       return `transition "${oldT.name}" output[${i}] changed`;
     }
   }
-  if (JSON.stringify(oldT.const_parameters ?? []) !== JSON.stringify(newT.const_parameters ?? [])) {
-    return `transition "${oldT.name}" const parameters changed`;
-  }
+  // const_parameters intentionally not compared: Leo 4.2 removed the field, and
+  // codegen already rejects executable const parameters, so there is nothing to
+  // enforce here.
   return null;
 }
 
@@ -215,7 +218,7 @@ function compareViewSignatures(oldView: ViewABI, newView: ViewABI): string | nul
     const oldIn = oldView.inputs[i]!;
     const newIn = newView.inputs[i]!;
     if (!transitionInputsEqual(oldIn, newIn)) {
-      return `view "${oldView.name}" input "${oldIn.name}" changed`;
+      return `view "${oldView.name}" input[${i}] changed`;
     }
   }
   for (let i = 0; i < oldView.outputs.length; i++) {
@@ -225,30 +228,8 @@ function compareViewSignatures(oldView: ViewABI, newView: ViewABI): string | nul
       return `view "${oldView.name}" output[${i}] changed`;
     }
   }
-  if (
-    JSON.stringify(oldView.const_parameters ?? []) !==
-    JSON.stringify(newView.const_parameters ?? [])
-  ) {
-    return `view "${oldView.name}" const parameters changed`;
-  }
+  // const_parameters intentionally not compared (see compareTransitionSignatures).
   return null;
-}
-
-function compareInterfaceRefs(oldRef: InterfaceRefABI, newRef: InterfaceRefABI): string | null {
-  if (
-    JSON.stringify(canonicalInterfaceRef(oldRef)) !== JSON.stringify(canonicalInterfaceRef(newRef))
-  ) {
-    return `interface "${interfaceRefKey(oldRef)}" changed`;
-  }
-  return null;
-}
-
-function interfaceRefKey(ref: InterfaceRefABI): string {
-  return typeof ref === "string" ? ref : ref.path.join("::");
-}
-
-function canonicalInterfaceRef(ref: InterfaceRefABI): unknown {
-  return typeof ref === "string" ? ref : { path: ref.path, program: ref.program ?? null };
 }
 
 function compareMappings(oldMapping: MappingABI, newMapping: MappingABI): string | null {
@@ -330,7 +311,10 @@ function aleoTypesEqual(a: AleoType, b: AleoType): boolean {
 }
 
 function transitionInputsEqual(a: AbiInput, b: AbiInput): boolean {
-  return a.name === b.name && a.mode === b.mode && aleoTypesEqual(a.ty, b.ty);
+  // Positional comparison (mode + type) — names are not part of the signature
+  // and are synthesized for 4.2 ABIs, so comparing them would falsely flag a
+  // 4.1 named input against its 4.2 positional twin.
+  return a.mode === b.mode && aleoTypesEqual(a.ty, b.ty);
 }
 
 function transitionOutputsEqual(a: AbiOutput, b: AbiOutput): boolean {

@@ -5,6 +5,7 @@ import type {
   ConstParameterABI,
   InterfaceRefABI,
   MappingABI,
+  Mode,
   PlaintextType,
   ProgramABI,
   RecordABI,
@@ -27,15 +28,29 @@ export class AbiParseError extends Error {
 /**
  * Parse a JSON ABI string into a typed ProgramABI structure.
  *
- * Handles the real Leo compiler output format (`functions`/`is_final`/`path`)
- * and normalizes it into the internal LionDen representation
- * (`transitions`/`is_async`/`name`).
+ * Accepts three wire shapes and normalizes all of them into one internal
+ * representation (`transitions`/`is_async`/`name`):
+ *   - Leo 4.1 / bytecode `leo abi`: I/O elements wrapped as `{ name?, ty, mode }`.
+ *   - Leo 4.2: I/O elements are the bare enum variant (`{ Plaintext: { ty, mode } }`,
+ *     `{ Record: { path, program } }`, `"Final"`, `"DynamicRecord"`) with input
+ *     names dropped; `is_final`/`const_parameters`/`implements` removed.
+ *   - The already-normalized internal shape (re-parsing a stored snapshot is a
+ *     fixed point — the same canonicalization applies again idempotently).
  *
- * Type identity is preserved: struct/record refs keep full path and program,
- * Optional and StorageType::Vector wrappers are retained, and DynamicRecord
- * passes through as a first-class variant.
+ * Canonicalization (version-agnostic, so a 4.1 snapshot and a fresh 4.2 ABI for
+ * the same program compare equal at the upgrade gate):
+ *   - Input names are synthesized as `arg{i}` only when absent; existing names preserved.
+ *   - `Mode::None`/absent plaintext mode → `Private` (transitions/record fields) or
+ *     `Public` (views); `Public`/`Private`/`Constant` pass through; non-plaintext I/O
+ *     gets an inert `Private`.
+ *   - `is_async` is taken from `is_async`, else `is_final`, else inferred from a `Future`/`Final` output.
+ *   - Self-referential struct/record refs (`program === <self>.aleo`) are rewritten to
+ *     `program: null` across every plaintext surface (structs, records, mappings,
+ *     storage variables, function/view I/O).
  *
- * Also accepts the already-normalized format for backwards compatibility.
+ * Type identity is otherwise preserved: struct/record refs keep full path and
+ * program, Optional and StorageType::Vector wrappers are retained, and
+ * DynamicRecord passes through as a first-class variant.
  */
 export function parseAbi(json: string): ProgramABI {
   let raw: unknown;
@@ -63,11 +78,11 @@ export function parseAbi(json: string): ProgramABI {
 
   const abi: ProgramABI = {
     program: programId,
-    structs: asArray(obj["structs"], "structs").map(normalizeStruct),
-    records: asArray(obj["records"], "records").map(normalizeRecord),
-    mappings: asArray(obj["mappings"], "mappings").map(normalizeMapping),
-    storage_variables: asArray(obj["storage_variables"], "storage_variables").map(
-      normalizeStorageVariable,
+    structs: asArray(obj["structs"], "structs").map((s) => normalizeStruct(s, programId)),
+    records: asArray(obj["records"], "records").map((r) => normalizeRecord(r, programId)),
+    mappings: asArray(obj["mappings"], "mappings").map((m) => normalizeMapping(m, programId)),
+    storage_variables: asArray(obj["storage_variables"], "storage_variables").map((v) =>
+      normalizeStorageVariable(v, programId),
     ),
     transitions: asArray(rawFunctions, "functions/transitions").map((f) =>
       normalizeFunction(f, programId),
@@ -130,28 +145,38 @@ function asArray<T>(value: unknown, fieldName: string): T[] {
 /**
  * Normalize a function entry from the compiler format to the internal format.
  *
- * Compiler: `{ name, is_final, inputs, outputs }`
- * Internal: `{ name, is_async, inputs, outputs }`
+ * Compiler (4.1): `{ name, is_final, inputs, outputs }`
+ * Compiler (4.2): `{ name, inputs, outputs }` (is_final dropped)
+ * Internal:       `{ name, is_async, inputs, outputs }`
  */
 function normalizeFunction(raw: unknown, programId: string): TransitionABI {
   if (typeof raw !== "object" || raw === null) return raw as TransitionABI;
   const obj = raw as Record<string, unknown>;
 
-  // Map is_final → is_async (accept either)
-  const isAsync = "is_async" in obj ? Boolean(obj["is_async"]) : Boolean(obj["is_final"]);
-
   const rawInputs = obj["inputs"] === undefined ? [] : obj["inputs"];
   const rawOutputs = obj["outputs"] === undefined ? [] : obj["outputs"];
+
+  const inputs = Array.isArray(rawInputs)
+    ? rawInputs.map((i, index) => normalizeInput(i, programId, "transition", index))
+    : (rawInputs as unknown as AbiInput[]);
+  const outputs = Array.isArray(rawOutputs)
+    ? rawOutputs.map((o) => normalizeOutput(o, programId, "transition"))
+    : (rawOutputs as unknown as AbiOutput[]);
+
+  // is_async: prefer an explicit flag (internal `is_async`, 4.1 `is_final`);
+  // 4.2 dropped both, so infer "has finalize" from a Future/Final output.
+  const isAsync =
+    "is_async" in obj
+      ? Boolean(obj["is_async"])
+      : "is_final" in obj
+        ? Boolean(obj["is_final"])
+        : outputs.some((o) => isFutureOutput(o.ty));
 
   const normalized: TransitionABI = {
     name: obj["name"] as string,
     is_async: isAsync,
-    inputs: Array.isArray(rawInputs)
-      ? rawInputs.map((i) => normalizeInput(i as Record<string, unknown>, programId))
-      : (rawInputs as unknown as AbiInput[]),
-    outputs: Array.isArray(rawOutputs)
-      ? rawOutputs.map((o) => normalizeOutput(o as Record<string, unknown>, programId))
-      : (rawOutputs as unknown as AbiOutput[]),
+    inputs,
+    outputs,
   };
   const constParameters = normalizeConstParameters(
     obj["const_parameters"],
@@ -173,10 +198,10 @@ function normalizeView(raw: unknown, programId: string): ViewABI {
   const normalized: ViewABI = {
     name: obj["name"] as string,
     inputs: Array.isArray(rawInputs)
-      ? rawInputs.map((i) => normalizeInput(i as Record<string, unknown>, programId))
+      ? rawInputs.map((i, index) => normalizeInput(i, programId, "view", index))
       : (rawInputs as unknown as AbiInput[]),
     outputs: Array.isArray(rawOutputs)
-      ? rawOutputs.map((o) => normalizeOutput(o as Record<string, unknown>, programId))
+      ? rawOutputs.map((o) => normalizeOutput(o, programId, "view"))
       : (rawOutputs as unknown as AbiOutput[]),
   };
   const constParameters = normalizeConstParameters(
@@ -190,19 +215,125 @@ function normalizeView(raw: unknown, programId: string): ViewABI {
   return normalized;
 }
 
-function normalizeInput(raw: Record<string, unknown>, programId: string): AbiInput {
+/**
+ * I/O context drives default plaintext-mode canonicalization: unmoded
+ * transition plaintext defaults to `Private`, unmoded view plaintext to `Public`.
+ */
+type IoContext = "transition" | "view";
+
+/**
+ * Detect which wire shape a single function/view input or output element uses:
+ *   - `"bare"`: a bare string variant (`"Final"`/`"Future"`/`"DynamicRecord"`).
+ *   - `"wrapper"`: the 4.1/internal `{ name?, ty, mode }` envelope (the top-level
+ *     `ty` key wins, so a 4.1 input literally named `Plaintext` is not misread).
+ *   - `"positional"`: the 4.2 bare enum variant (`{ Plaintext }`/`{ Record }`/`{ Future }`).
+ */
+function detectInputShape(raw: unknown): "bare" | "wrapper" | "positional" {
+  if (typeof raw === "string") return "bare";
+  if (typeof raw !== "object" || raw === null) return "wrapper";
+  const obj = raw as Record<string, unknown>;
+  if ("ty" in obj) return "wrapper";
+  if ("Plaintext" in obj || "Record" in obj || "Future" in obj) return "positional";
+  return "wrapper";
+}
+
+/**
+ * Canonicalize a plaintext mode: absent/`"None"` collapses to the context
+ * default (`Public` for views, `Private` for transitions); `Public`/`Private`/
+ * `Constant` pass through.
+ */
+function canonicalizePlaintextMode(rawMode: unknown, ioContext: IoContext): Mode {
+  if (rawMode === "Public" || rawMode === "Private" || rawMode === "Constant") return rawMode;
+  return ioContext === "view" ? "Public" : "Private";
+}
+
+/**
+ * Mode for an already-normalized AleoType: plaintext gets context-canonicalized,
+ * everything else (Record/Future/DynamicRecord) carries an inert `Private`.
+ */
+function modeForAleoType(ty: AleoType, rawMode: unknown, ioContext: IoContext): Mode {
+  if (typeof ty === "object" && ty !== null && "Plaintext" in ty) {
+    return canonicalizePlaintextMode(rawMode, ioContext);
+  }
+  return "Private";
+}
+
+function isFutureOutput(ty: AleoType): boolean {
+  return typeof ty === "object" && ty !== null && "Future" in ty;
+}
+
+function normalizeInput(
+  raw: unknown,
+  programId: string,
+  ioContext: IoContext,
+  index: number,
+): AbiInput {
+  const shape = detectInputShape(raw);
+
+  if (shape === "positional") {
+    const obj = raw as Record<string, unknown>;
+    if ("Plaintext" in obj) {
+      const inner = (obj["Plaintext"] ?? {}) as Record<string, unknown>;
+      return {
+        name: `arg${index}`,
+        ty: { Plaintext: normalizePlaintext(inner["ty"], programId) },
+        mode: canonicalizePlaintextMode(inner["mode"], ioContext),
+      };
+    }
+    if ("Record" in obj) {
+      return {
+        name: `arg${index}`,
+        ty: { Record: toRecordRef(obj["Record"], programId) },
+        mode: "Private",
+      };
+    }
+    return {
+      name: `arg${index}`,
+      ty: { Future: obj["Future"] as string },
+      mode: "Private",
+    };
+  }
+
+  if (shape === "bare") {
+    return { name: `arg${index}`, ty: normalizeAleoType(raw, programId), mode: "Private" };
+  }
+
+  // wrapper (4.1 / internal): { name?, ty, mode }
+  const obj = raw as Record<string, unknown>;
+  const ty = normalizeAleoType(obj["ty"], programId);
   return {
-    name: raw["name"] as string,
-    ty: normalizeAleoType(raw["ty"], programId),
-    mode: raw["mode"] as AbiInput["mode"],
+    name: typeof obj["name"] === "string" ? (obj["name"] as string) : `arg${index}`,
+    ty,
+    mode: modeForAleoType(ty, obj["mode"], ioContext),
   };
 }
 
-function normalizeOutput(raw: Record<string, unknown>, programId: string): AbiOutput {
-  return {
-    ty: normalizeAleoType(raw["ty"], programId),
-    mode: raw["mode"] as AbiOutput["mode"],
-  };
+function normalizeOutput(raw: unknown, programId: string, ioContext: IoContext): AbiOutput {
+  const shape = detectInputShape(raw);
+
+  if (shape === "positional") {
+    const obj = raw as Record<string, unknown>;
+    if ("Plaintext" in obj) {
+      const inner = (obj["Plaintext"] ?? {}) as Record<string, unknown>;
+      return {
+        ty: { Plaintext: normalizePlaintext(inner["ty"], programId) },
+        mode: canonicalizePlaintextMode(inner["mode"], ioContext),
+      };
+    }
+    if ("Record" in obj) {
+      return { ty: { Record: toRecordRef(obj["Record"], programId) }, mode: "Private" };
+    }
+    return { ty: { Future: obj["Future"] as string }, mode: "Private" };
+  }
+
+  if (shape === "bare") {
+    return { ty: normalizeAleoType(raw, programId), mode: "Private" };
+  }
+
+  // wrapper (4.1 / internal): { ty, mode }
+  const obj = raw as Record<string, unknown>;
+  const ty = normalizeAleoType(obj["ty"], programId);
+  return { ty, mode: modeForAleoType(ty, obj["mode"], ioContext) };
 }
 
 /**
@@ -211,7 +342,7 @@ function normalizeOutput(raw: Record<string, unknown>, programId: string): AbiOu
  * Compiler: `{ path: ["TokenInfo"], fields }`
  * Internal: `{ path: ["TokenInfo"], fields }` (full path preserved)
  */
-function normalizeStruct(raw: unknown): StructABI {
+function normalizeStruct(raw: unknown, programId: string): StructABI {
   if (typeof raw !== "object" || raw === null) return raw as StructABI;
   const obj = raw as Record<string, unknown>;
 
@@ -221,7 +352,7 @@ function normalizeStruct(raw: unknown): StructABI {
       const field = f as Record<string, unknown>;
       return {
         name: field["name"] as string,
-        ty: normalizePlaintext(field["ty"]),
+        ty: normalizePlaintext(field["ty"], programId),
       };
     }),
   };
@@ -233,7 +364,7 @@ function normalizeStruct(raw: unknown): StructABI {
  * Compiler: `{ path: ["Token"], fields }`
  * Internal: `{ path: ["Token"], fields }` (full path preserved)
  */
-function normalizeRecord(raw: unknown): RecordABI {
+function normalizeRecord(raw: unknown, programId: string): RecordABI {
   if (typeof raw !== "object" || raw === null) return raw as RecordABI;
   const obj = raw as Record<string, unknown>;
 
@@ -243,31 +374,37 @@ function normalizeRecord(raw: unknown): RecordABI {
       const field = f as Record<string, unknown>;
       return {
         name: field["name"] as string,
-        ty: normalizePlaintext(field["ty"]),
-        mode: field["mode"] as RecordABI["fields"][number]["mode"],
+        ty: normalizePlaintext(field["ty"], programId),
+        // Record-definition fields: absent/None → Private; Public/Constant pass through.
+        mode: canonicalizeRecordFieldMode(field["mode"]),
       };
     }),
   };
 }
 
-function normalizeMapping(raw: unknown): MappingABI {
+function canonicalizeRecordFieldMode(rawMode: unknown): Mode {
+  if (rawMode === "Public" || rawMode === "Private" || rawMode === "Constant") return rawMode;
+  return "Private";
+}
+
+function normalizeMapping(raw: unknown, programId: string): MappingABI {
   if (typeof raw !== "object" || raw === null) return raw as MappingABI;
   const obj = raw as Record<string, unknown>;
 
   return {
     name: obj["name"] as string,
-    key: normalizePlaintext(obj["key"]),
-    value: normalizePlaintext(obj["value"]),
+    key: normalizePlaintext(obj["key"], programId),
+    value: normalizePlaintext(obj["value"], programId),
   };
 }
 
-function normalizeStorageVariable(raw: unknown): StorageVariableABI {
+function normalizeStorageVariable(raw: unknown, programId: string): StorageVariableABI {
   if (typeof raw !== "object" || raw === null) return raw as StorageVariableABI;
   const obj = raw as Record<string, unknown>;
 
   return {
     name: obj["name"] as string,
-    ty: normalizeStorageType(obj["ty"]),
+    ty: normalizeStorageType(obj["ty"], programId),
   };
 }
 
@@ -315,7 +452,7 @@ function normalizeAleoType(raw: unknown, programId: string): AleoType {
 
   // { Record: ... } → { Record: RecordRef }
   if ("Record" in obj) {
-    return { Record: toRecordRef(obj["Record"]) };
+    return { Record: toRecordRef(obj["Record"], programId) };
   }
 
   // { Future: "..." } — already normalized
@@ -323,7 +460,7 @@ function normalizeAleoType(raw: unknown, programId: string): AleoType {
 
   // { Plaintext: ... } — recurse into plaintext normalization
   if ("Plaintext" in obj) {
-    return { Plaintext: normalizePlaintext(obj["Plaintext"]) };
+    return { Plaintext: normalizePlaintext(obj["Plaintext"], programId) };
   }
 
   return raw as AleoType;
@@ -339,13 +476,13 @@ function normalizeAleoType(raw: unknown, programId: string): AleoType {
  * - `{ Optional: ... }` → `{ Optional: normalized }` (preserved, not erased)
  * - `{ Primitive: ... }` — passes through
  */
-function normalizePlaintext(raw: unknown): PlaintextType {
+function normalizePlaintext(raw: unknown, programId: string): PlaintextType {
   if (typeof raw !== "object" || raw === null) return raw as PlaintextType;
   const obj = raw as Record<string, unknown>;
 
   // { Struct: ... } → { Struct: StructRef }
   if ("Struct" in obj) {
-    return { Struct: toStructRef(obj["Struct"]) };
+    return { Struct: toStructRef(obj["Struct"], programId) };
   }
 
   // { Array: { element, length } } → { Array: [normalized, length] }
@@ -353,17 +490,17 @@ function normalizePlaintext(raw: unknown): PlaintextType {
     const arrVal = obj["Array"];
     if (Array.isArray(arrVal)) {
       // Already in tuple format [type, length]
-      return { Array: [normalizePlaintext(arrVal[0]), arrVal[1] as number] };
+      return { Array: [normalizePlaintext(arrVal[0], programId), arrVal[1] as number] };
     }
     if (typeof arrVal === "object" && arrVal !== null) {
       const arr = arrVal as { element: unknown; length: number };
-      return { Array: [normalizePlaintext(arr.element), arr.length] };
+      return { Array: [normalizePlaintext(arr.element, programId), arr.length] };
     }
   }
 
   // { Optional: innerType } — preserved
   if ("Optional" in obj) {
-    return { Optional: normalizePlaintext(obj["Optional"]) };
+    return { Optional: normalizePlaintext(obj["Optional"], programId) };
   }
 
   // { Primitive: ... } — pass through as-is
@@ -376,7 +513,7 @@ function normalizePlaintext(raw: unknown): PlaintextType {
  * Compiler format: `{ Plaintext: ... }` or `{ Vector: ... }`
  * Old internal format: bare PlaintextType (no wrapper) — wrapped into `{ Plaintext: ... }`
  */
-function normalizeStorageType(raw: unknown): StorageType {
+function normalizeStorageType(raw: unknown, programId: string): StorageType {
   if (typeof raw !== "object" || raw === null) {
     return { Plaintext: raw as PlaintextType };
   }
@@ -384,28 +521,38 @@ function normalizeStorageType(raw: unknown): StorageType {
 
   // { Plaintext: ... } — compiler StorageType::Plaintext
   if ("Plaintext" in obj) {
-    return { Plaintext: normalizePlaintext(obj["Plaintext"]) };
+    return { Plaintext: normalizePlaintext(obj["Plaintext"], programId) };
   }
 
   // { Vector: ... } — compiler StorageType::Vector
   if ("Vector" in obj) {
-    return { Vector: normalizeStorageType(obj["Vector"]) };
+    return { Vector: normalizeStorageType(obj["Vector"], programId) };
   }
 
   // Bare PlaintextType from old format — wrap in Plaintext
-  return { Plaintext: normalizePlaintext(raw) };
+  return { Plaintext: normalizePlaintext(raw, programId) };
 }
 
 // ---------------------------------------------------------------------------
 // Ref constructors
 // ---------------------------------------------------------------------------
 
-function toStructRef(raw: unknown): StructRef {
+/**
+ * Self-reference canonicalization: Leo 4.2 emits self-refs with an explicit
+ * `program: "<self>.aleo"` where 4.1 emitted `program: null`. Collapse the
+ * self form to `null` (the historical local convention) so a 4.1 self-ref and
+ * a 4.2 self-ref compare equal everywhere.
+ */
+function canonicalizeRefProgram(program: string | null, programId: string): string | null {
+  return program === programId ? null : program;
+}
+
+function toStructRef(raw: unknown, programId: string): StructRef {
   // Already a full ref: { path: [...], program: ... }
   if (typeof raw === "object" && raw !== null) {
     const obj = raw as { path?: string[]; program?: string | null };
     if (Array.isArray(obj.path)) {
-      return { path: obj.path, program: obj.program ?? null };
+      return { path: obj.path, program: canonicalizeRefProgram(obj.program ?? null, programId) };
     }
   }
   // Old format: bare string name
@@ -415,12 +562,12 @@ function toStructRef(raw: unknown): StructRef {
   return { path: [String(raw)], program: null };
 }
 
-function toRecordRef(raw: unknown): RecordRef {
+function toRecordRef(raw: unknown, programId: string): RecordRef {
   // Already a full ref: { path: [...], program: ... }
   if (typeof raw === "object" && raw !== null) {
     const obj = raw as { path?: string[]; program?: string | null };
     if (Array.isArray(obj.path)) {
-      return { path: obj.path, program: obj.program ?? null };
+      return { path: obj.path, program: canonicalizeRefProgram(obj.program ?? null, programId) };
     }
   }
   // Old format: bare string name

@@ -88,6 +88,8 @@ The backend is chosen by `resolveDevnodeBackend` (`packages/network/src/devnode-
 
 The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `consensusHeights` is rejected (at config validation for an explicit `provider: "standalone"`, and before spawn for the auto-detected case).
 
+For the test runner's auto-started devnode (`@lionden/testing` `setup()`), two env vars override the backend without editing the generated config: `LIONDEN_DEVNODE_PROVIDER=leo|standalone` pins the backend, and `LIONDEN_DEVNODE_BINARY=<path>` points at a specific off-`PATH` `aleo-devnode` build (an explicit binary forces the standalone backend on its own). Both are read only by `setup()`; auto-detect remains the default mechanism. These select *which* devnode runs — they do **not** grant permission to bind the REST port: a `Failed to bind TCP port … Operation not permitted` startup error is a host/sandbox restriction that affects either backend, so run the devnode where binding `127.0.0.1:3030` is allowed.
+
 The Leo CLI backend also behaves as a testnet devnode in practice. LionDen's `network` field is retained for CLI compatibility and may be forwarded to `leo devnode start` when it is not `"testnet"`, but callers should not rely on Leo devnode as a real mainnet/canary/devnet simulator: changing the configured route name does not make the local chain mainnet/canary/devnet. `consensusHeights` applies to the Leo backend only.
 
 Leo 4.1 adds its own devnode persistence support, but LionDen does not enable or wrap it yet. Persistence and snapshot/restore remain standalone-backend-only in this repo.

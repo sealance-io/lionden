@@ -104,6 +104,7 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
       "native_runtime_edges",
       "dynamic_dispatch",
       "upgradability",
+      "abi_break",
     ]);
   });
 
@@ -154,7 +155,7 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
     assertTypechainEmitted(project, abis);
   });
 
-  it("dynamic_dispatch — DynamicRecord + interface implements", async () => {
+  it("dynamic_dispatch — DynamicRecord survives; Leo 4.2 ABI drops interface implements", async () => {
     const { project, abis } = await compileProject("dynamic_dispatch");
     const dispatcher = abis.find((a) => a.program === "dispatcher.aleo")!;
     const dispatcherAbiRaw = fs.readFileSync(
@@ -163,8 +164,18 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
     );
     expect(dispatcherAbiRaw).toContain("DynamicRecord");
     expect(dispatcher.transitions.length).toBeGreaterThan(0);
+    // token_alt is the interface-implementing program. Leo 4.2 removed
+    // `Program.implements` from the emitted ABI entirely (interface conformance
+    // now lives in `leo abi --satisfies`), so the field is gone from both the raw
+    // JSON and the parsed shape — but token_alt still compiles to usable bindings.
+    const tokenAltAbiRaw = fs.readFileSync(
+      path.join(project.projectDir, "artifacts", "token_alt.aleo", "abi.json"),
+      "utf-8",
+    );
+    expect(tokenAltAbiRaw).not.toContain("implements");
     const tokenAlt = abis.find((a) => a.program === "token_alt.aleo")!;
-    expect(tokenAlt.implements?.length ?? 0).toBeGreaterThan(0);
+    expect(tokenAlt.implements ?? []).toHaveLength(0);
+    expect(tokenAlt.transitions.length).toBeGreaterThan(0);
     assertTypechainEmitted(project, abis);
   });
 
@@ -182,6 +193,19 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
       // Constructor policy lives in bytecode + manifest, never the ABI.
       expect(abi.transitions.some((t) => t.name === "constructor")).toBe(false);
     }
+    assertTypechainEmitted(project, abis);
+  });
+
+  it("abi_break — single program compiles + emits the binding the reject suite imports", async () => {
+    const { project, abis } = await compileProject("abi_break");
+    expect(abis.map((a) => a.program)).toEqual(["abi_break.aleo"]);
+    const [abi] = abis;
+    const version = abi.transitions.find((t) => t.name === "version");
+    expect(version, "abi_break must expose version()").toBeDefined();
+    // v1 version() returns u8 — the output type the breaking v2 (u32) violates.
+    expect(JSON.stringify(version!.outputs)).toContain("U8");
+    // Constructor policy lives in bytecode + manifest, never the ABI.
+    expect(abi.transitions.some((t) => t.name === "constructor")).toBe(false);
     assertTypechainEmitted(project, abis);
   });
 

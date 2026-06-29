@@ -1,0 +1,183 @@
+{
+  "program": "edgev42.aleo",
+  "structs": [
+    {
+      "path": [
+        "Inner"
+      ],
+      "fields": [
+        {
+          "name": "x",
+          "ty": {
+            "Primitive": {
+              "UInt": "U32"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": [
+        "Wrap"
+      ],
+      "fields": [
+        {
+          "name": "inner",
+          "ty": {
+            "Struct": {
+              "path": [
+                "Inner"
+              ],
+              "program": "edgev42.aleo"
+            }
+          }
+        },
+        {
+          "name": "ext",
+          "ty": {
+            "Struct": {
+              "path": [
+                "Vector3"
+              ],
+              "program": "math.aleo"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "path": [
+        "Coin"
+      ],
+      "fields": [
+        {
+          "name": "owner",
+          "ty": {
+            "Primitive": "Address"
+          }
+        },
+        {
+          "name": "amount",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          },
+          "mode": "Public"
+        }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "name": "reg",
+      "key": {
+        "Primitive": "Field"
+      },
+      "value": {
+        "Struct": {
+          "path": [
+            "Inner"
+          ],
+          "program": "edgev42.aleo"
+        }
+      }
+    }
+  ],
+  "storage_variables": [
+    {
+      "name": "admin_box",
+      "ty": {
+        "Plaintext": {
+          "Struct": {
+            "path": [
+              "Inner"
+            ],
+            "program": "edgev42.aleo"
+          }
+        }
+      }
+    }
+  ],
+  "functions": [
+    {
+      "name": "mix",
+      "inputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": {
+                "UInt": "U32"
+              }
+            },
+            "mode": "Constant"
+          }
+        },
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          }
+        },
+        {
+          "Record": {
+            "path": [
+              "Coin"
+            ],
+            "program": "edgev42.aleo"
+          }
+        },
+        {
+          "Record": {
+            "path": [
+              "Token"
+            ],
+            "program": "other.aleo"
+          }
+        },
+        "DynamicRecord"
+      ],
+      "outputs": [
+        {
+          "Record": {
+            "path": [
+              "Coin"
+            ],
+            "program": "edgev42.aleo"
+          }
+        },
+        "Final"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "name": "peek",
+      "inputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": "Address"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

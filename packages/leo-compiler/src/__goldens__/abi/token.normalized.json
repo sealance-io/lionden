@@ -12,7 +12,7 @@
           "ty": {
             "Primitive": "Address"
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "name": "amount",
@@ -21,7 +21,7 @@
               "UInt": "U64"
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     }
@@ -71,7 +71,7 @@
           "ty": {
             "Future": "token.aleo"
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     },
@@ -105,7 +105,7 @@
           "ty": {
             "Future": "token.aleo"
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     },
@@ -120,7 +120,7 @@
               "Primitive": "Address"
             }
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "name": "amount",
@@ -131,7 +131,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ],
       "outputs": [
@@ -141,10 +141,10 @@
               "path": [
                 "Token"
               ],
-              "program": "token.aleo"
+              "program": null
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     },
@@ -159,10 +159,10 @@
               "path": [
                 "Token"
               ],
-              "program": "token.aleo"
+              "program": null
             }
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "name": "receiver",
@@ -171,7 +171,7 @@
               "Primitive": "Address"
             }
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "name": "amount",
@@ -182,7 +182,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ],
       "outputs": [
@@ -192,10 +192,10 @@
               "path": [
                 "Token"
               ],
-              "program": "token.aleo"
+              "program": null
             }
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "ty": {
@@ -203,10 +203,10 @@
               "path": [
                 "Token"
               ],
-              "program": "token.aleo"
+              "program": null
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     }

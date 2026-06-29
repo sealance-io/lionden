@@ -169,8 +169,8 @@ export interface TaskDefinitionRef {
 
 export interface LionDenUserConfig extends LionDenUserConfigExtensions {
   /**
-   * Leo compatibility declaration. Default: "4.1.0".
-   * Supported lines are currently 4.1.x, 4.0.x, and 3.5.x.
+   * Leo compatibility declaration. Default: "4.2.0".
+   * Supported lines are currently 4.2.x, 4.1.x, 4.0.x, and 3.5.x.
    */
   readonly leoVersion?: string;
 
@@ -250,9 +250,20 @@ export interface LionDenUserConfig extends LionDenUserConfigExtensions {
 }
 
 export interface CompilerConfig {
-  /** Enable dead code elimination. Default: true */
+  /**
+   * Enable dead code elimination. Default: true.
+   *
+   * Only forwarded to `leo build` on the 4.1/4.0/3.5 lines, which expose the
+   * `--enable-dce` flag. Leo 4.2 removed the flag (DCE is now unconditional),
+   * so this is a no-op when `leoVersion` is 4.2.x or newer.
+   */
   readonly enableDce?: boolean;
-  /** Max conditional depth. Default: 10 */
+  /**
+   * Max conditional depth. Default: 10.
+   *
+   * Only forwarded to `leo build` on the 4.1/4.0/3.5 lines. Leo 4.2 removed the
+   * `--conditional-block-max-depth` flag, so this is a no-op on 4.2.x or newer.
+   */
   readonly conditionalBlockMaxDepth?: number;
   /** Build tests along with main. Default: false */
   readonly buildTests?: boolean;

@@ -49,6 +49,13 @@ export interface UpgradeOptions {
   network?: string;
   /** Build a standard/proven transaction even on devnode. */
   prove?: boolean;
+  /**
+   * Per-upgrade signer override (private key). Programmatic-only — takes
+   * precedence over `namedAccounts.admin`. Used to sign the upgrade transaction
+   * AND to prevalidate the @admin authorization in preflight. No raw-key CLI
+   * flag is exposed.
+   */
+  signerKey?: string;
 }
 
 export interface UpgradeResult {
@@ -79,6 +86,7 @@ export async function upgradeAction(
     skipConfirm: args["skipConfirm"] as boolean | undefined,
     network: args["network"] as string | undefined,
     prove: resolveProveOption(args, lre),
+    signerKey: args["signerKey"] as string | undefined,
   };
 
   const config = lre.config;
@@ -95,16 +103,24 @@ export async function upgradeAction(
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
 
-  // 1b. Resolve admin signer from namedAccounts (if configured)
+  // 1b. Resolve the upgrade signer. A per-call `signerKey` override wins; absent
+  // that, fall back to a signable `namedAccounts.admin`. The resolved key is used
+  // both to sign the broadcast AND to prevalidate the @admin authorization in
+  // preflight (validateAdminSigner), so a wrong-key upgrade fails fast locally
+  // instead of being signed and rejected on-chain by the @admin constructor.
   let adminSignerKey: string | undefined;
   let namedAdminAddress: string | undefined;
-  const namedAdmin = lre.namedAccounts["admin"];
-  if (namedAdmin !== undefined) {
-    if (isSignable(namedAdmin)) {
-      adminSignerKey = namedAdmin.privateKey;
-    } else {
-      // Address-only admin — used for drift warning in preflight
-      namedAdminAddress = namedAdmin.address;
+  if (options.signerKey !== undefined) {
+    adminSignerKey = options.signerKey;
+  } else {
+    const namedAdmin = lre.namedAccounts["admin"];
+    if (namedAdmin !== undefined) {
+      if (isSignable(namedAdmin)) {
+        adminSignerKey = namedAdmin.privateKey;
+      } else {
+        // Address-only admin — used for drift warning in preflight
+        namedAdminAddress = namedAdmin.address;
+      }
     }
   }
 
@@ -223,6 +239,7 @@ export async function upgradeAction(
     connection,
     config,
     networkName,
+    adminSignerKey,
   });
 
   if (!preflightResult.passed) {

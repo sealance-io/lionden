@@ -11,7 +11,7 @@
  *    code-generated. If this ever starts compiling, the gate fails and the
  *    exclusion must be re-evaluated.
  *
- * Requires the submodule (`git submodule update --init`) and Leo 4.1.0 on PATH;
+ * Requires the submodule (`git submodule update --init`) and Leo 4.2.0 on PATH;
  * skips cleanly when the submodule is absent.
  */
 import * as fs from "node:fs";

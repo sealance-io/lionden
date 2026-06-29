@@ -221,6 +221,12 @@ export default pluginDeploy;
 export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
 // ABI compatibility
 export { checkAbiCompatibility } from "./abi-compat.js";
+// Pre-broadcast @checksum upgrade accessor
+export {
+  computeUpgradeChecksum,
+  formatChecksumLiteral,
+  readCompiledAleoSource,
+} from "./checksum.js";
 export type { ConstructorInfo, ConstructorType } from "./constructor-parser.js";
 // Constructor parser
 export {

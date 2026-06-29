@@ -30,10 +30,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
+        uses: sealance-io/setup-leo-action@12eec4e21066fe8dddb7ed99112913fac124c192 # v1.1.2
         with:
-          version: "4.1.0"
-          rust-version: "1.96.0"
+          version: "4.2.0"
+          rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
           enable-cache: true
           cache-save: never
           run-audit: true

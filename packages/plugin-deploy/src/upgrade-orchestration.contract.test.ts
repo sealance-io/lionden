@@ -600,6 +600,43 @@ describe("upgrade orchestration contract", () => {
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("admin address changed");
   });
 
+  it("rejects an @admin upgrade signed by a non-admin key (signerKey override + preflight authorization)", async () => {
+    const NON_ADMIN = "aleo1qnr4dkkvkgfqph0vzc3y6z2eu975wnpz2925ntjccd5cfqxtyu8s7pyjh9";
+    // The override key derives to a NON-admin address, so preflight's
+    // validateAdminSigner step must reject before anything is signed/broadcast.
+    mockCreateSdkObjects.mockResolvedValue({
+      programManager: {
+        buildDevnodeUpgradeTransaction: mockBuildDevnodeUpgradeTransaction,
+        buildUpgradeTransaction: mockBuildUpgradeTransaction,
+      },
+      account: { address: () => ({ to_string: () => NON_ADMIN }) },
+      diagnostics: new SdkDiagnostics(),
+    });
+    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await expect(
+      upgradeAction({ program: "hello", signerKey: "non-admin-private-key" }, lre),
+    ).rejects.toThrow(/Only the admin address can upgrade/);
+
+    // Local (preflight) reject — no transaction is built or broadcast.
+    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("threads the signerKey override into every SDK call on an accepted @admin upgrade", async () => {
+    // The override key derives to the admin address (mock returns DEVNODE_ACCOUNT_0),
+    // so the upgrade is accepted and signed with the override, not the devnode default.
+    const { lre } = await createUpgradeFixture({ constructorType: "admin" });
+
+    await upgradeAction({ program: "hello", signerKey: "admin-override-key" }, lre);
+
+    expect(mockCreateSdkObjects).toHaveBeenCalled();
+    for (const call of mockCreateSdkObjects.mock.calls) {
+      expect((call[0] as { privateKey?: string }).privateKey).toBe("admin-override-key");
+    }
+    expect(mockBuildDevnodeUpgradeTransaction).toHaveBeenCalled();
+  });
+
   it("rejects upgrade when @custom constructor body changes", async () => {
     const oldSource = [
       "program hello.aleo;",

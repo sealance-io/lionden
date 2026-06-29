@@ -18,7 +18,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "name": "b",
@@ -29,7 +29,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ],
       "outputs": [
@@ -41,7 +41,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     },
@@ -58,7 +58,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         },
         {
           "name": "b",
@@ -69,7 +69,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ],
       "outputs": [
@@ -81,7 +81,7 @@
               }
             }
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     }

@@ -67,8 +67,8 @@ afterAll(async () => {
 describe("dynamic_dispatch — local call.dynamic (.locally)", () => {
   it("settle_rebalance dispatches offline and returns two shares", async () => {
     const [major, minor] = await dispatcher.settle_rebalance.locally({
-      target: TOKEN_IFACE,
-      amount: 100n,
+      arg0: TOKEN_IFACE,
+      arg1: 100n,
     });
     expect(typeof major).toBe("bigint");
     expect(typeof minor).toBe("bigint");
@@ -82,15 +82,15 @@ describe("dynamic_dispatch — offline dyn-record cast (probe_cast)", () => {
     // Self-contained `c as dyn record` cast + field read with no dynamic call —
     // the off-chain dyn-record-cast regression upstream built it for. Runs under
     // `leo run` with no ledger.
-    expect(await tokenIface.probe_cast.locally({ amount: 42n })).toBe(42n);
+    expect(await tokenIface.probe_cast.locally({ arg0: 42n })).toBe(42n);
   });
 });
 
 describe("dynamic_dispatch — runtime target selection is observable", () => {
   it("settle_rebalance against token_iface is accepted and records last_split", async () => {
     const result = await dispatcher.settle_rebalance.accepted({
-      target: TOKEN_IFACE,
-      amount: 100n,
+      arg0: TOKEN_IFACE,
+      arg1: 100n,
     });
     expect(result.status).toBe("accepted");
     // Private u64 outputs are EncryptedValue handles; decrypt with the signer.
@@ -102,7 +102,7 @@ describe("dynamic_dispatch — runtime target selection is observable", () => {
   });
 
   it("settle_rebalance against token_alt records a DIFFERENT split (75/25)", async () => {
-    await dispatcher.settle_rebalance.accepted({ target: TOKEN_ALT, amount: 100n });
+    await dispatcher.settle_rebalance.accepted({ arg0: TOKEN_ALT, arg1: 100n });
     const ifaceSplit = await dispatcher.mappings.lastSplit.get(TOKEN_IFACE);
     const altSplit = await dispatcher.mappings.lastSplit.get(TOKEN_ALT);
     // token_alt's policy is a 75/25 split, so the recorded major differs from
@@ -111,7 +111,7 @@ describe("dynamic_dispatch — runtime target selection is observable", () => {
   });
 
   it("decrypting a private output with the wrong key throws LocalValueDecryptionError", async () => {
-    const result = await dispatcher.settle_rebalance.accepted({ target: TOKEN_IFACE, amount: 40n });
+    const result = await dispatcher.settle_rebalance.accepted({ arg0: TOKEN_IFACE, arg1: 40n });
     const [major] = result.outputs;
     await expect(major.decrypt(ctx!.accounts[1]!.privateKey)).rejects.toBeInstanceOf(
       LocalValueDecryptionError,
@@ -128,8 +128,8 @@ describe("dynamic_dispatch — runtime target selection is observable", () => {
 describe("dynamic_dispatch — id-only record outputs (V15-backed)", () => {
   it("intrinsic_rebalance returns two dyn-record handles", async () => {
     const result = await dispatcher.intrinsic_rebalance.accepted({
-      target: TOKEN_IFACE,
-      amount: 50n,
+      arg0: TOKEN_IFACE,
+      arg1: 50n,
     });
     expect(result.status).toBe("accepted");
     const [a, b] = result.outputs;
@@ -138,7 +138,7 @@ describe("dynamic_dispatch — id-only record outputs (V15-backed)", () => {
   });
 
   it("mint_external surfaces an external record handle that resolves to a Coin", async () => {
-    const result = await dispatcher.mint_external.accepted({ amount: 20n });
+    const result = await dispatcher.mint_external.accepted({ arg0: 20n });
     const [coinHandle, dynHandle] = result.outputs;
     expect(coinHandle.kind).toBe("idOnlyExternalRecord");
     expect(dynHandle.kind).toBe("idOnlyDynamicRecord");
@@ -155,7 +155,7 @@ describe("dynamic_dispatch — IdOnlyRecordResolutionError (bad source binding)"
   const signer = () => ctx!.accounts[0]!.privateKey;
 
   it("an unknown .from transition name throws reason transition-not-found", async () => {
-    const result = await dispatcher.mint_external.accepted({ amount: 7n });
+    const result = await dispatcher.mint_external.accepted({ arg0: 7n });
     const [coinHandle] = result.outputs;
     const err = await coinHandle
       .match(TokenIface_Coin.output.from("not_a_transition", 0))
@@ -169,7 +169,7 @@ describe("dynamic_dispatch — IdOnlyRecordResolutionError (bad source binding)"
   });
 
   it("an out-of-range .at transition index throws reason transition-index-out-of-range", async () => {
-    const result = await dispatcher.mint_external.accepted({ amount: 7n });
+    const result = await dispatcher.mint_external.accepted({ arg0: 7n });
     const [coinHandle] = result.outputs;
     const err = await coinHandle
       .match(TokenIface_Coin.output.at(999, 0))
@@ -184,13 +184,24 @@ describe("dynamic_dispatch — IdOnlyRecordResolutionError (bad source binding)"
 });
 
 describe("dynamic_dispatch — V15 record-existence rejection", () => {
-  it("unbacked_dyn outputs only a locally-minted dyn record and does not succeed", async () => {
-    // The V15 local record-existence check rejects this: the backing static
-    // Receipt is never output. The chain surfaces it as a broadcast-time
-    // execution-verification failure (not a finalizer reject), so the only
-    // robust assertion is that .accepted does NOT resolve.
-    await expect(dispatcher.unbacked_dyn.accepted({ amount: 9n })).rejects.toThrow();
-  });
+  // The V15 local record-existence check rejects this: the backing static
+  // Receipt is never output. The chain surfaces it as a broadcast-time
+  // execution-verification failure (not a finalizer reject), so the only robust
+  // assertion is that .accepted does NOT resolve.
+  //
+  // This check is an INCLUSION/proving-time concern. The no-prove devnode
+  // fast-path skips it, and the two backends diverge there: `leo devnode`
+  // happens to reject anyway, but the standalone `aleo-devnode` no-prove path
+  // ACCEPTS the unbacked record. Verified (Jun 2026) that under `--prove` BOTH
+  // backends reject it. So gate the assertion on proving — it is deterministic
+  // and backend-independent under `--prove`, and a no-prove run can't enforce it
+  // on the standalone backend. (See README § Findings.)
+  it.skipIf(process.env["LIONDEN_PROVE"] !== "true")(
+    "unbacked_dyn outputs only a locally-minted dyn record and does not succeed",
+    async () => {
+      await expect(dispatcher.unbacked_dyn.accepted({ arg0: 9n })).rejects.toThrow();
+    },
+  );
 });
 
 describe("dynamic_dispatch — dispatched mapping/vector reads (finalizer)", () => {
@@ -199,37 +210,37 @@ describe("dynamic_dispatch — dispatched mapping/vector reads (finalizer)", () 
   const who = () => Leo.address(ctx!.accounts[2]!.address);
 
   it("populates token_iface state, then assert_balance is accepted for the known balance", async () => {
-    await tokenIface.record_supply.accepted({ who: who(), delta: 7n });
+    await tokenIface.record_supply.accepted({ arg0: who(), arg1: 7n });
     const result = await dispatcher.assert_balance.accepted({
-      target: TOKEN_IFACE,
-      who: who(),
-      expected: 7n,
+      arg0: TOKEN_IFACE,
+      arg1: who(),
+      arg2: 7n,
     });
     expect(result.status).toBe("accepted");
   });
 
   it("assert_history_at(0) is accepted once history is non-empty", async () => {
-    const result = await dispatcher.assert_history_at.accepted({ target: TOKEN_IFACE, i: 0 });
+    const result = await dispatcher.assert_history_at.accepted({ arg0: TOKEN_IFACE, arg1: 0 });
     expect(result.status).toBe("accepted");
   });
 
   it("assert_balance on a missing key is rejected (dispatched mapping .get)", async () => {
     const result = await dispatcher.assert_balance.rejected({
-      target: TOKEN_IFACE,
-      who: Leo.address(ctx!.accounts[3]!.address),
-      expected: 0n,
+      arg0: TOKEN_IFACE,
+      arg1: Leo.address(ctx!.accounts[3]!.address),
+      arg2: 0n,
     });
     expect(result.status).toBe("rejected");
   });
 
   it("assert_history_at(99) is rejected out of bounds (dispatched vector .get)", async () => {
-    const result = await dispatcher.assert_history_at.rejected({ target: TOKEN_IFACE, i: 99 });
+    const result = await dispatcher.assert_history_at.rejected({ arg0: TOKEN_IFACE, arg1: 99 });
     expect(result.status).toBe("rejected");
   });
 
   it("calling .accepted on the out-of-bounds read throws OnChainRejectedError", async () => {
     await expect(
-      dispatcher.assert_history_at.accepted({ target: TOKEN_IFACE, i: 99 }),
+      dispatcher.assert_history_at.accepted({ arg0: TOKEN_IFACE, arg1: 99 }),
     ).rejects.toBeInstanceOf(OnChainRejectedError);
   });
 });

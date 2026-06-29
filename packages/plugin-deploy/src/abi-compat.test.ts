@@ -281,9 +281,9 @@ describe("checkAbiCompatibility", () => {
           name: "transfer",
           is_async: false,
           inputs: [
-            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" },
           ],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" }],
         },
       ],
     });
@@ -293,9 +293,9 @@ describe("checkAbiCompatibility", () => {
           name: "transfer",
           is_async: true,
           inputs: [
-            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" },
           ],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" }],
         },
       ],
     });
@@ -312,7 +312,7 @@ describe("checkAbiCompatibility", () => {
           name: "deposit",
           is_async: false,
           inputs: [
-            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" },
           ],
           outputs: [],
         },
@@ -324,7 +324,7 @@ describe("checkAbiCompatibility", () => {
           name: "deposit",
           is_async: false,
           inputs: [
-            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" },
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Private" },
           ],
           outputs: [],
         },
@@ -333,7 +333,8 @@ describe("checkAbiCompatibility", () => {
     const result = checkAbiCompatibility(oldAbi, newAbi);
     expect(result.compatible).toBe(false);
     expect(result.violations[0]!.kind).toBe("transition_modified");
-    expect(result.violations[0]!.detail).toContain('input "amount" changed');
+    // Inputs are compared positionally; the message references the index.
+    expect(result.violations[0]!.detail).toContain("input[0] changed");
   });
 
   it("rejects changing transition output type", () => {
@@ -343,7 +344,7 @@ describe("checkAbiCompatibility", () => {
           name: "get_balance",
           is_async: false,
           inputs: [],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" }],
         },
       ],
     });
@@ -353,7 +354,7 @@ describe("checkAbiCompatibility", () => {
           name: "get_balance",
           is_async: false,
           inputs: [],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "None" }],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U128" } } }, mode: "Private" }],
         },
       ],
     });
@@ -370,7 +371,7 @@ describe("checkAbiCompatibility", () => {
           name: "mint",
           is_async: false,
           inputs: [],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" }],
+          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" }],
         },
       ],
     });
@@ -492,7 +493,12 @@ describe("checkAbiCompatibility", () => {
   });
 
   // -------------------------------------------------------------------------
-  // Implemented interfaces
+  // Implemented interfaces — NO LONGER ENFORCED.
+  //
+  // Leo 4.2 removed `Program.implements` from the emitted ABI, so a 4.1
+  // snapshot carrying `implements` vs. a 4.2 ABI without it must not flag.
+  // Interface conformance is enforced by `leo abi --satisfies` instead. These
+  // tests pin the new (unenforced) semantics across add/delete/modify.
   // -------------------------------------------------------------------------
 
   it("allows adding implemented interfaces", () => {
@@ -504,18 +510,16 @@ describe("checkAbiCompatibility", () => {
     expect(result.compatible).toBe(true);
   });
 
-  it("rejects deleting an implemented interface", () => {
+  it("does not flag deleting an implemented interface", () => {
     const oldAbi = makeAbi({
       implements: [{ path: ["Readable"], program: null }],
     });
     const newAbi = makeAbi({ implements: [] });
     const result = checkAbiCompatibility(oldAbi, newAbi);
-    expect(result.compatible).toBe(false);
-    expect(result.violations[0]!.kind).toBe("interface_deleted");
-    expect(result.violations[0]!.name).toBe("Readable");
+    expect(result.compatible).toBe(true);
   });
 
-  it("rejects modifying an implemented interface ref", () => {
+  it("does not flag modifying an implemented interface ref", () => {
     const oldAbi = makeAbi({
       implements: [{ path: ["Readable"], program: null }],
     });
@@ -523,8 +527,7 @@ describe("checkAbiCompatibility", () => {
       implements: [{ path: ["Readable"], program: "interfaces.aleo" }],
     });
     const result = checkAbiCompatibility(oldAbi, newAbi);
-    expect(result.compatible).toBe(false);
-    expect(result.violations[0]!.kind).toBe("interface_modified");
+    expect(result.compatible).toBe(true);
   });
 
   // -------------------------------------------------------------------------
@@ -612,5 +615,112 @@ describe("checkAbiCompatibility", () => {
     expect(kinds).toContain("mapping_deleted");
     expect(kinds).toContain("transition_deleted");
     expect(kinds).toContain("struct_modified");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-version boundary — a stored Leo 4.1 snapshot vs a fresh Leo 4.2 ABI.
+//
+// `checkAbiCompatibility` re-parses both sides, so the comparator is
+// version-agnostic. These ABIs are intentionally built as raw JSON (the 4.1
+// snapshot uses `mode: "None"` and named inputs; the 4.2 ABI uses positional
+// bare-enum I/O) and cast only at the call boundary — the `Mode` type no longer
+// admits "None", and the 4.2 positional shape is not a typed `ProgramABI`.
+// ---------------------------------------------------------------------------
+
+describe("checkAbiCompatibility — 4.1 snapshot vs 4.2 ABI", () => {
+  // Leo 4.1 internal snapshot: named inputs, mode "None", explicit self-program
+  // refs, plus the two fields Leo 4.2 dropped (implements / const_parameters).
+  const snapshot41 = {
+    program: "token.aleo",
+    structs: [],
+    records: [
+      {
+        path: ["Token"],
+        fields: [
+          { name: "owner", ty: { Primitive: "Address" }, mode: "None" },
+          { name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" },
+        ],
+      },
+    ],
+    mappings: [],
+    storage_variables: [],
+    implements: ["Spendable", { path: ["admin", "Owned"], program: "owned.aleo" }],
+    transitions: [
+      {
+        name: "mint_private",
+        is_final: false,
+        const_parameters: [{ name: "N", type: "u8" }],
+        inputs: [
+          { name: "receiver", ty: { Plaintext: { Primitive: "Address" } }, mode: "None" },
+          { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+        ],
+        outputs: [{ ty: { Record: { path: ["Token"], program: "token.aleo" } }, mode: "None" }],
+      },
+    ],
+  };
+
+  // Leo 4.2 ABI for the same program: positional bare-enum I/O (no input names),
+  // explicit Private modes, explicit `program: "token.aleo"` self-ref, and NO
+  // implements / const_parameters.
+  const abi42 = {
+    program: "token.aleo",
+    structs: [],
+    records: [
+      {
+        path: ["Token"],
+        fields: [
+          { name: "owner", ty: { Primitive: "Address" } },
+          { name: "amount", ty: { Primitive: { UInt: "U64" } } },
+        ],
+      },
+    ],
+    mappings: [],
+    storage_variables: [],
+    functions: [
+      {
+        name: "mint_private",
+        inputs: [
+          { Plaintext: { ty: { Primitive: "Address" }, mode: "Private" } },
+          { Plaintext: { ty: { Primitive: { UInt: "U64" } }, mode: "Private" } },
+        ],
+        outputs: [{ Record: { path: ["Token"], program: "token.aleo" } }],
+      },
+    ],
+  };
+
+  // Cast only at the call boundary (see header note).
+  const asAbi = (raw: unknown) => raw as ProgramABI;
+
+  it("treats an unchanged 4.1 → 4.2 signature as compatible", () => {
+    const result = checkAbiCompatibility(asAbi(snapshot41), asAbi(abi42));
+    expect(result.compatible).toBe(true);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it("is symmetric: 4.2 → 4.1 is also compatible", () => {
+    const result = checkAbiCompatibility(asAbi(abi42), asAbi(snapshot41));
+    expect(result.compatible).toBe(true);
+  });
+
+  it("still flags a genuine input type change across the boundary", () => {
+    const changed = {
+      ...abi42,
+      functions: [
+        {
+          name: "mint_private",
+          inputs: [
+            { Plaintext: { ty: { Primitive: "Address" }, mode: "Private" } },
+            // U64 → U128: a real signature change, must flag.
+            { Plaintext: { ty: { Primitive: { UInt: "U128" } }, mode: "Private" } },
+          ],
+          outputs: [{ Record: { path: ["Token"], program: "token.aleo" } }],
+        },
+      ],
+    };
+    const result = checkAbiCompatibility(asAbi(snapshot41), asAbi(changed));
+    expect(result.compatible).toBe(false);
+    expect(result.violations[0]!.kind).toBe("transition_modified");
+    expect(result.violations[0]!.detail).toContain("input[1] changed");
   });
 });

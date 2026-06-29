@@ -164,6 +164,33 @@ export async function initSdk(): Promise<void> {
   }
 }
 
+/**
+ * Compute the 32-byte deployment checksum of a compiled program's `.aleo`
+ * source — the value an ARC-0006 `@checksum` upgrade constructor compares
+ * against the governance-approved checksum on-chain. Thin wrapper over the SDK's
+ * `programChecksum`, surfaced so a caller can pre-compute a *pending* upgrade's
+ * checksum (e.g. to seed a `governance.aleo::approve(...)` call) before the
+ * upgrade is broadcast, without reaching into the SDK directly.
+ *
+ * The checksum is a hash of the program bytecode (network-independent); the
+ * `network` arg only selects which SDK WASM bundle to load.
+ */
+export async function computeProgramChecksum(
+  program: string,
+  network: AleoNetwork = "testnet",
+): Promise<Uint8Array> {
+  await initSdk();
+  const sdk = await loadSdkModule(network);
+  const fn = (sdk as { programChecksum?: (p: string) => Uint8Array }).programChecksum;
+  if (typeof fn !== "function") {
+    throw new Error(
+      "The installed @provablehq/sdk does not export programChecksum(); " +
+        `ensure @provablehq/sdk@${SDK_VERSION} is installed.`,
+    );
+  }
+  return fn(program);
+}
+
 export function applySdkLogLevel(sdk: SdkModule, logLevel: SdkLogLevel = "warn"): void {
   const setLogLevel = (sdk as unknown as { setLogLevel?: unknown }).setLogLevel;
   if (typeof setLogLevel === "function") {

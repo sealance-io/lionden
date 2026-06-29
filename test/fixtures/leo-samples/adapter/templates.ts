@@ -3,7 +3,7 @@ import type { SampleGroupSpec } from "./specs.js";
 /**
  * Templates for the per-project scaffolding the adapter writes alongside the
  * materialized `programs/` tree. Modeled on `examples/aleo-ports/dynamic_dispatch`:
- * the four built-in plugins, Leo 4.1.0, a devnode default network with
+ * the four built-in plugins, Leo 4.2.0, a devnode default network with
  * `autoBlock`, and a generous test timeout.
  *
  * Generated projects live under `generated/<name>/` (gitignored) and resolve
@@ -11,7 +11,7 @@ import type { SampleGroupSpec } from "./specs.js";
  * walks up), so they need no per-project `npm install`.
  */
 
-const LEO_VERSION = "4.1.0";
+const LEO_VERSION = "4.2.0";
 const DEFAULT_TIMEOUT = 240_000;
 
 function renderExecutionImports(spec: SampleGroupSpec): string {

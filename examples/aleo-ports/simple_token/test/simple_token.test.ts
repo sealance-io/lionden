@@ -46,7 +46,7 @@ describe("simple_token.aleo", () => {
   });
 
   it("mint produces a Token record assigned to the owner", async () => {
-    const minted = await token.mint.locally({ owner: owner(), amount: 100n });
+    const minted = await token.mint.locally({ arg0: owner(), arg1: 100n });
 
     expect(minted.owner).toBe(owner().address);
     expect(minted.amount).toBe(100n);
@@ -55,14 +55,14 @@ describe("simple_token.aleo", () => {
 
   it("transfer splits a minted token into remainder + transferred", async () => {
     // Step 1: mint 100 to owner — produces Token #1.
-    const minted = await token.mint.locally({ owner: owner(), amount: 100n });
+    const minted = await token.mint.locally({ arg0: owner(), arg1: 100n });
 
     // Step 2: transfer 30 of it to recipient — should produce two records
     // (remaining: 70 to owner, transferred: 30 to recipient).
     const [remaining, transferred] = await token.transfer.locally({
-      token: minted,
-      to: recipient(),
-      amount: 30n,
+      arg0: minted,
+      arg1: recipient(),
+      arg2: 30n,
     });
 
     expect(remaining.owner).toBe(owner().address);

@@ -104,9 +104,9 @@ describe("dynamic_records direct token parity", () => {
 
   it("gold_token.mint_custom.accepted supports the uniform .match(...).decrypt API", async () => {
     const confirmed = await gold.mint_custom.accepted({
-      owner: owner(),
-      amount: 1000n,
-      purity: 24n,
+      arg0: owner(),
+      arg1: 1000n,
+      arg2: 24n,
     });
     const token = await confirmed.outputs.match(asGoldToken.output).decrypt(owner());
 
@@ -117,9 +117,9 @@ describe("dynamic_records direct token parity", () => {
 
   it("silver_token.mint_custom.accepted returns owner, amount, and grade", async () => {
     const confirmed = await silver.mint_custom.accepted({
-      owner: owner(),
-      amount: 2000n,
-      grade: 3n,
+      arg0: owner(),
+      arg1: 2000n,
+      arg2: 3n,
     });
     const token = await confirmed.outputs.decrypt(owner());
 
@@ -142,14 +142,14 @@ describe("V15-compliant transfer materialization", () => {
 
   it("gold_token.transfer.accepted consumes Token and emits [EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]", async () => {
     const minted = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 555n,
-      purity: 18n,
+      arg0: alice(),
+      arg1: 555n,
+      arg2: 18n,
     });
 
     const accepted = await gold.withSigner(alice()).transfer.accepted({
-      token: await minted.outputs.decrypt(alice()),
-      to: bob(),
+      arg0: await minted.outputs.decrypt(alice()),
+      arg1: bob(),
     });
 
     const concrete = await accepted.outputs[0].decrypt(bob());
@@ -164,14 +164,14 @@ describe("V15-compliant transfer materialization", () => {
 
   it("silver_token.transfer.accepted consumes Token and emits [EncryptedRecord<Token>, IdOnlyDynamicRecordHandle]", async () => {
     const minted = await silver.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 800n,
-      grade: 2n,
+      arg0: alice(),
+      arg1: 800n,
+      arg2: 2n,
     });
 
     const accepted = await silver.withSigner(alice()).transfer.accepted({
-      token: await minted.outputs.decrypt(alice()),
-      to: bob(),
+      arg0: await minted.outputs.decrypt(alice()),
+      arg1: bob(),
     });
 
     const concrete = await accepted.outputs[0].decrypt(bob());
@@ -191,14 +191,14 @@ describe("V15-compliant transfer materialization", () => {
   // issue_receipt, which mint internally) or client-side by decrypting it.
   it("direct balance_of on a held token is rejected by the V15 record-existence check", async () => {
     const minted = await gold.withSigner(alice()).mint_custom.accepted({
-      owner: alice(),
-      amount: 111n,
-      purity: 5n,
+      arg0: alice(),
+      arg1: 111n,
+      arg2: 5n,
     });
     const held = await minted.outputs.decrypt(alice());
 
     await expect(
-      gold.withSigner(alice()).balance_of.accepted({ token: asGoldToken(held) }),
+      gold.withSigner(alice()).balance_of.accepted({ arg0: asGoldToken(held) }),
     ).rejects.toThrow(
       /Non-static record input at r0 of the root function gold_token\.aleo\/balance_of is not known to correspond to a record on the ledger/,
     );
@@ -223,10 +223,10 @@ describe("dynamic_records runtime dispatch", () => {
 
   it("demo_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the gold sibling", async () => {
     const accepted = await router.demo_transfer.accepted({
-      token_program: Leo.identifier("gold_token"),
-      owner: alice(),
-      amount: 1000n,
-      to: alice(),
+      arg0: Leo.identifier("gold_token"),
+      arg1: alice(),
+      arg2: 1000n,
+      arg3: alice(),
     });
 
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
@@ -243,10 +243,10 @@ describe("dynamic_records runtime dispatch", () => {
 
   it("demo_transfer surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling", async () => {
     const accepted = await router.demo_transfer.accepted({
-      token_program: Leo.identifier("silver_token"),
-      owner: alice(),
-      amount: 2000n,
-      to: alice(),
+      arg0: Leo.identifier("silver_token"),
+      arg1: alice(),
+      arg2: 2000n,
+      arg3: alice(),
     });
 
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
@@ -261,9 +261,9 @@ describe("dynamic_records runtime dispatch", () => {
 
   it("read_balance reads an internally minted dynamic record via pure-read balance_of", async () => {
     const result = await router.read_balance.accepted({
-      token_program: Leo.identifier("gold_token"),
-      owner: alice(),
-      amount: 777n,
+      arg0: Leo.identifier("gold_token"),
+      arg1: alice(),
+      arg2: 777n,
     });
 
     expect(await result.outputs.decrypt(alice())).toBe(777n);
@@ -285,15 +285,15 @@ describe("dynamic_records runtime dispatch", () => {
     "route_transfer (devnode fast-path) surfaces IdOnlyDynamicRecordHandle; .match recovers the silver sibling",
     async () => {
       const minted = await silver.withSigner(alice()).mint_custom.accepted({
-        owner: alice(),
-        amount: 1200n,
-        grade: 2n,
+        arg0: alice(),
+        arg1: 1200n,
+        arg2: 2n,
       });
 
       const accepted = await router.route_transfer.accepted({
-        token_program: Leo.identifier("silver_token"),
-        token: asSilverToken(await minted.outputs.decrypt(alice())),
-        to: bob(),
+        arg0: Leo.identifier("silver_token"),
+        arg1: asSilverToken(await minted.outputs.decrypt(alice())),
+        arg2: bob(),
       });
 
       expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
@@ -317,9 +317,9 @@ describe("dynamic_records runtime dispatch", () => {
     "route_transfer with a held record is rejected under V15 proving (no spendable root commitment)",
     async () => {
       const minted = await silver.withSigner(alice()).mint_custom.accepted({
-        owner: alice(),
-        amount: 1200n,
-        grade: 2n,
+        arg0: alice(),
+        arg1: 1200n,
+        arg2: 2n,
       });
 
       // Catch once — this is a real proving execution against the devnode, so
@@ -327,9 +327,9 @@ describe("dynamic_records runtime dispatch", () => {
       let thrown: unknown;
       try {
         await router.route_transfer.accepted({
-          token_program: Leo.identifier("silver_token"),
-          token: asSilverToken(await minted.outputs.decrypt(alice())),
-          to: bob(),
+          arg0: Leo.identifier("silver_token"),
+          arg1: asSilverToken(await minted.outputs.decrypt(alice())),
+          arg2: bob(),
         });
       } catch (error) {
         thrown = error;
@@ -351,9 +351,9 @@ describe("dynamic_records runtime dispatch", () => {
 
   it("gold_beats_silver mints both sides internally and compares balances", async () => {
     const result = await router.gold_beats_silver.accepted({
-      owner: alice(),
-      gold_amount: 900n,
-      silver_amount: 300n,
+      arg0: alice(),
+      arg1: 900n,
+      arg2: 300n,
     });
 
     expect(await result.outputs.decrypt(alice())).toBe(true);
@@ -362,11 +362,11 @@ describe("dynamic_records runtime dispatch", () => {
   it("per-call runtime imports feed has_more without router constructor imports", async () => {
     const result = await perCallRouter.has_more.accepted(
       {
-        prog_a: Leo.identifier("gold_token"),
-        prog_b: Leo.identifier("silver_token"),
-        owner: alice(),
-        amount_a: 250n,
-        amount_b: 400n,
+        arg0: Leo.identifier("gold_token"),
+        arg1: Leo.identifier("silver_token"),
+        arg2: alice(),
+        arg3: 250n,
+        arg4: 400n,
       },
       { imports: RUNTIME_IMPORTS },
     );
@@ -376,11 +376,11 @@ describe("dynamic_records runtime dispatch", () => {
 
   it("demo_double_transfer disambiguates two transfer transitions via .from(name, idx, { match })", async () => {
     const accepted = await router.demo_double_transfer.accepted({
-      token_program: Leo.identifier("gold_token"),
-      owner: alice(),
-      amount: 1000n,
-      to_a: alice(),
-      to_b: bob(),
+      arg0: Leo.identifier("gold_token"),
+      arg1: alice(),
+      arg2: 1000n,
+      arg3: alice(),
+      arg4: bob(),
     });
 
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
@@ -427,8 +427,8 @@ describe("external_token_demo external + nested record outputs", () => {
 
   it("wrap_mint_gold returns IdOnlyExternalRecordHandle<GoldToken_Token>; idiomatic .from(...) recovers the callee token", async () => {
     const accepted = await demo.withSigner(alice()).wrap_mint_gold.accepted({
-      to: bob(),
-      amount: 100n,
+      arg0: bob(),
+      arg1: 100n,
     });
 
     expect(accepted.outputs.kind).toBe("idOnlyExternalRecord");
@@ -444,8 +444,8 @@ describe("external_token_demo external + nested record outputs", () => {
 
   it("wrap_mint_gold can use the positional .at(...) escape hatch", async () => {
     const accepted = await demo.withSigner(alice()).wrap_mint_gold.accepted({
-      to: bob(),
-      amount: 50n,
+      arg0: bob(),
+      arg1: 50n,
     });
 
     // The callee transition (`gold_token.mint`) is the one that actually
@@ -465,10 +465,10 @@ describe("external_token_demo external + nested record outputs", () => {
 
   it("issue_receipt: mints internally, reads via pure-read balance_of, emits a concrete Receipt", async () => {
     const accepted = await demo.withSigner(alice()).issue_receipt.accepted({
-      token_program: Leo.identifier("gold_token"),
-      owner: alice(),
-      amount: 500n,
-      to: bob(),
+      arg0: Leo.identifier("gold_token"),
+      arg1: alice(),
+      arg2: 500n,
+      arg3: bob(),
     });
 
     const receipt = await accepted.outputs.decrypt(bob());
@@ -489,15 +489,15 @@ describe("external_token_demo external + nested record outputs", () => {
     "dispatch_and_receipt (devnode fast-path): intermediate dyn-record dispatch does not poison the concrete final output",
     async () => {
       const minted = await gold.withSigner(alice()).mint_custom.accepted({
-        owner: alice(),
-        amount: 700n,
-        purity: 9n,
+        arg0: alice(),
+        arg1: 700n,
+        arg2: 9n,
       });
 
       const accepted = await demo.withSigner(alice()).dispatch_and_receipt.accepted({
-        token_program: Leo.identifier("gold_token"),
-        token: asGoldToken(await minted.outputs.decrypt(alice())),
-        to: bob(),
+        arg0: Leo.identifier("gold_token"),
+        arg1: asGoldToken(await minted.outputs.decrypt(alice())),
+        arg2: bob(),
       });
 
       // Final Receipt has a real ciphertext on external_token_demo's own
@@ -526,9 +526,9 @@ describe("external_token_demo external + nested record outputs", () => {
     "dispatch_and_receipt with a held record is rejected under V15 proving (no spendable root commitment)",
     async () => {
       const minted = await gold.withSigner(alice()).mint_custom.accepted({
-        owner: alice(),
-        amount: 700n,
-        purity: 9n,
+        arg0: alice(),
+        arg1: 700n,
+        arg2: 9n,
       });
 
       // Catch once — this is a real proving execution against the devnode, so
@@ -536,9 +536,9 @@ describe("external_token_demo external + nested record outputs", () => {
       let thrown: unknown;
       try {
         await demo.withSigner(alice()).dispatch_and_receipt.accepted({
-          token_program: Leo.identifier("gold_token"),
-          token: asGoldToken(await minted.outputs.decrypt(alice())),
-          to: bob(),
+          arg0: Leo.identifier("gold_token"),
+          arg1: asGoldToken(await minted.outputs.decrypt(alice())),
+          arg2: bob(),
         });
       } catch (error) {
         thrown = error;
@@ -570,8 +570,8 @@ describe("IdOnlyExternalRecordHandle .match negative cases", () => {
 
   async function getHandle() {
     const accepted = await demo.withSigner(alice()).wrap_mint_gold.accepted({
-      to: bob(),
-      amount: 1n,
+      arg0: bob(),
+      arg1: 1n,
     });
     expect(accepted.outputs.kind).toBe("idOnlyExternalRecord");
     return accepted.outputs;
@@ -667,10 +667,10 @@ describe("IdOnlyDynamicRecordHandle .match negative cases", () => {
   // `token_router.aleo/demo_transfer` root.
   async function dynHandle() {
     const accepted = await router.demo_transfer.accepted({
-      token_program: Leo.identifier("gold_token"),
-      owner: alice(),
-      amount: 11n,
-      to: bob(),
+      arg0: Leo.identifier("gold_token"),
+      arg1: alice(),
+      arg2: 11n,
+      arg3: bob(),
     });
     expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
     return accepted.outputs;
@@ -742,9 +742,9 @@ describe("EncryptedRecord .match identity guard", () => {
 
   it("rejects with TransactionShapeError when matcher program/recordName differ from the ciphertext's identity", async () => {
     const minted = await gold.mint_custom.accepted({
-      owner: alice(),
-      amount: 42n,
-      purity: 10n,
+      arg0: alice(),
+      arg1: 42n,
+      arg2: 10n,
     });
 
     // The minted output is an EncryptedRecord<Token> for gold_token.aleo/Token.

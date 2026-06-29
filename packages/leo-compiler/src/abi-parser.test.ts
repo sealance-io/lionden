@@ -295,7 +295,8 @@ describe("parseAbi — path preservation", () => {
     );
     expect(abi.records[0]!.path).toEqual(["Token"]);
     expect(abi.records[0]!.fields).toHaveLength(2);
-    expect(abi.records[0]!.fields[0]!.mode).toBe("None");
+    // Unmoded record-definition field: None canonicalizes to Private.
+    expect(abi.records[0]!.fields[0]!.mode).toBe("Private");
   });
 
   it("wraps bare name into single-element path (backwards compat)", () => {
@@ -530,7 +531,7 @@ describe("parseAbi — function type normalization", () => {
     expect(abi.transitions[0]!.outputs[0]!.ty).toBe("DynamicRecord");
   });
 
-  it("preserves Record ref with path and program in input", () => {
+  it("canonicalizes a self Record ref (program === self) to null in input", () => {
     const abi = parseAbi(
       JSON.stringify({
         program: "token.aleo",
@@ -551,11 +552,11 @@ describe("parseAbi — function type normalization", () => {
       }),
     );
     expect(abi.transitions[0]!.inputs[0]!.ty).toEqual({
-      Record: { path: ["Token"], program: "token.aleo" },
+      Record: { path: ["Token"], program: null },
     });
   });
 
-  it("preserves Record ref with path and program in output", () => {
+  it("canonicalizes a self Record ref (program === self) to null in output", () => {
     const abi = parseAbi(
       JSON.stringify({
         program: "token.aleo",
@@ -575,6 +576,31 @@ describe("parseAbi — function type normalization", () => {
       }),
     );
     expect(abi.transitions[0]!.outputs[0]!.ty).toEqual({
+      Record: { path: ["Token"], program: null },
+    });
+  });
+
+  it("preserves an external Record ref program identity", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "wallet.aleo",
+        functions: [
+          {
+            name: "spend",
+            is_final: false,
+            inputs: [
+              {
+                name: "token",
+                ty: { Record: { path: ["Token"], program: "token.aleo" } },
+                mode: "None",
+              },
+            ],
+            outputs: [],
+          },
+        ],
+      }),
+    );
+    expect(abi.transitions[0]!.inputs[0]!.ty).toEqual({
       Record: { path: ["Token"], program: "token.aleo" },
     });
   });
@@ -861,9 +887,17 @@ describe("parseAbi — all primitive types", () => {
 // All mode values
 // ---------------------------------------------------------------------------
 
-describe("parseAbi — all mode values", () => {
-  for (const mode of ["None", "Public", "Private"] as const) {
-    it(`preserves ${mode} mode on function inputs`, () => {
+describe("parseAbi — mode canonicalization", () => {
+  // [wire mode, canonical mode for a transition input]. None/absent collapse to
+  // Private (transition default); Public/Private/Constant pass through.
+  const transitionCases: ReadonlyArray<[string, "Public" | "Private" | "Constant"]> = [
+    ["None", "Private"],
+    ["Public", "Public"],
+    ["Private", "Private"],
+    ["Constant", "Constant"],
+  ];
+  for (const [wire, canonical] of transitionCases) {
+    it(`canonicalizes ${wire} mode on a transition input to ${canonical}`, () => {
       const abi = parseAbi(
         JSON.stringify({
           program: "test.aleo",
@@ -871,30 +905,72 @@ describe("parseAbi — all mode values", () => {
             {
               name: "fn",
               is_final: false,
-              inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode }],
+              inputs: [
+                { name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: wire },
+              ],
               outputs: [],
             },
           ],
         }),
       );
-      expect(abi.transitions[0]!.inputs[0]!.mode).toBe(mode);
+      expect(abi.transitions[0]!.inputs[0]!.mode).toBe(canonical);
     });
   }
 
-  for (const mode of ["None", "Public", "Private"] as const) {
-    it(`preserves ${mode} mode on record fields`, () => {
+  it("canonicalizes an absent transition-input plaintext mode to Private", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "test.aleo",
+        functions: [
+          {
+            name: "fn",
+            is_final: false,
+            inputs: [{ name: "x", ty: { Plaintext: { Primitive: { UInt: "U32" } } } }],
+            outputs: [],
+          },
+        ],
+      }),
+    );
+    expect(abi.transitions[0]!.inputs[0]!.mode).toBe("Private");
+  });
+
+  it("canonicalizes an unmoded view plaintext I/O to Public", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "test.aleo",
+        views: [
+          {
+            name: "balance",
+            inputs: [{ name: "account", ty: { Plaintext: { Primitive: "Address" } } }],
+            outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } } }],
+          },
+        ],
+      }),
+    );
+    expect(abi.views![0]!.inputs[0]!.mode).toBe("Public");
+    expect(abi.views![0]!.outputs[0]!.mode).toBe("Public");
+  });
+
+  // Record-definition fields: None/absent → Private; Public/Private pass through.
+  const recordCases: ReadonlyArray<[string, "Public" | "Private"]> = [
+    ["None", "Private"],
+    ["Public", "Public"],
+    ["Private", "Private"],
+  ];
+  for (const [wire, canonical] of recordCases) {
+    it(`canonicalizes ${wire} mode on a record field to ${canonical}`, () => {
       const abi = parseAbi(
         JSON.stringify({
           program: "test.aleo",
           records: [
             {
               path: ["Rec"],
-              fields: [{ name: "val", ty: { Primitive: { UInt: "U32" } }, mode }],
+              fields: [{ name: "val", ty: { Primitive: { UInt: "U32" } }, mode: wire }],
             },
           ],
         }),
       );
-      expect(abi.records[0]!.fields[0]!.mode).toBe(mode);
+      expect(abi.records[0]!.fields[0]!.mode).toBe(canonical);
     });
   }
 });
@@ -1028,20 +1104,200 @@ describe("parseAbi — complex ABI with all features", () => {
     expect(addLiq.inputs).toHaveLength(3);
     expect(addLiq.outputs).toHaveLength(2);
     expect(addLiq.outputs[0]!.ty).toEqual({
-      Record: { path: ["LPToken"], program: "dex.aleo" },
+      Record: { path: ["LPToken"], program: null },
     });
     expect(addLiq.outputs[1]!.ty).toEqual({ Future: "dex.aleo" });
 
     // remove_liquidity: Record input preserved
     const removeLiq = abi.transitions[1]!;
     expect(removeLiq.inputs[0]!.ty).toEqual({
-      Record: { path: ["LPToken"], program: "dex.aleo" },
+      Record: { path: ["LPToken"], program: null },
     });
 
     // swap: sync function
     const swap = abi.transitions[2]!;
     expect(swap.is_async).toBe(false);
     expect(swap.outputs[0]!.ty).toEqual({ Plaintext: { Primitive: { UInt: "U128" } } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Leo 4.2 wire shape — positional inputs, bare enum I/O, dropped fields
+// ---------------------------------------------------------------------------
+
+describe("parseAbi — Leo 4.2 wire shape", () => {
+  it("synthesizes positional names (arg0, arg1) for unnamed 4.2 inputs", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "calc.aleo",
+        functions: [
+          {
+            name: "add",
+            inputs: [
+              { Plaintext: { ty: { Primitive: { UInt: "U32" } }, mode: "Private" } },
+              { Plaintext: { ty: { Primitive: { UInt: "U32" } }, mode: "Private" } },
+            ],
+            outputs: [{ Plaintext: { ty: { Primitive: { UInt: "U32" } }, mode: "Private" } }],
+          },
+        ],
+      }),
+    );
+    const inputs = abi.transitions[0]!.inputs;
+    expect(inputs.map((i) => i.name)).toEqual(["arg0", "arg1"]);
+    expect(inputs[0]!.ty).toEqual({ Plaintext: { Primitive: { UInt: "U32" } } });
+  });
+
+  it("preserves existing 4.1 input names (synthesis only when absent)", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "calc.aleo",
+        functions: [
+          {
+            name: "add",
+            is_final: false,
+            inputs: [
+              { name: "a", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Private" },
+              { name: "b", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Private" },
+            ],
+            outputs: [],
+          },
+        ],
+      }),
+    );
+    expect(abi.transitions[0]!.inputs.map((i) => i.name)).toEqual(["a", "b"]);
+  });
+
+  it("infers is_async from a bare Final output when is_final is absent (4.2)", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "bank.aleo",
+        functions: [
+          {
+            name: "deposit",
+            inputs: [{ Plaintext: { ty: { Primitive: { UInt: "U64" } }, mode: "Public" } }],
+            outputs: ["Final"],
+          },
+          {
+            name: "preview",
+            inputs: [{ Plaintext: { ty: { Primitive: { UInt: "U64" } }, mode: "Private" } }],
+            outputs: [{ Plaintext: { ty: { Primitive: { UInt: "U64" } }, mode: "Private" } }],
+          },
+        ],
+      }),
+    );
+    expect(abi.transitions[0]!.is_async).toBe(true);
+    expect(abi.transitions[0]!.outputs[0]!.ty).toEqual({ Future: "bank.aleo" });
+    expect(abi.transitions[1]!.is_async).toBe(false);
+  });
+
+  it("reads a 4.2 positional Record input (no mode) and canonicalizes a self-ref to null", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "token.aleo",
+        functions: [
+          {
+            name: "spend",
+            inputs: [{ Record: { path: ["Token"], program: "token.aleo" } }],
+            outputs: [],
+          },
+        ],
+      }),
+    );
+    const input = abi.transitions[0]!.inputs[0]!;
+    expect(input.name).toBe("arg0");
+    expect(input.ty).toEqual({ Record: { path: ["Token"], program: null } });
+    expect(input.mode).toBe("Private"); // inert mode on a non-plaintext input
+  });
+
+  it("parses a Constant plaintext mode (passthrough)", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "cfg.aleo",
+        functions: [
+          {
+            name: "tune",
+            inputs: [{ Plaintext: { ty: { Primitive: { UInt: "U8" } }, mode: "Constant" } }],
+            outputs: [],
+          },
+        ],
+      }),
+    );
+    expect(abi.transitions[0]!.inputs[0]!.mode).toBe("Constant");
+  });
+
+  it("canonicalizes self-refs to null across struct, mapping, and storage-variable surfaces", () => {
+    const abi = parseAbi(
+      JSON.stringify({
+        program: "self.aleo",
+        structs: [
+          {
+            path: ["Wrap"],
+            fields: [{ name: "inner", ty: { Struct: { path: ["Inner"], program: "self.aleo" } } }],
+          },
+        ],
+        mappings: [
+          {
+            name: "reg",
+            key: { Primitive: "Field" },
+            value: { Struct: { path: ["Inner"], program: "self.aleo" } },
+          },
+        ],
+        storage_variables: [
+          { name: "box", ty: { Plaintext: { Struct: { path: ["Inner"], program: "self.aleo" } } } },
+        ],
+      }),
+    );
+    expect(abi.structs[0]!.fields[0]!.ty).toEqual({ Struct: { path: ["Inner"], program: null } });
+    expect(abi.mappings[0]!.value).toEqual({ Struct: { path: ["Inner"], program: null } });
+    expect(abi.storage_variables[0]!.ty).toEqual({
+      Plaintext: { Struct: { path: ["Inner"], program: null } },
+    });
+  });
+
+  it("is idempotent: re-parsing a normalized ABI is a fixed point", () => {
+    const once = parseAbi(
+      JSON.stringify({
+        program: "dex.aleo",
+        structs: [
+          {
+            path: ["Pair"],
+            fields: [{ name: "a", ty: { Struct: { path: ["Inner"], program: "dex.aleo" } } }],
+          },
+          { path: ["Inner"], fields: [{ name: "x", ty: { Primitive: { UInt: "U32" } } }] },
+        ],
+        records: [
+          { path: ["LP"], fields: [{ name: "owner", ty: { Primitive: "Address" }, mode: "None" }] },
+        ],
+        mappings: [
+          {
+            name: "m",
+            key: { Primitive: "Field" },
+            value: { Struct: { path: ["Pair"], program: "dex.aleo" } },
+          },
+        ],
+        storage_variables: [{ name: "v", ty: { Vector: { Plaintext: { Primitive: "Address" } } } }],
+        functions: [
+          {
+            name: "trade",
+            inputs: [
+              { Plaintext: { ty: { Primitive: { UInt: "U128" } } } },
+              { Record: { path: ["LP"], program: "dex.aleo" } },
+              "DynamicRecord",
+            ],
+            outputs: [{ Record: { path: ["LP"], program: "dex.aleo" } }, "Final"],
+          },
+        ],
+        views: [
+          {
+            name: "peek",
+            inputs: [{ Plaintext: { ty: { Primitive: "Address" } } }],
+            outputs: [{ Plaintext: { ty: { Primitive: { UInt: "U64" } } } }],
+          },
+        ],
+      }),
+    );
+    const twice = parseAbi(JSON.stringify(once));
+    expect(twice).toEqual(once);
   });
 });
 
@@ -1067,7 +1323,8 @@ describe("parseAbi — fixture files", () => {
     expect(main.inputs).toHaveLength(2);
     expect(main.inputs[0]!.name).toBe("a");
     expect(main.inputs[0]!.ty).toEqual({ Plaintext: { Primitive: { UInt: "U32" } } });
-    expect(main.inputs[0]!.mode).toBe("None");
+    // Unmoded 4.1 transition input: None canonicalizes to Private.
+    expect(main.inputs[0]!.mode).toBe("Private");
     expect(main.outputs).toHaveLength(1);
     expect(main.outputs[0]!.ty).toEqual({ Plaintext: { Primitive: { UInt: "U32" } } });
 
@@ -1106,26 +1363,26 @@ describe("parseAbi — fixture files", () => {
     expect(mintPublic.inputs[0]!.mode).toBe("Public");
     expect(mintPublic.outputs[0]!.ty).toEqual({ Future: "token.aleo" });
 
-    // mint_private: sync, returns Record with preserved ref
+    // mint_private: sync, returns Record; self-ref program canonicalized to null
     const mintPrivate = abi.transitions[2]!;
     expect(mintPrivate.name).toBe("mint_private");
     expect(mintPrivate.is_async).toBe(false);
     expect(mintPrivate.outputs[0]!.ty).toEqual({
-      Record: { path: ["Token"], program: "token.aleo" },
+      Record: { path: ["Token"], program: null },
     });
 
-    // transfer_private: takes Record input, returns two Records
+    // transfer_private: takes Record input, returns two Records (self-refs → null)
     const transferPrivate = abi.transitions[3]!;
     expect(transferPrivate.name).toBe("transfer_private");
     expect(transferPrivate.inputs[0]!.ty).toEqual({
-      Record: { path: ["Token"], program: "token.aleo" },
+      Record: { path: ["Token"], program: null },
     });
     expect(transferPrivate.outputs).toHaveLength(2);
     expect(transferPrivate.outputs[0]!.ty).toEqual({
-      Record: { path: ["Token"], program: "token.aleo" },
+      Record: { path: ["Token"], program: null },
     });
     expect(transferPrivate.outputs[1]!.ty).toEqual({
-      Record: { path: ["Token"], program: "token.aleo" },
+      Record: { path: ["Token"], program: null },
     });
   });
 

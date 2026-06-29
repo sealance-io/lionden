@@ -504,6 +504,76 @@ describe("compilePipeline network dep handling", () => {
     }
   });
 
+  it("gates --enable-dce / --conditional-block-max-depth on Leo < 4.2", async () => {
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const argsLog = path.join(tmpDir, "leo-args.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(binDir, "leo"),
+      [
+        "#!/bin/sh",
+        'printf \'%s\\n\' "$@" > "$LIONDEN_LEO_ARGS_LOG"',
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(basename "$pkg")',
+        'mkdir -p "$pkg/build"',
+        'printf \'{"program":"%s","structs":[],"records":[],"mappings":[],"storage_variables":[],"functions":[]}\\n\' "$id" > "$pkg/build/abi.json"',
+        'printf \'program %s {}\\n\' "$id" > "$pkg/build/main.aleo"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.LIONDEN_LEO_ARGS_LOG;
+    process.env.PATH = `${binDir}${path.delimiter}${originalPath ?? ""}`;
+    process.env.LIONDEN_LEO_ARGS_LOG = argsLog;
+
+    // The depth flag only appears when set away from its default of 10.
+    const compilerOverride = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 5,
+      buildTests: false,
+      extraFlags: [],
+    };
+
+    try {
+      // Leo 4.1 still exposes both flags → they are forwarded. `force` bypasses
+      // the compile cache (which keys on source only, not leoVersion) so leo is
+      // actually invoked and re-logs its argv on each run.
+      await compilePipeline(makeConfig({ leoVersion: "4.1.0", compiler: compilerOverride }), {
+        noTypechain: true,
+        force: true,
+      });
+      const v41Args = readLogLines(argsLog);
+      expect(v41Args).toContain("--enable-dce");
+      expect(v41Args).toContain("--conditional-block-max-depth");
+
+      // Leo 4.2 removed both flags → they must be omitted (else the build hard-fails
+      // with "unexpected argument").
+      fs.rmSync(argsLog, { force: true });
+      await compilePipeline(makeConfig({ leoVersion: "4.2.0", compiler: compilerOverride }), {
+        noTypechain: true,
+        force: true,
+      });
+      const v42Args = readLogLines(argsLog);
+      expect(v42Args).not.toContain("--enable-dce");
+      expect(v42Args).not.toContain("--conditional-block-max-depth");
+    } finally {
+      process.env.PATH = originalPath;
+      if (originalLog === undefined) {
+        delete process.env.LIONDEN_LEO_ARGS_LOG;
+      } else {
+        process.env.LIONDEN_LEO_ARGS_LOG = originalLog;
+      }
+    }
+  });
+
   it("records unambiguous prover and verifier artifact refs in the sidecar", async () => {
     writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
 

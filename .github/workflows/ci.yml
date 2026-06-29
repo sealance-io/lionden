@@ -177,12 +177,12 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # v1.1.1 adds Leo 4.1.0 source-tag support (leo-lang-v4.1.0).
+      # v1.1.2 adds Leo 4.2.0 support (leo-lang-v4.2.0).
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
+        uses: sealance-io/setup-leo-action@12eec4e21066fe8dddb7ed99112913fac124c192 # v1.1.2
         with:
-          version: "4.1.0" # semver-only; must match core examples' leoVersion (preflight checks major.minor)
-          rust-version: "1.96.0" # Leo v4.1.0 minimum toolchain
+          version: "4.2.0" # semver-only; must match core examples' leoVersion (preflight checks major.minor)
+          rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
           enable-cache: true
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
           run-audit: true
@@ -214,10 +214,10 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
+        uses: sealance-io/setup-leo-action@12eec4e21066fe8dddb7ed99112913fac124c192 # v1.1.2
         with:
-          version: "4.1.0" # must match the lane's leoVersion
-          rust-version: "1.96.0" # Leo v4.1.0 minimum toolchain
+          version: "4.2.0" # must match the lane's leoVersion
+          rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
           enable-cache: true
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
           run-audit: true

@@ -28,7 +28,7 @@ Users define config with `defineConfig()` from `@lionden/config`. The user confi
 
 Resolved config fills defaults and converts paths into absolute paths. Current defaults include:
 
-- `leoVersion: "4.1.0"`
+- `leoVersion: "4.2.0"`
 - `programsDir: "programs"`
 - `artifactsDir: "artifacts"`
 - `typechainDir: "typechain"`

@@ -42,20 +42,20 @@ describe("treasury program", () => {
   });
 
   it("deposits funds for the signer", async () => {
-    await treasury.deposit.accepted({ amount: 500n });
+    await treasury.deposit.accepted({ arg0: 500n });
 
     expect(await treasury.mappings.deposits.get(signer())).toBe(500n);
   });
 
   it("accumulates multiple deposits", async () => {
-    await treasury.deposit.accepted({ amount: 300n });
+    await treasury.deposit.accepted({ arg0: 300n });
 
     // 500 from previous test + 300
     expect(await treasury.mappings.deposits.get(signer())).toBe(800n);
   });
 
   it("withdraws funds for the signer", async () => {
-    await treasury.withdraw.accepted({ amount: 200n });
+    await treasury.withdraw.accepted({ arg0: 200n });
 
     // 800 - 200
     expect(await treasury.mappings.deposits.get(signer())).toBe(600n);
@@ -73,13 +73,13 @@ describe("rewards program", () => {
   });
 
   it("earns reward points", async () => {
-    await rewards.earn_points.accepted({ amount: 75n });
+    await rewards.earn_points.accepted({ arg0: 75n });
 
     expect(await rewards.mappings.points.get(signer())).toBe(75n);
   });
 
   it("accumulates points across calls", async () => {
-    await rewards.earn_points.accepted({ amount: 50n });
+    await rewards.earn_points.accepted({ arg0: 50n });
 
     // 75 + 50 = 125
     expect(await rewards.mappings.points.get(signer())).toBe(125n);
@@ -94,7 +94,7 @@ describe("rewards program", () => {
       // Signer has 125 points (>= 100 threshold), so claiming should succeed.
       // claim_reward calls treasury.aleo::deposit() cross-program.
       // Both programs use self.signer, so the deposit is keyed by account-0.
-      await rewards.claim_reward.accepted({ reward_amount: 1000n });
+      await rewards.claim_reward.accepted({ arg0: 1000n });
 
       // Verify claimed flag is set
       expect(await rewards.mappings.claimed.get(signer())).toBe(true);

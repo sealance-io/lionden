@@ -165,7 +165,7 @@ export const SPECS: readonly SampleGroupSpec[] = [
     // See test/fixtures/leo-samples/README.md § Findings and the 0f proof.
     excluded: {
       reason:
-        "Leo 4.1.0 cannot code-generate a library-qualified struct type path (<lib>.aleo::Type); " +
+        "Leo 4.2.0 cannot code-generate a library-qualified struct type path (<lib>.aleo::Type); " +
         "lionden's .aleo-only library convention supports library functions but not library struct types.",
       finding:
         "external_composition's surface is predominantly library struct types " +
@@ -235,6 +235,23 @@ export const SPECS: readonly SampleGroupSpec[] = [
         "timelock_upgrade.aleo": [],
         "governance.aleo": [],
       },
+      networkDeps: [],
+    },
+  },
+  {
+    // Dedicated single-program group (kept out of the `upgradability` matrix to
+    // keep that suite's accept/reject taxonomy clean). Drives the end-to-end
+    // ABI-compat REJECT path: deploy v1 → swap the breaking v2 → upgrade →
+    // UpgradeCompatibilityError. The @custom always-allow constructor means the
+    // abi-compat preflight is the ONLY reason the upgrade is refused. v2 changes
+    // `version()`'s output type (u8 → u32), a `transition_modified` violation.
+    name: "abi_break",
+    packages: ["upgradability/abi_break"],
+    v2Packages: [{ upstreamDir: "upgradability/abi_break_v2", programId: "abi_break.aleo" }],
+    timeout: DEVNODE_TIMEOUT,
+    expected: {
+      units: ["abi_break.aleo"],
+      imports: { "abi_break.aleo": [] },
       networkDeps: [],
     },
   },

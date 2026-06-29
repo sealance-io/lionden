@@ -152,7 +152,7 @@ const SAMPLE_ABI: ProgramABI = {
         {
           name: "receiver",
           ty: { Plaintext: { Primitive: "Address" as const } },
-          mode: "None" as const,
+          mode: "Private" as const,
         },
         {
           name: "amount",
@@ -160,7 +160,7 @@ const SAMPLE_ABI: ProgramABI = {
           mode: "Public" as const,
         },
       ],
-      outputs: [{ ty: { Record: rref("Token") }, mode: "None" as const }],
+      outputs: [{ ty: { Record: rref("Token") }, mode: "Private" as const }],
     },
     {
       name: "transfer",
@@ -169,7 +169,7 @@ const SAMPLE_ABI: ProgramABI = {
         {
           name: "receiver",
           ty: { Plaintext: { Primitive: "Address" as const } },
-          mode: "None" as const,
+          mode: "Private" as const,
         },
         {
           name: "amount",
@@ -218,7 +218,7 @@ function baseUnsupportedPrimitiveAbi(): ProgramABI {
           {
             name: "amount",
             ty: { Plaintext: { Primitive: { UInt: "U64" } } },
-            mode: "None",
+            mode: "Private",
           },
         ],
         outputs: [],
@@ -300,7 +300,7 @@ describe("unsupported primitive validation", () => {
         {
           name: "sign",
           is_async: false,
-          inputs: [{ name: "signature", ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "None" }],
+          inputs: [{ name: "signature", ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "Private" }],
           outputs: [],
         },
       ],
@@ -318,7 +318,7 @@ describe("unsupported primitive validation", () => {
           name: "sign",
           is_async: false,
           inputs: [],
-          outputs: [{ ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "None" }],
+          outputs: [{ ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "Private" }],
         },
       ],
     };
@@ -438,7 +438,7 @@ describe("unsupported primitive validation", () => {
             {
               name: "future",
               ty: { Plaintext: { Primitive: "FutureSignature" as any } },
-              mode: "None",
+              mode: "Private",
             },
           ],
           outputs: [],
@@ -536,7 +536,7 @@ describe("generateBindings", () => {
         {
           name: "spend",
           is_async: false,
-          inputs: [{ name: "coin", ty: { Record: rref("Coin") }, mode: "None" as const }],
+          inputs: [{ name: "coin", ty: { Record: rref("Coin") }, mode: "Private" as const }],
           outputs: [],
         },
       ],
@@ -612,10 +612,20 @@ describe("generateBindings", () => {
           name: "add",
           is_async: false,
           inputs: [
-            { name: "a", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
-            { name: "b", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
+            {
+              name: "a",
+              ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+              mode: "Private" as const,
+            },
+            {
+              name: "b",
+              ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+              mode: "Private" as const,
+            },
           ],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const }],
+          outputs: [
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" as const },
+          ],
         },
       ],
     };
@@ -708,7 +718,10 @@ describe("generateBindings", () => {
           is_async: false,
           inputs: [],
           outputs: [
-            { ty: { Plaintext: { Array: [{ Struct: sref("Point") }, 3] } }, mode: "None" as const },
+            {
+              ty: { Plaintext: { Array: [{ Struct: sref("Point") }, 3] } },
+              mode: "Private" as const,
+            },
           ],
         },
       ],
@@ -783,7 +796,7 @@ describe("async transitions with Future output", () => {
               mode: "Public" as const,
             },
           ],
-          outputs: [{ ty: { Future: "vault.aleo" }, mode: "None" as const }],
+          outputs: [{ ty: { Future: "vault.aleo" }, mode: "Private" as const }],
         },
       ],
     };
@@ -819,8 +832,8 @@ describe("async transitions with Future output", () => {
             },
           ],
           outputs: [
-            { ty: { Record: rref("Token") }, mode: "None" as const },
-            { ty: { Future: "token.aleo" }, mode: "None" as const },
+            { ty: { Record: rref("Token") }, mode: "Private" as const },
+            { ty: { Future: "token.aleo" }, mode: "Private" as const },
           ],
         },
       ],
@@ -843,8 +856,8 @@ describe("DynamicRecord handling", () => {
         {
           name: "forward",
           is_async: false,
-          inputs: [{ name: "record", ty: "DynamicRecord", mode: "None" as const }],
-          outputs: [{ ty: "DynamicRecord", mode: "None" as const }],
+          inputs: [{ name: "record", ty: "DynamicRecord", mode: "Private" as const }],
+          outputs: [{ ty: "DynamicRecord", mode: "Private" as const }],
         },
       ],
     };
@@ -878,13 +891,13 @@ describe("external references", () => {
             {
               name: "info",
               ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [
             {
               ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
         },
@@ -914,13 +927,13 @@ describe("external references", () => {
             {
               name: "record",
               ty: { Record: { path: ["credits"], program: "credits.aleo" } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [
             {
               ty: { Record: { path: ["credits"], program: "credits.aleo" } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
         },
@@ -961,13 +974,13 @@ describe("external references", () => {
             {
               name: "info",
               ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [
             {
               ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
         },
@@ -1015,13 +1028,13 @@ describe("external references", () => {
             {
               name: "record",
               ty: { Record: { path: ["Credit"], program: "credits.aleo" } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [
             {
               ty: { Record: { path: ["Credit"], program: "credits.aleo" } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
         },
@@ -1256,12 +1269,20 @@ describe("multiple outputs", () => {
           name: "div_mod",
           is_async: false,
           inputs: [
-            { name: "a", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
-            { name: "b", ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
+            {
+              name: "a",
+              ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+              mode: "Private" as const,
+            },
+            {
+              name: "b",
+              ty: { Plaintext: { Primitive: { UInt: "U64" } } },
+              mode: "Private" as const,
+            },
           ],
           outputs: [
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" as const },
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" as const },
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" as const },
           ],
         },
       ],
@@ -1289,10 +1310,10 @@ describe("multiple outputs", () => {
         {
           name: "split",
           is_async: false,
-          inputs: [{ name: "coin", ty: { Record: rref("Coin") }, mode: "None" as const }],
+          inputs: [{ name: "coin", ty: { Record: rref("Coin") }, mode: "Private" as const }],
           outputs: [
-            { ty: { Record: rref("Coin") }, mode: "None" as const },
-            { ty: { Record: rref("Coin") }, mode: "None" as const },
+            { ty: { Record: rref("Coin") }, mode: "Private" as const },
+            { ty: { Record: rref("Coin") }, mode: "Private" as const },
           ],
         },
       ],
@@ -1557,7 +1578,7 @@ describe("serialization of all primitive types", () => {
             {
               name: "to",
               ty: { Plaintext: { Primitive: "Address" as const } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [],
@@ -1585,7 +1606,7 @@ describe("serialization of all primitive types", () => {
             {
               name: "flag",
               ty: { Plaintext: { Primitive: "Boolean" as const } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [],
@@ -1610,8 +1631,16 @@ describe("serialization of all primitive types", () => {
           name: "compute",
           is_async: false,
           inputs: [
-            { name: "a", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const },
-            { name: "b", ty: { Plaintext: { Primitive: { Int: "I64" } } }, mode: "None" as const },
+            {
+              name: "a",
+              ty: { Plaintext: { Primitive: { UInt: "U32" } } },
+              mode: "Private" as const,
+            },
+            {
+              name: "b",
+              ty: { Plaintext: { Primitive: { Int: "I64" } } },
+              mode: "Private" as const,
+            },
           ],
           outputs: [],
         },
@@ -1664,21 +1693,21 @@ describe("serialization of all primitive types", () => {
             {
               name: "strategy",
               ty: { Plaintext: { Primitive: "Identifier" } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
             {
               name: "maybe_strategy",
               ty: { Plaintext: { Optional: { Primitive: "Identifier" } } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
             {
               name: "strategies",
               ty: { Plaintext: { Array: [{ Primitive: "Identifier" }, 2] } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
-            { name: "vote", ty: { Record: rref("Vote") }, mode: "None" as const },
+            { name: "vote", ty: { Record: rref("Vote") }, mode: "Private" as const },
           ],
-          outputs: [{ ty: { Plaintext: { Primitive: "Identifier" } }, mode: "None" as const }],
+          outputs: [{ ty: { Plaintext: { Primitive: "Identifier" } }, mode: "Private" as const }],
         },
       ],
     };
@@ -1723,10 +1752,12 @@ describe("serialization of all primitive types", () => {
             {
               name: "values",
               ty: { Plaintext: { Array: [{ Primitive: { UInt: "U32" } }, 4] } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const }],
+          outputs: [
+            { ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Private" as const },
+          ],
         },
       ],
     };
@@ -1750,7 +1781,7 @@ describe("deserialization of output types", () => {
           is_async: false,
           inputs: [],
           outputs: [
-            { ty: { Plaintext: { Primitive: "Boolean" as const } }, mode: "None" as const },
+            { ty: { Plaintext: { Primitive: "Boolean" as const } }, mode: "Private" as const },
           ],
         },
       ],
@@ -1772,7 +1803,9 @@ describe("deserialization of output types", () => {
           name: "count",
           is_async: false,
           inputs: [],
-          outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "None" as const }],
+          outputs: [
+            { ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Private" as const },
+          ],
         },
       ],
     };
@@ -1794,7 +1827,7 @@ describe("deserialization of output types", () => {
           is_async: false,
           inputs: [],
           outputs: [
-            { ty: { Plaintext: { Primitive: "Address" as const } }, mode: "None" as const },
+            { ty: { Plaintext: { Primitive: "Address" as const } }, mode: "Private" as const },
           ],
         },
       ],
@@ -1817,7 +1850,7 @@ describe("deserialization of output types", () => {
             name: "get_val",
             is_async: false,
             inputs: [],
-            outputs: [{ ty: { Plaintext: { Primitive: prim } }, mode: "None" as const }],
+            outputs: [{ ty: { Plaintext: { Primitive: prim } }, mode: "Private" as const }],
           },
         ],
       };
@@ -1903,16 +1936,16 @@ describe("generated TypeScript validity", () => {
               ty: { Plaintext: { Primitive: "Address" } },
               mode: "Public" as const,
             },
-            { name: "record", ty: { Record: rref("Coin") }, mode: "None" as const },
+            { name: "record", ty: { Record: rref("Coin") }, mode: "Private" as const },
             {
               name: "externalInfo",
               ty: { Plaintext: { Struct: { path: ["Info"], program: "registry.aleo" } } },
-              mode: "None" as const,
+              mode: "Private" as const,
             },
           ],
           outputs: [
-            { ty: { Record: rref("Coin") }, mode: "None" as const },
-            { ty: { Future: "check.aleo" }, mode: "None" as const },
+            { ty: { Record: rref("Coin") }, mode: "Private" as const },
+            { ty: { Future: "check.aleo" }, mode: "Private" as const },
           ],
         },
       ],
@@ -1931,8 +1964,8 @@ describe("interface conversion helper emission", () => {
       {
         path: ["Token"],
         fields: [
-          { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "None" },
-          { name: "_version", ty: { Primitive: { UInt: "U8" } }, mode: "None" },
+          { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" },
+          { name: "_version", ty: { Primitive: { UInt: "U8" } }, mode: "Private" },
         ],
       },
     ],
@@ -2054,7 +2087,7 @@ describe("interface conversion helper emission", () => {
         {
           path: ["Token"],
           fields: [
-            { name: "data", ty: { Array: [{ Primitive: { UInt: "U8" } }, 4] }, mode: "None" },
+            { name: "data", ty: { Array: [{ Primitive: { UInt: "U8" } }, 4] }, mode: "Private" },
           ],
         },
       ],
@@ -2079,7 +2112,7 @@ describe("interface conversion helper emission", () => {
       records: [
         {
           path: ["Token"],
-          fields: [{ name: "id", ty: { Primitive: "Identifier" }, mode: "None" }],
+          fields: [{ name: "id", ty: { Primitive: "Identifier" }, mode: "Private" }],
         },
       ],
     };
@@ -2127,7 +2160,7 @@ describe("typed-output projector Future index contract", () => {
       records: [
         {
           path: ["Token"],
-          fields: [{ name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "None" }],
+          fields: [{ name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" }],
         },
       ],
       mappings: [],
@@ -2137,7 +2170,7 @@ describe("typed-output projector Future index contract", () => {
           name: "demo",
           is_async: true,
           inputs: [],
-          outputs: outputs.map((o) => ({ ty: o.ty, mode: "None" as const })),
+          outputs: outputs.map((o) => ({ ty: o.ty, mode: "Private" as const })),
         },
       ],
     };
@@ -2158,7 +2191,7 @@ describe("typed-output projector Future index contract", () => {
   });
 
   it("[Token, Future, u128] wraps rawOutputs[0] and rawOutputs[2], skipping index 1", () => {
-    // u128 is mode: "None" (default-private) in abiWithOutputs, so it becomes
+    // u128 is mode: "Private" (default-private) in abiWithOutputs, so it becomes
     // EncryptedValue<bigint> rather than bare bigint.
     const abi = abiWithOutputs([
       { ty: { Record: rref("Token") } },
@@ -2195,8 +2228,8 @@ describe("mode-gated plaintext output emission", () => {
    * decrypt with a view key.
    */
   function abiOneOutput(
-    mode: "None" | "Public" | "Private",
-    inputs: readonly { name: string; mode: "None" | "Public" | "Private" }[] = [],
+    mode: "Private" | "Public" | "Constant",
+    inputs: readonly { name: string; mode: "Private" | "Public" }[] = [],
   ): ProgramABI {
     return {
       program: "mode_demo.aleo",
@@ -2233,8 +2266,8 @@ describe("mode-gated plaintext output emission", () => {
     expect(out).toContain("_tpk: string");
   });
 
-  it('private plaintext output (mode "None") wraps as EncryptedValue<T>', () => {
-    const out = generateBindings(abiOneOutput("None"));
+  it("private plaintext output wraps as EncryptedValue<T>", () => {
+    const out = generateBindings(abiOneOutput("Private"));
     expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
     expect(out).toContain(
       'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)',
@@ -2245,8 +2278,8 @@ describe("mode-gated plaintext output emission", () => {
     );
   });
 
-  it('explicit "Private" mode behaves the same as "None"', () => {
-    const out = generateBindings(abiOneOutput("Private"));
+  it('"Constant" mode is non-Public, so it also wraps as EncryptedValue<T>', () => {
+    const out = generateBindings(abiOneOutput("Constant"));
     expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
     expect(out).toContain("BaseContract.makeEncryptedValue");
   });
@@ -2254,7 +2287,7 @@ describe("mode-gated plaintext output emission", () => {
   it("globalIndex = inputs.length + abiIndex for private plaintext outputs", () => {
     // 2 inputs + 1 private u64 output → output@abiIndex=0 → globalIndex=2.
     const out = generateBindings(
-      abiOneOutput("None", [
+      abiOneOutput("Private", [
         { name: "a", mode: "Public" },
         { name: "b", mode: "Public" },
       ]),
@@ -2280,7 +2313,7 @@ describe("mode-gated plaintext output emission", () => {
           ],
           outputs: [
             { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" },
-            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "None" },
+            { ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Private" },
           ],
         },
       ],
@@ -2715,7 +2748,7 @@ describe("reserved-name guards", () => {
             {
               name: "info",
               ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-              mode: "None",
+              mode: "Private",
             },
           ],
           outputs: [],
@@ -2758,7 +2791,9 @@ describe("reserved-name guards", () => {
         {
           name: "submit",
           is_async: false,
-          inputs: [{ name: "token", ty: { Record: rref("Token", "registry.aleo") }, mode: "None" }],
+          inputs: [
+            { name: "token", ty: { Record: rref("Token", "registry.aleo") }, mode: "Private" },
+          ],
           outputs: [],
         },
       ],
