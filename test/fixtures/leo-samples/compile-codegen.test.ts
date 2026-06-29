@@ -155,7 +155,7 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
     assertTypechainEmitted(project, abis);
   });
 
-  it("dynamic_dispatch — DynamicRecord + interface implements", async () => {
+  it("dynamic_dispatch — DynamicRecord survives; Leo 4.2 ABI drops interface implements", async () => {
     const { project, abis } = await compileProject("dynamic_dispatch");
     const dispatcher = abis.find((a) => a.program === "dispatcher.aleo")!;
     const dispatcherAbiRaw = fs.readFileSync(
@@ -164,8 +164,18 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
     );
     expect(dispatcherAbiRaw).toContain("DynamicRecord");
     expect(dispatcher.transitions.length).toBeGreaterThan(0);
+    // token_alt is the interface-implementing program. Leo 4.2 removed
+    // `Program.implements` from the emitted ABI entirely (interface conformance
+    // now lives in `leo abi --satisfies`), so the field is gone from both the raw
+    // JSON and the parsed shape — but token_alt still compiles to usable bindings.
+    const tokenAltAbiRaw = fs.readFileSync(
+      path.join(project.projectDir, "artifacts", "token_alt.aleo", "abi.json"),
+      "utf-8",
+    );
+    expect(tokenAltAbiRaw).not.toContain("implements");
     const tokenAlt = abis.find((a) => a.program === "token_alt.aleo")!;
-    expect(tokenAlt.implements?.length ?? 0).toBeGreaterThan(0);
+    expect(tokenAlt.implements ?? []).toHaveLength(0);
+    expect(tokenAlt.transitions.length).toBeGreaterThan(0);
     assertTypechainEmitted(project, abis);
   });
 

@@ -9,7 +9,7 @@ import { VENDORED_NETWORK_DEPS_DIR } from "./offline-network-dep.js";
  * pointing at an adapted project's `programs/` + a project-local `artifacts/`.
  *
  * Mirrors the inline config in `packages/leo-compiler/src/compiler.test.ts`.
- * Targets Leo 4.1.0 / devnode `testnet` so the network-dep cache scope and
+ * Targets Leo 4.2.0 / devnode `testnet` so the network-dep cache scope and
  * `.env` match the fixtures; pass `makeOfflineFetchNetworkDep()` to
  * `compilePipeline` to stay hermetic (no devnode).
  */
@@ -19,7 +19,7 @@ export function makeResolvedConfig(
   overrides?: Partial<LionDenResolvedConfig>,
 ): LionDenResolvedConfig {
   return {
-    leoVersion: "4.1.0",
+    leoVersion: "4.2.0",
     skipLeoVersionCheck: false,
     leoBinary: "leo",
     paths: {
