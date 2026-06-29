@@ -57,14 +57,14 @@ describe("basic_bank.aleo", () => {
   it("issue() mints a fresh Token to the recipient when called by the bank", async () => {
     const confirmed = await basicBank
       .withSigner(bank())
-      .issue.accepted({ owner: user(), amount: 100n });
+      .issue.accepted({ arg0: user(), arg1: 100n });
     token = await confirmed.outputs.decrypt(user());
     expect(token.owner).toBe(user().address);
     expect(token.amount).toBe(100n);
   });
 
   it("issue() rejects callers that aren't the bank", async () => {
-    await basicBank.withSigner(user()).issue.failsLocally({ owner: user(), amount: 100n });
+    await basicBank.withSigner(user()).issue.failsLocally({ arg0: user(), arg1: 100n });
   });
 
   it("deposit() credits the bank's balance and returns the remainder", async () => {
@@ -79,7 +79,7 @@ describe("basic_bank.aleo", () => {
     // mapping-iteration API on @lionden/network.
     const confirmed = await basicBank
       .withSigner(user())
-      .deposit.accepted({ token: token!, amount: 30n });
+      .deposit.accepted({ arg0: token!, arg1: 30n });
     const remaining = await confirmed.outputs.decrypt(user());
     expect(remaining.amount).toBe(70n);
 
@@ -92,10 +92,10 @@ describe("basic_bank.aleo", () => {
     // Direct mapping assertion would need BHP256 in TS to compute the hash
     // key. Skipped for now — see the NOTE above.
     const confirmed = await basicBank.withSigner(bank()).withdraw.accepted({
-      recipient: user(),
-      amount: 10n,
-      rate: 0n,
-      periods: 0n,
+      arg0: user(),
+      arg1: 10n,
+      arg2: 0n,
+      arg3: 0n,
     });
     const payout = await confirmed.outputs.decrypt(user());
     expect(payout.owner).toBe(user().address);
@@ -105,20 +105,20 @@ describe("basic_bank.aleo", () => {
   it("withdraw() with interest pays out principal + compounded amount", async () => {
     // 100 at rate 100bps (1%) over 5 periods → 100 → 101 → 102 → 103 → 104 → 105.
     const [payout] = await basicBank.withSigner(bank()).withdraw.locally({
-      recipient: user(),
-      amount: 100n,
-      rate: 100n,
-      periods: 5n,
+      arg0: user(),
+      arg1: 100n,
+      arg2: 100n,
+      arg3: 5n,
     });
     expect(payout.amount).toBe(105n);
   });
 
   it("withdraw() rejects callers that aren't the bank", async () => {
     await basicBank.withSigner(user()).withdraw.failsLocally({
-      recipient: user(),
-      amount: 10n,
-      rate: 0n,
-      periods: 0n,
+      arg0: user(),
+      arg1: 10n,
+      arg2: 0n,
+      arg3: 0n,
     });
   });
 });

@@ -53,15 +53,15 @@ describe("auction.aleo", () => {
 
   it("place_bid() requires caller to match bidder", async () => {
     await auction.withSigner(bidder2()).place_bid.failsLocally({
-      bidder: bidder1(),
-      amount: 10n,
+      arg0: bidder1(),
+      arg1: 10n,
     });
   });
 
   it("bidder1 places a bid of 10", async () => {
     bid1 = await auction.withSigner(bidder1()).place_bid.locally({
-      bidder: bidder1(),
-      amount: 10n,
+      arg0: bidder1(),
+      arg1: 10n,
     });
     expect(bid1.amount).toBe(10n);
     expect(bid1.is_winner).toBe(false);
@@ -70,8 +70,8 @@ describe("auction.aleo", () => {
 
   it("bidder2 places a bid of 90", async () => {
     bid2 = await auction.withSigner(bidder2()).place_bid.locally({
-      bidder: bidder2(),
-      amount: 90n,
+      arg0: bidder2(),
+      arg1: 90n,
     });
     expect(bid2.amount).toBe(90n);
     expect(bid2.bidder).toBe(bidder2().address);
@@ -81,15 +81,15 @@ describe("auction.aleo", () => {
     expect(bid1, "place_bid 1 must run first").toBeDefined();
     expect(bid2, "place_bid 2 must run first").toBeDefined();
     await auction.withSigner(bidder1()).resolve.failsLocally({
-      first: bid1!,
-      second: bid2!,
+      arg0: bid1!,
+      arg1: bid2!,
     });
   });
 
   it("auctioneer.resolve() picks the higher bid", async () => {
     const winner = await auction.withSigner(auctioneer()).resolve.locally({
-      first: bid1!,
-      second: bid2!,
+      arg0: bid1!,
+      arg1: bid2!,
     });
     expect(winner.amount).toBe(90n);
     expect(winner.bidder).toBe(bidder2().address);
@@ -99,8 +99,8 @@ describe("auction.aleo", () => {
     // Re-resolve to get a fresh winner Bid (resolve in this run hasn't been
     // chained yet because the prior resolve was scoped to its own assertion).
     const auctioneerBound = auction.withSigner(auctioneer());
-    const winnerBid = await auctioneerBound.resolve.locally({ first: bid1!, second: bid2! });
-    const finishedBid = await auctioneerBound.finish.locally({ bid: winnerBid });
+    const winnerBid = await auctioneerBound.resolve.locally({ arg0: bid1!, arg1: bid2! });
+    const finishedBid = await auctioneerBound.finish.locally({ arg0: winnerBid });
     expect(finishedBid.is_winner).toBe(true);
     // Owner is now the bidder, not the auctioneer.
     expect(finishedBid.owner).toBe(bidder2().address);

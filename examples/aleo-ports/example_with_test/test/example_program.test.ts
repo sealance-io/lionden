@@ -40,7 +40,7 @@ describe("example_program.aleo", () => {
 
   // Port of @test fn test_simple_addition()
   it("simple_addition returns the sum", async () => {
-    expect(await example.simple_addition.locally({ a: 2, b: 3 })).toBe(5);
+    expect(await example.simple_addition.locally({ arg0: 2, arg1: 3 })).toBe(5);
   });
 
   // Port of @test @should_fail fn test_simple_addition_fail()
@@ -48,12 +48,12 @@ describe("example_program.aleo", () => {
   // In lionden, simple_addition runs successfully and returns 5; the
   // failure assertion lives in the test layer.
   it("simple_addition does not return the wrong sum (parity for @should_fail)", async () => {
-    expect(await example.simple_addition.locally({ a: 2, b: 3 })).not.toBe(3);
+    expect(await example.simple_addition.locally({ arg0: 2, arg1: 3 })).not.toBe(3);
   });
 
   // Port of @test fn test_record_maker()
   it("mint_record produces a record with the requested x field", async () => {
-    const record = await example.mint_record.locally({ x: 0n });
+    const record = await example.mint_record.locally({ arg0: 0n });
     expect(record.x).toBe("0field");
   });
 
@@ -68,7 +68,7 @@ describe("example_program.aleo", () => {
   // transitions; there is no way to seed a mapping or call ChaCha directly).
   // NOTE: leo-test parity gap. See tmp/leo-examples/example_with_test/tests/test_example_program.leo:34-38.
   it("set_mapping writes through finalize and is readable from the mapping", async () => {
-    await example.set_mapping.accepted({ x: 12n });
+    await example.set_mapping.accepted({ arg0: 12n });
     expect(await example.mappings.map.get(0n)).toBe("12field");
   });
 });

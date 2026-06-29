@@ -40,14 +40,14 @@ describe("twoadicity.aleo", () => {
   // set of inputs (odd, low power-of-two, low non-power) rather than a
   // saturating sweep.
   it("twoadicity(1) = 0 (odd)", async () => {
-    expect(await twoadicity.main.locally({ n: 1n })).toBe(0);
+    expect(await twoadicity.main.locally({ arg0: 1n })).toBe(0);
   }, 180_000);
 
   it("twoadicity(8) = 3 (2^3)", async () => {
-    expect(await twoadicity.main.locally({ n: 8n })).toBe(3);
+    expect(await twoadicity.main.locally({ arg0: 8n })).toBe(3);
   }, 180_000);
 
   it("twoadicity(12) = 2 (4·3)", async () => {
-    expect(await twoadicity.main.locally({ n: 12n })).toBe(2);
+    expect(await twoadicity.main.locally({ arg0: 12n })).toBe(2);
   }, 180_000);
 });

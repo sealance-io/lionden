@@ -48,7 +48,7 @@ describe("noupgrade_example.aleo", () => {
   });
 
   it("v1 deploy succeeded — main(2, 3) returns 5", async () => {
-    expect(await noupgrade.main.locally({ a: 2, b: 3 })).toBe(5);
+    expect(await noupgrade.main.locally({ arg0: 2, arg1: 3 })).toBe(5);
   });
 
   it("upgrade attempt is rejected by @noupgrade constructor", async () => {

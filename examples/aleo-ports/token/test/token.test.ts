@@ -53,21 +53,19 @@ describe("token.aleo", () => {
   });
 
   it("mint_public increments account[receiver]", async () => {
-    await token.withSigner(alice()).mint_public.accepted({ receiver: alice(), amount: 100n });
+    await token.withSigner(alice()).mint_public.accepted({ arg0: alice(), arg1: 100n });
     expect(await token.mappings.account.get(alice())).toBe(100n);
   });
 
   it("mint_private returns a Token record (no mapping side effect)", async () => {
-    const minted = await token
-      .withSigner(bob())
-      .mint_private.locally({ receiver: bob(), amount: 100n });
+    const minted = await token.withSigner(bob()).mint_private.locally({ arg0: bob(), arg1: 100n });
     expect(minted.owner).toBe(bob().address);
     expect(minted.amount).toBe(100n);
   });
 
   it("transfer_public moves balance between accounts", async () => {
     // alice has 100 from earlier mint_public. Send 10 to bob.
-    await token.withSigner(alice()).transfer_public.accepted({ receiver: bob(), amount: 10n });
+    await token.withSigner(alice()).transfer_public.accepted({ arg0: bob(), arg1: 10n });
     expect(await token.mappings.account.get(alice())).toBe(90n);
     expect(await token.mappings.account.get(bob())).toBe(10n);
   });
@@ -76,12 +74,12 @@ describe("token.aleo", () => {
     // Mint a fresh private token to bob in local mode.
     const bobToken = await token
       .withSigner(bob())
-      .mint_private.locally({ receiver: bob(), amount: 100n });
+      .mint_private.locally({ arg0: bob(), arg1: 100n });
 
     // Bob splits 30 to alice.
     const [remaining, transferred] = await token
       .withSigner(bob())
-      .transfer_private.locally({ sender: bobToken, receiver: alice(), amount: 30n });
+      .transfer_private.locally({ arg0: bobToken, arg1: alice(), arg2: 30n });
 
     expect(remaining.owner).toBe(bob().address);
     expect(remaining.amount).toBe(70n);
@@ -92,16 +90,14 @@ describe("token.aleo", () => {
   it("transfer_private_to_public yields a remainder Token + bumps account[receiver]", async () => {
     // Mint a private Token to bob on chain so the proven transfer below has a
     // record with a valid state path to spend.
-    const minted = await token
-      .withSigner(bob())
-      .mint_private.accepted({ receiver: bob(), amount: 50n });
+    const minted = await token.withSigner(bob()).mint_private.accepted({ arg0: bob(), arg1: 50n });
     const bobToken = await minted.outputs.decrypt(bob());
 
     // Broadcast: fire finalize → account[alice] += 20.
     // alice had 90 (after prior transfer_public). After this: 110.
     const confirmed = await token
       .withSigner(bob())
-      .transfer_private_to_public.accepted({ sender: bobToken, receiver: alice(), amount: 20n });
+      .transfer_private_to_public.accepted({ arg0: bobToken, arg1: alice(), arg2: 20n });
     const remainder = await confirmed.outputs.decrypt(bob());
     expect(remainder.owner).toBe(bob().address);
     expect(remainder.amount).toBe(30n);
@@ -112,7 +108,7 @@ describe("token.aleo", () => {
     // alice has 110. Transfer 40 to bob (privately).
     const confirmed = await token
       .withSigner(alice())
-      .transfer_public_to_private.accepted({ receiver: bob(), amount: 40n });
+      .transfer_public_to_private.accepted({ arg0: bob(), arg1: 40n });
 
     expect(confirmed.outputs.ciphertext).toMatch(/^record1/);
     expect(confirmed.rawOutputs[0]).toBe(confirmed.outputs.ciphertext);
