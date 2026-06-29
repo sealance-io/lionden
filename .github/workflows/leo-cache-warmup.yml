@@ -34,13 +34,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # v1.1.1 adds Leo 4.1.0 source-tag support (leo-lang-v4.1.0).
+      # v1.1.2 adds Leo 4.2.0 support (leo-lang-v4.2.0).
       - name: Setup Leo CLI (Cache Warmup)
         id: setup-leo
-        uses: sealance-io/setup-leo-action@f48a7d97c4a11affcd3d698a28d57e42dc4fc933 # v1.1.1
+        uses: sealance-io/setup-leo-action@12eec4e21066fe8dddb7ed99112913fac124c192 # v1.1.2
         with:
-          version: "4.1.0" # semver-only; matches core examples' leoVersion
-          rust-version: "1.96.0" # Leo v4.1.0 minimum toolchain
+          version: "4.2.0" # semver-only; matches core examples' leoVersion
+          rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
           enable-cache: true
           cache-save: always # Always save to ensure cache is refreshed
           run-audit: true
@@ -53,7 +53,7 @@ jobs:
             echo ""
             echo "| Metric | Value |"
             echo "|--------|-------|"
-            echo "| Leo Version | 4.1.0 |"
+            echo "| Leo Version | 4.2.0 |"
             echo "| Rust Version | 1.96.0 |"
             echo "| Cache Hit (Binary) | $CACHE_HIT_BINARY |"
             echo "| Build Time | ${BUILD_TIME_SECONDS}s |"
