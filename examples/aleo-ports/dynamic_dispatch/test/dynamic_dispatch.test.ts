@@ -71,19 +71,19 @@ describe("dynamic_dispatch — direct strategy parity (local)", () => {
 
   // Mirrors run.sh stage 1 — pure compute, no dispatch.
   it("voting_power.compute_power(10000) = 10000", async () => {
-    expect(await linear.compute_power.locally({ arg0: 10000n })).toBe(10000n);
+    expect(await linear.compute_power.locally(10000n)).toBe(10000n);
   });
 
   it("voting_power.compute_power(100) = 100", async () => {
-    expect(await linear.compute_power.locally({ arg0: 100n })).toBe(100n);
+    expect(await linear.compute_power.locally(100n)).toBe(100n);
   });
 
   it("quadratic_power.compute_power(10000) = 100 (√10000)", async () => {
-    expect(await quadratic.compute_power.locally({ arg0: 10000n })).toBe(100n);
+    expect(await quadratic.compute_power.locally(10000n)).toBe(100n);
   });
 
   it("quadratic_power.compute_power(100) = 10 (√100)", async () => {
-    expect(await quadratic.compute_power.locally({ arg0: 100n })).toBe(10n);
+    expect(await quadratic.compute_power.locally(100n)).toBe(10n);
   });
 });
 
@@ -96,10 +96,7 @@ describe("dynamic_dispatch — runtime dispatch through governance (local)", () 
 
   it("get_voting_power('voting_power', 10000) resolves through config execution.imports", async () => {
     await expect(
-      governance.get_voting_power.locally({
-        arg0: Leo.identifier("voting_power"),
-        arg1: 10000n,
-      }),
+      governance.get_voting_power.locally(Leo.identifier("voting_power"), 10000n),
     ).resolves.toBe(10000n);
   });
 });
@@ -116,10 +113,10 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
   const signer = () => ctx!.accounts[0]!.privateKey;
 
   it("get_voting_power('voting_power', 10000) → status accepted, no decrypt", async () => {
-    const result = await governance.get_voting_power.accepted({
-      arg0: Leo.identifier("voting_power"),
-      arg1: 10000n,
-    });
+    const result = await governance.get_voting_power.accepted(
+      Leo.identifier("voting_power"),
+      10000n,
+    );
     expect(result.txId).toBeTruthy();
     expect(result.status).toBe("accepted");
     // EncryptedValue<bigint> handle present; decrypt skipped on this case.
@@ -127,18 +124,15 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
   });
 
   it("get_voting_power('voting_power', 42) → outputs.decrypt yields 42n (linear)", async () => {
-    const result = await governance.get_voting_power.accepted({
-      arg0: Leo.identifier("voting_power"),
-      arg1: 42n,
-    });
+    const result = await governance.get_voting_power.accepted(Leo.identifier("voting_power"), 42n);
     expect(await result.outputs.decrypt(signer())).toBe(42n);
   });
 
   it("get_voting_power('quadratic_power', 10000) → outputs.decrypt yields 100n (√10000)", async () => {
-    const result = await governance.get_voting_power.accepted({
-      arg0: Leo.identifier("quadratic_power"),
-      arg1: 10000n,
-    });
+    const result = await governance.get_voting_power.accepted(
+      Leo.identifier("quadratic_power"),
+      10000n,
+    );
     expect(await result.outputs.decrypt(signer())).toBe(100n);
   });
 
@@ -147,25 +141,25 @@ describe("dynamic_dispatch — runtime dispatch through governance (onchain)", (
   // direction (the whale wins). Upstream run.sh frames this as a *margin*
   // demo. The typed `outputs` carries an EncryptedValue<boolean> handle.
   it("proposal_passes('voting_power', 1000000, 10000) → outputs.decrypt yields true (whale wins linear)", async () => {
-    const result = await governance.proposal_passes.accepted({
-      arg0: Leo.identifier("voting_power"),
-      arg1: 1000000n,
-      arg2: 10000n,
-    });
+    const result = await governance.proposal_passes.accepted(
+      Leo.identifier("voting_power"),
+      1000000n,
+      10000n,
+    );
     expect(await result.outputs.decrypt(signer())).toBe(true);
   });
 
   it("proposal_passes('quadratic_power', 1000000, 10000) → outputs.decrypt yields true (whale still wins, smaller margin)", async () => {
-    const result = await governance.proposal_passes.accepted({
-      arg0: Leo.identifier("quadratic_power"),
-      arg1: 1000000n,
-      arg2: 10000n,
-    });
+    const result = await governance.proposal_passes.accepted(
+      Leo.identifier("quadratic_power"),
+      1000000n,
+      10000n,
+    );
     expect(await result.outputs.decrypt(signer())).toBe(true);
   });
 
   it("compare_strategies(10000) → tuple outputs decrypt to [10000n (linear), 100n (quadratic)]", async () => {
-    const result = await governance.compare_strategies.accepted({ arg0: 10000n });
+    const result = await governance.compare_strategies.accepted(10000n);
     const [linear, quadratic] = result.outputs;
     expect(await linear.decrypt(signer())).toBe(10000n);
     expect(await quadratic.decrypt(signer())).toBe(100n);

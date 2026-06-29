@@ -57,13 +57,13 @@ describe("token program", () => {
       const balance2Before = await token.mappings.balances.getOrUse(account2, 0n);
 
       // Mint tokens to account-1 (default signer is account-0)
-      await token.mint_public.accepted({ arg0: account1, arg1: 5000n });
+      await token.mint_public.accepted(account1, 5000n);
 
       // transfer_public reads self.signer (token.aleo:24) to determine sender.
       // withSigner switches the signer to account-1; if signer switching is
       // broken, account-0 would be the sender and the finalize
       // assert(sender_balance >= amount) would fail or debit the wrong account.
-      await token.withSigner(account1).transfer_public.accepted({ arg0: account2, arg1: 2000n });
+      await token.withSigner(account1).transfer_public.accepted(account2, 2000n);
 
       // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
       expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);
@@ -80,10 +80,10 @@ describe("token program", () => {
       const receiverBefore = await token.mappings.balances.getOrUse(receiver, 0n);
 
       // Mint to account-1 (default signer)
-      await token.mint_public.accepted({ arg0: account1, arg1: 5000n });
+      await token.mint_public.accepted(account1, 5000n);
 
       // Per-call signer override (alternate to withSigner)
-      await token.transfer_public.accepted({ arg0: receiver, arg1: 2000n }, { signer: account1 });
+      await token.transfer_public.accepted(receiver, 2000n, { signer: account1 });
 
       expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);
       expect(await token.mappings.balances.get(receiver)).toBe(receiverBefore + 2000n);
@@ -93,7 +93,7 @@ describe("token program", () => {
   describe("mint_private", () => {
     it("decrypts a private Token record from typed accepted outputs", async () => {
       const receiver = ctx!.accounts[1]!;
-      const confirmed = await token.mint_private.accepted({ arg0: receiver, arg1: 500n });
+      const confirmed = await token.mint_private.accepted(receiver, 500n);
 
       expect(confirmed.outputs.ciphertext).toMatch(/^record1/);
       expect(confirmed.rawOutputs[0]).toBe(confirmed.outputs.ciphertext);
@@ -129,7 +129,7 @@ describe("token program", () => {
       const balanceBefore = await token.mappings.balances.getOrUse(treasury, 0n);
 
       // Mint to treasury using its named address rather than a hardcoded string
-      await token.mint_public.accepted({ arg0: treasury, arg1: 100n });
+      await token.mint_public.accepted(treasury, 100n);
 
       expect(await token.mappings.balances.get(treasury)).toBe(balanceBefore + 100n);
     });

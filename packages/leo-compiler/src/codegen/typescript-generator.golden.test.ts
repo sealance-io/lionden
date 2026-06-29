@@ -142,6 +142,10 @@ const FIXTURE_PAIRS: [string, string][] = [
   ["edge-dex.abi.json", "dex.ts"],
   ["edge-optional-nonzeroable-fields.abi.json", "optional-nonzeroable-fields.ts"],
   ["edge-input-name-collisions.abi.json", "input-name-collisions.ts"],
+  // Input names that are reserved words / clash as JS parameters, exercising the
+  // `safeParamName` remap (options/default/class → arg0/arg1/arg2; a real `arg1`
+  // input then bumps to `arg1_`).
+  ["edge-param-name-collisions.abi.json", "param-name-collisions.ts"],
   // Leo 4.2 wire shape: positional inputs (synthesized `arg0`/`arg1` params)
   // and a struct ref carrying an explicit `program: "<self>.aleo"` self-ref.
   ["edge-v42-positional.abi.json", "v42-positional.ts"],
@@ -189,7 +193,7 @@ describe("codegen golden TypeScript validity", () => {
 describe("codegen — Leo 4.2 wire shape", () => {
   it("emits synthesized positional params (arg0, arg1) for unnamed 4.2 inputs", () => {
     const output = generateBindings(loadAbi("edge-v42-positional.abi.json"));
-    expect(output).toContain("readonly arg0: number; readonly arg1: number");
+    expect(output).toContain("arg0: number, arg1: number, options?: LocalExecutionOptions");
     expect(output).toContain('this.inputContext("add", "arg0")');
     expect(output).toContain('this.inputContext("add", "arg1")');
   });
@@ -198,10 +202,39 @@ describe("codegen — Leo 4.2 wire shape", () => {
     const output = generateBindings(loadAbi("edge-v42-positional.abi.json"));
     // Point is declared and serialized locally…
     expect(output).toContain("export interface Point {");
-    expect(output).toContain("serializePoint(args.arg0 as PointInput");
+    expect(output).toContain("serializePoint(arg0 as PointInput");
     // …and never imported from another program module (self-ref → local).
     expect(output).not.toMatch(/import[^;]*\bPoint\b[^;]*from/);
     expect(output).not.toContain("as Point_");
+  });
+});
+
+describe("codegen — parameter-name safety", () => {
+  // The fixture's `run` inputs are named `options`, `default`, `class`, `arg1`.
+  it("remaps reserved-word input names to safe, unique parameters", () => {
+    const output = generateBindings(loadAbi("edge-param-name-collisions.abi.json"));
+    // Reserved words (method-local `options`, keywords `default`/`class`) fall
+    // back to `arg{index}`; the real `arg1` input then bumps to `arg1_` to stay
+    // unique within the param list.
+    expect(output).toContain(
+      "arg0: number, arg1: number, arg2: number, arg1_: number, options?: LocalExecutionOptions",
+    );
+  });
+
+  it("serializes via the remapped identifiers while keeping original inputContext labels", () => {
+    const output = generateBindings(loadAbi("edge-param-name-collisions.abi.json"));
+    expect(output).toContain(
+      'BaseContract.serializeUInt(arg0, 32, this.inputContext("run", "options"))',
+    );
+    expect(output).toContain(
+      'BaseContract.serializeUInt(arg1, 32, this.inputContext("run", "default"))',
+    );
+    expect(output).toContain(
+      'BaseContract.serializeUInt(arg2, 32, this.inputContext("run", "class"))',
+    );
+    expect(output).toContain(
+      'BaseContract.serializeUInt(arg1_, 32, this.inputContext("run", "arg1"))',
+    );
   });
 });
 
@@ -292,13 +325,13 @@ describe("composite input widening typechecks", () => {
       "declare const c: Proofs;",
       "async function _check() {",
       // Raw bigint/number flow into a struct-with-field-array input slot:
-      "  void c.verify.locally({ proof: { siblings: [1n, 2n, 3n], leaf_index: 0 } });",
+      "  void c.verify.locally({ siblings: [1n, 2n, 3n], leaf_index: 0 });",
       // A branded record output re-spends into the widened input slot, no conversion:
-      '  const note = await c.spend.locally({ note: { owner: { address: "aleo1x" }, value: 5n, _nonce: 0n } });',
-      "  void c.spend.locally({ note });",
+      '  const note = await c.spend.locally({ owner: { address: "aleo1x" }, value: 5n, _nonce: 0n });',
+      "  void c.spend.locally(note);",
       // Cross-type safety preserved: a branded LeoField is not an AddressInput.
       "  // @ts-expect-error LeoField is not assignable to the AddressInput `owner` slot",
-      "  void c.spend.locally({ note: { owner: Leo.field(1n), value: 5n, _nonce: 0n } });",
+      "  void c.spend.locally({ owner: Leo.field(1n), value: 5n, _nonce: 0n });",
       "}",
       "void _check;",
     ].join("\n");
@@ -452,9 +485,9 @@ describe("external alias collisions", () => {
     expect(consumerOutput).toContain("serializeTokenInfo as serializeRegistry_TokenInfo_");
     expect(consumerOutput).toContain("deserializeTokenInfo as deserializeRegistry_TokenInfo_");
     expect(consumerOutput).toContain("export interface Registry_TokenInfo {");
-    expect(consumerOutput).toContain("readonly info: Registry_TokenInfo_");
+    expect(consumerOutput).toContain("info: Registry_TokenInfo_Input");
     expect(consumerOutput).toContain(
-      'serializeRegistry_TokenInfo_(args.info as Registry_TokenInfo_Input, this.inputContext("submit", "info"))',
+      'serializeRegistry_TokenInfo_(info as Registry_TokenInfo_Input, this.inputContext("submit", "info"))',
     );
     expectModulesToTypecheck({
       Registry: generateBindings(registry, [registry, consumer]),
@@ -522,7 +555,7 @@ describe("external alias collisions", () => {
     expect(consumerOutput).toContain("export interface TokenRegistry_Token {");
     expect(consumerOutput).toContain("export type TokenRegistry_Token_ = _TokenRegistry_Token_;");
     expect(consumerOutput).toContain("export const TokenRegistry_Token_ = {");
-    expect(consumerOutput).toContain("readonly token: TokenRegistry_Token_");
+    expect(consumerOutput).toContain("token: TokenRegistry_Token_Input");
     expectModulesToTypecheck({
       TokenRegistry: generateBindings(tokenRegistry, [tokenRegistry, consumer]),
       Consumer: consumerOutput,

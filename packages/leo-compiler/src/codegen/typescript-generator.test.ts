@@ -544,7 +544,7 @@ describe("generateBindings", () => {
     const output = generateBindings(abi);
     // The transition method should serialize via serializeCoin(), not JSON.stringify
     expect(output).toContain(
-      'serializeCoin(args.coin as CoinInput, this.inputContext("spend", "coin"))',
+      'serializeCoin(coin as CoinInput, this.inputContext("spend", "coin"))',
     );
     expect(output).not.toContain("JSON.stringify");
   });
@@ -559,16 +559,16 @@ describe("generateBindings", () => {
     const output = generateBindings(SAMPLE_ABI);
     expect(output).toContain("readonly mint = {");
     expect(output).toContain(
-      "locally: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<Token>",
+      "locally: async (receiver: AddressInput, amount: bigint, options?: LocalExecutionOptions): Promise<Token>",
     );
     expect(output).toContain(
-      "failsLocally: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void>",
+      "failsLocally: async (receiver: AddressInput, amount: bigint, options?: LocalExecutionOptions): Promise<void>",
     );
     expect(output).toContain(
-      "captureLocalFailure: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError>",
+      "captureLocalFailure: async (receiver: AddressInput, amount: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError>",
     );
     expect(output).toContain(
-      "submitted: async (args: { readonly receiver: AddressInput; readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition>",
+      "submitted: async (receiver: AddressInput, amount: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition>",
     );
     expect(output).toContain("): Promise<Token>");
     expect(output).toContain("readonly transfer = {");
@@ -989,10 +989,10 @@ describe("external references", () => {
 
     const output = generateBindings(consumer, [consumer, registry]);
     expect(output).toContain('from "./Registry.js"');
-    expect(output).toContain("readonly info: Registry_TokenInfo");
+    expect(output).toContain("info: Registry_TokenInfoInput");
     expect(output).toContain("Promise<Registry_TokenInfo>");
     expect(output).toContain(
-      'serializeRegistry_TokenInfo(args.info as Registry_TokenInfoInput, this.inputContext("submit", "info"))',
+      'serializeRegistry_TokenInfo(info as Registry_TokenInfoInput, this.inputContext("submit", "info"))',
     );
     expect(output).toContain('deserializeRegistry_TokenInfo(this.outputAt(_result, "submit", 0))');
   });
@@ -1043,10 +1043,10 @@ describe("external references", () => {
 
     const output = generateBindings(consumer, [consumer, credits]);
     expect(output).toContain('from "./Credits.js"');
-    expect(output).toContain("readonly record: Credits_Credit");
+    expect(output).toContain("record: Credits_CreditInput");
     expect(output).toContain("Promise<Credits_Credit>");
     expect(output).toContain(
-      'serializeCredits_Credit(args.record as Credits_CreditInput, this.inputContext("forward", "record"))',
+      'serializeCredits_Credit(record as Credits_CreditInput, this.inputContext("forward", "record"))',
     );
     // Resolved external record bindings carry an `.output` matcher value so
     // callers can write `accepted.outputs.match(Credits_Credit.output.from(...)).decrypt(key)`.
@@ -1586,9 +1586,7 @@ describe("serialization of all primitive types", () => {
       ],
     };
     const output = generateBindings(abi);
-    expect(output).toContain(
-      'BaseContract.serializeAddress(args.to, this.inputContext("send", "to"))',
-    );
+    expect(output).toContain('BaseContract.serializeAddress(to, this.inputContext("send", "to"))');
   });
 
   it("serializes Boolean with String()", () => {
@@ -1615,7 +1613,7 @@ describe("serialization of all primitive types", () => {
     };
     const output = generateBindings(abi);
     expect(output).toContain(
-      'BaseContract.serializeBoolean(args.flag, this.inputContext("toggle", "flag"))',
+      'BaseContract.serializeBoolean(flag, this.inputContext("toggle", "flag"))',
     );
   });
 
@@ -1648,11 +1646,9 @@ describe("serialization of all primitive types", () => {
     };
     const output = generateBindings(abi);
     expect(output).toContain(
-      'BaseContract.serializeUInt(args.a, 32, this.inputContext("compute", "a"))',
+      'BaseContract.serializeUInt(a, 32, this.inputContext("compute", "a"))',
     );
-    expect(output).toContain(
-      'BaseContract.serializeInt(args.b, 64, this.inputContext("compute", "b"))',
-    );
+    expect(output).toContain('BaseContract.serializeInt(b, 64, this.inputContext("compute", "b"))');
   });
 
   it("serializes and deserializes Identifier primitives", () => {
@@ -1714,10 +1710,12 @@ describe("serialization of all primitive types", () => {
 
     const output = generateBindings(abi);
     expect(output).toContain("readonly strategy: IdentifierInput");
-    expect(output).toContain("readonly maybe_strategy: IdentifierInput | null");
+    // `maybe_strategy` is a transition-input-only name; it now appears as a bare
+    // positional parameter (no `readonly`), unlike the struct-field cases above.
+    expect(output).toContain("maybe_strategy: IdentifierInput | null");
     expect(output).toContain("readonly strategies: ReadonlyArray<IdentifierInput>");
     expect(output).toContain(
-      'BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy"))',
+      'BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy"))',
     );
     expect(output).toContain(
       'BaseContract.serializeIdentifier(value.strategy, BaseContract.childInputContext(context, "strategy"))',
@@ -1762,7 +1760,7 @@ describe("serialization of all primitive types", () => {
       ],
     };
     const output = generateBindings(abi);
-    expect(output).toContain("BaseContract.serializeArray(args.values");
+    expect(output).toContain("BaseContract.serializeArray(values");
     expect(output).toContain("BaseContract.serializeUInt(e, 32, context)");
   });
 });

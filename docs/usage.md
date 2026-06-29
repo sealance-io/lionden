@@ -230,16 +230,16 @@ token.programId;                              // "token.aleo"
 token.address();                              // deterministic program address
 
 // Local execution — no transaction, no broadcast. Returns decoded outputs.
-const sum = await hello.main.locally({ a: 3, b: 5 });
+const sum = await hello.main.locally(3, 5);
 
 // On-chain — build + broadcast, then assert acceptance.
-await token.mint_public.accepted({ receiver, amount: 100n });
+await token.mint_public.accepted(receiver, 100n);
 
 // Per-call signer override:
-await token.transfer_public.accepted({ receiver, amount: 50n }, { signer: account1 });
+await token.transfer_public.accepted(receiver, 50n, { signer: account1 });
 
 // Or pin a signer for a chain of calls:
-await token.withSigner(account1).transfer_public.accepted({ receiver, amount: 50n });
+await token.withSigner(account1).transfer_public.accepted(receiver, 50n);
 
 // Mapping reads — each mapping is exposed under `mappings.<camelName>`, mirroring
 // Leo's read operations:
@@ -316,7 +316,7 @@ describe("hello program", () => {
   beforeAll(() => hello.connect(ctx!.lre));
 
   it("adds two numbers", async () => {
-    expect(await hello.main.locally({ a: 3, b: 5 })).toBe(8);
+    expect(await hello.main.locally(3, 5)).toBe(8);
   });
 });
 ```
@@ -436,10 +436,7 @@ export const setupToken: DeploymentRecipe = async (ctx) => {
   const token = createTokenContract().connect(ctx.lre);
   await ctx.deploy(token, { noSkipDeployed: true });
 
-  await token.withSigner(deployer).mint_public.accepted({
-    receiver: treasury,
-    amount: 1_000_000n,
-  });
+  await token.withSigner(deployer).mint_public.accepted(treasury, 1_000_000n);
 };
 
 export default setupToken;
@@ -676,21 +673,13 @@ Then call the dispatching wrapper with the generated helper:
 ```ts
 import { asGoldToken } from "../typechain/GoldToken.js";
 
-await router.route_transfer.accepted({
-  token_program: Leo.identifier("gold_token"),
-  token: asGoldToken(token),
-  to: bob,
-});
+await router.route_transfer.accepted(Leo.identifier("gold_token"), asGoldToken(token), bob);
 ```
 
 The same helper is also the idiomatic output matcher. Use the generated `.output.from(...)` form first: it reads as "decrypt this id-only output as the record emitted by this transition".
 
 ```ts
-const accepted = await router.route_transfer.accepted({
-  token_program: Leo.identifier("gold_token"),
-  token: asGoldToken(token),
-  to: bob,
-});
+const accepted = await router.route_transfer.accepted(Leo.identifier("gold_token"), asGoldToken(token), bob);
 
 const transferred = await accepted.outputs
   .match(asGoldToken.output.from("transfer", 0))
@@ -718,14 +707,14 @@ See `examples/async-escrow`. Pattern:
 ```ts
 const escrow = createEscrow();
 escrow.connect(ctx.lre);
-await escrow.create_escrow.accepted({ item_id: 42n });
+await escrow.create_escrow.accepted(42n);
 expect(await escrow.mappings.escrowStatus.get(42n)).toBe(0);
 
 // Off-chain failure (transition-level assert):
-await escrow.create_escrow.failsLocally({ item_id: 0n });
+await escrow.create_escrow.failsLocally(0n);
 
 // On-chain failure (finalizer-level assert):
-const result = await escrow.fund_escrow.rejected({ item_id: 100n });
+const result = await escrow.fund_escrow.rejected(100n);
 expect(result.status).toBe("rejected");
 ```
 

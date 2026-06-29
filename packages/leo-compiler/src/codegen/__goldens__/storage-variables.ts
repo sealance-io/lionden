@@ -50,52 +50,52 @@ export class Vault extends BaseContract {
   }
 
   readonly set_admin = {
-    locally: async (args: { readonly new_admin: AddressInput }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (new_admin: AddressInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       const _result = await this.executeLocal("set_admin", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly new_admin: AddressInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (new_admin: AddressInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       await this.expectLocalFailure("set_admin", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly new_admin: AddressInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (new_admin: AddressInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       return this.expectLocalFailure("set_admin", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly new_admin: AddressInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (new_admin: AddressInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       return this.submitTransition("set_admin", _args, options ?? {});
     },
 
-    settled: async (args: { readonly new_admin: AddressInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (new_admin: AddressInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       return this.settleTyped("set_admin", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly new_admin: AddressInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (new_admin: AddressInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       return this.expectAcceptedTyped("set_admin", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly new_admin: AddressInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (new_admin: AddressInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeAddress(args.new_admin, this.inputContext("set_admin", "new_admin")),
+        BaseContract.serializeAddress(new_admin, this.inputContext("set_admin", "new_admin")),
       ];
       return this.expectRejected("set_admin", _args, options ?? {});
     },

@@ -194,17 +194,17 @@ This lets test suites stay concise without reimplementing common network checks.
 
 ```ts
 // Single record output → outputs is an EncryptedRecord<Token>
-const mintTx = await token.mint_private.accepted({ receiver, amount: 100n });
+const mintTx = await token.mint_private.accepted(receiver, 100n);
 const mintedRecord = await mintTx.outputs.decrypt(ctx.accounts[0]);
-await token.transfer_private.locally({ token: mintedRecord, ... });
+await token.transfer_private.locally(mintedRecord, /* ... */);
 
 // Multi-output (Token, bigint) → outputs is a positional tuple
-const swap = await amm.swap.accepted({ ... });
+const swap = await amm.swap.accepted(/* ... */);
 const [encryptedToken, leftoverAmount] = swap.outputs;
 const decoded = await encryptedToken.decrypt(ctx.accounts[0]);
 
 // Private plaintext output: u64 without `public` modifier → EncryptedValue<bigint>
-const compare = await governance.compare_strategies.accepted({ balance: 10000n });
+const compare = await governance.compare_strategies.accepted(10000n);
 const [linear, quadratic] = compare.outputs;
 expect(await linear.decrypt(ctx.accounts[0])).toBe(10000n);
 expect(await quadratic.decrypt(ctx.accounts[0])).toBe(100n);
@@ -258,7 +258,7 @@ const tokenInput = Leo.dynamicRecord(
     _version: "u8.public",
   },
 );
-await amm.add_liquidity.locally({ token: tokenInput, ... });
+await amm.add_liquidity.locally(tokenInput, /* ... */);
 ```
 
 Values are range-checked at runtime (integer bit-widths, address prefix, etc.). Missing or extra keys vs. the schema throw `TransitionInputError` with the offending key listed. The raw string escape hatch `Leo.unsafe.dynamicRecord("{ owner: ... }")` remains available for pre-built literals.

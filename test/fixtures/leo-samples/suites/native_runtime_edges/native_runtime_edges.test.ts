@@ -59,44 +59,42 @@ afterAll(async () => {
 
 describe("native_runtime_edges — local compute (.locally)", () => {
   it("checked_add_overflow(1, 2) = 3", async () => {
-    expect(await nre.checked_add_overflow.locally({ arg0: 1, arg1: 2 })).toBe(3);
+    expect(await nre.checked_add_overflow.locally(1, 2)).toBe(3);
   });
 
   it("transition_assert(true) = true", async () => {
-    expect(await nre.transition_assert.locally({ arg0: true })).toBe(true);
+    expect(await nre.transition_assert.locally(true)).toBe(true);
   });
 });
 
 describe("native_runtime_edges — local failures → LocalTransitionError", () => {
   it("checked_add_overflow(255, 1) overflows", async () => {
-    const err = await nre.checked_add_overflow.captureLocalFailure({ arg0: 255, arg1: 1 });
+    const err = await nre.checked_add_overflow.captureLocalFailure(255, 1);
     expect(err).toBeInstanceOf(LocalTransitionError);
     expect(err.kind).toBe("LocalTransitionError");
   });
 
   it("checked_sub_underflow(0, 1) underflows", async () => {
-    const err = await nre.checked_sub_underflow.captureLocalFailure({ arg0: 0, arg1: 1 });
+    const err = await nre.checked_sub_underflow.captureLocalFailure(0, 1);
     expect(err.kind).toBe("LocalTransitionError");
   });
 
   it("checked_division(1, 0) divides by zero", async () => {
-    const err = await nre.checked_division.captureLocalFailure({ arg0: 1n, arg1: 0n });
+    const err = await nre.checked_division.captureLocalFailure(1n, 0n);
     expect(err.kind).toBe("LocalTransitionError");
   });
 
   it("transition_assert(false) fails the off-chain assert", async () => {
-    const err = await nre.transition_assert.captureLocalFailure({ arg0: false });
+    const err = await nre.transition_assert.captureLocalFailure(false);
     expect(err.kind).toBe("LocalTransitionError");
   });
 
   it(".failsLocally resolves for a genuinely failing input", async () => {
-    await expect(
-      nre.checked_add_overflow.failsLocally({ arg0: 255, arg1: 1 }),
-    ).resolves.toBeUndefined();
+    await expect(nre.checked_add_overflow.failsLocally(255, 1)).resolves.toBeUndefined();
   });
 
   it(".failsLocally on a passing input throws UnexpectedLocalSuccessError", async () => {
-    await expect(nre.transition_assert.failsLocally({ arg0: true })).rejects.toBeInstanceOf(
+    await expect(nre.transition_assert.failsLocally(true)).rejects.toBeInstanceOf(
       UnexpectedLocalSuccessError,
     );
   });
@@ -104,35 +102,33 @@ describe("native_runtime_edges — local failures → LocalTransitionError", () 
 
 describe("native_runtime_edges — on-chain finalizer accept/reject", () => {
   it("finalizer_assert(true) is accepted", async () => {
-    const result = await nre.finalizer_assert.accepted({ arg0: true });
+    const result = await nre.finalizer_assert.accepted(true);
     expect(result.status).toBe("accepted");
     expect(result.txId).toBeTruthy();
   });
 
   it("finalizer_assert(false) is rejected", async () => {
-    const result = await nre.finalizer_assert.rejected({ arg0: false });
+    const result = await nre.finalizer_assert.rejected(false);
     expect(result.status).toBe("rejected");
   });
 
   it("calling .accepted on a rejecting finalizer throws OnChainRejectedError", async () => {
-    await expect(nre.finalizer_assert.accepted({ arg0: false })).rejects.toBeInstanceOf(
-      OnChainRejectedError,
-    );
+    await expect(nre.finalizer_assert.accepted(false)).rejects.toBeInstanceOf(OnChainRejectedError);
   });
 
   it("calling .rejected on a passing finalizer throws UnexpectedTransactionStatusError", async () => {
-    await expect(nre.finalizer_assert.rejected({ arg0: true })).rejects.toBeInstanceOf(
+    await expect(nre.finalizer_assert.rejected(true)).rejects.toBeInstanceOf(
       UnexpectedTransactionStatusError,
     );
   });
 
   it("missing_mapping_get(404field) rejects on a missing key", async () => {
-    const result = await nre.missing_mapping_get.rejected({ arg0: Leo.field(404) });
+    const result = await nre.missing_mapping_get.rejected(Leo.field(404));
     expect(result.status).toBe("rejected");
   });
 
   it("vector_get_at(99) rejects out-of-bounds", async () => {
-    const result = await nre.vector_get_at.rejected({ arg0: 99 });
+    const result = await nre.vector_get_at.rejected(99);
     expect(result.status).toBe("rejected");
   });
 });
@@ -143,21 +139,21 @@ describe("native_runtime_edges — native credits mapping reads (diamond-on-cred
   it("native_account_safe_read uses get_or_use → accepted for any address", async () => {
     // Zero state dependency: get_or_use falls back to 0u64, so this is the
     // guaranteed-robust anchor regardless of funding.
-    const result = await nre.native_account_safe_read.accepted({
-      arg0: Leo.address(ctx!.accounts[0]!.address),
-    });
+    const result = await nre.native_account_safe_read.accepted(
+      Leo.address(ctx!.accounts[0]!.address),
+    );
     expect(result.status).toBe("accepted");
   });
 
   it("native_account_required_read rejects for an address with no credits.aleo::account entry", async () => {
     // Bare get(credits.aleo::account, owner) panics on a missing key.
-    const result = await nre.native_account_required_read.rejected({ arg0: UNFUNDED_ADDRESS });
+    const result = await nre.native_account_required_read.rejected(UNFUNDED_ADDRESS);
     expect(result.status).toBe("rejected");
   });
 
   it("calling .accepted on the required read of an unfunded address throws OnChainRejectedError", async () => {
     await expect(
-      nre.native_account_required_read.accepted({ arg0: UNFUNDED_ADDRESS }),
+      nre.native_account_required_read.accepted(UNFUNDED_ADDRESS),
     ).rejects.toBeInstanceOf(OnChainRejectedError);
   });
 });
@@ -167,18 +163,18 @@ describe("native_runtime_edges — storage & vector finalizer edges", () => {
   // (`initialize_runtime_state` is never called) and the storage singletons are
   // unset — so every index is out of bounds and every unwrap panics.
   it("vector_set_at(0) rejects out-of-bounds on the empty field_history", async () => {
-    const result = await nre.vector_set_at.rejected({ arg0: 0, arg1: Leo.field(7) });
+    const result = await nre.vector_set_at.rejected(0, Leo.field(7));
     expect(result.status).toBe("rejected");
   });
 
   it("calling .accepted on the out-of-bounds vector_set_at throws OnChainRejectedError", async () => {
-    await expect(
-      nre.vector_set_at.accepted({ arg0: 0, arg1: Leo.field(7) }),
-    ).rejects.toBeInstanceOf(OnChainRejectedError);
+    await expect(nre.vector_set_at.accepted(0, Leo.field(7))).rejects.toBeInstanceOf(
+      OnChainRejectedError,
+    );
   });
 
   it("vector_swap_remove_at(0) rejects out-of-bounds on the empty group_history", async () => {
-    const result = await nre.vector_swap_remove_at.rejected({ arg0: 0 });
+    const result = await nre.vector_swap_remove_at.rejected(0);
     expect(result.status).toBe("rejected");
   });
 
@@ -197,10 +193,10 @@ describe("native_runtime_edges — native credits future composition", () => {
     // debits `self.caller` == the *program* in a cross-program `.run()`; the
     // program is unfunded, so that one deterministically rejects — wrong shape
     // for an accept test.)
-    const result = await nre.transfer_public_signer_wrap.accepted({
-      arg0: Leo.address(ctx!.accounts[1]!.address),
-      arg1: 1n,
-    });
+    const result = await nre.transfer_public_signer_wrap.accepted(
+      Leo.address(ctx!.accounts[1]!.address),
+      1n,
+    );
     expect(result.status).toBe("accepted");
   });
 });

@@ -39,9 +39,10 @@ describe("groups.aleo", () => {
   // so any input group should yield group::GEN. We exercise it with the
   // generator point as `a`.
   it("returns the generator regardless of input", async () => {
-    const result = await groups.main.locally({
-      arg0: 7810607721416582242904415504650443951498042435501746664987470571546413371306n,
-    });
+    const result =
+      await groups.main.locally(
+        7810607721416582242904415504650443951498042435501746664987470571546413371306n,
+      );
     // Output should be the generator point — its representation is fixed,
     // so we check it ends with `group` and is non-empty.
     expect(result).toMatch(/group$/);

@@ -87,66 +87,66 @@ export class Collisions extends BaseContract {
   }
 
   readonly submit = {
-    locally: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: LocalExecutionOptions): Promise<LeoField> => {
+    locally: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: LocalExecutionOptions): Promise<LeoField> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       const _result = await this.executeLocal("submit", _args, options ?? {});
       return BaseContract.parseField(this.outputAt(_result, "submit", 0));
     },
 
-    failsLocally: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       await this.expectLocalFailure("submit", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       return this.expectLocalFailure("submit", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       return this.submitTransition("submit", _args, options ?? {});
     },
 
-    settled: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoField>> | RejectedTransition> => {
+    settled: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoField>> | RejectedTransition> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       return this.settleTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "collisions.aleo", "submit", 0), tpk, "collisions.aleo", "submit", 3, BaseContract.parseField));
     },
 
-    accepted: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoField>>> => {
+    accepted: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoField>>> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       return this.expectAcceptedTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "collisions.aleo", "submit", 0), tpk, "collisions.aleo", "submit", 3, BaseContract.parseField));
     },
 
-    rejected: async (args: { readonly a: Foo_Input; readonly b: FooInputInput; readonly c: Field_Input }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeFoo(args.a as Foo_Input, this.inputContext("submit", "a")),
-        serializeFooInput(args.b as FooInputInput, this.inputContext("submit", "b")),
-        serializeField(args.c as Field_Input, this.inputContext("submit", "c")),
+        serializeFoo(a as Foo_Input, this.inputContext("submit", "a")),
+        serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
+        serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
       return this.expectRejected("submit", _args, options ?? {});
     },

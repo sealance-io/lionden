@@ -259,16 +259,13 @@ export const asPoolToken = Object.assign(_asPoolTokenImpl, {
 Callers import `asPoolToken` directly for input conversion:
 
 ```ts
-await amm.add_liquidity.locally({ token: asPoolToken(tok), ... });
+await amm.add_liquidity.locally(asPoolToken(tok), /* ... */);
 ```
 
 The same helper is the preferred output-side matcher when the dispatched call returns a `dyn record` handle:
 
 ```ts
-const accepted = await amm.route_transfer.accepted({
-  token: asPoolToken(tok),
-  to,
-});
+const accepted = await amm.route_transfer.accepted(asPoolToken(tok), to);
 
 const recovered = await accepted.outputs
   .match(asPoolToken.output.from("transfer", 0))

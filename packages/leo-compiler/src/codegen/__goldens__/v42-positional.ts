@@ -43,111 +43,111 @@ export class V42codegen extends BaseContract {
   }
 
   readonly add = {
-    locally: async (args: { readonly arg0: number; readonly arg1: number }, options?: LocalExecutionOptions): Promise<number> => {
+    locally: async (arg0: number, arg1: number, options?: LocalExecutionOptions): Promise<number> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       const _result = await this.executeLocal("add", _args, options ?? {});
       return BaseContract.parseNumber(this.outputAt(_result, "add", 0));
     },
 
-    failsLocally: async (args: { readonly arg0: number; readonly arg1: number }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (arg0: number, arg1: number, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       await this.expectLocalFailure("add", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly arg0: number; readonly arg1: number }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (arg0: number, arg1: number, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       return this.expectLocalFailure("add", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly arg0: number; readonly arg1: number }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (arg0: number, arg1: number, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       return this.submitTransition("add", _args, options ?? {});
     },
 
-    settled: async (args: { readonly arg0: number; readonly arg1: number }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>> | RejectedTransition> => {
+    settled: async (arg0: number, arg1: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       return this.settleTyped("add", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "add", 0), tpk, "v42codegen.aleo", "add", 2, BaseContract.parseNumber));
     },
 
-    accepted: async (args: { readonly arg0: number; readonly arg1: number }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
+    accepted: async (arg0: number, arg1: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       return this.expectAcceptedTyped("add", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "add", 0), tpk, "v42codegen.aleo", "add", 2, BaseContract.parseNumber));
     },
 
-    rejected: async (args: { readonly arg0: number; readonly arg1: number }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (arg0: number, arg1: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.arg0, 32, this.inputContext("add", "arg0")),
-        BaseContract.serializeUInt(args.arg1, 32, this.inputContext("add", "arg1")),
+        BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
+        BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
       return this.expectRejected("add", _args, options ?? {});
     },
   } as const;
 
   readonly wrap = {
-    locally: async (args: { readonly arg0: PointInput }, options?: LocalExecutionOptions): Promise<Point> => {
+    locally: async (arg0: PointInput, options?: LocalExecutionOptions): Promise<Point> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       const _result = await this.executeLocal("wrap", _args, options ?? {});
       return deserializePoint(this.outputAt(_result, "wrap", 0));
     },
 
-    failsLocally: async (args: { readonly arg0: PointInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (arg0: PointInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       await this.expectLocalFailure("wrap", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly arg0: PointInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (arg0: PointInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       return this.expectLocalFailure("wrap", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly arg0: PointInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (arg0: PointInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       return this.submitTransition("wrap", _args, options ?? {});
     },
 
-    settled: async (args: { readonly arg0: PointInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Point>> | RejectedTransition> => {
+    settled: async (arg0: PointInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Point>> | RejectedTransition> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       return this.settleTyped("wrap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "wrap", 0), tpk, "v42codegen.aleo", "wrap", 1, (_p: string) => deserializePoint(_p)));
     },
 
-    accepted: async (args: { readonly arg0: PointInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Point>>> => {
+    accepted: async (arg0: PointInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Point>>> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       return this.expectAcceptedTyped("wrap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "wrap", 0), tpk, "v42codegen.aleo", "wrap", 1, (_p: string) => deserializePoint(_p)));
     },
 
-    rejected: async (args: { readonly arg0: PointInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (arg0: PointInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializePoint(args.arg0 as PointInput, this.inputContext("wrap", "arg0")),
+        serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
       return this.expectRejected("wrap", _args, options ?? {});
     },

@@ -38,7 +38,7 @@ describe("helloworld.aleo", () => {
   });
 
   it("adds two u32s", async () => {
-    expect(await helloworld.main.locally({ arg0: 3, arg1: 5 })).toBe(8);
+    expect(await helloworld.main.locally(3, 5)).toBe(8);
   });
 });
 
@@ -50,6 +50,6 @@ describe("hello.aleo", () => {
   });
 
   it("adds two u32s", async () => {
-    expect(await hello.main.locally({ arg0: 1, arg1: 2 })).toBe(3);
+    expect(await hello.main.locally(1, 2)).toBe(3);
   });
 });

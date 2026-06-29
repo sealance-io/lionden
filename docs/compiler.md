@@ -126,11 +126,11 @@ nested arrays/structs/records widen recursively. A `MerkleProof` with
 `siblings: field[]` can therefore be passed as a plain literal:
 
 ```ts
-await amm.add_liquidity.locally({
-  pool_id: 1n,
-  token_1_merkle_proof: [{ siblings: [1n, 2n], leaf_index: 0 }], // no per-element Leo.field(...)
+await amm.add_liquidity.locally(
+  1n,
+  [{ siblings: [1n, 2n], leaf_index: 0 }], // no per-element Leo.field(...)
   // …
-});
+);
 ```
 
 Because every input field is a superset of its branded output (`AddressInput ⊇
