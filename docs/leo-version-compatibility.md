@@ -4,7 +4,8 @@
 
 | Version | Status | Scope |
 |---------|--------|-------|
-| Leo 4.1.x | Default, full support | Aleo Stack 4.7 builds, including per-unit build layouts and `lib.leo` library units |
+| Leo 4.2.x | Default, full support | Slimmer JSON ABI (positional inputs, dropped `is_final`/`const_parameters`/`implements`), explicit self-program refs, single-program `build/<program>/` layout |
+| Leo 4.1.x | Supported | Explicit compatibility line; per-unit build layouts and `lib.leo` library units |
 | Leo 4.0.x | Supported | Explicit compatibility line for projects staying on the previous Leo v4 line |
 | Leo 3.5.x | Supported | Deployable `main.leo` programs only |
 
@@ -28,13 +29,13 @@ export default defineConfig({
 });
 ```
 
-- **`leoVersion`** — compatibility declaration, not a binary pin. Accepted stable patch versions are `4.1.x` (default line), `4.0.x`, and `3.5.x`.
+- **`leoVersion`** — compatibility declaration, not a binary pin. Accepted stable patch versions are `4.2.x` (default line), `4.1.x`, `4.0.x`, and `3.5.x`.
 - **`leoBinary`** — path to the Leo CLI binary that LionDen actually executes. Defaults to `"leo"` (resolved from `PATH`). Tilde (`~/`) is expanded to the user's home directory during config resolution, since `execFile`/`spawn` do not perform shell expansion.
 - **`skipLeoVersionCheck`** — default `false`. When `true`, LionDen still verifies that `leoBinary --disable-update-check --version` runs successfully, but skips parsing and comparing the version output. The configured `leoVersion` must still be a stable `major.minor.patch` string.
 
 Install both Leo versions side-by-side with `leo update --name v3.5.0` (available since Leo v3.2.0). The default `leo` on `PATH` remains v4; point `leoBinary` at the named v3.5 installation.
 
-The `examples/aleo-ports` smoke lane targets the default Leo 4.1.x line. Those configs pin `leoVersion: "4.1.0"` and use the `leo` binary resolved from `PATH`.
+The `examples/aleo-ports` smoke lane targets the default Leo 4.2.x line. Those configs pin `leoVersion: "4.2.0"` and use the `leo` binary resolved from `PATH`.
 
 Before LionDen-managed compilation or devnode startup, LionDen runs the configured Leo binary with update checks disabled:
 
@@ -42,7 +43,7 @@ Before LionDen-managed compilation or devnode startup, LionDen runs the configur
 leo --disable-update-check --version
 ```
 
-When version checking is enabled, the first stable `major.minor.patch` version in the output is compared against the configured `leoVersion` major/minor line. Patch drift is allowed: for example, `leoVersion: "4.0.0"` accepts a `leo 4.0.2` binary, and `leoVersion: "4.1.0"` accepts a `leo 4.1.x` binary. Minor drift is not allowed unless `skipLeoVersionCheck: true` is set. Missing or inaccessible binaries always fail preflight.
+When version checking is enabled, the first stable `major.minor.patch` version in the output is compared against the configured `leoVersion` major/minor line. Patch drift is allowed: for example, `leoVersion: "4.0.0"` accepts a `leo 4.0.2` binary, and `leoVersion: "4.2.0"` accepts a `leo 4.2.x` binary. Minor drift is not allowed unless `skipLeoVersionCheck: true` is set. Missing or inaccessible binaries always fail preflight.
 
 ## Devnode Consensus Heights
 
@@ -91,7 +92,7 @@ Users can deploy with Leo v3.5, migrate source to v4 syntax, and upgrade seamles
 
 1. Deploy the v3.5 program (edition 0).
 2. Convert source to v4 syntax: `fn` keyword, `-> Final` returns, non-async `constructor`, inline `return final { ... }` blocks, `::` cross-program calls.
-3. Update config: set `leoVersion` to the default v4 line such as `"4.1.0"` or an explicit `4.0.x` patch if you are intentionally staying on Leo 4.0, then remove or update `leoBinary`.
+3. Update config: set `leoVersion` to the default v4 line such as `"4.2.0"` (or an explicit `4.1.x`/`4.0.x` patch if you are intentionally staying on an earlier Leo v4 line), then remove or update `leoBinary`.
 4. Run `upgrade` — LionDen recompiles with v4, validates ABI compatibility and constructor fingerprint, broadcasts the upgrade.
 
 The `@admin` constructor fingerprint (`assert.eq program_owner <addr>;`) is identical in v3.5 and v4 compiled output, so the fingerprint check passes across versions. On-chain state (mappings) is preserved through the upgrade.
@@ -100,9 +101,12 @@ The `@admin` constructor fingerprint (`assert.eq program_owner <addr>;`) is iden
 
 These details are relevant to contributors working on the compiler and deploy pipelines:
 
-- **ABI normalization.** v3.5 ABI uses `"transitions"` (v4: `"functions"`), `"is_async"` (v4: `"is_final"`), and bare `"Future"` output type (v4: `"Final"`). The ABI parser normalizes both formats to the same internal representation.
-- **Leo 4.1 build layout.** The compiler accepts both legacy `build/abi.json` + `build/main.aleo` and flat per-unit `build/<unit>/abi.json` + `build/<unit>/<unit>.aleo`, then normalizes program artifacts back to `artifacts/<programId>/abi.json` and `main.aleo`.
-- **Leo 4.1 ABI extensions.** `views`, `implements`, and non-empty `const_parameters` are parsed and included in ABI hashes only when present. Generated TypeScript wrappers still emit execution methods for transitions only; view query wrappers are deferred, and executable functions with non-empty `const_parameters` fail codegen explicitly.
+- **ABI normalization (multi-version, shape-detecting).** The parser accepts three wire shapes and normalizes all to one internal representation: v3.5 (`"transitions"`/`"is_async"`/bare `"Future"`), Leo 4.1 / bytecode `leo abi` (I/O wrapped as `{ name?, ty, mode }`, `"functions"`/`is_final`/`"Final"`), and Leo 4.2 (I/O elements are the bare enum variant — `{ Plaintext: { ty, mode } }`, `{ Record: { path, program } }`, `"Final"`, `"DynamicRecord"` — with input names dropped). It detects per-element which shape applies (the top-level `ty` key marks the 4.1/internal wrapper, so a 4.1 input literally named `Plaintext` is not misread). Re-parsing an already-normalized ABI is a fixed point.
+- **Leo 4.2 ABI changes (intentional breaking change).** Leo 4.2 emits a slimmer ABI: input names removed (the parser synthesizes positional `arg0`, `arg1`, … only when absent and preserves existing names), `is_final` removed (async/has-finalize is inferred from a `Final` output), and `const_parameters` / `Program.implements` removed. `Mode::None` is gone — the parser canonicalizes unmoded/`None` plaintext to `Private` (transitions and record-definition fields) or `Public` (views), and the `Mode` union drops `None` and adds `Constant`. Record/`Final`/`DynamicRecord` carry no mode. Self type references are now explicit (`program: "<self>.aleo"`); the parser rewrites them back to `program: null` across **every** plaintext surface (struct/record definitions, mappings, storage variables, and function/view I/O) so a 4.1 self-ref (`null`) and a 4.2 self-ref compare equal. The recorded `abiHash` therefore drifts cosmetically across the 4.1 → 4.2 cutover — this is harmless because the hash is a recorded fingerprint, never an upgrade gate.
+- **Upgrade compatibility is version-agnostic.** `checkAbiCompatibility` re-parses both the stored snapshot and the new ABI before comparing, and compares transition/view inputs **positionally** (by mode + type, not name — matching Leo's `--satisfies`). It no longer enforces `implements` (interface conformance moved to `leo abi --satisfies`) or `const_parameters`, both of which Leo 4.2 removed, so a legitimate Leo 4.1 → 4.2 upgrade of an unchanged signature passes.
+- **Build layout.** The compiler builds every unit as a standalone single-program package, and `resolveBuildArtifacts` probes `build/`, `build/<id>/`, and `build/<base>/` for both `<program>.aleo`/`main.aleo` and `abi.json` — covering the Leo 4.2 single-program `build/<program>/` layout as well as the Leo 4.1 per-unit and legacy `build/main.aleo` layouts. Program artifacts normalize back to `artifacts/<programId>/abi.json` and `main.aleo`.
+- **Build flags (version-gated).** Leo 4.2 removed the `--enable-dce` and `--conditional-block-max-depth` flags from `leo build` (dead-code elimination is now unconditional). The compiler emits them only when the configured `leoVersion` is below 4.2 — the `compiler.enableDce` and `compiler.conditionalBlockMaxDepth` config options are therefore no-ops on the 4.2.x line. An unparseable/unknown `leoVersion` is treated as modern (4.2+) and omits both, since passing a removed flag is a hard `leo build` failure.
+- **Leo 4.1 ABI extensions.** `views`, `implements`, and non-empty `const_parameters` are still parsed (and included in ABI hashes) when a 4.1 snapshot carries them. Generated TypeScript wrappers still emit execution methods for transitions only; view query wrappers are deferred, and executable functions with non-empty `const_parameters` fail codegen explicitly.
 
 - **Constructor parsing.** v3.5 constructors use `async constructor()` syntax (e.g., `@noupgrade async constructor() {}`). The constructor parser accepts an optional `async` keyword before `constructor` in all four annotation patterns.
 

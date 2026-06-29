@@ -17,7 +17,7 @@ LionDen is in active early development. This guide is anchored to **shipped beha
 
 - Node.js `^20.19.0 || >=22.12.0`.
 - npm (the workspace baseline; pnpm/yarn are not exercised).
-- **Leo CLI v4.1.x** available on `PATH` as `leo` by default. Leo v4.0.x remains supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
+- **Leo CLI v4.2.x** available on `PATH` as `leo` by default. Leo v4.1.x and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
 - Optional: a v3.5 Leo binary installed side-by-side if you need v3.5 deployable-program compatibility. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
 LionDen also uses `@provablehq/sdk` (currently `^0.11.1`) under the hood through `@lionden/network` for transaction building and broadcasting.
@@ -120,7 +120,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.1.0",
+  leoVersion: "4.2.0",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -135,7 +135,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 
 | Field | Purpose | Default |
 | --- | --- | --- |
-| `leoVersion` | Compatibility line — `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.1.0"` |
+| `leoVersion` | Compatibility line — `4.2.x`, `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.2.0"` |
 | `leoBinary` | Path to the Leo CLI to invoke. Tilde-expanded. | `"leo"` from `PATH` |
 | `programsDir` / `artifactsDir` / `typechainDir` | Source/output layout | `programs` / `artifacts` / `typechain` |
 | `defaultNetwork` | Named `networks` entry selected by tasks when no global `--network <name>` is passed | `"devnode"` |
