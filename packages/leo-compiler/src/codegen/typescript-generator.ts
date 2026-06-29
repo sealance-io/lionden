@@ -2107,9 +2107,10 @@ function isFutureOutput(ty: AleoType): boolean {
 
 /**
  * A plaintext output appears as a value ciphertext on chain when its
- * visibility is not explicitly `Public`. Leo emits `mode: "None"` when no
- * visibility modifier was written (Leo's default is private). Both `"None"`
- * and `"Private"` produce `ciphertext1...` on chain.
+ * visibility is not explicitly `Public`. When no visibility modifier was
+ * written, the parser canonicalizes the mode to `Private` (older Leo ABIs
+ * emitted `mode: "None"`, which collapsed to the same default). `Private` and
+ * `Constant` both produce `ciphertext1...` on chain; only `Public` does not.
  */
 function isPrivatePlaintextOutput(output: AbiOutput): boolean {
   const ty = output.ty;

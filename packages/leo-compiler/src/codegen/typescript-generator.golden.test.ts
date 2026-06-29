@@ -142,6 +142,9 @@ const FIXTURE_PAIRS: [string, string][] = [
   ["edge-dex.abi.json", "dex.ts"],
   ["edge-optional-nonzeroable-fields.abi.json", "optional-nonzeroable-fields.ts"],
   ["edge-input-name-collisions.abi.json", "input-name-collisions.ts"],
+  // Leo 4.2 wire shape: positional inputs (synthesized `arg0`/`arg1` params)
+  // and a struct ref carrying an explicit `program: "<self>.aleo"` self-ref.
+  ["edge-v42-positional.abi.json", "v42-positional.ts"],
 ];
 
 describe("codegen goldens", () => {
@@ -180,6 +183,25 @@ describe("codegen golden TypeScript validity", () => {
       "void _deployTarget;",
     ].join("\n");
     expectGeneratedToTypecheck("deploy-target-assertion", assertion);
+  });
+});
+
+describe("codegen — Leo 4.2 wire shape", () => {
+  it("emits synthesized positional params (arg0, arg1) for unnamed 4.2 inputs", () => {
+    const output = generateBindings(loadAbi("edge-v42-positional.abi.json"));
+    expect(output).toContain("readonly arg0: number; readonly arg1: number");
+    expect(output).toContain('this.inputContext("add", "arg0")');
+    expect(output).toContain('this.inputContext("add", "arg1")');
+  });
+
+  it("treats an explicit-self-program struct ref as local (not an external import)", () => {
+    const output = generateBindings(loadAbi("edge-v42-positional.abi.json"));
+    // Point is declared and serialized locally…
+    expect(output).toContain("export interface Point {");
+    expect(output).toContain("serializePoint(args.arg0 as PointInput");
+    // …and never imported from another program module (self-ref → local).
+    expect(output).not.toMatch(/import[^;]*\bPoint\b[^;]*from/);
+    expect(output).not.toContain("as Point_");
   });
 });
 
@@ -246,16 +268,18 @@ describe("composite input widening typechecks", () => {
           {
             name: "proof",
             ty: { Plaintext: { Struct: { path: ["MerkleProof"], program: null } } },
-            mode: "None",
+            mode: "Private",
           },
         ],
-        outputs: [{ ty: { Plaintext: { Primitive: "Boolean" } }, mode: "None" }],
+        outputs: [{ ty: { Plaintext: { Primitive: "Boolean" } }, mode: "Private" }],
       },
       {
         name: "spend",
         is_async: false,
-        inputs: [{ name: "note", ty: { Record: { path: ["Note"], program: null } }, mode: "None" }],
-        outputs: [{ ty: { Record: { path: ["Note"], program: null } }, mode: "None" }],
+        inputs: [
+          { name: "note", ty: { Record: { path: ["Note"], program: null } }, mode: "Private" },
+        ],
+        outputs: [{ ty: { Record: { path: ["Note"], program: null } }, mode: "Private" }],
       },
     ],
   });
@@ -301,11 +325,11 @@ describe("composite input widening typechecks", () => {
           {
             name: "make",
             is_async: false,
-            inputs: [{ name: "id", ty: { Plaintext: { Primitive: "Field" } }, mode: "None" }],
+            inputs: [{ name: "id", ty: { Plaintext: { Primitive: "Field" } }, mode: "Private" }],
             outputs: [
               {
                 ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: null } } },
-                mode: "None",
+                mode: "Private",
               },
             ],
           },
@@ -333,18 +357,18 @@ describe("composite input widening typechecks", () => {
               {
                 name: "info",
                 ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-                mode: "None",
+                mode: "Private",
               },
               {
                 name: "extra",
                 ty: { Plaintext: { Struct: { path: ["WidenInput"], program: null } } },
-                mode: "None",
+                mode: "Private",
               },
             ],
             outputs: [
               {
                 ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-                mode: "None",
+                mode: "Private",
               },
             ],
           },
@@ -402,20 +426,20 @@ describe("external alias collisions", () => {
               {
                 name: "info",
                 ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-                mode: "None",
+                mode: "Private",
               },
               {
                 name: "local",
                 ty: {
                   Plaintext: { Struct: { path: ["Registry_TokenInfo"], program: null } },
                 },
-                mode: "None",
+                mode: "Private",
               },
             ],
             outputs: [
               {
                 ty: { Plaintext: { Struct: { path: ["TokenInfo"], program: "registry.aleo" } } },
-                mode: "None",
+                mode: "Private",
               },
             ],
           },
@@ -477,13 +501,13 @@ describe("external alias collisions", () => {
               {
                 name: "token",
                 ty: { Record: { path: ["Token"], program: "token_registry.aleo" } },
-                mode: "None",
+                mode: "Private",
               },
             ],
             outputs: [
               {
                 ty: { Record: { path: ["Token"], program: "token_registry.aleo" } },
-                mode: "None",
+                mode: "Private",
               },
             ],
           },
@@ -553,13 +577,13 @@ describe("external alias collisions", () => {
               {
                 name: "t",
                 ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
-                mode: "None",
+                mode: "Private",
               },
             ],
             outputs: [
               {
                 ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
-                mode: "None",
+                mode: "Private",
               },
             ],
           },
@@ -632,13 +656,13 @@ describe("external alias collisions", () => {
               {
                 name: "t",
                 ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
-                mode: "None",
+                mode: "Private",
               },
             ],
             outputs: [
               {
                 ty: { Record: { path: ["Token"], program: "gold_token.aleo" } },
-                mode: "None",
+                mode: "Private",
               },
             ],
           },
