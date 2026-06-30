@@ -78,7 +78,7 @@ Primary targets:
 - `packages/config`
 - `packages/core`
 - most of `packages/leo-compiler`
-- deployment state parsing and ABI compatibility logic in `packages/plugin-deploy`
+- deployment state parsing in `packages/plugin-deploy`
 - scaffolder template rendering in `packages/create-lionden`
 
 Recommended techniques:
@@ -129,7 +129,6 @@ Primary targets:
 - `examples/token`
 - `examples/multi-program`
 - `examples/nft-registry`
-- `examples/upgradeable-counter`
 - `examples/async-escrow`
 
 Expected scope:
@@ -314,14 +313,12 @@ Primary tiers:
 - Tier 3
 
 Coverage focus:
-- constructor annotation parsing
-- ABI compatibility checking
 - deployment state read/write
 - deploy target resolution
 - task-to-network orchestration
 
 Expectation:
-- substantial pure-logic coverage already exists in Tier 1 (constructor parsing, ABI compat, deployment state I/O)
+- substantial pure-logic coverage already exists in Tier 1 (deployment state I/O)
 - deploy orchestration and network interactions belong in Tier 2
 - one smoke path through example deploy belongs in Tier 3
 
@@ -525,16 +522,6 @@ Role:
 Keep:
 - `loadFixture()` usage across describe blocks
 - local execution mode demonstration
-
-### `examples/upgradeable-counter`
-
-Role:
-- upgrade workflow end-to-end smoke test
-
-Keep:
-- `@admin` constructor, upgrade task, ABI compat check
-- `assertBalanceAtLeast` and `assertBlockHeightAtLeast` usage
-- `configVariable()` and multi-network config demonstration
 
 ### `examples/async-escrow`
 

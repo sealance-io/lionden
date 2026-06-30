@@ -84,7 +84,7 @@ This repo targets Leo v4 by default. Leo v3.5 is supported for deployable progra
 
 - `fn` keyword (not `transition`). Functions that touch on-chain state return `-> Final` (not `-> Future`).
 - Finalize blocks use `return final { ... }` inline. Cross-program finalize composition uses `.run()`.
-- Constructors use decorators: `@noupgrade` for immutable programs, `@admin(address="aleo1...")` for upgradeable programs.
+- Constructors use decorators: `@noupgrade` for immutable programs, `@admin(address="aleo1...")` for upgradeable programs. These constructor decorators remain **required Leo syntax** for any deployable program (and create-lionden templates still emit `@noupgrade`), even though lionden no longer ships upgrade-validation tooling or bookkeeping around them — Leo's built-in tooling owns upgrade correctness.
 - Mappings: `mapping name: KeyType => ValueType;` with `name.get()`, `name.get_or_use()`, `name.set()` inside `final` blocks.
 - Records and structs are declared with `record Name { ... }` and `struct Name { ... }`.
 - `self.signer` gives the caller address, `self.caller` gives the immediate caller (may differ in cross-program calls).

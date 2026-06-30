@@ -14,7 +14,7 @@ LionDen is a workspace monorepo with code grouped by responsibility:
 - `packages/testing`: test LRE creation, managed devnode lifecycle, fixtures, assertions, account helpers
 - `packages/plugin-leo`: `compile` and `clean`
 - `packages/plugin-network`: `node`, `run`, and LRE network injection
-- `packages/plugin-deploy`: `deploy`, `upgrade`, `export`, constructor checks, and deployment state
+- `packages/plugin-deploy`: `deploy`, `upgrade`, `export`, and deployment state
 - `packages/plugin-test`: `test` and Vitest integration
 - `packages/create-lionden`: interactive scaffolding
 - `packages/test-internals`: private repo-owned test fakes, temp-project builders, contract LRE helpers, and shared mocks
@@ -25,9 +25,8 @@ Top-level supporting paths:
 - `examples/token`: fuller example with mappings and richer tests
 - `examples/multi-program`: cross-program calls and dependency graph
 - `examples/nft-registry`: structs, records, `loadFixture`, local mode
-- `examples/upgradeable-counter`: `@admin` constructor, upgrade flow, multi-network config
 - `examples/async-escrow`: typechain bindings in tests, escrow state machine
-- `examples/aleo-ports`: ~22 ported Aleo SDK examples used for compatibility smoke coverage (admin, auction, basic_bank, battleship, bubblesort, dynamic_dispatch, dynamic_records, example_with_test, fibonacci, groups, helloworld, interest, lottery, message, noupgrade, simple_token, tictactoe, timelock, token, twoadicity, upgrades-vote, vote) — each is its own workspace
+- `examples/aleo-ports`: ~22 ported Aleo SDK examples used for compatibility smoke coverage (admin, auction, basic_bank, battleship, bubblesort, dynamic_dispatch, dynamic_records, example_with_test, fibonacci, groups, helloworld, interest, lottery, message, noupgrade, simple_token, tictactoe, timelock, token, twoadicity, upgrades-vote, vote) — each is its own workspace; `admin`/`noupgrade`/`timelock` are Leo constructor/upgrade compatibility coverage (Leo and the network own upgrade correctness — lionden does no upgrade validation)
 - `docs/`: focused implementation docs
 
 ## Contributor Entry Points
@@ -71,12 +70,6 @@ Useful starting points for common repo tasks:
 - struct and record definitions with `field` type
 - `loadFixture()` for shared test setup
 - local execution mode (no finalize)
-
-`examples/upgradeable-counter` exercises the upgrade workflow:
-
-- `@admin` constructor for upgrade authorization
-- end-to-end upgrade flow with ABI compatibility
-- multi-network configuration (devnode + commented testnet with `configVariable()`)
 
 `examples/async-escrow` demonstrates typechain bindings in tests:
 

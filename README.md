@@ -47,7 +47,6 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `examples/token` | Richer example with mappings and private/public flows |
 | `examples/multi-program` | Cross-program calls, dependency graph, typechain |
 | `examples/nft-registry` | Structs, records, `loadFixture`, local execution mode |
-| `examples/upgradeable-counter` | `@admin` constructor, upgrade flow, multi-network config |
 | `examples/async-escrow` | Typechain bindings in tests, escrow state machine |
 | `examples/aleo-ports` | Ported Aleo examples used for compatibility smoke coverage |
 | `docs/` | Focused deep dives for lazy loading |
@@ -131,7 +130,7 @@ The default plugins in this repo register these primary tasks:
 - `node`: start a local Aleo devnode
 - `run <script>`: execute a TypeScript deployment or utility script with LRE context
 - `deploy`: deploy compiled programs to the target network
-- `upgrade`: upgrade a deployed program
+- `upgrade`: compile the new version, build and broadcast the upgrade transaction, and record the result (Leo's built-in tooling owns upgrade correctness)
 - `export`: export deployment addresses and ABIs
 - `recipe`: run a reusable deployment recipe from a TypeScript module
 - `test`: run Vitest suites with LionDen-managed setup and teardown
@@ -211,13 +210,6 @@ For subsystem detail, use the focused docs in `docs/` instead of loading everyth
 - `loadFixture()` for shared test setup
 - local execution mode (no finalize)
 
-`examples/upgradeable-counter` exercises the upgrade workflow:
-
-- `@admin` constructor for upgrade authorization
-- end-to-end upgrade flow with ABI compatibility
-- multi-network configuration (devnode + commented testnet with `configVariable()`)
-- `assertBalanceAtLeast` and `assertBlockHeightAtLeast`
-
 `examples/async-escrow` demonstrates typechain bindings in tests:
 
 - generated TypeScript contract wrappers for all transitions
@@ -235,7 +227,7 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/architecture.md`](docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
 - [`docs/compiler.md`](docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
 - [`docs/network.md`](docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
-- [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, preflight, and hooks
+- [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, and hooks
 - [`docs/testing.md`](docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
 - [`docs/json-abi.md`](docs/json-abi.md): JSON ABI schema, parser normalization, and generated binding type rules
