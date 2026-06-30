@@ -11,10 +11,12 @@ export default defineConfig({
   networks: {
     devnode: { type: "devnode", autoBlock: true },
   },
-  // The @admin address in admin_example.aleo is devnode account-0, so map
-  // the "admin" named account to that index. plugin-deploy reads
-  // lre.namedAccounts["admin"] to pick the upgrade signer.
+  // Signer selection (lionden does no address-match validation, it only
+  // *selects* a key by role): deploy picks namedAccounts.deployer, upgrade
+  // picks namedAccounts.admin. The @admin address in admin_example.aleo is
+  // devnode account-0, so map both roles to index 0.
   namedAccounts: {
+    deployer: { default: 0 },
     admin: { default: 0 },
   },
   testing: { timeout: 180_000 },

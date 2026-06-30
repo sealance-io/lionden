@@ -1,10 +1,12 @@
-// Port of tmp/leo-examples/upgrades/noupgrade/. Demonstrates @noupgrade —
-// constructor checks `assert_eq edition 0u16`, so once the program is on
-// the network any subsequent deployment (edition > 0) is rejected.
+// Leo constructor/upgrade compatibility smoke (port of Leo core upgrades/noupgrade).
+// The @noupgrade constructor forbids any edition > 0, so once the program is on
+// the network any upgrade is rejected. lionden does NO upgrade validation — the
+// network/constructor enforces the rejection; this test only confirms the thin
+// upgrade task surfaces that rejection as a thrown error.
 //
-// Test scope: deploy v1; swap to v2 fixture (adds a `sub` transition);
-// invoking `lre.tasks.run("upgrade")` must throw because the network
-// rejects the upgrade transaction.
+// Test scope: deploy v1; swap to v2 fixture (adds a `subtract` transition);
+// invoking `lre.tasks.run("upgrade")` must throw because the network rejects
+// the upgrade transaction at confirmation.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,9 +61,9 @@ describe("noupgrade_example.aleo", () => {
     try {
       fs.copyFileSync(v2FixturePath, programPath);
 
-      // The upgrade task should fail. Either preflight catches the
-      // @noupgrade restriction locally, or the network rejects the
-      // transaction at confirmation time. Both surface as a thrown error.
+      // lionden has no upgrade preflight — the @noupgrade constructor rejects
+      // the upgrade at confirmation, so the rejected tx surfaces as a thrown
+      // DeployError.
       await expect(
         ctx!.lre.tasks.run("upgrade", { program: "noupgrade_example" }),
       ).rejects.toThrow();

@@ -1,9 +1,14 @@
-// Port of tmp/leo-examples/upgrades/admin/. @admin(address=...) restricts
-// who may deploy or upgrade the program. Devnode account-0 is wired up
-// as the admin via lionden.config.ts namedAccounts.
+// Leo constructor/upgrade compatibility smoke (port of Leo core upgrades/admin).
+// @admin(address=...) restricts who may deploy or upgrade the program. lionden
+// does NO upgrade validation — Leo and the network own correctness; this only
+// drives the thin upgrade task end-to-end with the @admin signer.
 //
-// Test scope: deploy v1 (admin signer), execute main; swap to v2 fixture
-// (adds `subtract`), upgrade with admin signer, execute the new transition.
+// Signer selection on this branch is by role, not address-match: deploy picks
+// namedAccounts.deployer (devnode account-0), upgrade picks namedAccounts.admin.
+// Both map to account-0 in lionden.config.ts.
+//
+// Test scope: deploy v1 (main only), execute main; swap to v2 fixture (adds
+// `subtract`), upgrade with the admin signer, execute the new transition.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +21,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 async function deployAdmin() {
   const ctx = await setup();
   try {
-    // The deploy task auto-detects the admin signer via namedAccounts.admin.
+    // deploy selects the signer from namedAccounts.deployer (devnode account-0).
     await ctx.deploy("admin_example", { noCompile: true });
     return { ctx };
   } catch (error) {
@@ -59,8 +64,8 @@ describe("admin_example.aleo", () => {
     try {
       fs.copyFileSync(v2FixturePath, programPath);
 
-      // namedAccounts.admin → ctx.accounts[0]; upgrade-task picks that as
-      // the signer automatically when the program is @admin(...).
+      // upgrade selects the signer from namedAccounts.admin (selection only —
+      // lionden does not validate it against the @admin address).
       await ctx!.lre.tasks.run("upgrade", { program: "admin_example" });
 
       // The v2-only `subtract` transition isn't on the typed wrapper class
