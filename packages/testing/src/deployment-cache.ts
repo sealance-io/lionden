@@ -10,7 +10,6 @@ export interface CachedDeploymentRecord {
   readonly programId: string;
   readonly txId?: string | null;
   readonly blockHeight?: number | null;
-  readonly constructor: { readonly type: string | null };
 }
 
 export interface DeploymentCacheAccessor {

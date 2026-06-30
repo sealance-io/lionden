@@ -8,24 +8,6 @@
 
 import type { AleoNetwork } from "@lionden/config";
 import type { ProgramABI } from "@lionden/leo-compiler";
-import type { ConstructorType } from "./constructor-parser.js";
-
-// ---------------------------------------------------------------------------
-// Constructor info snapshot (stored within a record)
-// ---------------------------------------------------------------------------
-
-export interface RecordConstructorInfo {
-  /** null on degraded records where we couldn't determine the type */
-  readonly type: ConstructorType | null;
-  /** Only present when type === "admin" */
-  readonly adminAddress?: string;
-  /** Only present when type === "checksum" */
-  readonly checksumMapping?: string;
-  /** Only present when type === "checksum" */
-  readonly checksumKey?: string;
-  /** Hash of the compiled constructor body for immutability checks */
-  readonly fingerprint?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Base record fields shared by all statuses
@@ -33,10 +15,6 @@ export interface RecordConstructorInfo {
 
 interface DeploymentRecordBase {
   readonly programId: string;
-  readonly edition: number;
-  readonly constructor: RecordConstructorInfo;
-  /** SHA-256 hex hash of the ABI JSON. null on degraded records. */
-  readonly abiHash: string | null;
   /** Name of the network in config (e.g. "devnode", "testnet") */
   readonly network: string;
   /** REST API endpoint of the node */
@@ -101,15 +79,6 @@ export type DeploymentRecord =
 export interface DeploymentHistoryEntry {
   readonly record: DeploymentRecord;
   readonly action: "deploy" | "upgrade";
-  readonly previousEdition?: number;
-  readonly abiChanges?: {
-    readonly added: {
-      readonly mappings: string[];
-      readonly structs: string[];
-      readonly records: string[];
-      readonly transitions: string[];
-    };
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -141,12 +110,9 @@ export interface PendingDeployment {
   readonly programId: string;
   readonly action: "deploy" | "upgrade";
   readonly startedAt: string;
-  readonly expectedEdition?: number;
   readonly deployerAddress: string;
   readonly priorityFee: number;
   readonly privateFee: boolean;
-  readonly constructor: RecordConstructorInfo;
-  readonly abiHash: string | null;
   readonly network: string;
   readonly endpoint: string;
 }
@@ -158,10 +124,7 @@ export interface PendingDeployment {
 export interface ExportedProgram {
   readonly programId: string;
   readonly abi: ProgramABI | null;
-  readonly edition: number;
   readonly txId: string | null;
-  readonly constructorType: ConstructorType | null;
-  readonly adminAddress?: string;
   readonly status: "complete" | "degraded" | "recovered";
 }
 

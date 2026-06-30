@@ -13,9 +13,6 @@ function completeRecord(programId: string, txId = "at1cached"): DeploymentRecord
   return {
     status: "complete",
     programId,
-    edition: 0,
-    constructor: { type: "noupgrade" },
-    abiHash: "hash",
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     updatedAt: "2026-05-13T00:00:00.000Z",
@@ -31,9 +28,6 @@ function degradedRecord(programId: string): DeploymentRecord {
   return {
     status: "degraded",
     programId,
-    edition: 0,
-    constructor: { type: null },
-    abiHash: null,
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     updatedAt: "2026-05-13T00:00:00.000Z",

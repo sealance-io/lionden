@@ -2,8 +2,7 @@
  * Pre-flight validation pipeline.
  *
  * Pure validation — never writes state. Returns structured results with
- * per-program outcomes for deploy, and pass/fail with errors/warnings for
- * upgrade.
+ * per-program outcomes for deploy.
  */
 
 import type {
@@ -12,10 +11,8 @@ import type {
   ResolvedSdkKeyCacheConfig,
   SdkLogLevel,
 } from "@lionden/config";
-import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
+import type { DependencyGraph } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
-import { checkAbiCompatibility } from "./abi-compat.js";
-import type { ConstructorInfo } from "./constructor-parser.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { checkProgramOnChain, fetchImportSources } from "./on-chain-check.js";
 
@@ -48,13 +45,6 @@ export interface DeployPreflightResult {
   readonly errors: PreflightError[];
   readonly programs: ProgramPreflightOutcome[];
   readonly totalFeeEstimate?: bigint;
-}
-
-export interface UpgradePreflightResult {
-  readonly passed: boolean;
-  readonly warnings: PreflightWarning[];
-  readonly errors: PreflightError[];
-  readonly feeEstimate?: bigint;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,133 +254,12 @@ export async function checkBalanceSufficient(
 }
 
 // ---------------------------------------------------------------------------
-// Individual checks — upgrade
-// ---------------------------------------------------------------------------
-
-/**
- * Check ABI compatibility between deployed and new version.
- */
-export function checkAbiCompatible(
-  oldAbi: ProgramABI,
-  newAbi: ProgramABI,
-  programId: string,
-): PreflightError | null {
-  const compat = checkAbiCompatibility(oldAbi, newAbi);
-  if (!compat.compatible) {
-    const details = compat.violations.map((v) => `  - [${v.kind}] ${v.detail}`).join("\n");
-    return {
-      code: "ABI_INCOMPATIBLE",
-      message: `Upgrade of "${programId}" is not ABI-compatible with the deployed version:\n${details}`,
-      recoverable: false,
-    };
-  }
-  return null;
-}
-
-/**
- * Check that the constructor hasn't changed (immutable after first deployment).
- */
-export function checkConstructorImmutable(
-  oldRecord: DeploymentRecord,
-  newConstructor: ConstructorInfo,
-  newFingerprint: string,
-  programId: string,
-): PreflightError | null {
-  const oldType = oldRecord.constructor.type;
-  const oldFingerprint = oldRecord.constructor.fingerprint;
-  const oldAdmin = oldRecord.constructor.adminAddress;
-
-  if (oldType && newConstructor.type !== oldType) {
-    return {
-      code: "CONSTRUCTOR_TYPE_CHANGED",
-      message:
-        `Program "${programId}" constructor type changed from "${oldType}" to ` +
-        `"${newConstructor.type}". Constructors are immutable after first deployment.`,
-      recoverable: false,
-    };
-  }
-
-  if (newConstructor.type === "admin" && oldAdmin && newConstructor.adminAddress !== oldAdmin) {
-    return {
-      code: "CONSTRUCTOR_ADMIN_CHANGED",
-      message:
-        `Program "${programId}" @admin address changed from "${oldAdmin}" to ` +
-        `"${newConstructor.adminAddress}". Constructor admin address is immutable after first deployment.`,
-      recoverable: false,
-    };
-  }
-
-  // Check @checksum parameters
-  const oldChecksumMapping = oldRecord.constructor.checksumMapping;
-  const oldChecksumKey = oldRecord.constructor.checksumKey;
-  if (
-    newConstructor.type === "checksum" &&
-    (oldChecksumMapping || oldChecksumKey) &&
-    (newConstructor.checksumMapping !== oldChecksumMapping ||
-      newConstructor.checksumKey !== oldChecksumKey)
-  ) {
-    return {
-      code: "CONSTRUCTOR_CHECKSUM_CHANGED",
-      message:
-        `Program "${programId}" @checksum parameters changed. ` +
-        `Constructor parameters are immutable after first deployment.`,
-      recoverable: false,
-    };
-  }
-
-  if (oldFingerprint !== undefined && newFingerprint !== oldFingerprint) {
-    return {
-      code: "CONSTRUCTOR_BODY_CHANGED",
-      message:
-        `Program "${programId}" constructor body changed between versions. ` +
-        `Constructors are immutable after first deployment.`,
-      recoverable: false,
-    };
-  }
-
-  return null;
-}
-
-/**
- * Check that the on-chain edition matches the expected edition.
- * HTTP only — ensures no out-of-band upgrades happened since last sync.
- */
-export async function checkEditionContinuity(
-  connection: NetworkConnection,
-  programId: string,
-  expectedEdition: number,
-): Promise<PreflightError | null> {
-  const { exists, edition: onChainEdition } = await checkProgramOnChain(connection, programId);
-  if (!exists) {
-    return {
-      code: "PROGRAM_NOT_FOUND",
-      message: `Program "${programId}" is not deployed on-chain. Cannot upgrade a program that isn't deployed.`,
-      recoverable: false,
-    };
-  }
-  if (onChainEdition === null) {
-    return null;
-  }
-  if (onChainEdition !== expectedEdition) {
-    return {
-      code: "EDITION_MISMATCH",
-      message:
-        `Program "${programId}" on-chain edition is ${onChainEdition} but expected ${expectedEdition}. ` +
-        `The program may have been upgraded out-of-band.`,
-      recoverable: false,
-    };
-  }
-  return null;
-}
-
-// ---------------------------------------------------------------------------
 // Pipeline runners
 // ---------------------------------------------------------------------------
 
 export interface RunDeployPreflightOptions {
   programs: Array<{
     programId: string;
-    constructor: ConstructorInfo | null;
     aleoSource: string | undefined;
     existingRecord: DeploymentRecord | null;
   }>;
@@ -438,7 +307,7 @@ export async function runDeployPreflight(
   let totalFeeEstimate: bigint | undefined;
 
   for (const prog of programs) {
-    const { programId, constructor: constructorInfo, aleoSource, existingRecord } = prog;
+    const { programId, aleoSource, existingRecord } = prog;
 
     // 1. Check if already deployed
     const { outcome: deployedOutcome, error: deployedErr } = await checkAlreadyDeployed(
@@ -461,19 +330,6 @@ export async function runDeployPreflight(
       continue;
     }
 
-    if (!constructorInfo) {
-      errors.push({
-        code: "MISSING_CONSTRUCTOR",
-        message:
-          `Program "${programId}" has no parsable constructor annotation. ` +
-          `ARC-0006 requires a constructor for deployments.`,
-        recoverable: false,
-      });
-      outcomes.push({ programId, action: "deploy" });
-      confirmedDeployTargets.delete(programId);
-      continue;
-    }
-
     // This program will be deployed — run HTTP-only checks
     if (!isDevnode) {
       // 2. Check compiled artifacts present (HTTP only — needed for import/fee checks)
@@ -490,63 +346,57 @@ export async function runDeployPreflight(
       }
 
       // 3. Check imports available
-      if (aleoSource !== undefined) {
-        const importErrors = await checkImportsAvailable(
-          connection,
-          graph,
-          programId,
-          confirmedDeployTargets,
-          localSources,
-        );
-        errors.push(...importErrors);
-        if (importErrors.length > 0) {
-          outcomes.push({ programId, action: "deploy" });
-          continue;
-        }
+      const importErrors = await checkImportsAvailable(
+        connection,
+        graph,
+        programId,
+        confirmedDeployTargets,
+        localSources,
+      );
+      errors.push(...importErrors);
+      if (importErrors.length > 0) {
+        outcomes.push({ programId, action: "deploy" });
+        continue;
       }
 
       // 4. Fee estimation
-      if (aleoSource !== undefined) {
-        // Collect import sources for fee estimation.
-        // Local sources (deps in this batch) are known; all other imports (including
-        // credits.aleo and other external programs) are fetched from on-chain.
-        const importIds = graph.imports.get(programId) ?? [];
-        const importSourcesForFee = new Map<string, string>();
-        const onChainImportIds: string[] = [];
-        for (const id of importIds) {
-          const local = localSources.get(id);
-          if (local) {
-            importSourcesForFee.set(id, local);
-          } else {
-            onChainImportIds.push(id);
-          }
+      // Collect import sources for fee estimation.
+      // Local sources (deps in this batch) are known; all other imports (including
+      // credits.aleo and other external programs) are fetched from on-chain.
+      const importIds = graph.imports.get(programId) ?? [];
+      const importSourcesForFee = new Map<string, string>();
+      const onChainImportIds: string[] = [];
+      for (const id of importIds) {
+        const local = localSources.get(id);
+        if (local) {
+          importSourcesForFee.set(id, local);
+        } else {
+          onChainImportIds.push(id);
         }
-        if (onChainImportIds.length > 0) {
-          const fetched = await fetchImportSources(connection, onChainImportIds);
-          for (const [id, src] of fetched) {
-            importSourcesForFee.set(id, src);
-          }
-        }
-
-        const { estimate, warning: feeWarning } = await checkFeeEstimate(
-          connection,
-          programId,
-          aleoSource,
-          importSourcesForFee,
-          signerPrivateKey,
-          opts.config.sdk.keyCache,
-          opts.config.sdk.logLevel,
-        );
-        if (feeWarning) warnings.push(feeWarning);
-
-        if (estimate !== undefined) {
-          totalFeeEstimate = (totalFeeEstimate ?? 0n) + estimate;
-        }
-
-        outcomes.push({ programId, action: "deploy", feeEstimate: estimate });
-      } else {
-        outcomes.push({ programId, action: "deploy" });
       }
+      if (onChainImportIds.length > 0) {
+        const fetched = await fetchImportSources(connection, onChainImportIds);
+        for (const [id, src] of fetched) {
+          importSourcesForFee.set(id, src);
+        }
+      }
+
+      const { estimate, warning: feeWarning } = await checkFeeEstimate(
+        connection,
+        programId,
+        aleoSource,
+        importSourcesForFee,
+        signerPrivateKey,
+        opts.config.sdk.keyCache,
+        opts.config.sdk.logLevel,
+      );
+      if (feeWarning) warnings.push(feeWarning);
+
+      if (estimate !== undefined) {
+        totalFeeEstimate = (totalFeeEstimate ?? 0n) + estimate;
+      }
+
+      outcomes.push({ programId, action: "deploy", feeEstimate: estimate });
     } else {
       outcomes.push({ programId, action: "deploy" });
     }
@@ -591,61 +441,5 @@ export async function runDeployPreflight(
     errors,
     programs: outcomes,
     totalFeeEstimate,
-  };
-}
-
-export interface RunUpgradePreflightOptions {
-  programId: string;
-  oldRecord: DeploymentRecord;
-  oldAbi: ProgramABI;
-  newConstructor: ConstructorInfo;
-  newAbi: ProgramABI;
-  newFingerprint: string;
-  connection: NetworkConnection;
-  config: LionDenResolvedConfig;
-  networkName: string;
-}
-
-/**
- * Run pre-flight validation for an upgrade.
- * Pure — never writes state.
- */
-export async function runUpgradePreflight(
-  opts: RunUpgradePreflightOptions,
-): Promise<UpgradePreflightResult> {
-  const {
-    programId,
-    oldRecord,
-    oldAbi,
-    newConstructor,
-    newAbi,
-    newFingerprint,
-    connection,
-    config,
-    networkName,
-  } = opts;
-
-  const isDevnode = config.networks[networkName]?.type === "devnode";
-  const warnings: PreflightWarning[] = [];
-  const errors: PreflightError[] = [];
-
-  // 1. ABI compatibility
-  const abiErr = checkAbiCompatible(oldAbi, newAbi, programId);
-  if (abiErr) errors.push(abiErr);
-
-  // 2. Constructor immutability
-  const ctorErr = checkConstructorImmutable(oldRecord, newConstructor, newFingerprint, programId);
-  if (ctorErr) errors.push(ctorErr);
-
-  // 3. Edition continuity (HTTP only)
-  if (!isDevnode && oldRecord.status === "complete") {
-    const editionErr = await checkEditionContinuity(connection, programId, oldRecord.edition);
-    if (editionErr) errors.push(editionErr);
-  }
-
-  return {
-    passed: errors.length === 0,
-    warnings,
-    errors,
   };
 }

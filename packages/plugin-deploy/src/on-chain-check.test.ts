@@ -1,14 +1,9 @@
 import { createMockConnection } from "@lionden/test-internals";
 import { describe, expect, it, vi } from "vitest";
-import {
-  checkProgramOnChain,
-  createDegradedRecord,
-  fetchImportSources,
-  parseEditionFromSource,
-} from "./on-chain-check.js";
+import { checkProgramOnChain, createDegradedRecord, fetchImportSources } from "./on-chain-check.js";
 
 // ---------------------------------------------------------------------------
-// Sample Aleo source with constructor
+// Sample Aleo source
 // ---------------------------------------------------------------------------
 
 const SAMPLE_SOURCE = `
@@ -33,93 +28,27 @@ constructor:
     assert.eq edition 3u16;
 `;
 
-const SOURCE_NO_CONSTRUCTOR = `
-program bare.aleo;
-
-function main:
-    input r0 as u32.public;
-    output r0 as u32.public;
-`;
-
-const ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE = `
-program admin_only.aleo;
-
-constructor:
-    assert.eq program_owner aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px;
-`;
-
 // ---------------------------------------------------------------------------
 // checkProgramOnChain
 // ---------------------------------------------------------------------------
 
 describe("checkProgramOnChain", () => {
-  it("returns exists=true with edition and source when program is on-chain", async () => {
+  it("returns exists=true with source when program is on-chain", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(SAMPLE_SOURCE),
     });
     const result = await checkProgramOnChain(conn, "hello.aleo");
     expect(result.exists).toBe(true);
-    expect(result.edition).toBe(3);
     expect(result.source).toBe(SAMPLE_SOURCE);
   });
 
-  it("returns exists=false with nulls when program is not on-chain", async () => {
+  it("returns exists=false with null source when program is not on-chain", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(null),
     });
     const result = await checkProgramOnChain(conn, "missing.aleo");
     expect(result.exists).toBe(false);
-    expect(result.edition).toBeNull();
     expect(result.source).toBeNull();
-  });
-
-  it("returns null edition when source has no constructor block", async () => {
-    const conn = createMockConnection({
-      getProgramSource: vi.fn().mockResolvedValue(SOURCE_NO_CONSTRUCTOR),
-    });
-    const result = await checkProgramOnChain(conn, "bare.aleo");
-    expect(result.exists).toBe(true);
-    expect(result.edition).toBeNull();
-  });
-
-  it("returns exists=true with null edition for @admin source without edition assertion", async () => {
-    const conn = createMockConnection({
-      getProgramSource: vi.fn().mockResolvedValue(ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE),
-    });
-    const result = await checkProgramOnChain(conn, "admin_only.aleo");
-    expect(result).toEqual({
-      exists: true,
-      edition: null,
-      source: ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE,
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseEditionFromSource
-// ---------------------------------------------------------------------------
-
-describe("parseEditionFromSource", () => {
-  it("parses edition from constructor block", () => {
-    expect(parseEditionFromSource(SAMPLE_SOURCE)).toBe(3);
-  });
-
-  it("returns null when no edition assertion", () => {
-    expect(parseEditionFromSource(SOURCE_NO_CONSTRUCTOR)).toBeNull();
-  });
-
-  it("returns null for @admin source without edition assertion", () => {
-    expect(parseEditionFromSource(ADMIN_CONSTRUCTOR_NO_EDITION_SOURCE)).toBeNull();
-  });
-
-  it("parses edition 0", () => {
-    const source = `constructor:\n    assert.eq edition 0u16;\n`;
-    expect(parseEditionFromSource(source)).toBe(0);
-  });
-
-  it("parses large edition numbers", () => {
-    const source = `constructor:\n    assert.eq edition 99u16;\n`;
-    expect(parseEditionFromSource(source)).toBe(99);
   });
 });
 
@@ -137,26 +66,13 @@ describe("createDegradedRecord", () => {
     );
     expect(record.status).toBe("degraded");
     expect(record.programId).toBe("hello.aleo");
-    expect(record.edition).toBe(3);
     expect(record.network).toBe("devnode");
     expect(record.endpoint).toBe("http://127.0.0.1:3030");
-    expect(record.constructor.type).toBeNull();
-    expect(record.abiHash).toBeNull();
     expect(record.txId).toBeNull();
     expect(record.blockHeight).toBeNull();
     expect(record.deployerAddress).toBeNull();
     expect(record.deployedAt).toBeNull();
     expect(record.feePaid).toBeNull();
-  });
-
-  it("uses edition 0 when source has no edition assertion", () => {
-    const record = createDegradedRecord(
-      "bare.aleo",
-      "devnode",
-      "http://127.0.0.1:3030",
-      SOURCE_NO_CONSTRUCTOR,
-    );
-    expect(record.edition).toBe(0);
   });
 });
 

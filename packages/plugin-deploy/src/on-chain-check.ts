@@ -1,5 +1,5 @@
 /**
- * On-chain program existence and edition checks.
+ * On-chain program existence checks.
  *
  * Used by DeploymentManager for devnode session validation and by the
  * pre-flight pipeline to detect already-deployed programs.
@@ -14,13 +14,12 @@ import type { DegradedDeploymentRecord } from "./deployment-types.js";
 
 export interface OnChainCheckResult {
   readonly exists: boolean;
-  readonly edition: number | null;
   readonly source: string | null;
 }
 
 /**
  * Check whether a program is deployed on-chain.
- * Returns source and edition when found, null values when not.
+ * Returns source when found, null when not.
  */
 export async function checkProgramOnChain(
   connection: NetworkConnection,
@@ -28,27 +27,9 @@ export async function checkProgramOnChain(
 ): Promise<OnChainCheckResult> {
   const source = await connection.getProgramSource(programId);
   if (source === null) {
-    return { exists: false, edition: null, source: null };
+    return { exists: false, source: null };
   }
-  const edition = parseEditionFromSource(source);
-  return { exists: true, edition, source };
-}
-
-// ---------------------------------------------------------------------------
-// parseEditionFromSource
-// ---------------------------------------------------------------------------
-
-/**
- * Parse the current edition from a compiled Aleo program's constructor block.
- *
- * The constructor block contains a line like `assert.eq edition 1u16;` which
- * is auto-incremented on each upgrade.
- */
-export function parseEditionFromSource(aleoSource: string): number | null {
-  // Match `assert.eq edition Xu16` in the constructor block
-  const match = /assert\.eq\s+edition\s+(\d+)u16\s*;/.exec(aleoSource);
-  if (!match) return null;
-  return parseInt(match[1]!, 10);
+  return { exists: true, source };
 }
 
 // ---------------------------------------------------------------------------
@@ -65,13 +46,10 @@ export function createDegradedRecord(
   endpoint: string,
   source: string,
 ): DegradedDeploymentRecord {
-  const edition = parseEditionFromSource(source) ?? 0;
+  void source; // source kept in the signature for callers; not stored on the record
   return {
     status: "degraded",
     programId,
-    edition,
-    constructor: { type: null },
-    abiHash: null,
     network,
     endpoint,
     updatedAt: new Date().toISOString(),

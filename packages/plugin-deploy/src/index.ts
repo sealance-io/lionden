@@ -218,23 +218,6 @@ export default pluginDeploy;
 // Re-exports — public API
 // ---------------------------------------------------------------------------
 
-export type { AbiCompatResult, AbiViolation } from "./abi-compat.js";
-// ABI compatibility
-export { checkAbiCompatibility } from "./abi-compat.js";
-export type { ConstructorInfo, ConstructorType } from "./constructor-parser.js";
-// Constructor parser
-export {
-  isValidAleoAddress,
-  parseConstructor,
-  parseConstructorFromFiles,
-} from "./constructor-parser.js";
-export type { DeployManifest } from "./deploy-manifest.js";
-// Legacy exports (deploy-manifest.ts is left unused; kept for external code that may reference it)
-export {
-  deployManifestPath,
-  readDeployManifest,
-  writeDeployManifest,
-} from "./deploy-manifest.js";
 export type {
   DeployOptions,
   DeployResult,
@@ -260,7 +243,6 @@ export type {
   ExportedProgram,
   NetworkMetadata,
   PendingDeployment,
-  RecordConstructorInfo,
   RecoveredDeploymentRecord,
 } from "./deployment-types.js";
 // On-chain check
@@ -271,7 +253,6 @@ export type {
   PreflightError,
   PreflightWarning,
   ProgramPreflightOutcome,
-  UpgradePreflightResult,
 } from "./preflight.js";
 
 // Recipe types
@@ -284,9 +265,5 @@ export type {
   RecipeExecuteOptions,
   RecipeExecuteResult,
 } from "./recipe-types.js";
-export type { UpgradeOptions, UpgradeResult } from "./upgrade-task.js";
 // Upgrade task
-export {
-  UpgradeCompatibilityError,
-  validateAdminSigner,
-} from "./upgrade-task.js";
+export type { UpgradeOptions, UpgradeResult } from "./upgrade-task.js";

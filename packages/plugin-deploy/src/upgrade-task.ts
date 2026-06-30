@@ -1,37 +1,26 @@
 /**
- * Upgrade task implementation.
+ * Upgrade task implementation (thin).
  *
- * Uses DeploymentManager (lre.deployments) for all state.
- * Order: connect → recover → read state → validate → compile → preflight → broadcast → record.
+ * Flow: connect → resolve signer → guard a prior record exists → compile v2 →
+ * build upgrade tx → broadcast → wait → record → fire hook → optional export.
  *
- * No fallback to the old deploy-manifest.ts system.
+ * No ABI-compatibility, constructor-immutability, edition, or admin-address
+ * validation — Leo's built-in tooling owns upgrade correctness. The newly
+ * compiled ABI is still recorded so `export` has it.
  */
 
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
 import { isSignable } from "@lionden/config";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import {
-  computeAbiHash,
-  type DiscoveredProgram,
-  discoverUnits,
-  type ProgramABI,
-  parseAbi,
-} from "@lionden/leo-compiler";
+import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
-import { type AbiViolation, checkAbiCompatibility } from "./abi-compat.js";
-import { extractConstructorFingerprint, parseConstructor } from "./constructor-parser.js";
 import type { DeploymentManager } from "./deployment-manager.js";
-import { readAbiSnapshot } from "./deployment-state.js";
 import type {
   CompleteDeploymentRecord,
   DeploymentRecord,
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { readLeoSourcesFromDir } from "./leo-sources.js";
-import { runUpgradePreflight } from "./preflight.js";
 import { resolveProveOption } from "./prove.js";
 
 // ---------------------------------------------------------------------------
@@ -55,7 +44,6 @@ export interface UpgradeResult {
   readonly programId: string;
   readonly txId: string;
   readonly blockHeight: number;
-  readonly newEdition: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,9 +70,6 @@ export async function upgradeAction(
   };
 
   const config = lre.config;
-  const artifactsDir = config.paths.artifacts;
-  const programsDir = config.paths.programs;
-  const deploymentsDir = config.paths.deployments;
   const manager = lre.deployments as DeploymentManager | null;
 
   // Normalize program ID
@@ -95,17 +80,12 @@ export async function upgradeAction(
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
 
-  // 1b. Resolve admin signer from namedAccounts (if configured)
+  // 1b. Resolve admin signer from namedAccounts (selection only — no validation).
+  // An address-only "admin" carries no private key, so there is nothing to select.
   let adminSignerKey: string | undefined;
-  let namedAdminAddress: string | undefined;
   const namedAdmin = lre.namedAccounts["admin"];
-  if (namedAdmin !== undefined) {
-    if (isSignable(namedAdmin)) {
-      adminSignerKey = namedAdmin.privateKey;
-    } else {
-      // Address-only admin — used for drift warning in preflight
-      namedAdminAddress = namedAdmin.address;
-    }
+  if (namedAdmin !== undefined && isSignable(namedAdmin)) {
+    adminSignerKey = namedAdmin.privateKey;
   }
 
   // 2. Recover pending deployments from previous runs
@@ -113,7 +93,7 @@ export async function upgradeAction(
     await manager.recoverPendingDeployments(networkName, connection);
   }
 
-  // 3. Read existing deployment state
+  // 3. Guard that a prior deployment record exists
   let existingRecord: DeploymentRecord | null = null;
   if (manager) {
     existingRecord = await manager.getDeployment(programId, networkName);
@@ -126,58 +106,7 @@ export async function upgradeAction(
     );
   }
 
-  // 4. Record-status-aware setup
-  // For degraded/recovered records with null constructor type, derive from local Leo sources
-  // and build an effective record with the local constructor merged in so that permission
-  // and immutability checks can enforce it.
-  let effectiveRecord: DeploymentRecord = existingRecord;
-  if (!existingRecord.constructor.type) {
-    const discovered = discoverUnits(programsDir);
-    const programs = discovered.filter((u): u is DiscoveredProgram => u.kind === "program");
-    const prog = programs.find((p) => p.programId === programId);
-    const leoSources = prog ? readLeoSourcesFromDir(prog.sourceDir) : "";
-    const localConstructor = parseConstructor(leoSources);
-
-    if (!localConstructor) {
-      throw new DeployError(
-        `Upgrade validation requires either a prior complete deployment record or ` +
-          `local compilation artifacts. Program "${programId}" has a degraded deployment ` +
-          `record (detected on-chain without full provenance) and no local Leo sources with ` +
-          `a constructor annotation. Compile the program locally first, or perform a fresh deploy.`,
-      );
-    }
-    // Synthesize an effective record with the locally-derived constructor for validation.
-    // The original existingRecord is unchanged (we keep it for recording purposes later).
-    effectiveRecord = {
-      ...existingRecord,
-      constructor: {
-        type: localConstructor.type,
-        adminAddress: localConstructor.adminAddress,
-        checksumMapping: localConstructor.checksumMapping,
-        checksumKey: localConstructor.checksumKey,
-      },
-    } as DeploymentRecord;
-  }
-
-  // 5. Read old ABI — disk snapshot for non-ephemeral, memory cache for ephemeral, then artifacts
-  const oldAbi =
-    (manager && !manager.isEphemeral(networkName)
-      ? readAbiSnapshot(deploymentsDir, networkName, programId)
-      : null) ??
-    manager?.getCachedAbi(programId, networkName) ??
-    readAbiFromArtifacts(artifactsDir, programId);
-
-  if (!oldAbi) {
-    throw new DeployError(
-      `No ABI found for "${programId}". ` +
-        `Expected at deployments/${networkName}/${programId}.abi.json ` +
-        `or artifacts/${programId}/abi.json. ` +
-        `Cannot verify upgrade compatibility without the deployed ABI. ` +
-        `Re-compile the deployed version first, or re-deploy.`,
-    );
-  }
-
-  // 6. Compile the updated program. Forward the effective upgrade network (when
+  // 4. Compile the updated program. Forward the effective upgrade network (when
   // explicitly supplied) so the implicit compile resolves imported on-chain
   // sources + `.env` from the deploying network; omit it otherwise so compile
   // falls back to `config.defaultNetwork` (byte-for-byte unchanged).
@@ -185,70 +114,19 @@ export async function upgradeAction(
   if (options.network) compileArgs["network"] = options.network;
   await lre.tasks.run("compile", compileArgs);
 
-  // 7. Read new ABI from compilation artifacts
+  // 5. Read the newly-compiled ABI — recorded so `export` has it.
   const newAbi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
   if (!newAbi) {
     throw new DeployError(`No compiled ABI found for "${programId}". Compilation may have failed.`);
   }
 
-  // 8. Read compiled Aleo source
+  // 6. Read compiled Aleo source
   const aleoSource = lre.artifacts.getAleoSource(programId);
   if (!aleoSource) {
     throw new DeployError(`No compiled .aleo source found for "${programId}".`);
   }
 
-  // 9. Discover Leo source directory for constructor parsing
-  const discovered = discoverUnits(programsDir);
-  const programs = discovered.filter((u): u is DiscoveredProgram => u.kind === "program");
-  const prog = programs.find((p) => p.programId === programId);
-  const leoSources = prog ? readLeoSourcesFromDir(prog.sourceDir) : "";
-
-  const newConstructor = parseConstructor(leoSources);
-  if (!newConstructor) {
-    throw new DeployError(
-      `Updated program "${programId}" has no constructor annotation. ` +
-        `ARC-0006 requires a constructor for all deployments/upgrades.`,
-    );
-  }
-  const newFingerprint = extractConstructorFingerprint(aleoSource, newConstructor.type);
-
-  // 10. Run upgrade pre-flight (ABI compat, constructor immutability, edition check)
-  const preflightResult = await runUpgradePreflight({
-    programId,
-    oldRecord: effectiveRecord,
-    oldAbi,
-    newConstructor,
-    newAbi,
-    newFingerprint,
-    connection,
-    config,
-    networkName,
-  });
-
-  if (!preflightResult.passed) {
-    const errorMessages = preflightResult.errors
-      .map((e) => `  [${e.code}] ${e.message}`)
-      .join("\n");
-    // Use UpgradeCompatibilityError when the only failures are ABI violations
-    const onlyAbiErrors = preflightResult.errors.every((e) => e.code === "ABI_INCOMPATIBLE");
-    if (onlyAbiErrors) {
-      // All ABI failures stem from the same comparison; compute the typed violations
-      // once rather than re-running (and duplicating) the check per preflight error.
-      const compat = checkAbiCompatibility(oldAbi, newAbi);
-      throw new UpgradeCompatibilityError(programId, [...compat.violations]);
-    }
-    throw new DeployError(`Upgrade pre-flight failed:\n${errorMessages}`);
-  }
-
-  // Log any warnings
-  for (const w of preflightResult.warnings) {
-    console.warn(`Warning [${w.code}]: ${w.message}`);
-  }
-
-  // 11. Set pending marker before broadcast
-  const previousEdition = existingRecord.edition;
-  const newEdition = previousEdition + 1;
-  const newAbiHash = computeAbiHash(newAbi);
+  // 7. Set pending marker before broadcast
   const deployerAddress = await resolveDeployerAddress(
     connection,
     config,
@@ -261,25 +139,16 @@ export async function upgradeAction(
       programId,
       action: "upgrade",
       startedAt: new Date().toISOString(),
-      expectedEdition: newEdition,
       deployerAddress: deployerAddress ?? "unknown",
       priorityFee: options.priorityFee ?? config.deploy.defaultPriorityFee,
       privateFee: config.deploy.privateFee,
-      constructor: {
-        type: newConstructor.type,
-        adminAddress: newConstructor.adminAddress,
-        checksumMapping: newConstructor.checksumMapping,
-        checksumKey: newConstructor.checksumKey,
-        fingerprint: newFingerprint,
-      },
-      abiHash: newAbiHash,
       network: networkName,
       endpoint: connection.endpoint,
     };
     await manager.setPending(pending);
   }
 
-  // 12. Build and broadcast upgrade transaction
+  // 8. Build and broadcast upgrade transaction
   const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
 
   const txId = await buildAndBroadcastUpgrade({
@@ -288,7 +157,6 @@ export async function upgradeAction(
     connection,
     fee,
     privateFee: config.deploy.privateFee,
-    edition: newEdition,
     signerPrivateKey: adminSignerKey,
     prove: options.prove,
     keyCache: config.sdk.keyCache,
@@ -296,7 +164,7 @@ export async function upgradeAction(
     egressPolicy: connection.egressPolicy,
   });
 
-  // 13. Wait for confirmation
+  // 9. Wait for confirmation
   let blockHeight = 0;
   const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
   if (shouldConfirm) {
@@ -307,10 +175,8 @@ export async function upgradeAction(
     blockHeight = confirmed.blockHeight;
   }
 
-  // 14. Compute ABI changes for history
-  const abiChanges = computeAbiChanges(oldAbi, newAbi);
-
-  // 15. Record in deployment state (promotes degraded/recovered to complete)
+  // 10. Record in deployment state (promotes degraded/recovered to complete).
+  // The newly-compiled ABI rides along so export consumers have it.
   if (manager) {
     const oldDeployerAddress =
       existingRecord.status === "complete" || existingRecord.status === "recovered"
@@ -320,15 +186,6 @@ export async function upgradeAction(
     const updatedRecord: CompleteDeploymentRecord = {
       status: "complete",
       programId,
-      edition: newEdition,
-      constructor: {
-        type: newConstructor.type,
-        adminAddress: newConstructor.adminAddress,
-        checksumMapping: newConstructor.checksumMapping,
-        checksumKey: newConstructor.checksumKey,
-        fingerprint: newFingerprint,
-      },
-      abiHash: newAbiHash,
       network: networkName,
       endpoint: connection.endpoint,
       updatedAt: new Date().toISOString(),
@@ -340,58 +197,25 @@ export async function upgradeAction(
       feePaid: fee,
     };
 
-    await manager.record(updatedRecord, "upgrade", {
-      abi: newAbi,
-      historyEntry: {
-        previousEdition,
-        ...(abiChanges ? { abiChanges } : {}),
-      },
-    });
+    await manager.record(updatedRecord, "upgrade", { abi: newAbi });
   }
 
-  console.log(
-    `Upgraded ${programId} to edition ${newEdition} (tx: ${txId}, block: ${blockHeight})`,
-  );
+  console.log(`Upgraded ${programId} (tx: ${txId}, block: ${blockHeight})`);
 
-  // 16. Fire upgrade hook
+  // 11. Fire upgrade hook
   await lre.hooks.serial("deployment", "programUpgraded", {
     programId,
     txId,
     blockHeight,
-    edition: newEdition,
-    constructorType: newConstructor.type,
     network: networkName,
-    previousEdition,
   });
 
-  // 17. Export if autoExport
+  // 12. Export if autoExport
   if (manager && config.deploy.autoExport) {
     await manager.export(networkName);
   }
 
-  return { programId, txId, blockHeight, newEdition };
-}
-
-// ---------------------------------------------------------------------------
-// Upgrade permission (still exported for external use)
-// ---------------------------------------------------------------------------
-
-// Re-export for backward compatibility
-export { validateAdminSigner } from "./admin-signer.js";
-
-// ---------------------------------------------------------------------------
-// ABI compatibility error
-// ---------------------------------------------------------------------------
-
-export class UpgradeCompatibilityError extends DeployError {
-  readonly violations: readonly AbiViolation[];
-
-  constructor(programId: string, violations: readonly AbiViolation[]) {
-    const details = violations.map((v) => `  - [${v.kind}] ${v.detail}`).join("\n");
-    super(`Upgrade of "${programId}" is not ABI-compatible with the deployed version:\n${details}`);
-    this.name = "UpgradeCompatibilityError";
-    this.violations = violations;
-  }
+  return { programId, txId, blockHeight };
 }
 
 // ---------------------------------------------------------------------------
@@ -404,7 +228,6 @@ interface BuildUpgradeOptions {
   connection: NetworkConnection;
   fee: number;
   privateFee: boolean;
-  edition: number;
   /** Override signing key. When set, overrides connection.privateKey. */
   signerPrivateKey?: string;
   /** Use the standard SDK upgrade builder instead of the devnode fast-path. */
@@ -418,7 +241,7 @@ interface BuildUpgradeOptions {
 }
 
 async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<string> {
-  const { programId, aleoSource, connection, fee, privateFee, edition, signerPrivateKey } = opts;
+  const { programId, aleoSource, connection, fee, privateFee, signerPrivateKey } = opts;
 
   const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
     await import("@lionden/network");
@@ -466,36 +289,15 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
     return connection.broadcastTransaction(tx);
   }
 
-  if (connection.type === "devnode" && opts.prove) {
-    throw new DeployError(
-      `Unable to upgrade "${programId}" with the standard upgrade builder: ` +
-        `the installed @provablehq/sdk does not expose buildUpgradeTransaction().`,
-    );
-  }
-
-  // Fallback: try legacy upgrade() if available on older SDK versions
-  if (typeof pm.upgrade === "function") {
-    return captureSdkCall(sdk.diagnostics, { operation: "upgrade", programId }, () =>
-      pm.upgrade(aleoSource, fee, edition),
-    );
-  }
-
   throw new DeployError(
-    `Unable to upgrade "${programId}": no suitable upgrade method found on ProgramManager. ` +
-      `Ensure @provablehq/sdk@^0.11.1 is installed.`,
+    `Unable to upgrade "${programId}" with the standard upgrade builder: ` +
+      `the installed @provablehq/sdk does not expose buildUpgradeTransaction().`,
   );
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function readAbiFromArtifacts(artifactsDir: string, programId: string): ProgramABI | null {
-  const abiPath = path.join(artifactsDir, programId, "abi.json");
-  if (!fs.existsSync(abiPath)) return null;
-  const raw = fs.readFileSync(abiPath, "utf-8");
-  return parseAbi(raw);
-}
 
 async function resolveDeployerAddress(
   connection: NetworkConnection,
@@ -530,38 +332,4 @@ async function resolveDeployerAddress(
   } catch {
     return undefined;
   }
-}
-
-function computeAbiChanges(
-  oldAbi: ProgramABI,
-  newAbi: ProgramABI,
-):
-  | {
-      added: {
-        mappings: string[];
-        structs: string[];
-        records: string[];
-        transitions: string[];
-      };
-    }
-  | undefined {
-  const oldMappingNames = new Set(oldAbi.mappings.map((m) => m.name));
-  const oldStructPaths = new Set(oldAbi.structs.map((s) => s.path.join("::")));
-  const oldRecordPaths = new Set(oldAbi.records.map((r) => r.path.join("::")));
-  const oldTransitionNames = new Set(oldAbi.transitions.map((t) => t.name));
-
-  const added = {
-    mappings: newAbi.mappings.map((m) => m.name).filter((n) => !oldMappingNames.has(n)),
-    structs: newAbi.structs.map((s) => s.path.join("::")).filter((p) => !oldStructPaths.has(p)),
-    records: newAbi.records.map((r) => r.path.join("::")).filter((p) => !oldRecordPaths.has(p)),
-    transitions: newAbi.transitions.map((t) => t.name).filter((n) => !oldTransitionNames.has(n)),
-  };
-
-  const hasChanges =
-    added.mappings.length > 0 ||
-    added.structs.length > 0 ||
-    added.records.length > 0 ||
-    added.transitions.length > 0;
-
-  return hasChanges ? { added } : undefined;
 }

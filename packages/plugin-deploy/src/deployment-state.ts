@@ -5,11 +5,11 @@
  *
  * ```
  * deployments/<networkName>/
- *   .network.json                                   # NetworkMetadata
- *   <programId>.json                                # DeploymentRecord (latest)
- *   <programId>.abi.json                            # ABI snapshot (for upgrade validation)
- *   .history/<programId>/<edition>-<timestamp>.json # historical entries
- *   .pending/<programId>.json                       # crash recovery markers
+ *   .network.json                                       # NetworkMetadata
+ *   <programId>.json                                    # DeploymentRecord (latest)
+ *   <programId>.abi.json                                # ABI snapshot (for export)
+ *   .history/<programId>/<historyCount>-<timestamp>.json # historical entries
+ *   .pending/<programId>.json                           # crash recovery markers
  * deployments/_exports/<networkName>.json            # export bundles
  * ```
  *
@@ -179,9 +179,8 @@ export function appendHistory(
   entry: DeploymentHistoryEntry,
 ): void {
   const dir = historyDir(deploymentsDir, network, programId);
-  const edition = entry.record.edition;
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const filename = `${String(edition).padStart(6, "0")}-${ts}.json`;
+  const filename = `${String(entry.record.historyCount).padStart(6, "0")}-${ts}.json`;
   atomicWrite(path.join(dir, filename), JSON.stringify(entry, null, 2) + "\n");
 }
 

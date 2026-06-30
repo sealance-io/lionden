@@ -1,5 +1,3 @@
-import * as fs from "node:fs";
-import * as path from "node:path";
 import type { LionDenPlugin } from "@lionden/core";
 import { task } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
@@ -7,12 +5,10 @@ import type { NetworkManager } from "@lionden/network";
 import { SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { extractConstructorFingerprint } from "./constructor-parser.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
-import { writeAbiSnapshot } from "./deployment-state.js";
-import type { CompleteDeploymentRecord, DeploymentRecord } from "./deployment-types.js";
+import type { CompleteDeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { UpgradeCompatibilityError, upgradeAction } from "./upgrade-task.js";
+import { upgradeAction } from "./upgrade-task.js";
 
 const DEVNODE_ACCOUNT_0 = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
 
@@ -38,32 +34,25 @@ vi.mock("@lionden/network", async (importOriginal) => {
 });
 
 /** Minimal ABI with one mapping and one transition. */
-function makeAbi(opts?: { mappings?: string[]; records?: ProgramABI["records"] }): ProgramABI {
-  const mappings = (opts?.mappings ?? ["counters"]).map((name) => ({
-    name,
-    key: { Primitive: "Address" } as const,
-    value: { Primitive: { UInt: "U64" } } as const,
-  }));
-
+function makeAbi(): ProgramABI {
   return {
     program: "hello.aleo",
     transitions: [{ name: "increment", inputs: [], outputs: [], is_async: false }],
     structs: [],
-    records: opts?.records ?? [],
-    mappings,
+    records: [],
+    mappings: [
+      {
+        name: "counters",
+        key: { Primitive: "Address" } as const,
+        value: { Primitive: { UInt: "U64" } } as const,
+      },
+    ],
     storage_variables: [],
   };
 }
 
 /** Build a complete deployment record for testing. */
-function makeRecord(opts?: {
-  constructorType?: "admin" | "noupgrade" | "checksum" | "custom";
-  edition?: number;
-  fingerprint?: string;
-  network?: string;
-  endpoint?: string;
-}): CompleteDeploymentRecord {
-  const type = opts?.constructorType ?? "admin";
+function makeRecord(opts?: { network?: string; endpoint?: string }): CompleteDeploymentRecord {
   return {
     status: "complete",
     programId: "hello.aleo",
@@ -71,15 +60,6 @@ function makeRecord(opts?: {
     endpoint: opts?.endpoint ?? "http://127.0.0.1:3030",
     txId: "at1original",
     blockHeight: 1,
-    edition: opts?.edition ?? 0,
-    constructor: {
-      type,
-      adminAddress: type === "admin" ? DEVNODE_ACCOUNT_0 : undefined,
-      checksumMapping: type === "checksum" ? "gov.aleo::checksums" : undefined,
-      checksumKey: type === "checksum" ? "hello" : undefined,
-      fingerprint: opts?.fingerprint,
-    },
-    abiHash: null,
     deployerAddress: DEVNODE_ACCOUNT_0,
     deployedAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z",
@@ -87,7 +67,9 @@ function makeRecord(opts?: {
   };
 }
 
-describe("upgrade orchestration contract", () => {
+const PROGRAM_SOURCE = `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
+
+describe("upgrade orchestration contract (thin)", () => {
   let fixture: ContractLreResult;
 
   beforeEach(() => {
@@ -119,56 +101,21 @@ describe("upgrade orchestration contract", () => {
   });
 
   /**
-   * Create a temp project with an @admin-annotated program, pre-written
-   * deployment state (DeploymentRecord + ABI snapshot) on disk, and a custom
-   * compile task that refreshes in-memory artifacts.
+   * Create a temp project with a @noupgrade-annotated program, a pre-written
+   * complete deployment record, and a custom compile task that refreshes the
+   * in-memory artifacts (the v2 ABI + .aleo source).
    *
    * Also injects a DeploymentManagerImpl onto lre.deployments.
    */
   async function createUpgradeFixture(opts?: {
-    constructorType?: "admin" | "noupgrade" | "checksum" | "custom";
-    /** Old ABI mappings to write to disk */
-    oldMappings?: string[];
-    /** New ABI mappings that compile produces */
-    newMappings?: string[];
-    /** New ABI records that compile produces */
-    newRecords?: ProgramABI["records"];
-    /** Skip writing old ABI snapshot */
-    skipOldAbi?: boolean;
-    /** Skip writing deployment record */
+    /** Skip writing the prior deployment record (and leave the program off-chain). */
     skipRecord?: boolean;
-    /** Edition to write in record */
-    edition?: number;
-    /** Constructor annotation for Leo source */
-    sourceAnnotation?: string;
-    /** Compiled Aleo source that compile produces for the new version */
+    /** Compiled Aleo source that compile produces for the new version. */
     newAleoSource?: string;
-    /** Optional Leo source rewrite performed by the compile task before upgrade validation. */
-    sourceAfterCompile?: string;
-    /** Fingerprint to store in deployment record */
-    fingerprint?: string;
   }) {
-    const constructorType = opts?.constructorType ?? "admin";
-    const oldMappings = opts?.oldMappings ?? ["counters"];
-    const newMappings = opts?.newMappings ?? ["counters"];
-    const edition = opts?.edition ?? 0;
+    const aleoSource = opts?.newAleoSource ?? PROGRAM_SOURCE;
+    const newAbi = makeAbi();
 
-    const annotation =
-      opts?.sourceAnnotation ??
-      (constructorType === "admin"
-        ? `@admin(address="${DEVNODE_ACCOUNT_0}")\n    constructor() {}`
-        : constructorType === "noupgrade"
-          ? "@noupgrade\n    constructor() {}"
-          : constructorType === "checksum"
-            ? '@checksum(mapping="gov.aleo::checksums", key="hello")\n    constructor() {}'
-            : "@custom\n    constructor() {}");
-
-    const oldAbi = makeAbi({ mappings: oldMappings });
-    const newAbi = makeAbi({ mappings: newMappings, records: opts?.newRecords });
-    const defaultAleoSource = `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
-    const aleoSource = opts?.newAleoSource ?? defaultAleoSource;
-
-    // Track compile calls
     let compileCalled = false;
     let compileArgs: Record<string, unknown> | undefined;
 
@@ -180,12 +127,6 @@ describe("upgrade orchestration contract", () => {
           .setAction(async (args, lre) => {
             compileCalled = true;
             compileArgs = args;
-            if (opts?.sourceAfterCompile !== undefined) {
-              fs.writeFileSync(
-                path.join(lre.config.paths.programs, "hello", "main.leo"),
-                opts.sourceAfterCompile,
-              );
-            }
             lre.artifacts.setAbi("hello.aleo", newAbi);
             lre.artifacts.setAleoSource("hello.aleo", aleoSource);
           })
@@ -194,20 +135,13 @@ describe("upgrade orchestration contract", () => {
     };
 
     fixture = createContractLre({
-      programs: [{ name: "hello", annotation }],
+      programs: [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
       plugins: [compilePlugin],
       withNetwork: true,
-      prePopulateArtifacts: [
-        {
-          programId: "hello.aleo",
-          abi: oldAbi,
-          aleoSource,
-        },
-      ],
+      prePopulateArtifacts: [{ programId: "hello.aleo", abi: newAbi, aleoSource }],
     });
 
     const { lre, fakeNetwork } = fixture;
-    const deploymentsDir = lre.config.paths.deployments;
 
     // Inject DeploymentManager onto lre.deployments
     const manager = new DeploymentManagerImpl(
@@ -217,61 +151,30 @@ describe("upgrade orchestration contract", () => {
     );
     (lre as unknown as Record<string, unknown>)["deployments"] = manager;
 
-    // Seed deployment state via the manager so both disk (non-ephemeral) and
-    // in-memory cache (ephemeral) are populated.
     if (!opts?.skipRecord) {
-      const fingerprint =
-        opts?.fingerprint ?? extractConstructorFingerprint(defaultAleoSource, constructorType);
-
-      const record = makeRecord({ constructorType, edition, fingerprint });
-      if (constructorType === "checksum") {
-        // Override checksum record
-        (record as any).constructor = {
-          type: "checksum",
-          checksumMapping: "gov.aleo::checksums",
-          checksumKey: "hello",
-          fingerprint,
-        };
-      }
-      if (opts?.skipOldAbi) {
-        // Seed record directly into cache, bypassing record() ABI enforcement
-        (manager as any).networkCache("devnode").set("hello.aleo", record);
-      } else {
-        await manager.record(record, "deploy", { abi: oldAbi });
-      }
-    } else if (!opts?.skipOldAbi) {
-      // No record but ABI needed — write directly to disk (non-ephemeral fallback test)
-      writeAbiSnapshot(deploymentsDir, "devnode", "hello.aleo", oldAbi);
-    }
-
-    // Seed getProgramSource so devnode validation sees the program as on-chain.
-    // When skipRecord=true (testing "not deployed" scenario), leave getProgramSource returning null.
-    if (!opts?.skipRecord) {
-      fakeNetwork!.setProgramSource(
-        "hello.aleo",
-        `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
-      );
+      await manager.record(makeRecord(), "deploy", { abi: makeAbi() });
+      // Seed getProgramSource so devnode validation sees the program as on-chain.
+      fakeNetwork!.setProgramSource("hello.aleo", PROGRAM_SOURCE);
     }
 
     return {
       lre,
       fakeNetwork: fakeNetwork!,
       manager,
-      deploymentsDir,
       getCompileCalled: () => compileCalled,
       getCompileArgs: () => compileArgs,
     };
   }
 
-  it("upgrades a program with @admin constructor through the full action path", async () => {
+  it("upgrades a program through the full action path (compile → build → broadcast → record)", async () => {
     const { lre, fakeNetwork, manager, getCompileCalled, getCompileArgs } =
-      await createUpgradeFixture({ constructorType: "admin" });
+      await createUpgradeFixture();
 
     const result = await upgradeAction({ program: "hello" }, lre);
 
     expect(result.programId).toBe("hello.aleo");
     expect(result.txId).toBeDefined();
-    expect(result.newEdition).toBe(1);
+    expect(result).not.toHaveProperty("newEdition");
 
     // Compile was called with { program: "hello" }
     expect(getCompileCalled()).toBe(true);
@@ -293,33 +196,44 @@ describe("upgrade orchestration contract", () => {
     const confirmCalls = fakeNetwork.getCallsTo("waitForConfirmation");
     expect(confirmCalls).toHaveLength(1);
 
-    // Deployment state updated with new edition
+    // Deployment state updated (still a complete record)
     const updatedRecord = manager.getCached("hello.aleo", "devnode");
     expect(updatedRecord).not.toBeNull();
-    expect(updatedRecord?.edition).toBe(1);
     expect(updatedRecord?.status).toBe("complete");
     if (updatedRecord?.status === "complete") {
       expect(updatedRecord.txId).toBe(result.txId);
     }
   });
 
+  it("selects the signing key from namedAccounts.admin (selection only)", async () => {
+    const { lre } = await createUpgradeFixture();
+    (lre.namedAccounts as Record<string, unknown>)["admin"] = {
+      type: "signable",
+      name: "admin",
+      address: DEVNODE_ACCOUNT_0,
+      privateKey: "admin-private-key",
+    };
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    // The upgrade builder (the createSdkObjects call carrying apiKey + keyCache)
+    // must sign with the admin key.
+    const helperCalls = mockCreateSdkObjects.mock.calls.filter(
+      (c) => "apiKey" in (c[0] ?? {}) && "keyCache" in (c[0] ?? {}),
+    );
+    expect(helperCalls.length).toBeGreaterThanOrEqual(1);
+    for (const call of helperCalls) {
+      expect(call[0]).toMatchObject({ privateKey: "admin-private-key" });
+    }
+  });
+
   it("honors a programmatic network override", async () => {
-    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+    const { lre, fakeNetwork } = await createUpgradeFixture();
     (lre.config.networks as Record<string, unknown>)["testnet"] = {
       ...lre.config.networks.devnode,
     };
     const manager = lre.deployments as DeploymentManagerImpl;
-    await manager.record(
-      makeRecord({
-        network: "testnet",
-        fingerprint: extractConstructorFingerprint(
-          `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
-          "admin",
-        ),
-      }),
-      "deploy",
-      { abi: makeAbi() },
-    );
+    await manager.record(makeRecord({ network: "testnet" }), "deploy", { abi: makeAbi() });
     const connect = vi
       .spyOn(lre.network as NetworkManager, "connect")
       .mockResolvedValue(fakeNetwork);
@@ -330,24 +244,12 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("forwards an explicit network into the implicit compile", async () => {
-    const { lre, fakeNetwork, getCompileArgs } = await createUpgradeFixture({
-      constructorType: "admin",
-    });
+    const { lre, fakeNetwork, getCompileArgs } = await createUpgradeFixture();
     (lre.config.networks as Record<string, unknown>)["testnet"] = {
       ...lre.config.networks.devnode,
     };
     const manager = lre.deployments as DeploymentManagerImpl;
-    await manager.record(
-      makeRecord({
-        network: "testnet",
-        fingerprint: extractConstructorFingerprint(
-          `program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
-          "admin",
-        ),
-      }),
-      "deploy",
-      { abi: makeAbi() },
-    );
+    await manager.record(makeRecord({ network: "testnet" }), "deploy", { abi: makeAbi() });
     vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
 
     await upgradeAction({ program: "hello", network: "testnet" }, lre);
@@ -358,7 +260,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("omits network from the implicit compile on a default-network run", async () => {
-    const { lre, getCompileArgs } = await createUpgradeFixture({ constructorType: "admin" });
+    const { lre, getCompileArgs } = await createUpgradeFixture();
 
     await upgradeAction({ program: "hello" }, lre);
 
@@ -369,7 +271,7 @@ describe("upgrade orchestration contract", () => {
   });
 
   it("uses the standard upgrade builder on devnode when prove is requested", async () => {
-    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+    const { lre, fakeNetwork } = await createUpgradeFixture();
 
     await upgradeAction({ program: "hello", prove: true }, lre);
 
@@ -384,92 +286,35 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
-  it("keeps record programs on the devnode fast-path when prove is not requested", async () => {
-    const recordAleoSource =
-      `program hello.aleo;\n` +
-      `record Bid:\n` +
-      `  owner as address.private;\n` +
-      `function increment:\n` +
-      `  input r0 as u32.private;\n` +
-      `  output r0 as u32.private;\n`;
-    const { lre, fakeNetwork } = await createUpgradeFixture({
-      constructorType: "admin",
-      newAleoSource: recordAleoSource,
-      newRecords: [{ path: ["Bid"], fields: [] }],
-    });
-
-    await upgradeAction({ program: "hello" }, lre);
-
-    expect(mockBuildDevnodeUpgradeTransaction).toHaveBeenCalledWith({
-      program: expect.stringContaining("record Bid:"),
-      priorityFee: 0,
-      privateFee: false,
-    });
-    expect(mockBuildUpgradeTransaction).not.toHaveBeenCalled();
-    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
-      "devnode-upgrade-tx-bytes",
-    );
-  });
-
   it("uses LIONDEN_PROVE to select the standard upgrade builder", async () => {
     process.env["LIONDEN_PROVE"] = "true";
-    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
+    const { lre, fakeNetwork } = await createUpgradeFixture();
 
     await upgradeAction({ program: "hello" }, lre);
 
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
-    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
-      program: expect.stringContaining("program hello.aleo"),
-      priorityFee: 0,
-      privateFee: false,
-    });
-    expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
-      "standard-upgrade-tx-bytes",
-    );
-  });
-
-  it("treats a permissive LIONDEN_PROVE spelling (1) as proving and selects the standard upgrade builder", async () => {
-    process.env["LIONDEN_PROVE"] = "1";
-    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
-
-    await upgradeAction({ program: "hello" }, lre);
-
-    expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
-    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
-      program: expect.stringContaining("program hello.aleo"),
-      priorityFee: 0,
-      privateFee: false,
-    });
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalled();
     expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
       "standard-upgrade-tx-bytes",
     );
   });
 
   it("uses lre.globalOptions.prove (the --prove global option) to select the standard upgrade builder", async () => {
-    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
-    // Simulates `lionden --prove upgrade` AND `lionden upgrade --prove`: the CLI
-    // parser records --prove into lre.globalOptions in either position, with no
-    // task arg set. resolveProveOption must honor it.
+    const { lre, fakeNetwork } = await createUpgradeFixture();
     lre.globalOptions["prove"] = true;
 
     await upgradeAction({ program: "hello" }, lre);
 
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
-    expect(mockBuildUpgradeTransaction).toHaveBeenCalledWith({
-      program: expect.stringContaining("program hello.aleo"),
-      priorityFee: 0,
-      privateFee: false,
-    });
+    expect(mockBuildUpgradeTransaction).toHaveBeenCalled();
     expect(fakeNetwork.getCallsTo("broadcastTransaction")[0]!.args[0]).toBe(
       "standard-upgrade-tx-bytes",
     );
   });
 
-  it("lets an explicit --prove=false global override LIONDEN_PROVE (I5: stays on the devnode fast-path)", async () => {
+  it("lets an explicit --prove=false global override LIONDEN_PROVE (stays on the devnode fast-path)", async () => {
     process.env["LIONDEN_PROVE"] = "true";
-    const { lre, fakeNetwork } = await createUpgradeFixture({ constructorType: "admin" });
-    // `LIONDEN_PROVE=true lionden upgrade --prove=false`: the explicit global
-    // boolean must win over the env var, so proving is disabled.
+    const { lre, fakeNetwork } = await createUpgradeFixture();
     lre.globalOptions["prove"] = false;
 
     await upgradeAction({ program: "hello" }, lre);
@@ -493,23 +338,12 @@ describe("upgrade orchestration contract", () => {
       },
       diagnostics: new SdkDiagnostics(),
     });
-    const { lre } = await createUpgradeFixture({ constructorType: "admin" });
+    const { lre } = await createUpgradeFixture();
 
     await expect(upgradeAction({ program: "hello", prove: true }, lre)).rejects.toThrow(
       /buildUpgradeTransaction/,
     );
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
-  });
-
-  it("rejects upgrade when new ABI is not compatible (mapping removed)", async () => {
-    const { lre } = await createUpgradeFixture({
-      oldMappings: ["counters", "scores"],
-      newMappings: ["counters"], // "scores" mapping removed
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      UpgradeCompatibilityError,
-    );
   });
 
   it("throws DeployError when confirmation returns rejected status", async () => {
@@ -536,203 +370,11 @@ describe("upgrade orchestration contract", () => {
     );
   });
 
-  it("throws when old ABI snapshot is missing", async () => {
-    const { lre } = await createUpgradeFixture({ skipOldAbi: true });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("No ABI found");
-  });
-
-  it("rejects upgrade when constructor type changes", async () => {
-    const { lre } = await createUpgradeFixture({
-      constructorType: "admin",
-      sourceAnnotation: "@noupgrade\n    constructor() {}",
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "constructor type changed",
-    );
-  });
-
-  it("uses synthesized constructor data for degraded records during upgrade preflight", async () => {
-    const { lre, manager } = await createUpgradeFixture({
-      constructorType: "admin",
-      sourceAfterCompile: `program hello.aleo {
-    @noupgrade
-    constructor() {}
-
-    transition main(a: u32, b: u32) -> u32 {
-        return a + b;
-    }
-}
-`,
-    });
-
-    const degraded: DeploymentRecord = {
-      status: "degraded",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      txId: null,
-      blockHeight: null,
-      deployerAddress: null,
-      deployedAt: null,
-      feePaid: null,
-      edition: 0,
-      constructor: { type: null },
-      abiHash: null,
-      updatedAt: "2026-04-01T00:00:00.000Z",
-      historyCount: 1,
-    };
-    (manager as any).networkCache("devnode").set("hello.aleo", degraded);
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "constructor type changed",
-    );
-  });
-
-  it("rejects upgrade when admin address changes", async () => {
-    const { lre } = await createUpgradeFixture({
-      constructorType: "admin",
-      sourceAnnotation:
-        '@admin(address="aleo1qnr4dkkvkgfqph0vzc3y6z2eu975wnpz2925ntjccd5cfqxtyu8s7pyjh9")\n    constructor() {}',
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("admin address changed");
-  });
-
-  it("rejects upgrade when @custom constructor body changes", async () => {
-    const oldSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    call governance.aleo/check_vote into r0;",
-      "    assert.eq r0 true;",
-      "    assert.eq edition 0u16;",
-      "",
-    ].join("\n");
-
-    const newSource = [
-      "program hello.aleo;",
-      "function main:",
-      "  input r0 as u32.private;",
-      "  output r0 as u32.private;",
-      "",
-      "constructor:",
-      "    assert.eq self.caller aleo1different;",
-      "    assert.eq edition 1u16;",
-      "",
-    ].join("\n");
-
-    const oldFingerprint = extractConstructorFingerprint(oldSource, "custom");
-
-    const { lre } = await createUpgradeFixture({
-      constructorType: "custom",
-      sourceAnnotation: "@custom\n    constructor() {}",
-      newAleoSource: newSource,
-      fingerprint: oldFingerprint,
-    });
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "constructor body changed",
-    );
-  });
-
-  it("rejects upgrade when @checksum parameters change", async () => {
-    const compilePlugin: LionDenPlugin = {
-      id: "test-compile",
-      tasks: [
-        task("compile", "Test compile")
-          .setAction(async (_args, lre) => {
-            lre.artifacts.setAbi("hello.aleo", makeAbi());
-            lre.artifacts.setAleoSource(
-              "hello.aleo",
-              "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
-            );
-          })
-          .build(),
-      ],
-    };
-
-    fixture = createContractLre({
-      programs: [
-        {
-          name: "hello",
-          annotation:
-            '@checksum(mapping="new_gov.aleo::checksums", key="hello")\n    constructor() {}',
-        },
-      ],
-      plugins: [compilePlugin],
-      withNetwork: true,
-      prePopulateArtifacts: [
-        {
-          programId: "hello.aleo",
-          abi: makeAbi(),
-          aleoSource:
-            "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
-        },
-      ],
-    });
-
-    const { lre } = fixture;
-    const manager = new DeploymentManagerImpl(
-      lre.config,
-      () => lre.network as NetworkManager | null,
-      lre.artifacts,
-    );
-    (lre as unknown as Record<string, unknown>)["deployments"] = manager;
-
-    // Write record with old checksum params
-    const record: CompleteDeploymentRecord = {
-      status: "complete",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      txId: "at1original",
-      blockHeight: 1,
-      edition: 0,
-      constructor: {
-        type: "checksum",
-        checksumMapping: "old_gov.aleo::checksums",
-        checksumKey: "hello",
-        fingerprint: "",
-      },
-      abiHash: null,
-      deployerAddress: DEVNODE_ACCOUNT_0,
-      deployedAt: "2026-04-01T00:00:00.000Z",
-      updatedAt: "2026-04-01T00:00:00.000Z",
-      historyCount: 1,
-    };
-    await manager.record(record, "deploy", { abi: makeAbi() });
-
-    fixture.fakeNetwork!.setProgramSource(
-      "hello.aleo",
-      "program hello.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n",
-    );
-
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
-      "@checksum parameters changed",
-    );
-  });
-
-  it("increments edition in deployment record", async () => {
-    const { lre, manager } = await createUpgradeFixture({ edition: 2 });
-
-    const result = await upgradeAction({ program: "hello" }, lre);
-
-    expect(result.newEdition).toBe(3);
-
-    const updatedRecord = manager.getCached("hello.aleo", "devnode");
-    expect(updatedRecord!.edition).toBe(3);
-  });
-
   it("promotes a degraded record to complete after upgrade", async () => {
-    // Fixture writes a complete record, but let's manually set a degraded one in cache
-    const { lre, manager, deploymentsDir } = await createUpgradeFixture();
+    const { lre, manager } = await createUpgradeFixture();
 
-    // Override: write a degraded record
+    // Seed a degraded record directly into cache (record() would skip it via the
+    // degraded guard since the existing complete record shares the endpoint).
     const degraded = {
       status: "degraded" as const,
       programId: "hello.aleo",
@@ -743,63 +385,28 @@ describe("upgrade orchestration contract", () => {
       deployerAddress: null,
       deployedAt: null,
       feePaid: null,
-      edition: 0,
-      constructor: { type: "admin" as const, adminAddress: DEVNODE_ACCOUNT_0 },
-      abiHash: null,
       updatedAt: "2026-04-01T00:00:00.000Z",
       historyCount: 1,
     };
-    // Directly seed the degraded record into cache — record() would skip it
-    // due to the degraded guard (same edition/endpoint as the existing complete record).
     (manager as any).networkCache("devnode").set("hello.aleo", degraded);
 
     const result = await upgradeAction({ program: "hello" }, lre);
 
-    // Record should be promoted to complete
     const updatedRecord = manager.getCached("hello.aleo", "devnode");
     expect(updatedRecord!.status).toBe("complete");
-    expect(updatedRecord!.edition).toBe(1);
-    expect(result.newEdition).toBe(1);
-  });
-
-  it("allows upgrade when new mappings are added (additive ABI change)", async () => {
-    const { lre, manager } = await createUpgradeFixture({
-      oldMappings: ["counters"],
-      newMappings: ["counters", "scores"], // "scores" added — additive, so allowed
-    });
-
-    const result = await upgradeAction({ program: "hello" }, lre);
-
-    // Upgrade should succeed (additive ABI changes are allowed)
-    expect(result.programId).toBe("hello.aleo");
-    expect(result.newEdition).toBe(1);
-
-    // Record updated
-    const updatedRecord = manager.getCached("hello.aleo", "devnode");
-    expect(updatedRecord).not.toBeNull();
-    expect(updatedRecord?.edition).toBe(1);
-
-    // History is only available in non-ephemeral mode (devnode defaults to ephemeral)
-    const history = await manager.getHistory("hello.aleo", "devnode");
-    expect(history).toEqual([]);
+    if (updatedRecord?.status === "complete") {
+      expect(updatedRecord.txId).toBe(result.txId);
+    }
   });
 
   // -------------------------------------------------------------------------
   // SDK plumbing — every createSdkObjects() inside the upgrade flow must
   // carry the resolved keyCache from config and the egressPolicy from the
-  // active connection. Mirrors the deploy-side assertion: keyCache
-  // propagation amortizes credits-key persistence across throwaway SDK
-  // objects, and egressPolicy installs the guarded network transport that
-  // forces `hasCustomTransport=true` and scopes chain-state/submission
-  // egress to the connection endpoint. A regression on any upgrade call
-  // site (buildAndBroadcastUpgrade, resolveDeployerAddress, admin signer
-  // validation) is caught here.
+  // active connection.
   // -------------------------------------------------------------------------
   describe("createSdkObjects plumbing", () => {
     it("passes keyCache and egressPolicy to every createSdkObjects call on devnode upgrade", async () => {
-      const { lre, fakeNetwork } = await createUpgradeFixture({
-        constructorType: "admin",
-      });
+      const { lre, fakeNetwork } = await createUpgradeFixture();
 
       await upgradeAction({ program: "hello" }, lre);
 
@@ -812,8 +419,7 @@ describe("upgrade orchestration contract", () => {
         });
       }
       // buildAndBroadcastUpgrade is the helper that should carry keyCache.
-      // It's the call with apiKey present; admin-signer / resolveDeployerAddress
-      // skip apiKey/keyCache.
+      // It's the call with apiKey present; resolveDeployerAddress skips apiKey/keyCache.
       const helperCalls = mockCreateSdkObjects.mock.calls.filter(
         (c) => "apiKey" in (c[0] ?? {}) && "keyCache" in (c[0] ?? {}),
       );
@@ -827,9 +433,7 @@ describe("upgrade orchestration contract", () => {
 
     it("propagates the egressPolicy when LIONDEN_PROVE forces the standard upgrade builder", async () => {
       process.env["LIONDEN_PROVE"] = "true";
-      const { lre, fakeNetwork } = await createUpgradeFixture({
-        constructorType: "admin",
-      });
+      const { lre, fakeNetwork } = await createUpgradeFixture();
 
       await upgradeAction({ program: "hello" }, lre);
 

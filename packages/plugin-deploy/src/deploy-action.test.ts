@@ -1,8 +1,6 @@
 /**
- * Tests for deploy and upgrade action logic, covering:
- * - Fix 1: Upgrade ABI comparison uses old (pre-compile) ABI, not the fresh one
+ * Tests for deploy action logic, covering:
  * - Fix 2: Source directory comes from discovery, not derived from programId
- * - Fix 3: Admin address prevalidation (no silent bypass)
  * - Fix 4: Transitive dependency inclusion and topological ordering
  */
 
@@ -10,10 +8,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { DependencyGraph, DiscoveredProgram } from "@lionden/leo-compiler";
-import { createMockConnection } from "@lionden/test-internals";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { DeployError, readLeoSourcesFromDir, resolveDeployTargets } from "./deploy-task.js";
-import { validateAdminSigner } from "./upgrade-task.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -310,162 +306,5 @@ describe("resolveDeployTargets (Fix 4: dependency ordering)", () => {
     expect(result.indexOf("b.aleo")).toBeLessThan(result.indexOf("a.aleo"));
     expect(result.indexOf("c.aleo")).toBeLessThan(result.indexOf("a.aleo"));
     expect(result).toHaveLength(4);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Fix 1: Upgrade reads old ABI before compile (structural test)
-// ---------------------------------------------------------------------------
-
-describe("upgrade ABI ordering (Fix 1)", () => {
-  it("readOldAbi reads from disk independently of artifacts store", async () => {
-    // The key fix is that readOldAbi is called BEFORE lre.tasks.run("compile"),
-    // which overwrites the ABI file. This test verifies the manifest/ABI
-    // reading function works on pre-existing files.
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-abi-"));
-    try {
-      const programDir = path.join(tmpDir, "hello.aleo");
-      fs.mkdirSync(programDir, { recursive: true });
-
-      const oldAbi = {
-        program: "hello.aleo",
-        structs: [],
-        records: [],
-        mappings: [
-          { name: "counter", key: { Primitive: "Address" }, value: { Primitive: { UInt: "U64" } } },
-        ],
-        storage_variables: [],
-        transitions: [{ name: "increment", is_async: false, inputs: [], outputs: [] }],
-      };
-
-      // Write the "old" ABI (as if from a previous deploy)
-      fs.writeFileSync(path.join(programDir, "abi.json"), JSON.stringify(oldAbi));
-
-      // Read it back — this simulates what upgrade-task.ts does BEFORE compile
-      const raw = fs.readFileSync(path.join(programDir, "abi.json"), "utf-8");
-      const parsed = JSON.parse(raw);
-
-      expect(parsed.mappings).toHaveLength(1);
-      expect(parsed.mappings[0].name).toBe("counter");
-
-      // Now simulate compilation overwriting the file with a new ABI
-      const newAbi = {
-        ...oldAbi,
-        mappings: [], // Mapping deleted — incompatible!
-      };
-      fs.writeFileSync(path.join(programDir, "abi.json"), JSON.stringify(newAbi));
-
-      // Re-reading from disk now gets the NEW abi
-      const rawNew = fs.readFileSync(path.join(programDir, "abi.json"), "utf-8");
-      const parsedNew = JSON.parse(rawNew);
-      expect(parsedNew.mappings).toHaveLength(0);
-
-      // The fix ensures we read `parsed` (old) BEFORE compile, not `parsedNew`
-      // So the ABI compatibility check would correctly catch the deletion.
-      const { checkAbiCompatibility } = await import("./abi-compat.js");
-      const compat = checkAbiCompatibility(parsed, parsedNew);
-      expect(compat.compatible).toBe(false);
-      expect(compat.violations[0]!.kind).toBe("mapping_deleted");
-    } finally {
-      fs.rmSync(tmpDir, { recursive: true });
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Fix 3: Admin signer prevalidation (no silent bypass)
-// ---------------------------------------------------------------------------
-
-describe("validateAdminSigner (Fix 3)", () => {
-  const adminAddress = "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px";
-  const account1Address = "aleo1s3ws5tra87fjycnjrwsjcrnw2qz7vrcqa96naxdzj0tpv3qvqugqxk6rn0";
-
-  const mockConnection = createMockConnection({
-    getBalance: vi.fn(),
-    getMappingValue: vi.fn(),
-    execute: vi.fn(),
-    waitForConfirmation: vi.fn(),
-    getBlockHeight: vi.fn(),
-    broadcastTransaction: vi.fn(),
-    close: vi.fn(),
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("throws when network config not found", async () => {
-    const config = { networks: {} } as any;
-
-    await expect(
-      validateAdminSigner(mockConnection, config, "nonexistent", adminAddress, "token.aleo"),
-    ).rejects.toThrow(DeployError);
-    await expect(
-      validateAdminSigner(mockConnection, config, "nonexistent", adminAddress, "token.aleo"),
-    ).rejects.toThrow('network "nonexistent" not found in config');
-  });
-
-  it("throws when signer address cannot be derived", async () => {
-    // HTTP network with no privateKey → cannot derive signer
-    const config = {
-      networks: {
-        testnet: {
-          type: "http" as const,
-          endpoint: "https://api.example.com",
-          network: "testnet" as const,
-          // no privateKey
-        },
-      },
-    } as any;
-
-    await expect(
-      validateAdminSigner(mockConnection, config, "testnet", adminAddress, "token.aleo"),
-    ).rejects.toThrow(DeployError);
-    await expect(
-      validateAdminSigner(mockConnection, config, "testnet", adminAddress, "token.aleo"),
-    ).rejects.toThrow("unable to determine the signer address");
-  });
-
-  it("uses well-known devnode account-0 address when no accounts configured", async () => {
-    const config = {
-      networks: {
-        devnode: {
-          type: "devnode" as const,
-          socketAddr: "127.0.0.1:3030",
-          autoBlock: true,
-          verbosity: 0,
-          accounts: [],
-          network: "testnet" as const,
-        },
-      },
-    } as any;
-
-    // The well-known account-0 address IS the admin address, so no throw
-    await expect(
-      validateAdminSigner(mockConnection, config, "devnode", adminAddress, "token.aleo"),
-    ).resolves.not.toThrow();
-  });
-
-  it("throws when devnode account-0 address does not match admin", async () => {
-    const config = {
-      networks: {
-        devnode: {
-          type: "devnode" as const,
-          socketAddr: "127.0.0.1:3030",
-          autoBlock: true,
-          verbosity: 0,
-          accounts: [],
-          network: "testnet" as const,
-        },
-      },
-    } as any;
-
-    // Account-0 address does NOT match account-1 admin address
-    await expect(
-      validateAdminSigner(mockConnection, config, "devnode", account1Address, "token.aleo"),
-    ).rejects.toThrow(DeployError);
-    await expect(
-      validateAdminSigner(mockConnection, config, "devnode", account1Address, "token.aleo"),
-    ).rejects.toThrow("configured signer address");
   });
 });
