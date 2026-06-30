@@ -32,14 +32,6 @@ export interface AdaptedUnit {
   readonly dir: string;
 }
 
-export interface V2Entry {
-  readonly programId: string;
-  /** Absolute path to the adapted v2 `main.leo` (under `programs.v2/`). */
-  readonly v2SourcePath: string;
-  /** `programs/<dir>` the v2 source replaces during an in-place upgrade swap. */
-  readonly targetUnitDir: string;
-}
-
 export interface DependencyManifest {
   readonly project: string;
   readonly units: readonly AdaptedUnit[];
@@ -49,7 +41,6 @@ export interface DependencyManifest {
   /** Per source file (relative to `programs/`): library deps reconciled into it. */
   readonly rewrites: Readonly<Record<string, readonly string[]>>;
   readonly executionImports?: Readonly<Record<string, readonly string[]>>;
-  readonly v2?: readonly V2Entry[];
 }
 
 export interface AdaptedProject {
@@ -60,7 +51,6 @@ export interface AdaptedProject {
   readonly manifestPath: string;
   readonly manifest: DependencyManifest;
   readonly testDir: string;
-  readonly v2: readonly V2Entry[];
 }
 
 export interface AdaptOptions {
@@ -123,8 +113,7 @@ function classifyPackage(upstreamRoot: string, pkgDirRel: string): UpstreamPacka
   return {
     kind: "program",
     id: programId,
-    // Program unit dir == program base name so an upgradability v2 with the
-    // same program id can replace v1 in place (plan 0d).
+    // Program unit dir == program base name (drop the `.aleo` suffix).
     unitDir: programId.replace(/\.aleo$/, ""),
     srcDir,
     entryFile: "main.leo",
@@ -296,7 +285,6 @@ export async function adaptSampleGroup(
 
   const projectDir = path.join(outputRoot, spec.name);
   const programsDir = path.join(projectDir, "programs");
-  const programsV2Dir = path.join(projectDir, "programs.v2");
   const testDir = path.join(projectDir, "test");
 
   // Idempotent regen: wipe only this project's dir (preserve sibling projects
@@ -315,22 +303,6 @@ export async function adaptSampleGroup(
     rewrites = { ...rewrites, ...fileRewrites };
   }
 
-  // Upgradability v2 sources: kept out of programs/ so discoverUnits ignores
-  // them; copied (with the same reconciliation) into programs.v2/<base>/ plus a
-  // manifest so the upgrade test can swap them in place (plan 0d).
-  const v2: V2Entry[] = [];
-  for (const v2spec of spec.v2Packages ?? []) {
-    const v2pkg = classifyPackage(upstreamRoot, v2spec.upstreamDir);
-    const base = v2spec.programId.replace(/\.aleo$/, "");
-    const destDir = path.join(programsV2Dir, base);
-    copyAndRewrite(v2pkg, destDir, libNames, path.join("..", "programs.v2", base));
-    v2.push({
-      programId: v2spec.programId,
-      v2SourcePath: path.join(destDir, v2pkg.entryFile),
-      targetUnitDir: path.join(programsDir, base),
-    });
-  }
-
   // Scaffolding.
   const configPath = path.join(projectDir, "lionden.config.ts");
   fs.writeFileSync(configPath, renderConfig(spec));
@@ -344,7 +316,7 @@ export async function adaptSampleGroup(
   copyDirIfExists(path.join(suitesRoot, spec.name), testDir);
 
   // Resolve the post-adapt graph the way the compiler will, and serialize it.
-  const manifest = buildManifest(spec, programsDir, rewrites, v2);
+  const manifest = buildManifest(spec, programsDir, rewrites);
   const manifestPath = path.join(projectDir, "dependency-manifest.json");
   fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
@@ -356,7 +328,6 @@ export async function adaptSampleGroup(
     manifestPath,
     manifest,
     testDir,
-    v2,
   };
 }
 
@@ -364,7 +335,6 @@ function buildManifest(
   spec: SampleGroupSpec,
   programsDir: string,
   rewrites: Record<string, string[]>,
-  v2: readonly V2Entry[],
 ): DependencyManifest {
   const discovered = discoverUnits(programsDir);
   const graph = resolveDependencies(discovered);
@@ -390,6 +360,5 @@ function buildManifest(
     networkDeps: [...graph.networkDeps].sort(),
     rewrites,
     ...(spec.executionImports ? { executionImports: spec.executionImports } : {}),
-    ...(v2.length > 0 ? { v2 } : {}),
   };
 }
