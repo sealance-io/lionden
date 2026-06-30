@@ -1,6 +1,6 @@
 # Deployment
 
-When to read this: use this file for `deploy`, `upgrade`, `export`, deployment state, deployment preflight, upgradeability rules, and deployment hooks. For network connection, devnode, SDK, and script execution behavior, use [`network.md`](network.md).
+When to read this: use this file for `deploy`, `upgrade`, `export`, deployment state, deployment preflight, and deployment hooks. For network connection, devnode, SDK, and script execution behavior, use [`network.md`](network.md).
 
 ## Current Deployment Model
 
@@ -13,7 +13,7 @@ When to read this: use this file for `deploy`, `upgrade`, `export`, deployment s
 
 It also injects `DeploymentManagerImpl` into `lre.deployments`.
 
-Deployment and upgrade behavior are shaped by the Leo upgradability model. Constructor handling, ABI compatibility, signer checks, on-chain edition checks, and persisted deployment state are part of the deploy subsystem.
+The deploy subsystem owns transaction building, broadcast, and persisted deployment state. The `upgrade` task is thin: it compiles the updated program, builds and broadcasts the upgrade transaction, and records a minimal updated record. LionDen does not validate ABI compatibility, constructor immutability, or edition continuity — Leo's built-in tooling owns upgrade correctness.
 
 ## Config
 
@@ -83,7 +83,7 @@ Current deploy options:
 
 ## Deployment Preflight
 
-`packages/plugin-deploy/src/preflight.ts` implements pure validation for deploy and upgrade. It returns structured errors, warnings, and per-program outcomes without writing deployment state.
+`packages/plugin-deploy/src/preflight.ts` implements pure validation for deploy. It returns structured errors, warnings, and per-program outcomes without writing deployment state.
 
 Deploy preflight checks include:
 
@@ -105,14 +105,14 @@ deployments/<networkName>/
   .network.json
   <programId>.json
   <programId>.abi.json
-  .history/<programId>/<edition>-<timestamp>.json
+  .history/<programId>/<historyCount>-<timestamp>.json
   .pending/<programId>.json
 deployments/_exports/<networkName>.json
 ```
 
 Files are written with temp-file-plus-rename atomic writes.
 
-The latest record lives at `deployments/<networkName>/<programId>.json`. ABI snapshots live next to records and are used for upgrade compatibility checks. History entries preserve deploy and upgrade events. Pending markers are written before broadcast and removed when a deployment or upgrade is recorded.
+The latest record lives at `deployments/<networkName>/<programId>.json`. ABI snapshots live next to records and are retained for export. History entries preserve deploy and upgrade events. Pending markers are written before broadcast and removed when a deployment or upgrade is recorded.
 
 Record statuses:
 
@@ -147,7 +147,7 @@ Resolution order: `network.ephemeral ?? deploy.ephemeral ?? (type === "devnode")
 
 **Export exception**: `export()` always writes to `deployments/_exports/<network>.json` even in ephemeral mode. Export bundles are intentionally useful for ephemeral devnode (frontend dev integration, CI artifacts).
 
-**In-memory ABI cache**: `record()` populates an in-memory ABI cache alongside the deployment record cache. The upgrade task uses this cache instead of the on-disk ABI snapshot when the network is ephemeral. ABIs stored in the cache are normalized through `parseAbi()` to ensure consistent internal format regardless of how the ABI was originally provided.
+**In-memory ABI cache**: `record()` populates an in-memory ABI cache alongside the deployment record cache. `export()` reads this cache to emit per-program ABI on ephemeral networks, where no on-disk ABI snapshot exists. ABIs stored in the cache are normalized through `parseAbi()` to ensure consistent internal format regardless of how the ABI was originally provided.
 
 ## Deployment Manager
 
@@ -159,7 +159,7 @@ Current responsibilities:
 - cache-only deployment reads
 - deployment and upgrade record writes
 - ABI snapshot writes and reads (gated by ephemeral mode)
-- in-memory ABI cache (used by upgrade task in ephemeral mode)
+- in-memory ABI cache (used by `export()` in ephemeral mode)
 - history reads
 - pending marker writes and recovery
 - programmatic deploy preflight
@@ -174,9 +174,8 @@ The manager depends on the active network manager and artifact store. Plugin aut
 
 Deployment recipes receive a `DeploymentContext`. Its `deploy()` helper accepts
 a bare program name, a `.aleo` program id, or a generated wrapper with a
-`programId` property. Deployment state, skip/reuse behavior, constructor
-policy, and upgrade history remain owned by the context and deploy subsystem;
-wrappers remain typed ABI clients.
+`programId` property. Deployment state and skip/reuse behavior remain owned by
+the context and deploy subsystem; wrappers remain typed ABI clients.
 
 Passing a wrapper is pure sugar for passing its `programId` — `deploy()` reads
 only that field. It does **not** deploy the wrapper's runtime `imports` (those
@@ -188,7 +187,7 @@ order still follows static `import`s.
 
 On non-ephemeral networks, deploy and upgrade write pending markers before broadcasting. On the next deploy or upgrade, `recoverPendingDeployments()` checks pending markers against the active network. Ephemeral networks skip pending marker writes and pending recovery because the chain and deployment state are memory-only for the session.
 
-If the program is not on-chain, the marker is cleared. If the program is on-chain, the manager records a `recovered` deployment record using the marker's intended action, expected edition, deployer address, constructor snapshot, ABI hash, network, and endpoint.
+If the program is not on-chain, the marker is cleared. If the program is on-chain, the manager records a `recovered` deployment record using the marker's intended action, deployer address, network, and endpoint.
 
 ## Export Task
 
@@ -200,31 +199,29 @@ Current options:
 
 Without `--out`, export writes to `deployments/_exports/<network>.json`. With `--out`, export writes to the requested path.
 
-Export bundles include network metadata and one entry per known program with its program ID, ABI when available, edition, transaction ID when complete, constructor type, admin address when applicable, and record status.
+Export bundles include network metadata and one entry per known program (`ExportedProgram`) with its program ID, ABI when available, transaction ID when complete, and record status.
 
 `deploy --export` exports after deployment. `deploy.autoExport` exports after each deploy or upgrade.
 
 ## Upgrade Task
 
-`packages/plugin-deploy/src/upgrade-task.ts` implements `upgrade`.
+`packages/plugin-deploy/src/upgrade-task.ts` implements `upgrade`. It is a thin task: it builds and broadcasts the upgrade transaction and records a minimal updated record. It does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity, and it does not read the old or deployed ABI. Leo's built-in tooling owns upgrade correctness.
 
 Current behavior:
 
 - requires `--program`
 - connects to the requested network or default network
 - recovers pending deployments
-- reads existing deployment state through `lre.deployments`
-- reads the old ABI from deployment state first, then artifacts
 - compiles the updated program
-- reads the new ABI and compiled Aleo source
-- parses the updated constructor
-- runs upgrade preflight
+- reads the new compiled Aleo source
 - writes a pending marker on non-ephemeral networks
 - builds and broadcasts the upgrade transaction
 - waits for confirmation unless skipped
-- records the updated complete deployment state (in memory for ephemeral networks, on disk for non-ephemeral networks)
+- records the updated deployment state (in memory for ephemeral networks, on disk for non-ephemeral networks)
 - fires the `deployment.programUpgraded` hook
 - optionally exports deployment data when `deploy.autoExport` is enabled
+
+The task returns `{ programId, txId, blockHeight }`.
 
 Current upgrade options:
 
@@ -232,11 +229,7 @@ Current upgrade options:
 - `--priority-fee`
 - `--skip-confirm`
 
-Upgrade preflight checks include:
-
-- ABI compatibility
-- constructor type, parameter, and fingerprint immutability
-- HTTP on-chain edition continuity
+When `namedAccounts.admin` is set, the upgrade task selects its private key as the signing key (selection only — there is no address-match validation).
 
 ## Deployment Recipes
 
@@ -392,8 +385,7 @@ When `namedAccounts.deployer` is configured as a `SignableNamedAccount`, the dep
 
 When `namedAccounts.deployer` is `AddressOnlyNamedAccount`, the deploy task throws — the deployer role requires a signing key.
 
-When `namedAccounts.admin` is configured for the upgrade task:
-- Signable: used as the transaction signer.
+When `namedAccounts.admin` is configured for the upgrade task and is signable, it is selected as the transaction signer. This is selection only — there is no address-match validation against the on-chain admin.
 
 ## Deployment Hooks
 
@@ -404,10 +396,10 @@ Current deployment hooks:
 - `programDeployed`
 - `programUpgraded`
 
-`programDeployed` receives program ID, transaction ID, block height, edition, constructor type, and network name.
+`programDeployed` receives program ID, transaction ID, block height, and network name.
 
-`programUpgraded` receives the same fields plus `previousEdition`.
+`programUpgraded` receives the same fields.
 
 ## Design Direction
 
-For constructor-driven upgrade intent and platform assumptions, use [`vision-and-roadmap.md`](vision-and-roadmap.md). For Leo version-specific constructor and upgrade compatibility, use [`leo-version-compatibility.md`](leo-version-compatibility.md). Use the current deploy plugin source for the implementation contract that exists today.
+For platform assumptions and design framing, use [`vision-and-roadmap.md`](vision-and-roadmap.md). For Leo version-specific constructor and upgrade compatibility, use [`leo-version-compatibility.md`](leo-version-compatibility.md). Use the current deploy plugin source for the implementation contract that exists today.

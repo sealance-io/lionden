@@ -42,7 +42,7 @@ Open the smallest relevant doc first:
 | Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](docs/architecture.md) |
 | Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](docs/compiler.md) |
 | Network configs, devnode/HTTP, `node`, `run`, SDK integration | [`docs/network.md`](docs/network.md) |
-| Deployment state, `deploy`, `upgrade`, `export`, preflight, upgradability | [`docs/deployment.md`](docs/deployment.md) |
+| Deployment state, `deploy`, the thin `upgrade` task, `export` | [`docs/deployment.md`](docs/deployment.md) |
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](docs/testing.md) |
 | Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](docs/testing-strategy.md) |
 | JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](docs/json-abi.md) |

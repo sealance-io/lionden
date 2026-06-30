@@ -10,7 +10,7 @@
 
 ## Leo v3.5 Support Scope
 
-Leo v3.5.x programs can be compiled, deployed, upgraded, and executed through LionDen. Cross-program calls work. The full deploy and upgrade lifecycle is supported, including constructor validation and ABI compatibility checking.
+Leo v3.5.x programs can be compiled, deployed, upgraded, and executed through LionDen. Cross-program calls work. The full deploy and upgrade lifecycle is supported. Upgrade correctness (ABI compatibility, constructor immutability, edition continuity) is owned by Leo's built-in tooling; LionDen's `upgrade` task recompiles, builds the upgrade transaction, broadcasts it, and records the result.
 
 **Not supported under v3.5:** `lib.leo` library units. Leo v3.5 hardcodes `src/main.leo` as the compilation entry point and cannot compile library-shaped packages. Projects using shared library units must target Leo v4.
 
@@ -81,7 +81,7 @@ Both managed devnode backends should be treated as testnet-like local chains. Th
 
 1. **`lib.leo` not supported.** Leo v3.5 cannot compile library-shaped packages. Projects needing shared library units must use Leo v4.
 
-2. **`@admin` is the validated upgrade path.** The v3.5 → v4 migration upgrade was validated with `@admin` constructors. Other constructor types (`@checksum`, `@custom`) compile and parse correctly but have not been exercised in a full cross-version upgrade probe.
+2. **`@admin` is the exercised upgrade path.** The v3.5 → v4 migration upgrade was exercised with `@admin` constructors. Other constructor types (`@checksum`, `@custom`) compile correctly but have not been run through a full cross-version upgrade probe. The constructor decorator remains required Leo syntax in either case.
 
 3. **`add` is a reserved opcode in v3.5.** A Leo function named `add` conflicts with the Aleo `add` instruction. This is a Leo v3.5 constraint, not a LionDen issue.
 
@@ -92,9 +92,9 @@ Users can deploy with Leo v3.5, migrate source to v4 syntax, and upgrade seamles
 1. Deploy the v3.5 program (edition 0).
 2. Convert source to v4 syntax: `fn` keyword, `-> Final` returns, non-async `constructor`, inline `return final { ... }` blocks, `::` cross-program calls.
 3. Update config: set `leoVersion` to the default v4 line such as `"4.1.0"` or an explicit `4.0.x` patch if you are intentionally staying on Leo 4.0, then remove or update `leoBinary`.
-4. Run `upgrade` — LionDen recompiles with v4, validates ABI compatibility and constructor fingerprint, broadcasts the upgrade.
+4. Run `upgrade` — LionDen recompiles with v4, builds the upgrade transaction, broadcasts it, and records the result. Upgrade correctness is enforced by Leo's built-in tooling.
 
-The `@admin` constructor fingerprint (`assert.eq program_owner <addr>;`) is identical in v3.5 and v4 compiled output, so the fingerprint check passes across versions. On-chain state (mappings) is preserved through the upgrade.
+The `@admin` constructor (`assert.eq program_owner <addr>;`) compiles to identical output in v3.5 and v4, so the upgrade is accepted across versions. On-chain state (mappings) is preserved through the upgrade.
 
 ## Implementation Notes
 
@@ -102,9 +102,9 @@ These details are relevant to contributors working on the compiler and deploy pi
 
 - **ABI normalization.** v3.5 ABI uses `"transitions"` (v4: `"functions"`), `"is_async"` (v4: `"is_final"`), and bare `"Future"` output type (v4: `"Final"`). The ABI parser normalizes both formats to the same internal representation.
 - **Leo 4.1 build layout.** The compiler accepts both legacy `build/abi.json` + `build/main.aleo` and flat per-unit `build/<unit>/abi.json` + `build/<unit>/<unit>.aleo`, then normalizes program artifacts back to `artifacts/<programId>/abi.json` and `main.aleo`.
-- **Leo 4.1 ABI extensions.** `views`, `implements`, and non-empty `const_parameters` are parsed and included in ABI hashes only when present. Generated TypeScript wrappers still emit execution methods for transitions only; view query wrappers are deferred, and executable functions with non-empty `const_parameters` fail codegen explicitly.
+- **Leo 4.1 ABI extensions.** `views`, `implements`, and non-empty `const_parameters` are parsed and surfaced in the ABI only when present. Generated TypeScript wrappers still emit execution methods for transitions only; view query wrappers are deferred, and executable functions with non-empty `const_parameters` fail codegen explicitly.
 
-- **Constructor parsing.** v3.5 constructors use `async constructor()` syntax (e.g., `@noupgrade async constructor() {}`). The constructor parser accepts an optional `async` keyword before `constructor` in all four annotation patterns.
+- **Constructor syntax.** v3.5 constructors use `async constructor()` syntax (e.g., `@noupgrade async constructor() {}`), while v4 drops the `async` keyword. The constructor decorator (`@noupgrade`/`@admin`/`@checksum`/`@custom`) is required Leo source in both versions and is what Leo's own tooling uses to enforce upgrade rules.
 
 - **Import discovery.** v3.5 cross-program calls use slash-path syntax (`counter_store.aleo/increment(...)`) rather than v4's `::` syntax. The import parser scans for both `/([\w]+\.aleo)\//g` and `/([\w]+\.aleo)::/g`.
 

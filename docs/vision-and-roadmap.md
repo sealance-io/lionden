@@ -52,7 +52,7 @@ Several platform facts are important when working on LionDen:
 - `leo devnode` is the primary lightweight local-development target.
 - Users who need a multi-validator network can run snarkOS externally and connect via `http`.
 - `leo build` produces structured JSON ABI output that LionDen treats as the source of truth for wrapper generation.
-- Upgradability depends on constructor behavior and compatibility constraints, so deployment tooling must understand constructor metadata and persisted deploy state.
+- Upgradability depends on constructor behavior and compatibility constraints, but those rules are owned by Leo's built-in tooling. LionDen deliberately does not re-validate them: its `upgrade` task recompiles the new version, builds and broadcasts the upgrade transaction, and records the result against persisted deploy state.
 
 These assumptions explain many of the repo's current package boundaries and task names.
 
@@ -63,7 +63,7 @@ The implementation work is organized conceptually in these layers:
 1. Foundation: config, core plugin model, task system, CLI boot flow.
 2. Compilation: source discovery, dependency resolution, temporary package materialization, `leo build`, ABI parsing, code generation.
 3. Network abstraction: devnode/HTTP connections, runtime network manager, `node` and `run`.
-4. Deployment: deploy, upgrade, export, constructor enforcement, and deployment state.
+4. Deployment: deploy, the thin `upgrade` task, export, and deployment state. Upgrade-correctness validation was intentionally removed as a scope reduction — Leo's built-in tooling owns ABI-compatibility, constructor, and edition rules.
 5. Testing: managed devnode lifecycle, reusable test context, fixtures, assertions, Vitest integration.
 6. Scaffolding and examples: `create-lionden`, starter templates, example projects.
 
@@ -80,7 +80,7 @@ The most important engineering constraints preserved from the original design wo
 - Network dependency fetching depends on reachable endpoints and local caching.
 - Package materialization must preserve nested source layout, or Leo imports break.
 - Leo libraries and deployable programs must be treated differently in compile, codegen, and deploy flows.
-- Upgradeability and constructor enforcement are part of the deployment contract, not optional metadata.
+- Constructor decorators remain required Leo syntax for deployable programs, but enforcing upgrade rules (immutability, ABI compatibility, edition continuity) is Leo's responsibility, not LionDen's — that validation subsystem was removed.
 - Compile-time proving-key synthesis is deferred. `synthesizeKeyPair` in the Provable SDK requires real per-transition inputs that the compiler doesn't have, and the eager path cannot receive LionDen's guarded query object. LionDen injects sidecar/runtime cache hits, but cache misses synthesize lazily through `pm.execute` so state queries use the guarded network path. See [`research/key-caching.md`](research/key-caching.md) for the full analysis.
 
 ## How To Use This Doc

@@ -68,7 +68,7 @@ npx lionden test
 
 ### Open an existing project
 
-Either clone it or copy one of the examples under `examples/` (`hello-world`, `token`, `multi-program`, `nft-registry`, `upgradeable-counter`, `async-escrow`) into a fresh directory. For Leo compatibility patterns, also inspect the focused aleo-ports such as `examples/aleo-ports/dynamic_dispatch` and `examples/aleo-ports/dynamic_records`. Each example is a self-contained workspace with its own `lionden.config.ts`, `programs/`, `scripts/`, `test/`, and (sometimes) `recipes/`.
+Either clone it or copy one of the examples under `examples/` (`hello-world`, `token`, `multi-program`, `nft-registry`, `async-escrow`) into a fresh directory. For Leo compatibility patterns, also inspect the focused aleo-ports such as `examples/aleo-ports/dynamic_dispatch` and `examples/aleo-ports/dynamic_records`. Each example is a self-contained workspace with its own `lionden.config.ts`, `programs/`, `scripts/`, `test/`, and (sometimes) `recipes/`.
 
 The examples are the canonical reference for "how does a real LionDen project look?" Prefer reading them over inventing your own setup.
 
@@ -410,7 +410,7 @@ What `deploy` does ([full reference](deployment.md#deploy-task)):
 1. Compiles unless `--no-compile` or `--preflight`.
 2. Connects to the resolved network.
 3. Resolves topological order across deployable programs.
-4. Runs preflight: constructor checks, on-chain status, fee estimation (HTTP), balance (HTTP), …
+4. Runs preflight: on-chain status, fee estimation (HTTP), balance (HTTP), …
 5. Writes pending marker (non-ephemeral networks).
 6. Builds and broadcasts via the Provable SDK. Devnode uses fast-path `buildDevnode*` builders that skip proof generation.
 7. Waits for confirmation up to `deploy.confirmationTimeout` unless `--skip-confirm`.
@@ -464,9 +464,7 @@ The recipe task compiles once up front, then individual `ctx.deploy()` calls def
 
 ## Upgrading Programs
 
-Upgrades require:
-
-- An updated `main.leo` source with backward-compatible ABI (the parts the preflight enforces — see [`deployment.md`](deployment.md#upgrade-task)).
+`upgrade` is a thin task: it recompiles the program, builds and broadcasts the upgrade transaction, and records a minimal updated record. LionDen does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity — Leo's built-in tooling owns upgrade correctness. The program must still carry the mandatory Leo v4 constructor decorator (`@admin(...)` for upgradeable programs) to be upgradeable on-chain.
 
 ```bash
 lionden upgrade --program counter
@@ -478,18 +476,16 @@ What `upgrade` does:
 
 1. Connects to the target network.
 2. Recovers any pending deployments.
-3. Reads the prior deployment record + old ABI.
-4. Recompiles the program.
-5. Runs upgrade preflight (ABI compat, constructor immutability, edition continuity).
-6. Broadcasts the upgrade transaction (devnode fast-path or HTTP build-then-broadcast).
-7. Waits for confirmation unless `--skip-confirm`.
-8. Records the new edition; fires `deployment.programUpgraded`.
+3. Recompiles the program.
+4. Broadcasts the upgrade transaction (devnode fast-path or HTTP build-then-broadcast).
+5. Waits for confirmation unless `--skip-confirm`.
+6. Records the updated state; fires `deployment.programUpgraded`.
 
-`examples/upgradeable-counter` walks through a v4 admin-authorized upgrade flow. For v3.5 to v4 migration notes, see [`leo-version-compatibility.md`](leo-version-compatibility.md#migration-notes-v35-to-v4).
+The task returns `{ programId, txId, blockHeight }`. When `namedAccounts.admin` is signable, its key is selected as the signer (selection only — no address-match check). For v3.5 to v4 migration notes, see [`leo-version-compatibility.md`](leo-version-compatibility.md#migration-notes-v35-to-v4). To spot-check runtime upgrade behaviour, use a disposable probe per [`agent-bug-hunt-workflow.md`](agent-bug-hunt-workflow.md).
 
 ## Exporting Deployment Data
 
-`export` writes a per-network bundle of deployment metadata (program ID, ABI, edition, txId, constructor type, admin address, status) for downstream consumption — frontends, CI artifacts, scripts that need addresses.
+`export` writes a per-network bundle of deployment metadata (program ID, ABI, txId, status) for downstream consumption — frontends, CI artifacts, scripts that need addresses.
 
 ```bash
 lionden export                                   # deployments/_exports/<network>.json
@@ -545,7 +541,7 @@ const { deployer, treasury } = ctx.named.require({
 });
 ```
 
-The deploy task auto-wires `namedAccounts.deployer` as the transaction signer when it's signable. The upgrade task auto-wires `namedAccounts.admin` similarly; an address-only `admin` is treated as a drift-check, not a signer (see [`deployment.md`](deployment.md#deployupgrade-signer-integration)).
+The deploy task auto-wires `namedAccounts.deployer` as the transaction signer when it's signable. The upgrade task selects `namedAccounts.admin` as the signer when it's signable — selection only, with no address-match validation (see [`deployment.md`](deployment.md#deployupgrade-signer-integration)).
 
 > Reminder: `configVariable()` in `namedAccounts` is resolved **eagerly for all networks**. Comment out testnet entries until you're actually targeting testnet — otherwise devnode runs will fail with missing env vars.
 
@@ -705,11 +701,9 @@ Use `sourceProgram` when more than one compiled program declares the same record
 
 ### Upgradeable program with admin
 
-See `examples/upgradeable-counter`:
-
-- Annotate the constructor `@admin(address="aleo1...")`.
-- Configure `namedAccounts.admin` matching that address (or rely on `connection.privateKey`).
-- Iterate on `main.leo`, then `lionden upgrade --program counter`. Preflight enforces ABI compat and signer match.
+- Annotate the constructor `@admin(address="aleo1...")` — this Leo v4 decorator is required to make the program upgradeable on-chain.
+- Configure `namedAccounts.admin` (or rely on `connection.privateKey`) so the upgrade transaction is signed by the admin key.
+- Iterate on `main.leo`, then `lionden upgrade --program counter`. LionDen does not validate ABI compat or admin identity — Leo's tooling enforces upgrade correctness on-chain.
 
 ### Typed contract wrappers in tests
 
@@ -752,7 +746,7 @@ If you run a non-default `socketAddr`/`--port`, substitute that port for `3030`.
 
 **Tests pass locally but `ctx.raw.execute(...)` is needed for upgraded transitions.** — The typechain class was compiled from the pre-upgrade ABI in this process. Add new transitions through `raw.execute` after the upgrade, or restart the test process so codegen picks up the new ABI.
 
-**Deploy says "skipping — already deployed".** — Default behavior under `skipDeployed: true`. Use `--no-skip-deployed` to make it a hard error, or `upgrade --program <name>` if you meant to ship a new edition.
+**Deploy says "skipping — already deployed".** — Default behavior under `skipDeployed: true`. Use `--no-skip-deployed` to make it a hard error, or `upgrade --program <name>` if you meant to ship an upgrade.
 
 **`lionden run script.ts` fails to import a `.ts` file.** — The CLI must be invoked through `tsx`. The packaged binary handles this; if running from source use `node --import tsx packages/cli/src/bin.ts run ...`.
 

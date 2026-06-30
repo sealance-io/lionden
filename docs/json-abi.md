@@ -6,11 +6,10 @@ When to read this: use this file for the Leo compiler's JSON ABI schema, type se
 
 The Leo compiler produces a JSON ABI (Application Binary Interface) file that describes the public interface of a compiled Leo/Aleo program. It enumerates every struct, record, mapping, storage variable, and function that the program exposes, along with their full type signatures.
 
-LionDen consumes the ABI for three purposes:
+LionDen consumes the ABI for two purposes:
 
 1. **TypeScript code generation** — `packages/leo-compiler/src/codegen/` produces typed bindings from ABI data.
-2. **Upgrade compatibility checks** — `packages/plugin-deploy/src/abi-compat.ts` enforces ARC-0006 upgrade rules by diffing old and new ABIs.
-3. **Artifact management** — the ABI is copied to `artifacts/<programId>/abi.json` and stored in the LRE artifact store.
+2. **Artifact management** — the ABI is copied to `artifacts/<programId>/abi.json`, stored in the LRE artifact store, and emitted per-program by `export`. LionDen does not diff ABIs for upgrade compatibility; upgrade correctness is owned by Leo's built-in tooling.
 
 The authoritative type definitions live in the Leo compiler's Rust source at `crates/abi-types/src/lib.rs`. All types derive `serde::Serialize` and `serde::Deserialize`, so the JSON schema is a direct serde serialization of those Rust types.
 
@@ -589,7 +588,6 @@ Relevant source files:
 - Parser: `packages/leo-compiler/src/abi-parser.ts`
 - TypeScript codegen: `packages/leo-compiler/src/codegen/typescript-generator.ts`
 - Type mapping: `packages/leo-compiler/src/codegen/type-mapper.ts`
-- Upgrade compatibility: `packages/plugin-deploy/src/abi-compat.ts`
 
 ## Design Direction
 
