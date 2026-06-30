@@ -7,8 +7,7 @@ import { createMockConfig, createMockConnection } from "@lionden/test-internals"
 import { describe, expect, it, vi } from "vitest";
 import { writeDeploymentRecord } from "./deployment-state.js";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
-import pluginDeploy, { DeployError } from "./index.js";
-import { UpgradeCompatibilityError } from "./upgrade-task.js";
+import pluginDeploy from "./index.js";
 
 const mockConfig = createMockConfig();
 
@@ -141,9 +140,6 @@ describe("export task", () => {
       const record: CompleteDeploymentRecord = {
         status: "complete",
         programId: "hello.aleo",
-        edition: 1,
-        constructor: { type: "noupgrade" },
-        abiHash: "abc123",
         network: "devnode",
         endpoint: "http://127.0.0.1:3030",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -192,25 +188,6 @@ describe("export task", () => {
       logSpy.mockRestore();
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// UpgradeCompatibilityError tests
-// ---------------------------------------------------------------------------
-
-describe("UpgradeCompatibilityError", () => {
-  it("formats violation details in error message", () => {
-    const err = new UpgradeCompatibilityError("token.aleo", [
-      { kind: "mapping_deleted", name: "balances", detail: 'mapping "balances" was deleted' },
-      { kind: "transition_deleted", name: "burn", detail: 'transition "burn" was deleted' },
-    ]);
-
-    expect(err.message).toContain("token.aleo");
-    expect(err.message).toContain("mapping_deleted");
-    expect(err.message).toContain("transition_deleted");
-    expect(err.violations).toHaveLength(2);
-    expect(err).toBeInstanceOf(DeployError);
   });
 });
 

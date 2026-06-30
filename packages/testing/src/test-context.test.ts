@@ -146,7 +146,6 @@ function cachedDeployment(
     programId,
     txId: options.txId === undefined ? "at1cached" : options.txId,
     blockHeight: options.blockHeight === undefined ? 1 : options.blockHeight,
-    constructor: { type: "noupgrade" },
   };
 }
 

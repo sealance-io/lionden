@@ -63,14 +63,10 @@ export interface ProgramDeployedContext {
   readonly programId: string;
   readonly txId: string;
   readonly blockHeight: number;
-  readonly edition: number;
-  readonly constructorType: string;
   readonly network: string;
 }
 
-export interface ProgramUpgradedContext extends ProgramDeployedContext {
-  readonly previousEdition: number;
-}
+export type ProgramUpgradedContext = ProgramDeployedContext;
 
 export interface DeploymentHookHandlers {
   /** Called after a program is successfully deployed on-chain. */

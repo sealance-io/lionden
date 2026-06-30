@@ -47,9 +47,6 @@ function makeComplete(): CompleteDeploymentRecord {
   return {
     status: "complete",
     programId: "hello.aleo",
-    edition: 1,
-    constructor: { type: "noupgrade" },
-    abiHash: "abc123",
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -66,9 +63,6 @@ function makeDegraded(): DegradedDeploymentRecord {
   return {
     status: "degraded",
     programId: "hello.aleo",
-    edition: 2,
-    constructor: { type: null },
-    abiHash: null,
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -85,9 +79,6 @@ function makeRecovered(): RecoveredDeploymentRecord {
   return {
     status: "recovered",
     programId: "hello.aleo",
-    edition: 1,
-    constructor: { type: "admin", adminAddress: "aleo1admin" },
-    abiHash: "abc123",
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -206,11 +197,10 @@ describe("appendHistory / readHistory", () => {
     // Small delay to ensure different timestamps in filenames
     await new Promise((r) => setTimeout(r, 10));
 
-    const record2: CompleteDeploymentRecord = { ...record1, edition: 2 };
+    const record2: CompleteDeploymentRecord = { ...record1, historyCount: 2 };
     const entry2: DeploymentHistoryEntry = {
       record: record2,
       action: "upgrade",
-      previousEdition: 1,
     };
     appendHistory(tmpDir, "devnode", "hello.aleo", entry2);
 
@@ -218,7 +208,6 @@ describe("appendHistory / readHistory", () => {
     expect(history).toHaveLength(2);
     expect(history[0]!.action).toBe("deploy");
     expect(history[1]!.action).toBe("upgrade");
-    expect(history[1]!.previousEdition).toBe(1);
   });
 
   it("returns empty array when no history exists", () => {
@@ -256,12 +245,9 @@ describe("pending marker lifecycle", () => {
     programId: "hello.aleo",
     action: "deploy",
     startedAt: "2026-01-01T00:00:00.000Z",
-    expectedEdition: 1,
     deployerAddress: "aleo1abc",
     priorityFee: 0,
     privateFee: false,
-    constructor: { type: "noupgrade" },
-    abiHash: "abc123",
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
   };
@@ -301,8 +287,6 @@ describe("listPendingMarkers", () => {
       deployerAddress: "aleo1abc",
       priorityFee: 0,
       privateFee: false,
-      constructor: { type: "noupgrade" },
-      abiHash: null,
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
     });
@@ -329,9 +313,7 @@ describe("writeExportBundle", () => {
         "hello.aleo": {
           programId: "hello.aleo",
           abi: mockAbi,
-          edition: 1,
           txId: "at1abc",
-          constructorType: "noupgrade",
           status: "complete",
         },
       },

@@ -6,7 +6,6 @@ import type {
 import { isSignable } from "@lionden/config";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import {
-  computeAbiHash,
   type DependencyGraph,
   type DiscoveredProgram,
   discoverUnits,
@@ -14,11 +13,6 @@ import {
   resolveDependencies,
 } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
-import {
-  type ConstructorInfo,
-  extractConstructorFingerprint,
-  parseConstructor,
-} from "./constructor-parser.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type {
   CompleteDeploymentRecord,
@@ -26,7 +20,6 @@ import type {
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { readLeoSourcesFromDir as readLeoSourcesFromDirImpl } from "./leo-sources.js";
 import { createDegradedRecord } from "./on-chain-check.js";
 import { type DeployPreflightResult, runDeployPreflight } from "./preflight.js";
 import { resolveProveOption } from "./prove.js";
@@ -62,7 +55,6 @@ export interface DeployResult {
   readonly programId: string;
   readonly txId: string;
   readonly blockHeight: number;
-  readonly constructorType: string;
 }
 
 export interface DryRunResult {
@@ -182,14 +174,10 @@ export async function deployAction(
   // disk state is loaded into the preflight even on a cold-cache (fresh CLI process).
   const preflightPrograms: Array<{
     programId: string;
-    constructor: ConstructorInfo | null;
     aleoSource: string | undefined;
     existingRecord: DeploymentRecord | null;
   }> = [];
   for (const programId of targetIds) {
-    const prog = programMap.get(programId);
-    const leoSources = prog ? readLeoSourcesFromDirImpl(prog.sourceDir) : "";
-    const constructor = parseConstructor(leoSources);
     const aleoSourceRaw = lre.artifacts.getAleoSource(programId);
     const aleoSource = typeof aleoSourceRaw === "string" ? aleoSourceRaw : undefined;
     // Devnode: use sync cache — it's populated as programs are deployed in this session
@@ -200,7 +188,7 @@ export async function deployAction(
         ? (manager.getCached(programId, networkName) ?? null)
         : await manager.getDeployment(programId, networkName)
       : null;
-    preflightPrograms.push({ programId, constructor, aleoSource, existingRecord });
+    preflightPrograms.push({ programId, aleoSource, existingRecord });
   }
 
   // 9. Run pre-flight validation
@@ -314,15 +302,6 @@ export async function deployAction(
 
   for (let i = 0; i < toDeployIds.length; i++) {
     const programId = toDeployIds[i]!;
-    const prog = programMap.get(programId);
-    const leoSources = prog ? readLeoSourcesFromDirImpl(prog.sourceDir) : "";
-    const constructor = parseConstructor(leoSources);
-    if (!constructor) {
-      throw new DeployError(
-        `Program "${programId}" has no parsable constructor annotation. ` +
-          `ARC-0006 requires a constructor for deployments.`,
-      );
-    }
 
     const aleoSource = lre.artifacts.getAleoSource(programId);
     if (!aleoSource) {
@@ -331,6 +310,7 @@ export async function deployAction(
       );
     }
 
+    // ABI is recorded for export consumers (manager.record requires it for complete records).
     const abi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
     if (!abi) {
       throw new DeployError(
@@ -338,7 +318,6 @@ export async function deployAction(
           `Run \`lionden compile\` first, or pass --noCompile only when artifacts already exist.`,
       );
     }
-    const abiHash = computeAbiHash(abi);
 
     // Derive deployer address from connection (prefer namedAccounts.deployer key)
     const deployerAddress = await resolveDeployerAddress(
@@ -353,18 +332,9 @@ export async function deployAction(
         programId,
         action: "deploy",
         startedAt: new Date().toISOString(),
-        expectedEdition: 0,
         deployerAddress: deployerAddress ?? "unknown",
         priorityFee: fee,
         privateFee,
-        constructor: {
-          type: constructor.type,
-          adminAddress: constructor.adminAddress,
-          checksumMapping: constructor.checksumMapping,
-          checksumKey: constructor.checksumKey,
-          fingerprint: extractConstructorFingerprint(aleoSource, constructor.type),
-        },
-        abiHash,
         network: networkName,
         endpoint: connection.endpoint,
       };
@@ -395,20 +365,13 @@ export async function deployAction(
       blockHeight = confirmed.blockHeight;
     }
 
-    // Record in deployment state
+    // Record in deployment state. The compiled ABI is passed through so export
+    // consumers (and the in-memory ABI cache) have it; the record itself carries
+    // no upgrade-bookkeeping metadata.
     if (manager) {
       const record: CompleteDeploymentRecord = {
         status: "complete",
         programId,
-        edition: 0,
-        constructor: {
-          type: constructor.type,
-          adminAddress: constructor.adminAddress,
-          checksumMapping: constructor.checksumMapping,
-          checksumKey: constructor.checksumKey,
-          fingerprint: extractConstructorFingerprint(aleoSource, constructor.type),
-        },
-        abiHash,
         network: networkName,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),
@@ -426,7 +389,6 @@ export async function deployAction(
       programId,
       txId,
       blockHeight,
-      constructorType: constructor.type,
     };
     results.push(result);
 
@@ -437,8 +399,6 @@ export async function deployAction(
       programId,
       txId,
       blockHeight,
-      edition: 0,
-      constructorType: constructor.type,
       network: networkName,
     });
 

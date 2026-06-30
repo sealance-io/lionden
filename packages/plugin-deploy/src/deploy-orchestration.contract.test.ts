@@ -128,9 +128,6 @@ describe("deploy orchestration contract", () => {
     const confirmCalls = fakeNetwork.getCallsTo("waitForConfirmation");
     expect(confirmCalls).toHaveLength(1);
     expect(confirmCalls[0]!.args[0]).toBe(results[0]!.txId);
-
-    // Constructor type recorded
-    expect(results[0]!.constructorType).toBe("noupgrade");
   });
 
   it("honors a programmatic network override", async () => {
@@ -147,16 +144,6 @@ describe("deploy orchestration contract", () => {
     await deployAction({ program: "hello", noCompile: true, network: "testnet" }, lre);
 
     expect(connect).toHaveBeenCalledWith("testnet");
-  });
-
-  it("rejects a deploy target with no parsable constructor before broadcasting", async () => {
-    const { lre, fakeNetwork } = createDeployFixture([{ name: "hello", annotation: "" }]);
-
-    await expect(deployAction({ program: "hello", noCompile: true }, lre)).rejects.toThrow(
-      "MISSING_CONSTRUCTOR",
-    );
-
-    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
   });
 
   it("uses the devnode fast-path when prove is not requested", async () => {

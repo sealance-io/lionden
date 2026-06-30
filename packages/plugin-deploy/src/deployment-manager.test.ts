@@ -158,9 +158,6 @@ function makeManager(
 const completeRecord: CompleteDeploymentRecord = {
   status: "complete",
   programId: "hello.aleo",
-  edition: 1,
-  constructor: { type: "noupgrade" },
-  abiHash: "abc123",
   network: "devnode",
   endpoint: "http://127.0.0.1:3030",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -174,7 +171,6 @@ const completeRecord: CompleteDeploymentRecord = {
 const secondCompleteRecord: CompleteDeploymentRecord = {
   ...completeRecord,
   programId: "goodbye.aleo",
-  abiHash: "def456",
   txId: "at1def",
   blockHeight: 43,
 };
@@ -222,7 +218,6 @@ describe("devnode: getDeployment validates on-chain", () => {
     const result = await dm.getDeployment("hello.aleo");
     expect(result).not.toBeNull();
     expect(result!.status).toBe("degraded");
-    expect(result!.edition).toBe(2);
   });
 
   it("returns cache-only when no connection available", async () => {
@@ -431,8 +426,6 @@ describe("record()", () => {
       deployerAddress: "aleo1abc",
       priorityFee: 0,
       privateFee: false,
-      constructor: { type: "noupgrade" },
-      abiHash: null,
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
     };
@@ -453,7 +446,7 @@ describe("record()", () => {
     expect(dm.getCached("hello.aleo")).not.toBeNull();
   });
 
-  it("does not downgrade a complete on-disk record to degraded when edition matches (fresh-process cache miss guard)", async () => {
+  it("does not downgrade a complete on-disk record to degraded when endpoint matches (fresh-process cache miss guard)", async () => {
     // Simulate devnode fresh-process restart: disk has a complete record but
     // the in-memory cache is cold (new DeploymentManagerImpl instance).
     // Uses ephemeral: false so disk reads/writes are exercised.
@@ -462,15 +455,12 @@ describe("record()", () => {
     // Write complete record directly to disk (as if a previous process did it)
     writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
 
-    // Now call record() with a degraded record at the same edition — must NOT overwrite
+    // Now call record() with a degraded record at the same endpoint — must NOT overwrite
     const degraded: DegradedDeploymentRecord = {
       status: "degraded",
       programId: "hello.aleo",
-      edition: 1, // same as completeRecord.edition
-      constructor: { type: null },
-      abiHash: null,
       network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
+      endpoint: "http://127.0.0.1:3030", // same as completeRecord.endpoint
       updatedAt: new Date().toISOString(),
       historyCount: 0,
       txId: null,
@@ -495,15 +485,12 @@ describe("record()", () => {
     expect(history).toHaveLength(0);
   });
 
-  it("does not downgrade a recovered on-disk record to degraded when edition matches", async () => {
-    // Same invariant as complete: a recovered record at the same edition/endpoint must
+  it("does not downgrade a recovered on-disk record to degraded when endpoint matches", async () => {
+    // Same invariant as complete: a recovered record at the same endpoint must
     // survive a degraded write from a fresh-process cache miss.
     const recovered: RecoveredDeploymentRecord = {
       status: "recovered",
       programId: "hello.aleo",
-      edition: 1,
-      constructor: { type: "noupgrade" },
-      abiHash: "abc123",
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -521,9 +508,6 @@ describe("record()", () => {
     const degraded: DegradedDeploymentRecord = {
       status: "degraded",
       programId: "hello.aleo",
-      edition: 1,
-      constructor: { type: null },
-      abiHash: null,
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
       updatedAt: new Date().toISOString(),
@@ -547,26 +531,23 @@ describe("record()", () => {
     expect(history).toHaveLength(0);
   });
 
-  it("writes degraded record and deletes ABI snapshot when edition differs from on-disk complete (out-of-band upgrade guard)", async () => {
-    // Disk has a complete record at edition 1 with an ABI snapshot, but on-chain the
-    // program is now at edition 2 (upgraded outside LionDen). The degraded record carries
-    // the observed edition 2 and must overwrite the stale disk state. The old ABI snapshot
-    // must also be deleted so upgradeAction() cannot validate against the prior edition's ABI.
+  it("writes degraded record and deletes ABI snapshot when endpoint differs from on-disk complete (out-of-band redeploy guard)", async () => {
+    // Disk has a complete record with an ABI snapshot, but the observed degraded record
+    // reports a different endpoint (the program was redeployed against another node).
+    // The degraded record must overwrite the stale disk state, and the old ABI snapshot
+    // must be deleted so export() cannot surface a stale prior ABI.
     const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
-    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord); // edition: 1
+    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
     // Seed the ABI snapshot as a prior complete deploy would have written it
     writeAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo", mockAbi);
     expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).not.toBeNull();
 
-    const degradedEdition2: DegradedDeploymentRecord = {
+    const degradedOtherEndpoint: DegradedDeploymentRecord = {
       status: "degraded",
       programId: "hello.aleo",
-      edition: 2, // differs from disk edition 1
-      constructor: { type: null },
-      abiHash: null,
       network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
+      endpoint: "http://127.0.0.1:9999", // differs from disk endpoint
       updatedAt: new Date().toISOString(),
       historyCount: 0,
       txId: null,
@@ -575,18 +556,17 @@ describe("record()", () => {
       deployedAt: null,
       feePaid: null,
     };
-    await dm.record(degradedEdition2, "deploy");
+    await dm.record(degradedOtherEndpoint, "deploy");
 
-    // The degraded record at edition 2 should have been written
+    // The degraded record should have been written
     const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
     expect(onDisk?.status).toBe("degraded");
-    expect(onDisk?.edition).toBe(2);
 
     // A history entry must exist for the write
     const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
     expect(history).toHaveLength(1);
 
-    // The ABI snapshot must be deleted — stale prior-edition ABI must not be usable by upgradeAction()
+    // The ABI snapshot must be deleted — stale prior ABI must not be usable by export()
     expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
   });
 
@@ -600,15 +580,12 @@ describe("record()", () => {
     await dm.record(completeRecord, "deploy", { abi: mockAbi });
     expect(dm.getCachedAbi("hello.aleo", "devnode")).not.toBeNull();
 
-    // 2. Downgrade to degraded (different edition so guard does not short-circuit)
+    // 2. Downgrade to degraded (different endpoint so guard does not short-circuit)
     const degraded: DegradedDeploymentRecord = {
       status: "degraded",
       programId: "hello.aleo",
-      edition: 2, // differs from completeRecord.edition (1) — bypasses degraded guard
-      constructor: { type: null },
-      abiHash: null,
       network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
+      endpoint: "http://127.0.0.1:9999", // differs from completeRecord.endpoint — bypasses degraded guard
       updatedAt: new Date().toISOString(),
       historyCount: 0,
       txId: null,
@@ -662,12 +639,9 @@ describe("recoverPendingDeployments", () => {
       programId: "hello.aleo",
       action: "deploy",
       startedAt: "2026-01-01T00:00:00.000Z",
-      expectedEdition: 1,
       deployerAddress: "aleo1abc",
       priorityFee: 0,
       privateFee: false,
-      constructor: { type: "noupgrade" },
-      abiHash: "abc123",
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
     };
@@ -701,8 +675,6 @@ describe("recoverPendingDeployments", () => {
       deployerAddress: "aleo1abc",
       priorityFee: 0,
       privateFee: false,
-      constructor: { type: "noupgrade" },
-      abiHash: null,
       network: "devnode",
       endpoint: "http://127.0.0.1:3030",
     };

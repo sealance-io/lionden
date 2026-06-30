@@ -9,14 +9,8 @@
 import type { LionDenResolvedConfig } from "@lionden/config";
 import type { ArtifactStore } from "@lionden/core";
 import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
-import {
-  type DiscoveredProgram,
-  discoverUnits,
-  parseAbi,
-  resolveDependencies,
-} from "@lionden/leo-compiler";
+import { discoverUnits, parseAbi, resolveDependencies } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
-import { parseConstructor } from "./constructor-parser.js";
 import {
   appendHistory,
   deleteAbiSnapshot,
@@ -43,7 +37,6 @@ import type {
   PendingDeployment,
   RecoveredDeploymentRecord,
 } from "./deployment-types.js";
-import { readLeoSourcesFromDir } from "./leo-sources.js";
 import { checkProgramOnChain, createDegradedRecord } from "./on-chain-check.js";
 import type { DeployPreflightResult } from "./preflight.js";
 import { runDeployPreflight } from "./preflight.js";
@@ -375,25 +368,24 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const net = record.network;
     const programId = record.programId;
 
-    // Enforce ABI snapshot for complete records — upgrade validation relies on it
+    // Enforce ABI for complete records — export consumers rely on it
     if (record.status === "complete" && !options?.abi) {
       throw new Error(
-        `ABI snapshot is required when recording a complete deployment for "${programId}". ` +
+        `ABI is required when recording a complete deployment for "${programId}". ` +
           `Pass options.abi to manager.record() when status is "complete".`,
       );
     }
 
     // Do not downgrade a complete or recovered record to degraded when the existing
-    // record still describes the same on-chain state (same edition, same network endpoint).
+    // record still describes the same on-chain state (same network endpoint).
     // This guards against the fresh-process cache miss: on devnode, the deploy task
     // uses getCached() (sync) to populate preflight.existingRecord. If the process
     // restarted, getCached() returns null even though a complete record exists on disk.
     // The reconciliation block then calls record(degraded) — without this guard that
     // would overwrite the complete record and append a spurious history entry.
     //
-    // The edition + endpoint check keeps the guard narrow: if the on-chain program was
-    // upgraded or redeployed out-of-band (different edition), or if the endpoint changed,
-    // the incoming degraded record reflects the current observed state and must be written.
+    // The endpoint check keeps the guard narrow: if the endpoint changed, the incoming
+    // degraded record reflects the current observed state and must be written.
     if (record.status === "degraded") {
       const nc = this.networkCache(net);
       const existing =
@@ -402,7 +394,6 @@ export class DeploymentManagerImpl implements DeploymentManager {
       if (
         existing &&
         (existing.status === "complete" || existing.status === "recovered") &&
-        existing.edition === record.edition &&
         existing.endpoint === record.endpoint
       ) {
         // Load into cache and skip the write — the existing record is still valid.
@@ -437,8 +428,8 @@ export class DeploymentManagerImpl implements DeploymentManager {
       // Write deployment record
       writeDeploymentRecord(this.deploymentsDir, net, record);
 
-      // Degraded records have unknown ABI (abiHash: null). Delete any existing snapshot so
-      // a subsequent upgradeAction() cannot validate against a stale prior-edition ABI.
+      // Degraded records have an unknown ABI. Delete any existing snapshot so
+      // export() cannot surface a stale prior ABI for the program.
       if (record.status === "degraded") {
         deleteAbiSnapshot(this.deploymentsDir, net, programId);
       }
@@ -505,7 +496,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
       const marker = readPendingMarker(this.deploymentsDir, network, programId);
       if (!marker) continue;
 
-      const { exists, edition, source } = await checkProgramOnChain(connection, programId);
+      const { exists, source } = await checkProgramOnChain(connection, programId);
 
       if (!exists) {
         // Not on-chain — delete marker, nothing to recover
@@ -521,9 +512,6 @@ export class DeploymentManagerImpl implements DeploymentManager {
       const recoveredRecord: RecoveredDeploymentRecord = {
         status: "recovered",
         programId,
-        edition: edition ?? marker.expectedEdition ?? 0,
-        constructor: marker.constructor,
-        abiHash: marker.abiHash,
         network,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),
@@ -536,21 +524,13 @@ export class DeploymentManagerImpl implements DeploymentManager {
       };
 
       await this.record(recoveredRecord, marker.action, {
-        historyEntry: {
-          action: marker.action,
-          previousEdition:
-            marker.action === "upgrade" && marker.expectedEdition !== undefined
-              ? marker.expectedEdition - 1
-              : undefined,
-        },
+        historyEntry: { action: marker.action },
       });
 
       void source; // source available but we don't need it for RecoveredRecord
       recovered.push(recoveredRecord);
 
-      console.info(
-        `[DeploymentManager] Recovered ${marker.action} for "${programId}" (edition ${recoveredRecord.edition}).`,
-      );
+      console.info(`[DeploymentManager] Recovered ${marker.action} for "${programId}".`);
     }
 
     return recovered;
@@ -585,11 +565,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
     // Normalize program IDs
     const normalizedIds = programIds.map((id) => (id.endsWith(".aleo") ? id : `${id}.aleo`));
 
-    // Parse Leo sources for constructor info and build dependency graph.
-    // discoverUnits() reads .leo source files without compilation.
+    // Build the dependency graph. discoverUnits() reads .leo source files without
+    // compilation.
     const programsDir = this.config.paths.programs;
     const discovered = discoverUnits(programsDir);
-    const programUnits = discovered.filter((u): u is DiscoveredProgram => u.kind === "program");
 
     let graph: DependencyGraph;
     try {
@@ -613,23 +592,18 @@ export class DeploymentManagerImpl implements DeploymentManager {
       };
     }
 
-    // Build program entries: constructor from Leo sources, aleoSource from artifacts.
+    // Build program entries: aleoSource from artifacts.
     // getDeployment() (async, validates disk/on-chain) gives accurate existing state.
     const programs: Array<{
       programId: string;
-      constructor: ReturnType<typeof parseConstructor>;
       aleoSource: string | undefined;
       existingRecord: import("./deployment-types.js").DeploymentRecord | null;
     }> = [];
     for (const programId of normalizedIds) {
-      const unit = programUnits.find((p) => p.programId === programId);
-      const leoSources = unit ? readLeoSourcesFromDir(unit.sourceDir) : "";
-      const constructor = parseConstructor(leoSources);
       const aleoSource = this.artifacts.getAleoSource(programId);
       const existingRecord = await this.getDeployment(programId, network);
       programs.push({
         programId,
-        constructor,
         aleoSource: typeof aleoSource === "string" ? aleoSource : undefined,
         existingRecord,
       });
@@ -681,10 +655,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
       programs[record.programId] = {
         programId: record.programId,
         abi,
-        edition: record.edition,
         txId: record.status === "complete" ? record.txId : null,
-        constructorType: record.constructor.type,
-        adminAddress: record.constructor.adminAddress,
         status: record.status,
       };
     }
