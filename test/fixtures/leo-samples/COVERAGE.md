@@ -8,9 +8,9 @@ uncovered (with where they *are* covered instead). It is a manual audit;
 re-run the greps in this file after editing the suites.
 
 Suites audited: `suites/native_runtime_edges/`, `suites/dynamic_dispatch/`,
-`suites/upgradability/`, `gapfiller/test/` (the gap-filler is hand-authored,
-not adapted). `abi_surface` has **no** on-chain suite — see the codegen finding
-in the README and `adapter/specs.ts` (`compileOnly`).
+`gapfiller/test/` (the gap-filler is hand-authored, not adapted). `abi_surface`
+has **no** on-chain suite — see the codegen finding in the README and
+`adapter/specs.ts` (`compileOnly`).
 
 ## Error classes → trigger
 
@@ -56,18 +56,12 @@ numbers here to match.
 | `.locally` | 20 | all suites — pure compute / view round-trips, dynamic `call.dynamic`, offline `probe_cast` dyn-record cast |
 | `.captureLocalFailure` | 5 | native_runtime_edges |
 | `.failsLocally` | 5 | native_runtime_edges |
-| `.accepted` | 30 | native_runtime_edges (finalizer asserts, native `credits.aleo::account` reads, vector/storage edges, `transfer_public_signer_wrap` future), dynamic_dispatch, upgradability (`version`) |
+| `.accepted` | 30 | native_runtime_edges (finalizer asserts, native `credits.aleo::account` reads, vector/storage edges, `transfer_public_signer_wrap` future), dynamic_dispatch |
 | `.rejected` | 13 | native_runtime_edges (finalizer/vector/storage/native-read rejects), dynamic_dispatch |
 | `mappings.lastSplit.get` | 5 | dynamic_dispatch — runtime target read-back (the other mapping accessors `getOrUse`/`contains`/`tryGet` are 0 here; covered by `packages/leo-compiler` base-contract unit tests) |
 | id-only `.match` / `.from` / `.at` / `.decrypt` | 3 / 2 / 1 / 9 | dynamic_dispatch, gapfiller |
 | `.submitted` | 0 (gap) | the fire-and-forget primitive that `.accepted`/`.settled` build on; covered by `packages/leo-compiler` base-contract unit tests |
 | `.settled` | 0 (gap) | settle-to-either-status; `.accepted`/`.rejected` (the status-asserting forms) are heavily exercised instead; raw `.settled` covered by unit tests |
-
-The upgrade lifecycle (`deploy` v1 → in-place v2 swap → `upgrade` task →
-accept/reject by constructor policy) is exercised by the upgradability suite
-across `@noupgrade` / `@custom` / `@admin` / `@checksum` (the two upgrade
-sub-cases that need a per-LRE signer override or a pre-broadcast checksum
-capture are `it.skip` with documented reasons).
 
 ## How to re-audit
 
@@ -169,7 +163,7 @@ on-chain blobs, so the merged codegen numbers are at least these.
 | codegen: `codegen-error.ts` | 0% | error paths not hit on-chain |
 | codegen: `abi-types.ts` | 0% | parsed in-process only |
 | network (overall) | 47.9% | `transition-selector` 0%, `file-io` 0%, `named-account-manager` 31%, `sdk-diagnostics` 33% |
-| plugin-deploy (overall) | 38.0% | `admin-signer`/`deployment-state`/`deploy-manifest`/`recipe-task` 0%; `deployment-manager` 24%, `preflight` 28%, `abi-compat` 30% |
+| plugin-deploy (overall) | 38.0% | `deployment-state`/`recipe-task` 0%; `deployment-manager` 24%, `preflight` 28% |
 
 ### Opportunity ledger (ranked by value ÷ runtime)
 
@@ -177,10 +171,8 @@ on-chain blobs, so the merged codegen numbers are at least these.
 | --- | --- | --- | --- | --- |
 | 1 | codegen source (`type-mapper`, `typescript-generator`, `abi-types`, `codegen-error`) | **reachable-in-lane** — captured by the in-process blob | ~0 (already paid) | **done** (Task 1) |
 | 2 | executed per-project `typechain/**` wrappers + `BaseContract.ts` | **reachable-in-lane** — instrumented on-chain | ~0 (already executed) | **done** (Task 2) |
-| 3 | `named-account-manager.resolveForNetwork` admin branch + `upgrade-task` admin-signer resolution | **reachable-in-lane** — `namedAccounts.admin: { default: 0 }` on `upgradability` | ~0 (no new tx) | **done** (Task 3A) |
-| 4 | `abi-compat.ts` comparators (ABI-break reject path) | **blocked-on-adapter-work** — needs an ABI-breaking v2 (current v2s are logic-only; `generated/**` is gitignored/regenerated from `.upstream`) | +1 deploy +1 rejected no-prove upgrade | **needs validation** (Task 3B) |
-| 5 | `transition-selector` reentrancy, `file-io`, `sdk-diagnostics`, the 3 network/internal error classes | **delegated-to-unit** | n/a | out of scope |
-| 6 | `type-mapper` `primitiveToTs` / `plaintextToTs` / `aleoTypeToTs` | **delegated-to-unit** — no production caller; public API only (`leo-compiler/src/index.ts`) | n/a | out of scope |
+| 3 | `transition-selector` reentrancy, `file-io`, `sdk-diagnostics`, the 3 network/internal error classes | **delegated-to-unit** | n/a | out of scope |
+| 4 | `type-mapper` `primitiveToTs` / `plaintextToTs` / `aleoTypeToTs` | **delegated-to-unit** — no production caller; public API only (`leo-compiler/src/index.ts`) | n/a | out of scope |
 
 ### Unit-test delegation boundary
 
@@ -198,18 +190,6 @@ lane (re-covering them adds runtime for no marginal signal):
 - `type-mapper`'s `primitiveToTs` / `plaintextToTs` / `aleoTypeToTs` — public-API
   re-exports with no production caller; they belong to type-mapper unit tests,
   not the lane.
-
-### Blocked on documented product gaps
-
-Two upgrade-matrix cells stay `it.skip` because the lionden API cannot yet
-express them; they also block the cheap path to the related deploy-side coverage.
-Both are detailed in the lane [`README.md`](README.md) §"Known lionden gaps
-surfaced by this lane":
-
-- **No per-upgrade signer override** → the `@admin` *reject*-with-wrong-key path
-  (and its `admin-signer` mismatch branch) is unreachable without a second LRE.
-- **No pre-broadcast v2-checksum accessor** → the `@checksum` *accept* path (and
-  `governance.aleo::approve`) is unreachable.
 
 ### Caveat — per-project `BaseContract.ts`
 

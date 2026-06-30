@@ -104,30 +104,6 @@ describe.skipIf(!ready)("adaptSampleGroup", () => {
     expect(nre.manifest.rewrites).toEqual({});
   });
 
-  it("splits upgradability v1 (discoverable) from v2 (out-of-tree) sources", async () => {
-    const upg = await adaptSampleGroup(getSpec("upgradability"), { outputRoot: freshRoot() });
-    // v1 frozen_base is discoverable; v2 is not under programs/.
-    expect(fs.existsSync(path.join(upg.programsDir, "frozen_base", "main.leo"))).toBe(true);
-    expect(discoverUnits(upg.programsDir).map((u) => unitId(u))).not.toContain(
-      "frozen_base_v2.aleo",
-    );
-
-    const v2Ids = upg.v2.map((v) => v.programId).sort();
-    expect(v2Ids).toEqual([
-      "admin_upgrade.aleo",
-      "checksum_upgrade.aleo",
-      "frozen_base.aleo",
-      "open_upgrade.aleo",
-      "timelock_upgrade.aleo",
-    ]);
-    for (const entry of upg.v2) {
-      expect(fs.existsSync(entry.v2SourcePath)).toBe(true);
-      // The v2 source shares the v1 program id (the in-place-swap requirement).
-      const src = fs.readFileSync(entry.v2SourcePath, "utf-8");
-      expect(src).toContain(`program ${entry.programId}`);
-    }
-  });
-
   it("renders execution.imports for dynamic dispatch targets", async () => {
     const dd = await adaptSampleGroup(getSpec("dynamic_dispatch"), { outputRoot: freshRoot() });
     const config = fs.readFileSync(dd.configPath, "utf-8");

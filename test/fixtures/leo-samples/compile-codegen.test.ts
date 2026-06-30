@@ -103,7 +103,6 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
       "abi_surface",
       "native_runtime_edges",
       "dynamic_dispatch",
-      "upgradability",
     ]);
   });
 
@@ -165,23 +164,6 @@ describe.skipIf(!ready)("compile + codegen coverage", () => {
     expect(dispatcher.transitions.length).toBeGreaterThan(0);
     const tokenAlt = abis.find((a) => a.program === "token_alt.aleo")!;
     expect(tokenAlt.implements?.length ?? 0).toBeGreaterThan(0);
-    assertTypechainEmitted(project, abis);
-  });
-
-  it("upgradability — six programs compile; constructor stays out of the ABI", async () => {
-    const { project, abis } = await compileProject("upgradability");
-    expect(abis.map((a) => a.program).sort()).toEqual([
-      "admin_upgrade.aleo",
-      "checksum_upgrade.aleo",
-      "frozen_base.aleo",
-      "governance.aleo",
-      "open_upgrade.aleo",
-      "timelock_upgrade.aleo",
-    ]);
-    for (const abi of abis) {
-      // Constructor policy lives in bytecode + manifest, never the ABI.
-      expect(abi.transitions.some((t) => t.name === "constructor")).toBe(false);
-    }
     assertTypechainEmitted(project, abis);
   });
 

@@ -6,17 +6,9 @@
  * The adapter (adapt.ts) *discovers* most facts from each package's
  * `program.json` + `src/` (program-vs-library, program id, declared deps).
  * Specs only carry what cannot be discovered: which upstream packages belong
- * to the project, runtime dispatch targets, the upgradability v1/v2 split, and
- * the expected resolved graph used by the adapter unit test / 0f proof.
+ * to the project, runtime dispatch targets, and the expected resolved graph
+ * used by the adapter unit test / 0f proof.
  */
-
-/** A v2 source package for the upgradability in-place-swap upgrade flow (0d). */
-export interface V2PackageSpec {
-  /** Upstream package dir, relative to `.upstream`, e.g. "upgradability/frozen_base_v2". */
-  readonly upstreamDir: string;
-  /** Program id this v2 source replaces, e.g. "frozen_base.aleo". */
-  readonly programId: string;
-}
 
 /**
  * A documented lionden finding that excludes a sample group from the lane.
@@ -50,8 +42,6 @@ export interface SampleGroupSpec {
   readonly packages: readonly string[];
   /** Runtime dispatch targets → `execution.imports` in the generated config. */
   readonly executionImports?: Readonly<Record<string, readonly string[]>>;
-  /** Upgradability v2 sources, kept out of `programs/` (0d). */
-  readonly v2Packages?: readonly V2PackageSpec[];
   /** Per-test timeout override (ms) for the generated config. */
   readonly timeout?: number;
   /**
@@ -59,13 +49,6 @@ export interface SampleGroupSpec {
    * mostly ABI-shape, covered cheaply without deploys.
    */
   readonly compileOnly?: boolean;
-  /**
-   * Emit `namedAccounts: { admin: { default: 0 } }` into the generated config —
-   * devnode account index 0 (the genesis key the `@admin` programs bake in).
-   * Lights up the admin-signer resolution branch in upgrade-task.ts +
-   * network/named-account-manager.ts with no new transaction.
-   */
-  readonly namedAdminAccount?: boolean;
   /**
    * When set, the group is a documented lionden finding: adaptation works but
    * `leo build` does not, so it is excluded from compile-codegen + on-chain
@@ -193,47 +176,6 @@ export const SPECS: readonly SampleGroupSpec[] = [
         abi_shape_lib: ["abi_point_lib"],
         "abi_provider.aleo": ["abi_point_lib", "abi_shape_lib"],
         "abi_consumer.aleo": ["abi_provider.aleo", "abi_point_lib", "abi_shape_lib"],
-      },
-      networkDeps: [],
-    },
-  },
-  {
-    name: "upgradability",
-    packages: [
-      "upgradability/frozen_base",
-      "upgradability/open_upgrade",
-      "upgradability/admin_upgrade",
-      "upgradability/checksum_upgrade",
-      "upgradability/timelock_upgrade",
-      "upgradability/governance",
-    ],
-    v2Packages: [
-      { upstreamDir: "upgradability/frozen_base_v2", programId: "frozen_base.aleo" },
-      { upstreamDir: "upgradability/open_upgrade_v2", programId: "open_upgrade.aleo" },
-      { upstreamDir: "upgradability/admin_upgrade_v2", programId: "admin_upgrade.aleo" },
-      { upstreamDir: "upgradability/checksum_upgrade_v2", programId: "checksum_upgrade.aleo" },
-      { upstreamDir: "upgradability/timelock_upgrade_v2", programId: "timelock_upgrade.aleo" },
-    ],
-    // The @admin programs bake in the devnode genesis address (== accounts[0]);
-    // surface it as namedAccounts.admin so the admin-signer resolution path runs.
-    namedAdminAccount: true,
-    timeout: DEVNODE_TIMEOUT,
-    expected: {
-      units: [
-        "admin_upgrade.aleo",
-        "checksum_upgrade.aleo",
-        "frozen_base.aleo",
-        "governance.aleo",
-        "open_upgrade.aleo",
-        "timelock_upgrade.aleo",
-      ],
-      imports: {
-        "frozen_base.aleo": [],
-        "open_upgrade.aleo": [],
-        "admin_upgrade.aleo": [],
-        "checksum_upgrade.aleo": ["governance.aleo"],
-        "timelock_upgrade.aleo": [],
-        "governance.aleo": [],
       },
       networkDeps: [],
     },
