@@ -1,5 +1,8 @@
-// Port of tmp/leo-examples/upgrades/timelock/. @custom constructor that
-// only allows upgrades once block.height crosses a threshold.
+// Leo constructor/upgrade compatibility smoke (port of Leo core upgrades/timelock).
+// A @custom constructor gates upgrades on block.height: edition 0 (initial
+// deploy) is unrestricted; later editions only land once the height threshold
+// passes. lionden does NO upgrade/constructor validation — Leo and the network
+// enforce the timelock; this just drives the thin upgrade task end-to-end.
 //
 // Test scope (positive case):
 //   1. Deploy v1 (succeeds at any height — edition 0 skips the assert)
@@ -11,10 +14,9 @@
 // should fail). Reproducing that reliably is hard: with autoBlock on the
 // devnode keeps producing blocks, so by the time the rejected tx lands
 // the height may already be over threshold; with autoBlock off the
-// upgrade can never land at all. The positive flow alone exercises both
-// the @custom constructor codegen and `advanceBlocks` plumbing, which
-// is the parity-relevant logic. Negative-case testing belongs in
-// constructor unit tests within plugin-deploy.
+// upgrade can never land at all. The positive flow exercises the runtime
+// upgrade-gating and `advanceBlocks` plumbing, which is the parity-relevant
+// behaviour.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
