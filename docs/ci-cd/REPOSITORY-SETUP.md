@@ -16,17 +16,17 @@ Workflows are version-controlled; these settings are not, so they live here.
 | `pinact-verify.yml` | PR/push | Action SHA-pin + cooldown verification. Rollup: **pinact Status**. |
 | `release-version.yml` | push to `main` | Opens/updates the "Version Packages" PR (changesets + GitHub App token). |
 | `release-publish.yml` | push to `main` | Publishes bumped packages to npm via OIDC; tags + GitHub Releases. |
-| `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.1.0 CLI so the `smoke` lane hits a warm cache. |
+| `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.2.0 CLI so the `smoke` lane hits a warm cache. |
 
-> **Temporary pin — `sealance-io/setup-leo-action`.** Both the `smoke` lane (`ci.yml`) and
-> `leo-cache-warmup.yml` request Leo `4.1.0`, which upstream tags `leo-lang-v4.1.0`. The
-> released **v1.1.0** only resolves `v<version>` tags and cannot install 4.1.0, so both are
-> pinned to the **head of [PR #19](https://github.com/sealance-io/setup-leo-action/pull/19)**
-> (`1a751b6…`, unreleased) which adds source-tag support. As a first-party (`sealance-io`)
-> artifact this is exempt from the cooldown — `.pinact.yaml` carries an `ignore` rule for it
-> (an unreleased commit has no tag for `pinact --verify` to resolve). **When PR #19 ships:**
-> re-pin both files to the released SHA + `# vX.Y.Z` comment and delete the `ignore` rule.
-> Per that PR, Leo 4.1.0 pairs with `rust-version: "1.96.0"`.
+> **`sealance-io/setup-leo-action` pin.** The `smoke` and `leo-samples` lanes (`ci.yml`),
+> `leo-samples-nightly.yml`, and `leo-cache-warmup.yml` request Leo `4.2.0`, which upstream
+> tags `leo-lang-v4.2.0`. They pin the released **v1.1.2**
+> (`12eec4e21066fe8dddb7ed99112913fac124c192`), the first release that installs Leo 4.2.0. As
+> a first-party (`sealance-io`) artifact it is exempt from the action cooldown via the
+> `ActionRepoOwner == "sealance-io"` → `min_age: 0` rule in `.pinact.yaml` (no per-action
+> `ignore` needed; `pinact --verify` resolves the released tag). Leo 4.2.0 pairs with
+> `rust-version: "1.96.0"`. When bumping the Leo line, update all four `version:`/`rust-version:`
+> pairs and re-pin every `uses:` line to a `setup-leo-action` release that installs that Leo version.
 
 ## Branch ruleset on `main`
 
