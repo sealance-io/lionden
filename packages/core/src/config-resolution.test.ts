@@ -16,7 +16,7 @@ describe("resolveConfig", () => {
   it("fills all defaults for empty config", async () => {
     const resolved = await resolve({}, [], projectRoot);
 
-    expect(resolved.leoVersion).toBe("4.1.0");
+    expect(resolved.leoVersion).toBe("4.2.0");
     expect(resolved.skipLeoVersionCheck).toBe(false);
     expect(resolved.defaultNetwork).toBe("devnode");
     expect(resolved.paths.root).toBe(projectRoot);
@@ -249,7 +249,7 @@ describe("resolveConfig", () => {
     };
 
     const { resolved } = await resolveConfig({}, [plugin], projectRoot);
-    expect(resolved.leoVersion).toBe("4.1.0");
+    expect(resolved.leoVersion).toBe("4.2.0");
   });
 
   it("tolerates a validation hook that returns undefined instead of an array", async () => {
@@ -267,7 +267,7 @@ describe("resolveConfig", () => {
     };
 
     const { resolved } = await resolveConfig({}, [plugin], projectRoot);
-    expect(resolved.leoVersion).toBe("4.1.0");
+    expect(resolved.leoVersion).toBe("4.2.0");
   });
 
   it("calls lazy config hook factory only once across all stages", async () => {

@@ -120,7 +120,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.1.0",
+  leoVersion: "4.2.0",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -171,7 +171,7 @@ describe("hello program", () => {
   });
 
   it("adds two numbers", async () => {
-    expect(await hello.main.locally({ a: 3, b: 5 })).toBe(8);
+    expect(await hello.main.locally(3, 5)).toBe(8);
   });
 });
 `;
@@ -225,10 +225,7 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
   const token = createTokenContract().connect(ctx.lre);
   await ctx.deploy(token, { noSkipDeployed: true });
 
-  await token.withSigner(deployer).mint_public.accepted({
-    receiver: treasury,
-    amount: INITIAL_SUPPLY,
-  });
+  await token.withSigner(deployer).mint_public.accepted(treasury, INITIAL_SUPPLY);
 
   return { programId: token.programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };
@@ -245,7 +242,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.1.0",
+  leoVersion: "4.2.0",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -359,11 +356,11 @@ describe("token program", () => {
     const balance1Before = await token.mappings.balances.getOrUse(account1, 0n);
 
     // Mint tokens to account-1 (default signer is account-0)
-    await token.mint_public.accepted({ receiver: account1, amount: 5000n });
+    await token.mint_public.accepted(account1, 5000n);
 
     // transfer_public reads self.signer to determine the sender.
     // withSigner switches the transaction signer to account-1.
-    await token.withSigner(account1).transfer_public.accepted({ receiver, amount: 2000n });
+    await token.withSigner(account1).transfer_public.accepted(receiver, 2000n);
 
     // account-1: +5000 (mint) -2000 (transfer) = +3000 delta
     expect(await token.mappings.balances.get(account1)).toBe(balance1Before + 3000n);
@@ -371,7 +368,7 @@ describe("token program", () => {
 
   it("mints private tokens as a typed Token record", async () => {
     const receiver = ctx!.accounts[1]!;
-    const record = await token.mint_private.locally({ receiver, amount: 100n });
+    const record = await token.mint_private.locally(receiver, 100n);
     // Owner comes back with a \`.private\` visibility suffix on record outputs.
     expect(record.owner.startsWith(receiver.address)).toBe(true);
     expect(record.amount).toBe(100n);
