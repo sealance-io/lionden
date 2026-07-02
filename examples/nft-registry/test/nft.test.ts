@@ -13,7 +13,7 @@ async function deployAndCreateCollection() {
     nft.connect(ctx.lre);
 
     // Create collection with id=1
-    await nft.create_collection.accepted({ collection_id: 1n });
+    await nft.create_collection.accepted(1n);
 
     return { ctx };
   } catch (error) {
@@ -53,23 +53,13 @@ describe("nft_registry program", () => {
     const receiver = "aleo1fagxe9lxaxektcnqfz4vpp0f9w7muxvwmrprepus8tve4h9fyyzq80pwu5";
 
     it("mints first NFT and increments supply", async () => {
-      await nft.mint_nft.accepted({
-        receiver: Leo.address(receiver),
-        collection_id: 1n,
-        serial: 1n,
-        uri_hash: 1n,
-      });
+      await nft.mint_nft.accepted(Leo.address(receiver), 1n, 1n, 1n);
 
       expect(await nft.mappings.collectionSupply.get(1n)).toBe(1n);
     });
 
     it("mints second NFT", async () => {
-      await nft.mint_nft.accepted({
-        receiver: Leo.address(receiver),
-        collection_id: 1n,
-        serial: 2n,
-        uri_hash: 2n,
-      });
+      await nft.mint_nft.accepted(Leo.address(receiver), 1n, 2n, 2n);
 
       expect(await nft.mappings.collectionSupply.get(1n)).toBe(2n);
     });
@@ -80,12 +70,7 @@ describe("nft_registry program", () => {
       // Local execution of mint_nft — returns immediately, no finalize.
       // The typed wrapper deserializes the Nft record output.
       const receiver = ctx!.accounts[0]!;
-      const [record] = await nft.mint_nft.locally({
-        receiver,
-        collection_id: 1n,
-        serial: 99n,
-        uri_hash: 99n,
-      });
+      const [record] = await nft.mint_nft.locally(receiver, 1n, 99n, 99n);
 
       expect(record.owner).toBe(receiver.address);
       expect(record.metadata.collection_id).toBe(1n);

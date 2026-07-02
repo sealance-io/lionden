@@ -150,7 +150,7 @@ function readProgramJsonId(pkgDir: string): string | null {
  * group, and prepends `import <lib>.aleo;` to a *program* entry file for each
  * library it references — mirroring the proven `examples/multi-program` layout.
  *
- * Library entry files (`lib.leo`) get the rewrite but NOT the import: Leo 4.1.0
+ * Library entry files (`lib.leo`) get the rewrite but NOT the import: Leo 4.2.0
  * rejects `import` inside a library ("Only `const`/`struct`/`fn`/`interface`
  * are allowed in a library"). A library's cross-library dependency is instead
  * resolved purely from the `program.json` `path` entry lionden's materializer

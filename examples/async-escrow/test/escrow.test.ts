@@ -39,7 +39,7 @@ describe("escrow program (via typechain)", () => {
 
   describe("create_escrow", () => {
     it("creates an escrow with status 0", async () => {
-      await escrow.create_escrow.accepted({ item_id: 42n });
+      await escrow.create_escrow.accepted(42n);
 
       expect(await escrow.mappings.escrowStatus.get(42n)).toBe(0);
     });
@@ -47,7 +47,7 @@ describe("escrow program (via typechain)", () => {
 
   describe("fund_escrow", () => {
     it("funds the escrow and transitions status to 1", async () => {
-      await escrow.fund_escrow.accepted({ item_id: 42n });
+      await escrow.fund_escrow.accepted(42n);
 
       expect(await escrow.mappings.escrowStatus.get(42n)).toBe(1);
     });
@@ -55,7 +55,7 @@ describe("escrow program (via typechain)", () => {
 
   describe("complete_escrow", () => {
     it("completes the escrow and transitions status to 2", async () => {
-      await escrow.complete_escrow.accepted({ item_id: 42n });
+      await escrow.complete_escrow.accepted(42n);
 
       expect(await escrow.mappings.escrowStatus.get(42n)).toBe(2);
     });
@@ -65,7 +65,7 @@ describe("escrow program (via typechain)", () => {
     it("rejects create_escrow with item_id 0 and writes no state", async () => {
       // Transition-level assert(item_id > 0u64) fires during local
       // computation — the call throws before any tx is broadcast.
-      await escrow.create_escrow.failsLocally({ item_id: 0n });
+      await escrow.create_escrow.failsLocally(0n);
 
       // No on-chain state was written
       const status = await escrow.mappings.escrowStatus.tryGet(0n);
@@ -76,12 +76,12 @@ describe("escrow program (via typechain)", () => {
   describe("on-chain failure (finalizer assertion)", () => {
     it("rejects funding an already-funded escrow", async () => {
       // Setup: create and fund escrow 100
-      await escrow.create_escrow.accepted({ item_id: 100n });
-      await escrow.fund_escrow.accepted({ item_id: 100n });
+      await escrow.create_escrow.accepted(100n);
+      await escrow.fund_escrow.accepted(100n);
 
       // Fund again — transition succeeds (no assertions in body),
       // but finalizer's assert_eq(status, 0u8) fails (status is 1).
-      const result = await escrow.fund_escrow.rejected({ item_id: 100n });
+      const result = await escrow.fund_escrow.rejected(100n);
       expect(result.status).toBe("rejected");
 
       // State is unchanged — still "funded" (1)

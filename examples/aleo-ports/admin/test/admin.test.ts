@@ -53,7 +53,7 @@ describe("admin_example.aleo", () => {
   });
 
   it("v1 main(7, 5) returns 12", async () => {
-    expect(await admin.main.locally({ a: 7, b: 5 })).toBe(12);
+    expect(await admin.main.locally(7, 5)).toBe(12);
   });
 
   it("admin can upgrade and the new sub transition is callable", async () => {
@@ -77,7 +77,7 @@ describe("admin_example.aleo", () => {
       expect(sub.outputs[0]).toBe("7u32");
 
       // Pre-existing transition still works after upgrade — typed wrapper OK.
-      expect(await admin.main.locally({ a: 1, b: 2 })).toBe(3);
+      expect(await admin.main.locally(1, 2)).toBe(3);
     } finally {
       fs.writeFileSync(programPath, v1Source, "utf-8");
     }

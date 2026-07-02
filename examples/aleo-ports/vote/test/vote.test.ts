@@ -60,7 +60,7 @@ describe("vote.aleo", () => {
 
     // Broadcast fires the finalize so tickets[pid] is set to 0; the Proposal
     // record carries the pid derived inside the program.
-    const confirmed = await vote.withSigner(proposer()).propose.accepted({ info });
+    const confirmed = await vote.withSigner(proposer()).propose.accepted(info);
     const proposal = await confirmed.outputs.decrypt(proposer());
     pid = proposal.id;
 
@@ -69,7 +69,7 @@ describe("vote.aleo", () => {
 
   it("new_ticket() increments tickets[pid]", async () => {
     expect(pid, "propose() must run first").toBeDefined();
-    await vote.new_ticket.accepted({ pid: pid!, voter: voter() });
+    await vote.new_ticket.accepted(pid!, voter());
     expect(await vote.mappings.tickets.get(pid!)).toBe(1n);
   });
 
@@ -77,19 +77,19 @@ describe("vote.aleo", () => {
     expect(pid).toBeDefined();
     // Spendable ticket comes off the accepted new_ticket transition so the
     // proven agree transition can resolve its on-chain state path.
-    const confirmed = await vote.new_ticket.accepted({ pid: pid!, voter: voter() });
+    const confirmed = await vote.new_ticket.accepted(pid!, voter());
     const ticket = await confirmed.outputs.decrypt(voter());
 
-    await vote.withSigner(voter()).agree.accepted({ ticket });
+    await vote.withSigner(voter()).agree.accepted(ticket);
     expect(await vote.mappings.agreeVotes.get(pid!)).toBe(1n);
   });
 
   it("disagree() increments disagree_votes[pid]", async () => {
     expect(pid).toBeDefined();
-    const confirmed = await vote.new_ticket.accepted({ pid: pid!, voter: voter() });
+    const confirmed = await vote.new_ticket.accepted(pid!, voter());
     const ticket = await confirmed.outputs.decrypt(voter());
 
-    await vote.withSigner(voter()).disagree.accepted({ ticket });
+    await vote.withSigner(voter()).disagree.accepted(ticket);
     expect(await vote.mappings.disagreeVotes.get(pid!)).toBe(1n);
   });
 });
