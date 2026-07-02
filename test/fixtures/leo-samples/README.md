@@ -3,7 +3,7 @@
 A rigorous smoke lane that maximizes compilation + codegen + generated-binding +
 runtime-error + deploy coverage at minimum runtime, by adapting the
 purpose-built [`sealance-io/leo-samples`](https://github.com/sealance-io/leo-samples)
-ABI/runtime-edge fixture set (Leo 4.1.0, consensus V15) into lionden's
+ABI/runtime-edge fixture set (Leo 4.2.0, consensus V15) into lionden's
 source-first projects and driving lionden's **programmatic** APIs in-process on a
 no-proving devnode.
 
@@ -32,7 +32,13 @@ test/fixtures/leo-samples/
 
 ## Prerequisites
 
-- **Leo 4.1.0** and a devnode backend (`leo devnode`) on `PATH`.
+- **Leo 4.2.0** and a devnode backend on `PATH`. The on-chain suites auto-detect
+  the standalone `aleo-devnode` when it is on `PATH`, otherwise they fall back to
+  `leo devnode`. To drive an off-`PATH` `aleo-devnode` build without editing the
+  generated config, set `LIONDEN_DEVNODE_BINARY=<path>` (read by `@lionden/testing`
+  `setup()`; an explicit binary forces the standalone backend). It selects *which*
+  devnode runs — it does not grant permission to bind the REST port, so run the
+  lane where binding `127.0.0.1:3030` is allowed.
 - **Initialize the submodule** (CI and contributors):
   ```bash
   git submodule update --init test/fixtures/leo-samples/.upstream

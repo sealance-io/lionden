@@ -37,6 +37,19 @@ import { createTestLre } from "./lre-factory.js";
 
 const MANUAL_DEVNODE_HEALTH_TIMEOUT_MS = 5_000;
 
+/**
+ * Optional CI/runner override for the standalone `aleo-devnode` binary path.
+ * Lets a runner point at a specific `aleo-devnode` build that is not on PATH
+ * (e.g. a local release build) without editing the generated config. Because an
+ * explicit binary is a standalone-only input, setting this forces the standalone
+ * backend (resolveDevnodeBackend probes the path and fails clearly if it can't
+ * run). Ignored when unset/blank.
+ */
+function resolveDevnodeBinaryEnv(): string | undefined {
+  const raw = process.env["LIONDEN_DEVNODE_BINARY"]?.trim();
+  return raw ? raw : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -223,6 +236,10 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
   if (willAutoStartDevnode) {
     const overrides: DevnodeStartOptions = {};
     if (autoBlock !== undefined) overrides.autoBlock = autoBlock;
+    // Optional CI/runner override pointing at a specific standalone aleo-devnode
+    // binary (off-PATH build). Forces the standalone backend on its own.
+    const binaryOverride = resolveDevnodeBinaryEnv();
+    if (binaryOverride !== undefined) overrides.devnodeBinary = binaryOverride;
     if (snapshotReset) {
       snapshotStorageParent = mkdtempSync(path.join(tmpdir(), "lionden-devnode-"));
       // requiresPersistence is derived from storagePath, forcing the standalone
