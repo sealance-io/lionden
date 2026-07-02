@@ -22,7 +22,7 @@ The current pipeline is:
 
 The compiler and generated bindings assume a specific Leo-era baseline:
 
-- Leo v4.1 default; Leo v4.0 remains an explicit compatibility line, and Leo v3.5 deployable-program compatibility is supported with limitations (see [`leo-version-compatibility.md`](leo-version-compatibility.md))
+- Leo v4.2 default; Leo v4.1 and v4.0 remain explicit compatibility lines, and Leo v3.5 deployable-program compatibility is supported with limitations (see [`leo-version-compatibility.md`](leo-version-compatibility.md))
 - ABI-driven code generation from `build/abi.json`
 - source-first project layout under `programs/`
 - Leo libraries via `lib.leo` as compile-time dependencies rather than deployable programs
@@ -126,11 +126,11 @@ nested arrays/structs/records widen recursively. A `MerkleProof` with
 `siblings: field[]` can therefore be passed as a plain literal:
 
 ```ts
-await amm.add_liquidity.locally({
-  pool_id: 1n,
-  token_1_merkle_proof: [{ siblings: [1n, 2n], leaf_index: 0 }], // no per-element Leo.field(...)
+await amm.add_liquidity.locally(
+  1n,
+  [{ siblings: [1n, 2n], leaf_index: 0 }], // no per-element Leo.field(...)
   // …
-});
+);
 ```
 
 Because every input field is a superset of its branded output (`AddressInput ⊇

@@ -79,7 +79,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.1.0",
+  leoVersion: "4.2.0",
   defaultNetwork: "devnode",
   networks: {
     devnode: {

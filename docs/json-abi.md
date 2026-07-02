@@ -258,16 +258,13 @@ export const asPoolToken = Object.assign(_asPoolTokenImpl, {
 Callers import `asPoolToken` directly for input conversion:
 
 ```ts
-await amm.add_liquidity.locally({ token: asPoolToken(tok), ... });
+await amm.add_liquidity.locally(asPoolToken(tok), /* ... */);
 ```
 
 The same helper is the preferred output-side matcher when the dispatched call returns a `dyn record` handle:
 
 ```ts
-const accepted = await amm.route_transfer.accepted({
-  token: asPoolToken(tok),
-  to,
-});
+const accepted = await amm.route_transfer.accepted(asPoolToken(tok), to);
 
 const recovered = await accepted.outputs
   .match(asPoolToken.output.from("transfer", 0))
@@ -378,17 +375,24 @@ Public entry points declared inside `program {}`. Each function compiles to an A
 
 ### Mode
 
-```
-Mode = "None" | "Public" | "Private"
-```
+The mode records the visibility modifier Leo declared on each input or output. The **wire**
+set depends on the Leo version (4.1 emits `"None"` for unmoded values; 4.2 dropped `None` and
+emits `"Private"`/`"Public"`/`"Constant"` explicitly). LionDen's **internal** `Mode` union is:
 
-`Mode` records the visibility modifier Leo declared on each input or output:
+```
+Mode = "Public" | "Private" | "Constant"
+```
 
 - `"Public"` — explicit `public` modifier; the value travels on chain as a plain Leo literal.
-- `"Private"` — explicit `private` modifier.
-- `"None"` — **no modifier written; Leo's default applies, which is private**. `"None"` is not a "missing data" marker; it's a real signal meaning "default-to-private".
+- `"Private"` — explicit `private` modifier, **or** the canonicalized form of an unmoded
+  (4.1 `"None"`) transition input/output or record field.
+- `"Constant"` — immutable compile-time constant (Leo 4.2).
 
-Lionden codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "None"` or `"Private"` come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See `docs/testing.md` for the typed-broadcast contract.
+The parser canonicalizes an unmoded value to `Private` for transitions/record fields and
+`Public` for views, so `"None"` never reaches codegen. Mode is only meaningful for the
+`Plaintext` variant; `Record`/`Final`/`DynamicRecord` carry an inert `Private` that is never read.
+
+Lionden codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "Private"` (or `"Constant"`) come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See `docs/testing.md` for the typed-broadcast contract.
 
 ### FunctionInput
 
@@ -474,14 +478,73 @@ Function with record input and output:
 
 ## Mode
 
-Visibility mode for function inputs, function outputs, and record fields.
+Visibility mode for function inputs, function outputs, and record fields. The wire values
+that may appear depend on the Leo version; LionDen's internal `Mode` union is
+`"Public" | "Private" | "Constant"` (the parser canonicalizes `None`/absent away).
 
-| Value | Description |
-|---|---|
-| `"None"` | Default — visibility determined by context (private for transitions, public for finalize) |
-| `"Constant"` | Immutable compile-time constant |
-| `"Private"` | Kept private off-chain (encrypted in the transaction) |
-| `"Public"` | Publicly visible on-chain |
+| Value | Wire | Description |
+|---|---|---|
+| `"None"` | Leo 4.1 / v3.5 only | No modifier written; canonicalized by the parser to `"Private"` (transitions, record fields) or `"Public"` (views). Removed from the Leo 4.2 ABI. |
+| `"Constant"` | Leo 4.2 | Immutable compile-time constant |
+| `"Private"` | all | Kept private off-chain (encrypted in the transaction) |
+| `"Public"` | all | Publicly visible on-chain |
+
+## Leo 4.2 Wire Shape
+
+Leo 4.2 (ProvableHQ/leo#29481, "interface compatibility check and slimmer ABI") ships an
+**intentional breaking change** to the emitted JSON ABI. All schema sections above describe
+the Leo 4.1 / bytecode-`leo abi` wrapper shape, which the parser still accepts; this section
+records what 4.2 emits and how LionDen normalizes it. The parser is **shape-detecting** —
+the three forms (v3.5, 4.1/internal, 4.2) all normalize to the same internal representation,
+and re-parsing an already-normalized ABI is a fixed point.
+
+**What changed in 4.2:**
+
+- **`Program.implements` removed.** Interface conformance moved to `leo abi --satisfies`.
+- **`Function.is_final` removed.** "Async / has-finalize" is inferred from a `Final` output.
+- **`Function.const_parameters` removed.**
+- **Function input names removed.** Inputs are positional; LionDen synthesizes `arg0`,
+  `arg1`, … (and preserves existing names when parsing a 4.1 snapshot — see below).
+- **I/O wrappers removed.** A 4.2 input/output element is the bare enum variant itself:
+  - Plaintext: `{ "Plaintext": { "ty": <plaintext>, "mode": "Private" | "Public" | "Constant" } }`
+  - Record: `{ "Record": { "path": [...], "program": "..." } }` (**no mode**)
+  - `"Final"` and `"DynamicRecord"` as bare strings (**no mode**)
+- **`Mode::None` removed.** Unmoded transition plaintext is emitted as `Private`, unmoded
+  view plaintext as `Public`, unmoded record-definition fields as `Private`. Record / `Final`
+  / `DynamicRecord` carry no mode.
+- **Self type references are explicit.** A struct/record ref to the program's own type now
+  carries `program: "<self>.aleo"` where 4.1 emitted `program: null`.
+
+A 4.2 `main` function (compare to the 4.1 example under [Top-Level Schema](#top-level-schema)):
+
+```json
+{
+  "name": "main",
+  "inputs": [
+    { "Plaintext": { "ty": { "Primitive": { "UInt": "U32" } }, "mode": "Private" } },
+    { "Plaintext": { "ty": { "Primitive": { "UInt": "U32" } }, "mode": "Private" } }
+  ],
+  "outputs": [
+    { "Plaintext": { "ty": { "Primitive": { "UInt": "U32" } }, "mode": "Private" } }
+  ]
+}
+```
+
+**Dual-shape parser contract.** `parseAbi` detects per-element which shape applies: a
+top-level `ty` key marks the 4.1/internal wrapper (so a 4.1 input literally named `Plaintext`
+is not mistaken for a 4.2 positional `Plaintext` element); a bare string is a v3.5/4.2 unit
+variant; otherwise a root `Plaintext`/`Record`/`Future` key is the 4.2 positional form. The
+parser canonicalizes so a stored 4.1 snapshot and a fresh 4.2 ABI for the same program
+compare equal:
+
+- **Names** are synthesized as `arg{i}` only when absent; existing 4.1 names are preserved.
+- **Modes** — `None`/absent plaintext → `Private` (transitions, record fields) or `Public`
+  (views); `Public`/`Private`/`Constant` pass through; non-plaintext I/O gets an inert
+  `Private` that is never read.
+- **`is_async`** — taken from `is_async`, else `is_final`, else inferred from a `Future`/`Final` output.
+- **Self-refs** — a ref whose `program` equals the program's own id is rewritten to
+  `program: null` across **every** plaintext surface: struct and record definitions,
+  mapping keys/values, storage variables, and function/view I/O.
 
 ## Serde Serialization Rules
 
@@ -579,7 +642,10 @@ LionDen's TypeScript types (`packages/leo-compiler/src/abi-types.ts`) preserve m
 | `{ Optional: Plaintext }` | `{ Optional: PlaintextType }` | Preserved — serde uses lowered `{ is_some, val }` struct form |
 | `StorageType::Plaintext \| Vector` | `StorageType` | Preserved — `{ Plaintext } \| { Vector }` |
 | `{ Array: { element, length } }` | `{ Array: [PlaintextType, number] }` | Object → tuple normalization |
-| `Mode::Constant` | — | Not in `Mode` union |
+| `Mode::None` (4.1) / absent (4.2) | `"Private"` or `"Public"` | Canonicalized by context: `Private` for transitions/record fields, `Public` for views |
+| `Mode::Constant` | `"Constant"` | In the `Mode` union (`Public \| Private \| Constant`) since Leo 4.2 |
+| 4.2 positional input (no name) | `name: "arg{i}"` | Synthesized only when absent; existing 4.1 names preserved |
+| self struct/record ref `program: "<self>.aleo"` (4.2) | `program: null` | Self-refs collapsed to the local convention across all surfaces |
 | `Primitive::Signature` | `"Signature"` | Preserved by the parser; rejected by codegen with `CodegenError` (no serializer/parser support yet) |
 
 Relevant source files:
