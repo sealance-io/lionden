@@ -305,6 +305,23 @@ export async function compilePipeline(
   return { results, graph };
 }
 
+/**
+ * Leo 4.2 removed the `--enable-dce` and `--conditional-block-max-depth` build
+ * flags (dead-code elimination is now unconditional, and the conditional-depth
+ * knob is gone). Passing either to a 4.2 `leo build` is a hard "unexpected
+ * argument" failure, so they are emitted only for the older 4.1/4.0/3.5 lines
+ * that still accept them. An unparseable/unknown version is treated as modern
+ * (4.2+) — the product default — since emitting a removed flag breaks the build
+ * outright, whereas omitting it on an older line only changes DCE behavior.
+ */
+function emitsLegacyBuildFlags(leoVersion: string): boolean {
+  const match = /^(\d+)\.(\d+)\./.exec(leoVersion);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major < 4 || (major === 4 && minor < 2);
+}
+
 async function runLeoBuild(
   packageDir: string,
   id: string,
@@ -312,11 +329,13 @@ async function runLeoBuild(
 ): Promise<void> {
   const args = ["--disable-update-check", "build", "--path", packageDir];
 
-  if (config.compiler.enableDce) {
+  const legacyFlags = emitsLegacyBuildFlags(config.leoVersion);
+
+  if (legacyFlags && config.compiler.enableDce) {
     args.push("--enable-dce");
   }
 
-  if (config.compiler.conditionalBlockMaxDepth !== 10) {
+  if (legacyFlags && config.compiler.conditionalBlockMaxDepth !== 10) {
     args.push("--conditional-block-max-depth", String(config.compiler.conditionalBlockMaxDepth));
   }
 
