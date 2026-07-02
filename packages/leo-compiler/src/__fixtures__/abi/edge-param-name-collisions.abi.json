@@ -1,0 +1,22 @@
+{
+  "program": "param_collisions.aleo",
+  "structs": [],
+  "records": [],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "run",
+      "is_async": false,
+      "inputs": [
+        { "name": "options", "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" },
+        { "name": "default", "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" },
+        { "name": "class", "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" },
+        { "name": "arg1", "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" }
+      ],
+      "outputs": [
+        { "ty": { "Plaintext": { "Primitive": { "UInt": "U32" } } }, "mode": "None" }
+      ]
+    }
+  ]
+}

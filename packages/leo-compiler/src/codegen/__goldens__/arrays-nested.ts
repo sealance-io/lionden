@@ -110,73 +110,73 @@ export class Grid extends BaseContract {
   } as const;
 
   readonly set_cell = {
-    locally: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: LocalExecutionOptions): Promise<Board> => {
+    locally: async (board: BoardInput, row: number, col: number, val: CellInput, options?: LocalExecutionOptions): Promise<Board> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       const _result = await this.executeLocal("set_cell", _args, options ?? {});
       return deserializeBoard(this.outputAt(_result, "set_cell", 0));
     },
 
-    failsLocally: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (board: BoardInput, row: number, col: number, val: CellInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       await this.expectLocalFailure("set_cell", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (board: BoardInput, row: number, col: number, val: CellInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       return this.expectLocalFailure("set_cell", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (board: BoardInput, row: number, col: number, val: CellInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       return this.submitTransition("set_cell", _args, options ?? {});
     },
 
-    settled: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>> | RejectedTransition> => {
+    settled: async (board: BoardInput, row: number, col: number, val: CellInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>> | RejectedTransition> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       return this.settleTyped("set_cell", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "grid.aleo", "set_cell", 0), tpk, "grid.aleo", "set_cell", 4, (_p: string) => deserializeBoard(_p)));
     },
 
-    accepted: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>>> => {
+    accepted: async (board: BoardInput, row: number, col: number, val: CellInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>>> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       return this.expectAcceptedTyped("set_cell", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "grid.aleo", "set_cell", 0), tpk, "grid.aleo", "set_cell", 4, (_p: string) => deserializeBoard(_p)));
     },
 
-    rejected: async (args: { readonly board: BoardInput; readonly row: number; readonly col: number; readonly val: CellInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (board: BoardInput, row: number, col: number, val: CellInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeBoard(args.board as BoardInput, this.inputContext("set_cell", "board")),
-        BaseContract.serializeUInt(args.row, 32, this.inputContext("set_cell", "row")),
-        BaseContract.serializeUInt(args.col, 32, this.inputContext("set_cell", "col")),
-        serializeCell(args.val as CellInput, this.inputContext("set_cell", "val")),
+        serializeBoard(board as BoardInput, this.inputContext("set_cell", "board")),
+        BaseContract.serializeUInt(row, 32, this.inputContext("set_cell", "row")),
+        BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
+        serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
       return this.expectRejected("set_cell", _args, options ?? {});
     },

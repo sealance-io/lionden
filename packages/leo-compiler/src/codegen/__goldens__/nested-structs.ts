@@ -144,52 +144,52 @@ export class Geo extends BaseContract {
   } as const;
 
   readonly get_line = {
-    locally: async (args: { readonly triangle: TriangleInput }, options?: LocalExecutionOptions): Promise<Line> => {
+    locally: async (triangle: TriangleInput, options?: LocalExecutionOptions): Promise<Line> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       const _result = await this.executeLocal("get_line", _args, options ?? {});
       return deserializeLine(this.outputAt(_result, "get_line", 0));
     },
 
-    failsLocally: async (args: { readonly triangle: TriangleInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (triangle: TriangleInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       await this.expectLocalFailure("get_line", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly triangle: TriangleInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (triangle: TriangleInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       return this.expectLocalFailure("get_line", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly triangle: TriangleInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (triangle: TriangleInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       return this.submitTransition("get_line", _args, options ?? {});
     },
 
-    settled: async (args: { readonly triangle: TriangleInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Line>> | RejectedTransition> => {
+    settled: async (triangle: TriangleInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Line>> | RejectedTransition> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       return this.settleTyped("get_line", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "geo.aleo", "get_line", 0), tpk, "geo.aleo", "get_line", 1, (_p: string) => deserializeLine(_p)));
     },
 
-    accepted: async (args: { readonly triangle: TriangleInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Line>>> => {
+    accepted: async (triangle: TriangleInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Line>>> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       return this.expectAcceptedTyped("get_line", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "geo.aleo", "get_line", 0), tpk, "geo.aleo", "get_line", 1, (_p: string) => deserializeLine(_p)));
     },
 
-    rejected: async (args: { readonly triangle: TriangleInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (triangle: TriangleInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeTriangle(args.triangle as TriangleInput, this.inputContext("get_line", "triangle")),
+        serializeTriangle(triangle as TriangleInput, this.inputContext("get_line", "triangle")),
       ];
       return this.expectRejected("get_line", _args, options ?? {});
     },

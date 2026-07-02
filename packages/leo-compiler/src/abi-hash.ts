@@ -8,6 +8,11 @@ import type { ProgramABI, TransitionABI, ViewABI } from "./abi-types.js";
  * Empty Leo 4.1 extension fields are intentionally omitted so programs that do
  * not use views, interface inheritance, or const parameters keep their legacy
  * hash.
+ *
+ * The hash drifts cosmetically across the Leo 4.1 → 4.2 cutover (input names are
+ * synthesized, modes/self-refs/implements/const-params are canonicalized); this
+ * is harmless because LionDen never compares it as a correctness check — Leo's
+ * own tooling owns upgrade correctness.
  */
 export function computeAbiHash(abi: ProgramABI): string {
   const normalized = normalizeAbiForHash(abi);

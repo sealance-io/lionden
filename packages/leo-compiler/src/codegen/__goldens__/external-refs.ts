@@ -13,104 +13,104 @@ export class Consumer extends BaseContract {
   }
 
   readonly submit = {
-    locally: async (args: { readonly info: PlaintextInput }, options?: LocalExecutionOptions): Promise<LeoPlaintext> => {
+    locally: async (info: PlaintextInput, options?: LocalExecutionOptions): Promise<LeoPlaintext> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       const _result = await this.executeLocal("submit", _args, options ?? {});
       return BaseContract.parsePlaintext(this.outputAt(_result, "submit", 0));
     },
 
-    failsLocally: async (args: { readonly info: PlaintextInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (info: PlaintextInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       await this.expectLocalFailure("submit", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly info: PlaintextInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (info: PlaintextInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       return this.expectLocalFailure("submit", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly info: PlaintextInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (info: PlaintextInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       return this.submitTransition("submit", _args, options ?? {});
     },
 
-    settled: async (args: { readonly info: PlaintextInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoPlaintext>> | RejectedTransition> => {
+    settled: async (info: PlaintextInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoPlaintext>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       return this.settleTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "consumer.aleo", "submit", 0), tpk, "consumer.aleo", "submit", 1, (_p: string) => BaseContract.parsePlaintext(_p)));
     },
 
-    accepted: async (args: { readonly info: PlaintextInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoPlaintext>>> => {
+    accepted: async (info: PlaintextInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoPlaintext>>> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       return this.expectAcceptedTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "consumer.aleo", "submit", 0), tpk, "consumer.aleo", "submit", 1, (_p: string) => BaseContract.parsePlaintext(_p)));
     },
 
-    rejected: async (args: { readonly info: PlaintextInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (info: PlaintextInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializePlaintext(args.info, this.inputContext("submit", "info")),
+        BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
       return this.expectRejected("submit", _args, options ?? {});
     },
   } as const;
 
   readonly forward = {
-    locally: async (args: { readonly record: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<LeoDynamicRecord> => {
+    locally: async (record: DynamicRecordInput, options?: LocalExecutionOptions): Promise<LeoDynamicRecord> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       const _result = await this.executeLocal("forward", _args, options ?? {});
       return BaseContract.parseDynamicRecord(this.outputAt(_result, "forward", 0));
     },
 
-    failsLocally: async (args: { readonly record: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (record: DynamicRecordInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       await this.expectLocalFailure("forward", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly record: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (record: DynamicRecordInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.expectLocalFailure("forward", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.submitTransition("forward", _args, options ?? {});
     },
 
-    settled: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyExternalRecordHandle<LeoDynamicRecord>> | RejectedTransition> => {
+    settled: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyExternalRecordHandle<LeoDynamicRecord>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.settleTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyExternalRecordHandle<LeoDynamicRecord>(BaseContract.idOnlyRecordOutputAt(rawOutputs, "consumer.aleo", "forward", 0), transitions));
     },
 
-    accepted: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyExternalRecordHandle<LeoDynamicRecord>>> => {
+    accepted: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyExternalRecordHandle<LeoDynamicRecord>>> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.expectAcceptedTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyExternalRecordHandle<LeoDynamicRecord>(BaseContract.idOnlyRecordOutputAt(rawOutputs, "consumer.aleo", "forward", 0), transitions));
     },
 
-    rejected: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.expectRejected("forward", _args, options ?? {});
     },

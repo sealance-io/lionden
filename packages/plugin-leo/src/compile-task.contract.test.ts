@@ -82,7 +82,7 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
             records: [
               {
                 path: ["Token"],
-                fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }],
+                fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" }],
               },
             ],
             mappings: [{ name: "balances", keyType: "address", valueType: "u64" }],
@@ -232,7 +232,7 @@ describe("compile task contract", () => {
           records: [
             {
               path: ["Token"],
-              fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }],
+              fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" }],
             },
           ],
           mappings: [],
@@ -283,7 +283,7 @@ describe("compile task contract", () => {
             records: [
               {
                 path: ["Token"],
-                fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "None" }],
+                fields: [{ name: "amount", ty: { Primitive: { UInt: "U64" } }, mode: "Private" }],
               },
             ],
             mappings: [],

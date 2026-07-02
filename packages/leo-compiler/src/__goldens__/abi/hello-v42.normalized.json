@@ -10,7 +10,7 @@
       "is_async": false,
       "inputs": [
         {
-          "name": "a",
+          "name": "arg0",
           "ty": {
             "Plaintext": {
               "Primitive": {
@@ -21,7 +21,7 @@
           "mode": "Private"
         },
         {
-          "name": "b",
+          "name": "arg1",
           "ty": {
             "Plaintext": {
               "Primitive": {
@@ -50,7 +50,7 @@
       "is_async": false,
       "inputs": [
         {
-          "name": "a",
+          "name": "arg0",
           "ty": {
             "Plaintext": {
               "Primitive": {
@@ -61,7 +61,7 @@
           "mode": "Private"
         },
         {
-          "name": "b",
+          "name": "arg1",
           "ty": {
             "Plaintext": {
               "Primitive": {

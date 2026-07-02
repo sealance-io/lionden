@@ -97,178 +97,178 @@ export class Dex extends BaseContract {
   }
 
   readonly add_liquidity = {
-    locally: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: LocalExecutionOptions): Promise<[LPToken, void]> => {
+    locally: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: LocalExecutionOptions): Promise<[LPToken, void]> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       const _result = await this.executeLocal("add_liquidity", _args, options ?? {});
       const _decoded: [LPToken, void] = [deserializeLPToken(this.outputAt(_result, "add_liquidity", 0)), undefined as any];
       return _decoded;
     },
 
-    failsLocally: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       await this.expectLocalFailure("add_liquidity", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       return this.expectLocalFailure("add_liquidity", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       return this.submitTransition("add_liquidity", _args, options ?? {});
     },
 
-    settled: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<LPToken>> | RejectedTransition> => {
+    settled: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<LPToken>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       return this.settleTyped("add_liquidity", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("dex.aleo", "LPToken", BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "add_liquidity", 0), deserializeLPToken));
     },
 
-    accepted: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<LPToken>>> => {
+    accepted: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<LPToken>>> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       return this.expectAcceptedTyped("add_liquidity", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("dex.aleo", "LPToken", BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "add_liquidity", 0), deserializeLPToken));
     },
 
-    rejected: async (args: { readonly pair_id: FieldInput; readonly amount_a: bigint; readonly amount_b: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("add_liquidity", "pair_id")),
-        BaseContract.serializeUInt(args.amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
-        BaseContract.serializeUInt(args.amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
+        BaseContract.serializeField(pair_id, this.inputContext("add_liquidity", "pair_id")),
+        BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
+        BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
       return this.expectRejected("add_liquidity", _args, options ?? {});
     },
   } as const;
 
   readonly remove_liquidity = {
-    locally: async (args: { readonly lp_token: LPTokenInput }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (lp_token: LPTokenInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       const _result = await this.executeLocal("remove_liquidity", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly lp_token: LPTokenInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (lp_token: LPTokenInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       await this.expectLocalFailure("remove_liquidity", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly lp_token: LPTokenInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (lp_token: LPTokenInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.expectLocalFailure("remove_liquidity", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (lp_token: LPTokenInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.submitTransition("remove_liquidity", _args, options ?? {});
     },
 
-    settled: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (lp_token: LPTokenInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.settleTyped("remove_liquidity", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (lp_token: LPTokenInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.expectAcceptedTyped("remove_liquidity", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly lp_token: LPTokenInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (lp_token: LPTokenInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        serializeLPToken(args.lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
+        serializeLPToken(lp_token as LPTokenInput, this.inputContext("remove_liquidity", "lp_token")),
       ];
       return this.expectRejected("remove_liquidity", _args, options ?? {});
     },
   } as const;
 
   readonly swap = {
-    locally: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: LocalExecutionOptions): Promise<bigint> => {
+    locally: async (pair_id: FieldInput, amount_in: bigint, options?: LocalExecutionOptions): Promise<bigint> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       const _result = await this.executeLocal("swap", _args, options ?? {});
       return BaseContract.parseBigInt(this.outputAt(_result, "swap", 0));
     },
 
-    failsLocally: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (pair_id: FieldInput, amount_in: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       await this.expectLocalFailure("swap", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (pair_id: FieldInput, amount_in: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       return this.expectLocalFailure("swap", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (pair_id: FieldInput, amount_in: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       return this.submitTransition("swap", _args, options ?? {});
     },
 
-    settled: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<bigint>> | RejectedTransition> => {
+    settled: async (pair_id: FieldInput, amount_in: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<bigint>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       return this.settleTyped("swap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "swap", 0), tpk, "dex.aleo", "swap", 2, BaseContract.parseBigInt));
     },
 
-    accepted: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<bigint>>> => {
+    accepted: async (pair_id: FieldInput, amount_in: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<bigint>>> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       return this.expectAcceptedTyped("swap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "swap", 0), tpk, "dex.aleo", "swap", 2, BaseContract.parseBigInt));
     },
 
-    rejected: async (args: { readonly pair_id: FieldInput; readonly amount_in: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (pair_id: FieldInput, amount_in: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeField(args.pair_id, this.inputContext("swap", "pair_id")),
-        BaseContract.serializeUInt(args.amount_in, 128, this.inputContext("swap", "amount_in")),
+        BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
+        BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
       return this.expectRejected("swap", _args, options ?? {});
     },

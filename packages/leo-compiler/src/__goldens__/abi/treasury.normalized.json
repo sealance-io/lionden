@@ -38,7 +38,7 @@
           "ty": {
             "Future": "treasury.aleo"
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     },
@@ -63,7 +63,7 @@
           "ty": {
             "Future": "treasury.aleo"
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     }

@@ -13,104 +13,104 @@ export class Treasury extends BaseContract {
   }
 
   readonly deposit = {
-    locally: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       const _result = await this.executeLocal("deposit", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       await this.expectLocalFailure("deposit", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (amount: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       return this.expectLocalFailure("deposit", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (amount: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       return this.submitTransition("deposit", _args, options ?? {});
     },
 
-    settled: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       return this.settleTyped("deposit", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       return this.expectAcceptedTyped("deposit", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (amount: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("deposit", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("deposit", "amount")),
       ];
       return this.expectRejected("deposit", _args, options ?? {});
     },
   } as const;
 
   readonly withdraw = {
-    locally: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       const _result = await this.executeLocal("withdraw", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       await this.expectLocalFailure("withdraw", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (amount: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       return this.expectLocalFailure("withdraw", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (amount: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       return this.submitTransition("withdraw", _args, options ?? {});
     },
 
-    settled: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       return this.settleTyped("withdraw", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       return this.expectAcceptedTyped("withdraw", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (amount: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("withdraw", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("withdraw", "amount")),
       ];
       return this.expectRejected("withdraw", _args, options ?? {});
     },

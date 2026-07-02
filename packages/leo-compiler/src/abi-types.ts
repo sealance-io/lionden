@@ -45,21 +45,34 @@ export type AleoType =
 // Storage variable type — supports vectors unlike Plaintext
 export type StorageType = { Plaintext: PlaintextType } | { Vector: StorageType };
 
-// Input/output mode
-export type Mode = "None" | "Public" | "Private";
+// Input/output mode.
+//
+// Leo 4.2 dropped `Mode::None` from the emitted ABI (unmoded plaintext is
+// canonicalized by the parser to `Private` for transitions / `Public` for
+// views) and introduced `Constant`. The mode is only meaningful for the
+// `Plaintext` AleoType variant; `Record`/`Future`/`DynamicRecord` carry no
+// mode and the parser stores an inert `Private` that is never read.
+export type Mode = "Public" | "Private" | "Constant";
 
 // ---------------------------------------------------------------------------
 // ABI structures
 // ---------------------------------------------------------------------------
 
 export interface AbiInput {
+  /**
+   * Parameter name. Leo 4.1 ABIs (and bytecode `leo abi`) emit input names;
+   * Leo 4.2 dropped them, so the parser synthesizes positional names
+   * (`arg0`, `arg1`, …) when absent and preserves existing names otherwise.
+   */
   readonly name: string;
   readonly ty: AleoType;
+  /** Only meaningful when `ty` is the `Plaintext` variant; otherwise inert. */
   readonly mode: Mode;
 }
 
 export interface AbiOutput {
   readonly ty: AleoType;
+  /** Only meaningful when `ty` is the `Plaintext` variant; otherwise inert. */
   readonly mode: Mode;
 }
 
