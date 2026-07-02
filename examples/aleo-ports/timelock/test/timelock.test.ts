@@ -71,7 +71,7 @@ describe("timelock_example.aleo", () => {
   });
 
   it("v1 deploy succeeded — main(2, 3) returns 5", async () => {
-    expect(await timelock.main.locally({ a: 2, b: 3 })).toBe(5);
+    expect(await timelock.main.locally(2, 3)).toBe(5);
   });
 
   it("upgrade succeeds once block.height crosses the threshold", async () => {

@@ -36,14 +36,14 @@ describe("hello program", () => {
   });
 
   it("adds two numbers", async () => {
-    expect(await hello.main.locally({ a: 3, b: 5 })).toBe(8);
+    expect(await hello.main.locally(3, 5)).toBe(8);
   });
 
   it("multiplies two numbers", async () => {
-    expect(await hello.multiply.locally({ a: 4, b: 7 })).toBe(28);
+    expect(await hello.multiply.locally(4, 7)).toBe(28);
   });
 
   it("handles zero", async () => {
-    expect(await hello.main.locally({ a: 0, b: 42 })).toBe(42);
+    expect(await hello.main.locally(0, 42)).toBe(42);
   });
 });

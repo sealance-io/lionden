@@ -109,7 +109,7 @@ describe.skipIf(!ready)("adaptSampleGroup", () => {
     const config = fs.readFileSync(dd.configPath, "utf-8");
     expect(config).toContain('"dispatcher.aleo": ["token_iface.aleo", "token_alt.aleo"]');
     expect(config).toContain("pluginLeo");
-    expect(config).toContain('leoVersion: "4.1.0"');
+    expect(config).toContain('leoVersion: "4.2.0"');
   });
 
   it("serves the vendored credits.aleo via the offline injector", async () => {

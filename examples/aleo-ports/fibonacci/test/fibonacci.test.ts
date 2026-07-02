@@ -46,6 +46,6 @@ describe("fibonacci.aleo", () => {
     [10, 55n],
     [20, 6765n],
   ] as const)("fibonacci(%i) = %s", async (n, expected) => {
-    expect(await fib.fibonacci.locally({ n })).toBe(expected);
+    expect(await fib.fibonacci.locally(n)).toBe(expected);
   });
 });

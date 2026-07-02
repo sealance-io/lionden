@@ -28,10 +28,7 @@ export const setupToken: DeploymentRecipe<TokenSetupResult> = async (ctx) => {
   const token = createTokenContract().connect(ctx.lre);
   await ctx.deploy(token, { noSkipDeployed: true });
 
-  await token.withSigner(deployer).mint_public.accepted({
-    receiver: treasury,
-    amount: INITIAL_SUPPLY,
-  });
+  await token.withSigner(deployer).mint_public.accepted(treasury, INITIAL_SUPPLY);
 
   return { programId: token.programId, treasury: treasury.address, initialSupply: INITIAL_SUPPLY };
 };

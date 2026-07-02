@@ -64,41 +64,21 @@ describe("tictactoe.aleo", () => {
   });
 
   it("make_move places player 1 in (1,1) and reports no winner yet", async () => {
-    const [, winner] = await ttt.make_move.locally({
-      player: 1,
-      row: 1,
-      col: 1,
-      board: EMPTY_BOARD,
-    });
+    const [, winner] = await ttt.make_move.locally(1, 1, 1, EMPTY_BOARD);
     expect(winner).toBe(0);
   });
 
   it("player 1 wins by completing row 1 across three moves", async () => {
     // Move 1: player 1 takes (1,1).
-    const [board1, w1] = await ttt.make_move.locally({
-      player: 1,
-      row: 1,
-      col: 1,
-      board: EMPTY_BOARD,
-    });
+    const [board1, w1] = await ttt.make_move.locally(1, 1, 1, EMPTY_BOARD);
     expect(w1).toBe(0);
 
     // Move 2: player 1 takes (1,2). (Skipping player 2's interleaving for parity-test brevity.)
-    const [board2, w2] = await ttt.make_move.locally({
-      player: 1,
-      row: 1,
-      col: 2,
-      board: board1,
-    });
+    const [board2, w2] = await ttt.make_move.locally(1, 1, 2, board1);
     expect(w2).toBe(0);
 
     // Move 3: player 1 completes row 1 by taking (1,3).
-    const [, w3] = await ttt.make_move.locally({
-      player: 1,
-      row: 1,
-      col: 3,
-      board: board2,
-    });
+    const [, w3] = await ttt.make_move.locally(1, 1, 3, board2);
     expect(w3).toBe(1);
   });
 });

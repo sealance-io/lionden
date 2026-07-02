@@ -49,13 +49,13 @@ describe("vote_example.aleo", () => {
 
   // Port of @test script test_it()
   it("main returns the sum", async () => {
-    expect(await voteExample.main.locally({ a: 1, b: 2 })).toBe(3);
+    expect(await voteExample.main.locally(1, 2)).toBe(3);
   });
 
   // Port of @test @should_fail fn do_nothing(): the original asserts 5 == 3
   // inside Leo and expects it to fail. Translated to a TS-side negative.
   it("main does not return the wrong sum", async () => {
-    expect(await voteExample.main.locally({ a: 2, b: 3 })).not.toBe(3);
+    expect(await voteExample.main.locally(2, 3)).not.toBe(3);
   });
 });
 

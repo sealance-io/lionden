@@ -148,7 +148,7 @@ export const SPECS: readonly SampleGroupSpec[] = [
     // See test/fixtures/leo-samples/README.md § Findings and the 0f proof.
     excluded: {
       reason:
-        "Leo 4.1.0 cannot code-generate a library-qualified struct type path (<lib>.aleo::Type); " +
+        "Leo 4.2.0 cannot code-generate a library-qualified struct type path (<lib>.aleo::Type); " +
         "lionden's .aleo-only library convention supports library functions but not library struct types.",
       finding:
         "external_composition's surface is predominantly library struct types " +
