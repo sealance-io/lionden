@@ -13,118 +13,118 @@ export class Hello extends BaseContract {
   }
 
   readonly main = {
-    locally: async (args: { readonly a: number; readonly b: number }, options?: LocalExecutionOptions): Promise<number> => {
+    locally: async (a: number, b: number, options?: LocalExecutionOptions): Promise<number> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       const _result = await this.executeLocal("main", _args, options ?? {});
       return BaseContract.parseNumber(this.outputAt(_result, "main", 0));
     },
 
-    failsLocally: async (args: { readonly a: number; readonly b: number }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (a: number, b: number, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       await this.expectLocalFailure("main", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly a: number; readonly b: number }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (a: number, b: number, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       return this.expectLocalFailure("main", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       return this.submitTransition("main", _args, options ?? {});
     },
 
-    settled: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>> | RejectedTransition> => {
+    settled: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       return this.settleTyped("main", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "main", 0), tpk, "hello.aleo", "main", 2, BaseContract.parseNumber));
     },
 
-    accepted: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
+    accepted: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       return this.expectAcceptedTyped("main", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "main", 0), tpk, "hello.aleo", "main", 2, BaseContract.parseNumber));
     },
 
-    rejected: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("main", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("main", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
       return this.expectRejected("main", _args, options ?? {});
     },
   } as const;
 
   readonly multiply = {
-    locally: async (args: { readonly a: number; readonly b: number }, options?: LocalExecutionOptions): Promise<number> => {
+    locally: async (a: number, b: number, options?: LocalExecutionOptions): Promise<number> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       const _result = await this.executeLocal("multiply", _args, options ?? {});
       return BaseContract.parseNumber(this.outputAt(_result, "multiply", 0));
     },
 
-    failsLocally: async (args: { readonly a: number; readonly b: number }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (a: number, b: number, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       await this.expectLocalFailure("multiply", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly a: number; readonly b: number }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (a: number, b: number, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       return this.expectLocalFailure("multiply", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       return this.submitTransition("multiply", _args, options ?? {});
     },
 
-    settled: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>> | RejectedTransition> => {
+    settled: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       return this.settleTyped("multiply", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "multiply", 0), tpk, "hello.aleo", "multiply", 2, BaseContract.parseNumber));
     },
 
-    accepted: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
+    accepted: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       return this.expectAcceptedTyped("multiply", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "multiply", 0), tpk, "hello.aleo", "multiply", 2, BaseContract.parseNumber));
     },
 
-    rejected: async (args: { readonly a: number; readonly b: number }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.a, 32, this.inputContext("multiply", "a")),
-        BaseContract.serializeUInt(args.b, 32, this.inputContext("multiply", "b")),
+        BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
+        BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
       return this.expectRejected("multiply", _args, options ?? {});
     },

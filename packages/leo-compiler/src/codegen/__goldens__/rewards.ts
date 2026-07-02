@@ -13,104 +13,104 @@ export class Rewards extends BaseContract {
   }
 
   readonly earn_points = {
-    locally: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       const _result = await this.executeLocal("earn_points", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       await this.expectLocalFailure("earn_points", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (amount: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       return this.expectLocalFailure("earn_points", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (amount: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       return this.submitTransition("earn_points", _args, options ?? {});
     },
 
-    settled: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       return this.settleTyped("earn_points", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       return this.expectAcceptedTyped("earn_points", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly amount: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (amount: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.amount, 64, this.inputContext("earn_points", "amount")),
+        BaseContract.serializeUInt(amount, 64, this.inputContext("earn_points", "amount")),
       ];
       return this.expectRejected("earn_points", _args, options ?? {});
     },
   } as const;
 
   readonly claim_reward = {
-    locally: async (args: { readonly reward_amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    locally: async (reward_amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       const _result = await this.executeLocal("claim_reward", _args, options ?? {});
       return undefined as any;
     },
 
-    failsLocally: async (args: { readonly reward_amount: bigint }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (reward_amount: bigint, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       await this.expectLocalFailure("claim_reward", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly reward_amount: bigint }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (reward_amount: bigint, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       return this.expectLocalFailure("claim_reward", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly reward_amount: bigint }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (reward_amount: bigint, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       return this.submitTransition("claim_reward", _args, options ?? {});
     },
 
-    settled: async (args: { readonly reward_amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
+    settled: async (reward_amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       return this.settleTyped("claim_reward", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    accepted: async (args: { readonly reward_amount: bigint }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
+    accepted: async (reward_amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<void>> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       return this.expectAcceptedTyped("claim_reward", _args, options ?? {}, (_rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => undefined as void);
     },
 
-    rejected: async (args: { readonly reward_amount: bigint }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (reward_amount: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeUInt(args.reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
+        BaseContract.serializeUInt(reward_amount, 64, this.inputContext("claim_reward", "reward_amount")),
       ];
       return this.expectRejected("claim_reward", _args, options ?? {});
     },

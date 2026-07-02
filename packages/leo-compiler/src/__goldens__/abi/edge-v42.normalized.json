@@ -1,0 +1,211 @@
+{
+  "program": "edgev42.aleo",
+  "structs": [
+    {
+      "path": [
+        "Inner"
+      ],
+      "fields": [
+        {
+          "name": "x",
+          "ty": {
+            "Primitive": {
+              "UInt": "U32"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "path": [
+        "Wrap"
+      ],
+      "fields": [
+        {
+          "name": "inner",
+          "ty": {
+            "Struct": {
+              "path": [
+                "Inner"
+              ],
+              "program": null
+            }
+          }
+        },
+        {
+          "name": "ext",
+          "ty": {
+            "Struct": {
+              "path": [
+                "Vector3"
+              ],
+              "program": "math.aleo"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "path": [
+        "Coin"
+      ],
+      "fields": [
+        {
+          "name": "owner",
+          "ty": {
+            "Primitive": "Address"
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "amount",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          },
+          "mode": "Public"
+        }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "name": "reg",
+      "key": {
+        "Primitive": "Field"
+      },
+      "value": {
+        "Struct": {
+          "path": [
+            "Inner"
+          ],
+          "program": null
+        }
+      }
+    }
+  ],
+  "storage_variables": [
+    {
+      "name": "admin_box",
+      "ty": {
+        "Plaintext": {
+          "Struct": {
+            "path": [
+              "Inner"
+            ],
+            "program": null
+          }
+        }
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "name": "mix",
+      "is_async": true,
+      "inputs": [
+        {
+          "name": "arg0",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U32"
+              }
+            }
+          },
+          "mode": "Constant"
+        },
+        {
+          "name": "arg1",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "arg2",
+          "ty": {
+            "Record": {
+              "path": [
+                "Coin"
+              ],
+              "program": null
+            }
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "arg3",
+          "ty": {
+            "Record": {
+              "path": [
+                "Token"
+              ],
+              "program": "other.aleo"
+            }
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "arg4",
+          "ty": "DynamicRecord",
+          "mode": "Private"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Record": {
+              "path": [
+                "Coin"
+              ],
+              "program": null
+            }
+          },
+          "mode": "Private"
+        },
+        {
+          "ty": {
+            "Future": "edgev42.aleo"
+          },
+          "mode": "Private"
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "name": "peek",
+      "inputs": [
+        {
+          "name": "arg0",
+          "ty": {
+            "Plaintext": {
+              "Primitive": "Address"
+            }
+          },
+          "mode": "Public"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "Public"
+        }
+      ]
+    }
+  ]
+}

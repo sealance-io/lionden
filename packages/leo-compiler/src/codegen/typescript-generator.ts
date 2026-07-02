@@ -1359,15 +1359,14 @@ function generateContractClass(
 
 function generateTransitionMethod(transition: TransitionABI, ctx: GenerationContext): string[] {
   const lines: string[] = [];
-  const hasInputs = transition.inputs.length > 0;
-  const argsType = formatArgsObjectType(transition.inputs, ctx);
+  const safeNames = buildSafeParamNames(transition.inputs);
   const returnType = formatReturnType(transition.outputs, ctx);
 
   lines.push(`readonly ${transition.name} = {`);
   lines.push(
-    `  locally: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<${returnType}> => {`,
+    `  locally: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "LocalExecutionOptions")}): Promise<${returnType}> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(
     `    const _result = await this.executeLocal("${transition.name}", _args, options ?? {});`,
   );
@@ -1391,16 +1390,16 @@ function generateTransitionMethod(transition: TransitionABI, ctx: GenerationCont
   lines.push("  },");
   lines.push("");
   lines.push(
-    `  failsLocally: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<void> => {`,
+    `  failsLocally: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "LocalExecutionOptions")}): Promise<void> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(`    await this.expectLocalFailure("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
   lines.push("");
   lines.push(
-    `  captureLocalFailure: async (${formatTransitionMethodParams(hasInputs, argsType, "LocalExecutionOptions")}): Promise<LocalTransitionError> => {`,
+    `  captureLocalFailure: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "LocalExecutionOptions")}): Promise<LocalTransitionError> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(`    return this.expectLocalFailure("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
   lines.push("");
@@ -1408,34 +1407,34 @@ function generateTransitionMethod(transition: TransitionABI, ctx: GenerationCont
   const projectorExpr = formatProjectorExpr(transition, ctx.programId, ctx);
 
   lines.push(
-    `  submitted: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<SubmittedTransition> => {`,
+    `  submitted: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "OnChainExecutionOptions")}): Promise<SubmittedTransition> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(`    return this.submitTransition("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
   lines.push("");
   lines.push(
-    `  settled: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}> | RejectedTransition> => {`,
+    `  settled: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}> | RejectedTransition> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(
     `    return this.settleTyped("${transition.name}", _args, options ?? {}, ${projectorExpr});`,
   );
   lines.push("  },");
   lines.push("");
   lines.push(
-    `  accepted: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}>> => {`,
+    `  accepted: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "OnChainExecutionOptions")}): Promise<AcceptedTransition<${typedOutputType}>> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(
     `    return this.expectAcceptedTyped("${transition.name}", _args, options ?? {}, ${projectorExpr});`,
   );
   lines.push("  },");
   lines.push("");
   lines.push(
-    `  rejected: async (${formatTransitionMethodParams(hasInputs, argsType, "OnChainExecutionOptions")}): Promise<RejectedTransition> => {`,
+    `  rejected: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "OnChainExecutionOptions")}): Promise<RejectedTransition> => {`,
   );
-  lines.push(...generateSerializedArgsLines(transition, ctx, "    "));
+  lines.push(...generateSerializedArgsLines(transition, ctx, safeNames, "    "));
   lines.push(`    return this.expectRejected("${transition.name}", _args, options ?? {});`);
   lines.push("  },");
   lines.push("} as const;");
@@ -1446,11 +1445,12 @@ function generateTransitionMethod(transition: TransitionABI, ctx: GenerationCont
 function generateSerializedArgsLines(
   transition: TransitionABI,
   ctx: GenerationContext,
+  safeNames: ReadonlyMap<string, string>,
   indent: string,
 ): string[] {
   const lines = [`${indent}const _args: string[] = [`];
   for (const input of transition.inputs) {
-    lines.push(`${indent}  ${serializeInputExpr(input, transition.name, ctx)},`);
+    lines.push(`${indent}  ${serializeInputExpr(input, transition.name, safeNames, ctx)},`);
   }
   lines.push(`${indent}];`);
   return lines;
@@ -1673,10 +1673,11 @@ function primitiveInputBindingTs(prim: PrimitiveType): string {
 function serializeInputExpr(
   input: AbiInput,
   transitionName: string,
+  safeNames: ReadonlyMap<string, string>,
   ctx: GenerationContext,
 ): string {
   return serializeAleoTypeExpr(
-    `args.${input.name}`,
+    safeNames.get(input.name)!,
     input.ty,
     ctx,
     `this.inputContext("${transitionName}", "${input.name}")`,
@@ -2063,19 +2064,129 @@ function externalRefKey(ref: StructRef | RecordRef): string {
   return `${ref.program ?? ""}:${pathKey(ref.path)}`;
 }
 
-function formatArgsObjectType(inputs: readonly AbiInput[], ctx: GenerationContext): string {
-  const fields = inputs.map(
-    (input) => `readonly ${input.name}: ${aleoTypeToInputBindingTs(input.ty, ctx)}`,
-  );
-  return `{ ${fields.join("; ")} }`;
+/**
+ * Reserved words that an ABI input name must not become a generated **function
+ * parameter**. Object keys tolerate anything; identifiers do not. Two groups:
+ *
+ *   - Method-scope locals the generated body declares (`options`, `_args`,
+ *     `_result`, `_decoded`) — a param sharing one of these names redeclares the
+ *     local (TS2451) or shadows the trailing `options` param.
+ *   - The ECMAScript reserved-word set (keywords, strict-mode reserved words,
+ *     and the strict-mode restricted binding names `eval`/`arguments`) — illegal
+ *     or unsafe as a binding name in the strict-by-default ESM output.
+ *
+ * Names that hit this set (or are not valid identifiers) fall back to the
+ * always-safe `arg${index}`; see {@link safeParamName}.
+ */
+const RESERVED_PARAM_WORDS: ReadonlySet<string> = new Set<string>([
+  // method-scope locals the generated body declares
+  "options",
+  "_args",
+  "_result",
+  "_decoded",
+  // ECMAScript keywords
+  "break",
+  "case",
+  "catch",
+  "class",
+  "const",
+  "continue",
+  "debugger",
+  "default",
+  "delete",
+  "do",
+  "else",
+  "enum",
+  "export",
+  "extends",
+  "false",
+  "finally",
+  "for",
+  "function",
+  "if",
+  "import",
+  "in",
+  "instanceof",
+  "new",
+  "null",
+  "return",
+  "super",
+  "switch",
+  "this",
+  "throw",
+  "true",
+  "try",
+  "typeof",
+  "var",
+  "void",
+  "while",
+  "with",
+  // strict-mode future reserved words
+  "implements",
+  "interface",
+  "let",
+  "package",
+  "private",
+  "protected",
+  "public",
+  "static",
+  "yield",
+  // async/await context
+  "async",
+  "await",
+  // strict-mode restricted binding names
+  "eval",
+  "arguments",
+]);
+
+/** True when `name` is a syntactically valid (ASCII) JS identifier. */
+function isValidJsIdentifier(name: string): boolean {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name);
+}
+
+/**
+ * Map an ABI input name to a legal, unique TypeScript parameter identifier.
+ *
+ * A real (non-synthesized) Leo name can land in the parameter position
+ * (`parseAbi` preserves 4.1/internal names verbatim), so an invalid identifier
+ * or reserved word must be remapped rather than emitted literally. Synthesized
+ * `arg{i}` names (the 4.2 default) pass straight through. `reserved` is the
+ * per-transition set of already-claimed identifiers; mutated to record the
+ * returned name so the param list stays collision-free.
+ */
+function safeParamName(index: number, name: string, reserved: Set<string>): string {
+  let candidate =
+    isValidJsIdentifier(name) && !RESERVED_PARAM_WORDS.has(name) ? name : `arg${index}`;
+  while (reserved.has(candidate)) candidate += "_";
+  reserved.add(candidate);
+  return candidate;
+}
+
+/**
+ * Per-transition map from each input's original ABI name to the safe identifier
+ * used for its generated parameter and in-body read expression. The original
+ * name is still used verbatim for `inputContext(...)` labels.
+ */
+function buildSafeParamNames(inputs: readonly AbiInput[]): Map<string, string> {
+  const reserved = new Set<string>();
+  const safeNames = new Map<string, string>();
+  inputs.forEach((input, index) => {
+    safeNames.set(input.name, safeParamName(index, input.name, reserved));
+  });
+  return safeNames;
 }
 
 function formatTransitionMethodParams(
-  hasInputs: boolean,
-  argsType: string,
+  inputs: readonly AbiInput[],
+  ctx: GenerationContext,
+  safeNames: ReadonlyMap<string, string>,
   optionsType: "LocalExecutionOptions" | "OnChainExecutionOptions",
 ): string {
-  return hasInputs ? `args: ${argsType}, options?: ${optionsType}` : `options?: ${optionsType}`;
+  const params = inputs.map(
+    (input) => `${safeNames.get(input.name)!}: ${aleoTypeToInputBindingTs(input.ty, ctx)}`,
+  );
+  params.push(`options?: ${optionsType}`);
+  return params.join(", ");
 }
 
 function formatReturnType(outputs: readonly AbiOutput[], ctx: GenerationContext): string {
@@ -2107,9 +2218,10 @@ function isFutureOutput(ty: AleoType): boolean {
 
 /**
  * A plaintext output appears as a value ciphertext on chain when its
- * visibility is not explicitly `Public`. Leo emits `mode: "None"` when no
- * visibility modifier was written (Leo's default is private). Both `"None"`
- * and `"Private"` produce `ciphertext1...` on chain.
+ * visibility is not explicitly `Public`. When no visibility modifier was
+ * written, the parser canonicalizes the mode to `Private` (older Leo ABIs
+ * emitted `mode: "None"`, which collapsed to the same default). `Private` and
+ * `Constant` both produce `ciphertext1...` on chain; only `Public` does not.
  */
 function isPrivatePlaintextOutput(output: AbiOutput): boolean {
   const ty = output.ty;

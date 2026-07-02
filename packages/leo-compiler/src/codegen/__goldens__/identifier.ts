@@ -85,73 +85,73 @@ export class Governance extends BaseContract {
   }
 
   readonly route = {
-    locally: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: LocalExecutionOptions): Promise<LeoIdentifier> => {
+    locally: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: LocalExecutionOptions): Promise<LeoIdentifier> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       const _result = await this.executeLocal("route", _args, options ?? {});
       return BaseContract.parseIdentifier(this.outputAt(_result, "route", 0));
     },
 
-    failsLocally: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       await this.expectLocalFailure("route", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       return this.expectLocalFailure("route", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       return this.submitTransition("route", _args, options ?? {});
     },
 
-    settled: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoIdentifier>> | RejectedTransition> => {
+    settled: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoIdentifier>> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       return this.settleTyped("route", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "governance.aleo", "route", 0), tpk, "governance.aleo", "route", 4, BaseContract.parseIdentifier));
     },
 
-    accepted: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoIdentifier>>> => {
+    accepted: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoIdentifier>>> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       return this.expectAcceptedTyped("route", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "governance.aleo", "route", 0), tpk, "governance.aleo", "route", 4, BaseContract.parseIdentifier));
     },
 
-    rejected: async (args: { readonly strategy: IdentifierInput; readonly maybe_strategy: IdentifierInput | null; readonly strategies: ReadonlyArray<IdentifierInput>; readonly vote: VoteInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeIdentifier(args.strategy, this.inputContext("route", "strategy")),
-        (args.maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(args.maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
-        BaseContract.serializeArray(args.strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
-        serializeVote(args.vote as VoteInput, this.inputContext("route", "vote")),
+        BaseContract.serializeIdentifier(strategy, this.inputContext("route", "strategy")),
+        (maybe_strategy != null ? "{ is_some: true, val: " + BaseContract.serializeIdentifier(maybe_strategy, this.inputContext("route", "maybe_strategy")) + " }" : "{ is_some: false, val: 'lionden_zero' }"),
+        BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
+        serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
       return this.expectRejected("route", _args, options ?? {});
     },

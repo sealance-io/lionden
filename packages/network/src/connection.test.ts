@@ -74,7 +74,7 @@ function recordInputAbi(
   ty: unknown = { Record: { path: ["Token"], program: "tok.aleo" } },
 ): string {
   return JSON.stringify({
-    functions: [{ name: transition, inputs: [{ name: "r", ty, mode: "None" }] }],
+    functions: [{ name: transition, inputs: [{ name: "r", ty, mode: "Private" }] }],
   });
 }
 

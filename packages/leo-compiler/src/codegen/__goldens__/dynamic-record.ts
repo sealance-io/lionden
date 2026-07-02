@@ -13,112 +13,112 @@ export class Proxy extends BaseContract {
   }
 
   readonly forward = {
-    locally: async (args: { readonly record: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<LeoDynamicRecord> => {
+    locally: async (record: DynamicRecordInput, options?: LocalExecutionOptions): Promise<LeoDynamicRecord> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       const _result = await this.executeLocal("forward", _args, options ?? {});
       return BaseContract.parseDynamicRecord(this.outputAt(_result, "forward", 0));
     },
 
-    failsLocally: async (args: { readonly record: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (record: DynamicRecordInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       await this.expectLocalFailure("forward", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly record: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (record: DynamicRecordInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.expectLocalFailure("forward", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.submitTransition("forward", _args, options ?? {});
     },
 
-    settled: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyDynamicRecordHandle> | RejectedTransition> => {
+    settled: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyDynamicRecordHandle> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.settleTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward", 0), transitions));
     },
 
-    accepted: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyDynamicRecordHandle>> => {
+    accepted: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyDynamicRecordHandle>> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.expectAcceptedTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward", 0), transitions));
     },
 
-    rejected: async (args: { readonly record: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.record, this.inputContext("forward", "record")),
+        BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
       return this.expectRejected("forward", _args, options ?? {});
     },
   } as const;
 
   readonly forward_pair = {
-    locally: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<[LeoDynamicRecord, LeoDynamicRecord]> => {
+    locally: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: LocalExecutionOptions): Promise<[LeoDynamicRecord, LeoDynamicRecord]> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       const _result = await this.executeLocal("forward_pair", _args, options ?? {});
       const _decoded: [LeoDynamicRecord, LeoDynamicRecord] = [BaseContract.parseDynamicRecord(this.outputAt(_result, "forward_pair", 0)), BaseContract.parseDynamicRecord(this.outputAt(_result, "forward_pair", 1))];
       return _decoded;
     },
 
-    failsLocally: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<void> => {
+    failsLocally: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: LocalExecutionOptions): Promise<void> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       await this.expectLocalFailure("forward_pair", _args, options ?? {});
     },
 
-    captureLocalFailure: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
+    captureLocalFailure: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: LocalExecutionOptions): Promise<LocalTransitionError> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       return this.expectLocalFailure("forward_pair", _args, options ?? {});
     },
 
-    submitted: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
+    submitted: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<SubmittedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       return this.submitTransition("forward_pair", _args, options ?? {});
     },
 
-    settled: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[IdOnlyDynamicRecordHandle, IdOnlyDynamicRecordHandle]> | RejectedTransition> => {
+    settled: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[IdOnlyDynamicRecordHandle, IdOnlyDynamicRecordHandle]> | RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       return this.settleTyped("forward_pair", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward_pair", 0), transitions), BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward_pair", 1), transitions)] as [IdOnlyDynamicRecordHandle, IdOnlyDynamicRecordHandle]));
     },
 
-    accepted: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[IdOnlyDynamicRecordHandle, IdOnlyDynamicRecordHandle]>> => {
+    accepted: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[IdOnlyDynamicRecordHandle, IdOnlyDynamicRecordHandle]>> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       return this.expectAcceptedTyped("forward_pair", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward_pair", 0), transitions), BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward_pair", 1), transitions)] as [IdOnlyDynamicRecordHandle, IdOnlyDynamicRecordHandle]));
     },
 
-    rejected: async (args: { readonly a: DynamicRecordInput; readonly b: DynamicRecordInput }, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
+    rejected: async (a: DynamicRecordInput, b: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
       const _args: string[] = [
-        BaseContract.serializeDynamicRecord(args.a, this.inputContext("forward_pair", "a")),
-        BaseContract.serializeDynamicRecord(args.b, this.inputContext("forward_pair", "b")),
+        BaseContract.serializeDynamicRecord(a, this.inputContext("forward_pair", "a")),
+        BaseContract.serializeDynamicRecord(b, this.inputContext("forward_pair", "b")),
       ];
       return this.expectRejected("forward_pair", _args, options ?? {});
     },

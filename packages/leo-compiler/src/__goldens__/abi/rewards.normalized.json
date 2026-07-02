@@ -47,7 +47,7 @@
           "ty": {
             "Future": "rewards.aleo"
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     },
@@ -72,7 +72,7 @@
           "ty": {
             "Future": "rewards.aleo"
           },
-          "mode": "None"
+          "mode": "Private"
         }
       ]
     }
