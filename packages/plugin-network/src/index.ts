@@ -18,6 +18,21 @@ import {
 // Config hooks
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether the Leo devnode for `leoVersion` no longer accepts the
+ * `--consensus-heights` / `--network` flags (Leo >= 4.3). An unparseable/unset
+ * version is treated as modern (>= 4.3) — the resolved default is 4.3.2 — so
+ * config that would be silently dropped is rejected rather than ignored. This
+ * is the inverse of `DevnodeManager`'s `devnodeEmitsLegacyFlags` gate.
+ */
+function leoDevnodeDropsConsensusFlags(leoVersion: string): boolean {
+  const match = /^(\d+)\.(\d+)\./.exec(leoVersion);
+  if (!match) return true;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 4 || (major === 4 && minor >= 3);
+}
+
 const configHooks: ConfigHookHandlers = {
   validateResolvedConfig(config: LionDenResolvedConfig): ConfigValidationError[] {
     const errors: ConfigValidationError[] = [];
@@ -61,6 +76,23 @@ const configHooks: ConfigHookHandlers = {
             errors.push({
               path: `networks.${name}.consensusHeights`,
               message: `Devnode network "${name}" uses provider "standalone", which does not support consensusHeights (they are compiled into aleo-devnode).`,
+            });
+          }
+        } else if (leoDevnodeDropsConsensusFlags(config.leoVersion)) {
+          // Leo 4.3 removed --consensus-heights / --network from `devnode start`.
+          // The Leo devnode is TestnetV0-only and auto-activates the latest
+          // consensus version (incl. V16/V17). Reject inputs that would
+          // otherwise be silently dropped, mirroring the standalone rejection.
+          if (net.consensusHeights !== undefined) {
+            errors.push({
+              path: `networks.${name}.consensusHeights`,
+              message: `Devnode network "${name}" sets consensusHeights, but the Leo ${config.leoVersion} devnode is TestnetV0-only and auto-activates the latest consensus version (incl. V16/V17). Remove consensusHeights, or set leoVersion to a line below 4.3 (only the Leo < 4.3 devnode accepts explicit consensus heights; the standalone backend has them compiled in).`,
+            });
+          }
+          if (net.network !== undefined && net.network !== "testnet") {
+            errors.push({
+              path: `networks.${name}.network`,
+              message: `Devnode network "${name}" requests network "${net.network}", but the Leo ${config.leoVersion} devnode is TestnetV0-only (as is the standalone backend). Use network "testnet", or target a real network via an "http" network entry.`,
             });
           }
         }
@@ -158,9 +190,11 @@ const nodeTask = task("node", "Start a local Aleo devnode")
       network,
       provider: backend.provider,
       leoBinary: lre.config.leoBinary,
+      leoVersion: lre.config.leoVersion,
       devnodeBinary: backend.command,
       // consensusHeights is leo-only; resolveDevnodeBackend already rejected it
-      // for standalone, so it's safe to forward unconditionally.
+      // for standalone, so it's safe to forward unconditionally. buildLeoArgs
+      // version-gates it (emitted only for Leo < 4.3).
       consensusHeights,
       ...(storagePath ? { storagePath } : {}),
       ...(clearStorageOnStart ? { clearStorage: true } : {}),

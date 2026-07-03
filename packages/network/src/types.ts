@@ -575,9 +575,19 @@ export interface DevnodeStartOptions {
    */
   leoBinary?: string;
   /**
+   * Configured Leo compatibility line (e.g. "4.3.2"). Used to version-gate the
+   * `leo devnode start` argument surface: `--consensus-heights` and `--network`
+   * are only emitted for Leo < 4.3. Leo 4.3+ removed both from `devnode start`
+   * (the devnode is TestnetV0-only and auto-activates the latest consensus
+   * version, incl. V16/V17). Unknown/unset is treated as modern (>= 4.3).
+   */
+  leoVersion?: string;
+  /**
    * Consensus heights for devnode startup (e.g., "0,1,2,3,4,5,6,7,8").
-   * Required for V9/constructor support on the Leo backend. Rejected on the
-   * standalone backend (consensus heights are compiled into `aleo-devnode`).
+   * **Leo < 4.3 only.** Required for V9/constructor support on older Leo
+   * backends. Not emitted on Leo 4.3+ (the devnode auto-activates the latest
+   * consensus version). Rejected on the standalone backend (consensus heights
+   * are compiled into `aleo-devnode`).
    */
   consensusHeights?: string;
   /**

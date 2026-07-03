@@ -113,8 +113,15 @@ describe("plugin-network", () => {
 });
 
 describe("validateResolvedConfig — standalone/storage rules", () => {
-  const validate = (network: Record<string, unknown>): ConfigValidationError[] => {
+  // Default to a Leo < 4.3 line so the standalone/storage assertions below keep
+  // their original leoVersion-independent semantics; the Leo 4.3 gate is
+  // exercised separately in the block further down.
+  const validate = (
+    network: Record<string, unknown>,
+    leoVersion = "4.2.0",
+  ): ConfigValidationError[] => {
     const config = {
+      leoVersion,
       defaultNetwork: "devnode",
       networks: { devnode: { type: "devnode", ...network } },
     } as never;
@@ -138,7 +145,7 @@ describe("validateResolvedConfig — standalone/storage rules", () => {
     expect(errors.some((e) => e.path === "networks.devnode.consensusHeights")).toBe(true);
   });
 
-  it("does not flag auto-detect (provider undefined) with non-testnet here", () => {
+  it("does not flag auto-detect (provider undefined) with non-testnet here on Leo < 4.3", () => {
     const errors = validate({ network: "mainnet" });
     expect(errors.some((e) => e.path === "networks.devnode.network")).toBe(false);
   });
@@ -155,6 +162,33 @@ describe("validateResolvedConfig — standalone/storage rules", () => {
       storagePath: "/tmp/l",
       clearStorageOnStart: true,
     });
+    expect(errors).toHaveLength(0);
+  });
+
+  // --- Leo 4.3+ devnode: TestnetV0-only, auto-activates latest consensus ---
+
+  it("rejects consensusHeights on the leo provider with Leo >= 4.3", () => {
+    const errors = validate({ provider: "leo", consensusHeights: "0,1,2" }, "4.3.2");
+    expect(errors.some((e) => e.path === "networks.devnode.consensusHeights")).toBe(true);
+  });
+
+  it("rejects consensusHeights on auto-detect (provider undefined) with Leo >= 4.3", () => {
+    const errors = validate({ consensusHeights: "0,1,2" }, "4.3.2");
+    expect(errors.some((e) => e.path === "networks.devnode.consensusHeights")).toBe(true);
+  });
+
+  it("rejects non-testnet network on the leo provider with Leo >= 4.3", () => {
+    const errors = validate({ provider: "leo", network: "canary" }, "4.3.2");
+    expect(errors.some((e) => e.path === "networks.devnode.network")).toBe(true);
+  });
+
+  it("accepts consensusHeights on the leo provider with Leo < 4.3", () => {
+    const errors = validate({ provider: "leo", network: "testnet", consensusHeights: "0,1,2" });
+    expect(errors).toHaveLength(0);
+  });
+
+  it("accepts a plain testnet leo devnode with Leo >= 4.3", () => {
+    const errors = validate({ provider: "leo", network: "testnet" }, "4.3.2");
     expect(errors).toHaveLength(0);
   });
 });

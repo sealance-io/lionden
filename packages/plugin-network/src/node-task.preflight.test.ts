@@ -114,9 +114,10 @@ describe("node task devnode preflight", () => {
         network: "testnet",
         provider: "leo",
         leoBinary: "/tmp/leo",
+        // Forwarded so DevnodeManager can version-gate --consensus-heights / --network.
+        leoVersion: "4.0.0",
       }),
     );
-    expect(mocks.devnodeStart.mock.calls[0]![0]).not.toHaveProperty("leoVersion");
   });
 
   it("requests persistence when --persist is passed and forwards storagePath", async () => {
