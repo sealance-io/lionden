@@ -16,17 +16,24 @@ Workflows are version-controlled; these settings are not, so they live here.
 | `pinact-verify.yml` | PR/push | Action SHA-pin + cooldown verification. Rollup: **pinact Status**. |
 | `release-version.yml` | push to `main` | Opens/updates the "Version Packages" PR (changesets + GitHub App token). |
 | `release-publish.yml` | push to `main` | Publishes bumped packages to npm via OIDC; tags + GitHub Releases. |
-| `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.2.0 CLI so the `smoke` lane hits a warm cache. |
+| `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.3.2 CLI so the `smoke` lane hits a warm cache. |
 
-> **`sealance-io/setup-leo-action` pin.** The `smoke` and `leo-samples` lanes (`ci.yml`),
-> `leo-samples-nightly.yml`, and `leo-cache-warmup.yml` request Leo `4.2.0`, which upstream
-> tags `leo-lang-v4.2.0`. They pin the released **v1.1.2**
-> (`12eec4e21066fe8dddb7ed99112913fac124c192`), the first release that installs Leo 4.2.0. As
-> a first-party (`sealance-io`) artifact it is exempt from the action cooldown via the
+> **`sealance-io/setup-leo-action` pin + intentional Leo-version split.** All four call sites
+> pin the released **v1.1.3** (`3fb8fc821388716961eee9146b414fcfc093b32d`), which builds Leo
+> from source and resolves the requested `leo-lang-v<version>` tag. As a first-party
+> (`sealance-io`) artifact it is exempt from the action cooldown via the
 > `ActionRepoOwner == "sealance-io"` → `min_age: 0` rule in `.pinact.yaml` (no per-action
-> `ignore` needed; `pinact --verify` resolves the released tag). Leo 4.2.0 pairs with
-> `rust-version: "1.96.0"`. When bumping the Leo line, update all four `version:`/`rust-version:`
-> pairs and re-pin every `uses:` line to a `setup-leo-action` release that installs that Leo version.
+> `ignore` needed; `pinact --verify` resolves the released tag). The `version:` values are
+> **intentionally split**, not moved together:
+> - **`smoke` (`ci.yml`) + `leo-cache-warmup.yml`** request Leo **`4.3.2`** — the default line,
+>   matching the core + aleo-ports examples' `leoVersion`.
+> - **`leo-samples` (`ci.yml`) + `leo-samples-nightly.yml`** stay pinned to Leo **`4.2.0`** /
+>   consensus V15 — the leo-samples fixture set is decoupled from the 4.3.x bump (see
+>   [`../leo-version-compatibility.md`](../leo-version-compatibility.md)).
+>
+> Both lines share `rust-version: "1.96.0"` (Leo 4.3.2 MSRV == 4.2.0). When bumping either line,
+> update that lane's `version:` (and `rust-version:` if the MSRV changes) and re-pin every
+> affected `uses:` line to a `setup-leo-action` release that installs that Leo version.
 
 ## Branch ruleset on `main`
 

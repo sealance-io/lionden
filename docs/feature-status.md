@@ -122,7 +122,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 
 | Feature | Evidence |
 | --- | --- |
-| Leo v4.2.x default; single-program / per-unit build layouts normalized to LionDen artifacts | [`leo-version-compatibility.md`](leo-version-compatibility.md), `packages/leo-compiler/src/compiler.ts` |
+| Leo v4.3.x default (4.3.2, consensus V16/V17); v4.2.x/v4.1.x/v4.0.x supported; single-program / per-unit build layouts normalized to LionDen artifacts | [`leo-version-compatibility.md`](leo-version-compatibility.md), `packages/leo-compiler/src/compiler.ts` |
 | Leo v4.0.x supported as an explicit compatibility line | [`leo-version-compatibility.md`](leo-version-compatibility.md) |
 | Leo v3.5.x supported for deployable `main.leo` programs (no libraries) | same |
 | `leoBinary` config (with `~/` expansion) to target a specific Leo install | `packages/config/src/types.ts` |

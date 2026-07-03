@@ -17,10 +17,10 @@ LionDen is in active early development. This guide is anchored to **shipped beha
 
 - Node.js `^20.19.0 || >=22.12.0`.
 - npm (the workspace baseline; pnpm/yarn are not exercised).
-- **Leo CLI v4.2.x** available on `PATH` as `leo` by default. Leo v4.1.x and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
+- **Leo CLI v4.3.x** available on `PATH` as `leo` by default (default `leoVersion` is `"4.3.2"`). Leo v4.2.x, v4.1.x, and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
 - Optional: a v3.5 Leo binary installed side-by-side if you need v3.5 deployable-program compatibility. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
-LionDen also uses `@provablehq/sdk` (currently `^0.11.1`) under the hood through `@lionden/network` for transaction building and broadcasting.
+LionDen also uses `@provablehq/sdk` (currently `^0.11.3`) under the hood through `@lionden/network` for transaction building and broadcasting.
 
 > **npm security**: always install with `--ignore-scripts`. Every install snippet in this guide uses it.
 
@@ -120,7 +120,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.2.0",
+  leoVersion: "4.3.2",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -135,7 +135,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 
 | Field | Purpose | Default |
 | --- | --- | --- |
-| `leoVersion` | Compatibility line — `4.2.x`, `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.2.0"` |
+| `leoVersion` | Compatibility line — `4.3.x`, `4.2.x`, `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.3.2"` |
 | `leoBinary` | Path to the Leo CLI to invoke. Tilde-expanded. | `"leo"` from `PATH` |
 | `programsDir` / `artifactsDir` / `typechainDir` | Source/output layout | `programs` / `artifacts` / `typechain` |
 | `defaultNetwork` | Named `networks` entry selected by tasks when no global `--network <name>` is passed | `"devnode"` |
@@ -350,7 +350,7 @@ lionden node --manual-blocks  # block production driven by `leo devnode advance`
 
 The process stays alive until `Ctrl-C`. Auto-block produces blocks automatically (the default); `--manual-blocks` requires you to advance manually with the Leo CLI.
 
-If you're targeting v3.5 constructor programs, add `consensusHeights` to the devnode network config so V9 activates at the expected block — see [`leo-version-compatibility.md`](leo-version-compatibility.md#devnode-consensus-heights).
+If you're targeting v3.5 constructor programs on a Leo **< 4.3** devnode, add `consensusHeights` to the devnode network config so V9 activates at the expected block. On Leo **4.3+** the flag was removed — the devnode auto-activates the latest consensus version (incl. V16/V17) and LionDen rejects `consensusHeights`. See [`leo-version-compatibility.md`](leo-version-compatibility.md#devnode-consensus-heights).
 
 ## Scripts And LRE Context
 
@@ -718,7 +718,7 @@ expect(result.status).toBe("rejected");
 
 **Compile fails with a Leo version error.** — Check `leoBinary --disable-update-check --version`. The `major.minor` line of the binary must match `leoVersion`. Patch drift is allowed; minor drift is not unless you set `skipLeoVersionCheck: true`. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
-**Devnode starts but transactions stall.** — On Leo v3.5 devnodes deploying constructor programs, you must set `consensusHeights` on the devnode network so V9 activates. Leo v4 devnodes default to V9.
+**Devnode starts but transactions stall.** — On Leo v3.5 devnodes (Leo < 4.3) deploying constructor programs, you must set `consensusHeights` on the devnode network so V9 activates. Leo v4 devnodes default to V9, and the Leo 4.3+ devnode auto-activates the latest consensus version (so `consensusHeights` is unsupported there).
 
 **Devnode fails to start: address `127.0.0.1:3030` already in use (macOS).** — An orphaned devnode is still holding the port. LionDen stops its devnode with SIGTERM then SIGKILL, but a hard-killed test runner, a force-quit IDE, or a crashed CI worker can leave the child (`leo … devnode start` or `aleo-devnode start`) reparented to launchd. Find and clear it:
 
