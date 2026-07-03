@@ -32,6 +32,8 @@ jobs:
       - name: Set up Leo CLI
         uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
         with:
+          # Intentionally pinned to 4.2.0 / consensus V15: the leo-samples lane is
+          # decoupled from the default 4.3.x bump (see docs/leo-version-compatibility.md).
           version: "4.2.0"
           rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
           enable-cache: true
