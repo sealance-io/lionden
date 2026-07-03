@@ -23,6 +23,12 @@ const FIXTURE_PAIRS: [string, string][] = [
   ["hello-v42.abi.json", "hello-v42.normalized.json"],
   ["token-v42.abi.json", "token-v42.normalized.json"],
   ["edge-v42.abi.json", "edge-v42.normalized.json"],
+  // Leo 4.3 wire fixture (real `leo build` output). The only raw-shape drift from
+  // 4.2 is that record-DEFINITION fields now carry an explicit `mode` (always
+  // `"Private"`; struct fields, mappings, and function I/O are unchanged). The
+  // parser already canonicalizes absent/None and explicit `Private` record-field
+  // modes to `Private`, so this normalizes byte-for-byte to `token-v42.normalized`.
+  ["token-v43.abi.json", "token-v43.normalized.json"],
 ];
 
 describe("parseAbi goldens", () => {

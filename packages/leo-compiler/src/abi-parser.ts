@@ -34,6 +34,11 @@ export class AbiParseError extends Error {
  *   - Leo 4.2: I/O elements are the bare enum variant (`{ Plaintext: { ty, mode } }`,
  *     `{ Record: { path, program } }`, `"Final"`, `"DynamicRecord"`) with input
  *     names dropped; `is_final`/`const_parameters`/`implements` removed.
+ *   - Leo 4.3: identical to 4.2 except record-DEFINITION fields now carry an
+ *     explicit `mode` (always `"Private"`; struct fields, mappings, and function
+ *     I/O are unchanged). `canonicalizeRecordFieldMode` already collapses both the
+ *     4.2 absent-mode and the 4.3 explicit `Private` to `Private`, so a 4.2 and a
+ *     4.3 ABI for the same program normalize identically (see `token-v43` golden).
  *   - The already-normalized internal shape (re-parsing a stored snapshot is a
  *     fixed point — the same canonicalization applies again idempotently).
  *
