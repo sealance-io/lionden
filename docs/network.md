@@ -90,7 +90,7 @@ The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `
 
 For the test runner's auto-started devnode (`@lionden/testing` `setup()`), the `LIONDEN_DEVNODE_BINARY=<path>` env var overrides the backend without editing the generated config: it points at a specific off-`PATH` `aleo-devnode` build, and because an explicit binary is a standalone-only input it forces the standalone backend on its own. It is read only by `setup()`; auto-detect remains the default mechanism. It selects *which* devnode runs — it does **not** grant permission to bind the REST port: a `Failed to bind TCP port … Operation not permitted` startup error is a host/sandbox restriction that affects either backend, so run the devnode where binding `127.0.0.1:3030` is allowed.
 
-The Leo CLI backend also behaves as a testnet devnode in practice. LionDen's `network` field is retained for CLI compatibility and may be forwarded to `leo devnode start` when it is not `"testnet"`, but callers should not rely on Leo devnode as a real mainnet/canary/devnet simulator: changing the configured route name does not make the local chain mainnet/canary/devnet. `consensusHeights` applies to the Leo backend only.
+The Leo CLI backend also behaves as a testnet devnode in practice. On Leo **< 4.3**, LionDen's `network` field is retained for CLI compatibility and may be forwarded to `leo devnode start` when it is not `"testnet"`, but callers should not rely on Leo devnode as a real mainnet/canary/devnet simulator: changing the configured route name does not make the local chain mainnet/canary/devnet. `consensusHeights` applies to the Leo < 4.3 backend only. On Leo **4.3+**, `leo devnode start` no longer accepts `--consensus-heights` or `--network` (the devnode is TestnetV0-only and auto-activates the latest consensus version, incl. V16/V17), so LionDen omits both and rejects a `consensusHeights` / non-`testnet` `network` at config validation.
 
 Leo 4.1 adds its own devnode persistence support, but LionDen does not enable or wrap it yet. Persistence and snapshot/restore remain standalone-backend-only in this repo.
 
@@ -99,8 +99,8 @@ Devnode network config fields:
 | Field | Backend | Meaning |
 | --- | --- | --- |
 | `socketAddr`, `autoBlock`, `verbosity`, `genesisPath`, `privateKey` | both | REST bind address, block mode, log level, genesis, validator key |
-| `network` | leo | retained for Leo CLI compatibility; the managed Leo devnode still behaves as testnet |
-| `consensusHeights` | leo | consensus heights (Leo v3.5 constructor programs) |
+| `network` | leo (< 4.3) | retained for Leo CLI compatibility; the managed Leo devnode still behaves as testnet. Leo 4.3+ is TestnetV0-only and rejects non-`testnet` |
+| `consensusHeights` | leo (< 4.3) | consensus heights (Leo v3.5 constructor programs). Rejected on Leo 4.3+ (devnode auto-activates the latest consensus version) |
 | `provider` | both | `"leo"` / `"standalone"` / omit for auto-detect |
 | `binary` | standalone | path to the `aleo-devnode` binary (`leoBinary` is the Leo path) |
 | `storagePath` | standalone | persistent RocksDB ledger dir (`--storage`); enables snapshot/restore |
@@ -108,7 +108,7 @@ Devnode network config fields:
 
 Common behavior: polls the REST API at `/<network>/block/height/latest` until healthy, then stops the process with graceful shutdown (SIGTERM) and a force-kill on timeout.
 
-`consensusHeights` is required for Leo v3.5 devnode constructor programs on the Leo backend. Leo v4 devnode defaults to V9-active. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
+On Leo **< 4.3**, `consensusHeights` is required for Leo v3.5 devnode constructor programs on the Leo backend (Leo v4 devnode defaults to V9-active). On Leo **4.3+** the flag was removed — the devnode auto-activates the latest consensus version (incl. V16/V17), so LionDen rejects `consensusHeights` rather than dropping it. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
 ### Persistence and snapshots (standalone)
 
@@ -301,7 +301,7 @@ The SDK exposes two families of transaction builders: standard methods for real 
 Before devnode fast-path transactions are built, two SDK checks run:
 
 - `checkDevnodeSdkSupport()` verifies that the loaded SDK exposes `buildDevnodeDeploymentTransaction`, `buildDevnodeExecutionTransaction`, and `buildDevnodeUpgradeTransaction`.
-- `initConsensusHeights()` calls `sdk.getOrInitConsensusVersionTestHeights()` to prime the SDK's internal consensus version state. This is required for devnode transaction builders and is non-fatal if the method is absent in older SDK versions. Devnode `prove: true` deploy/upgrade skips `checkDevnodeSdkSupport()` because it does not call the `buildDevnode*` methods, but still initializes consensus heights.
+- `initConsensusHeights()` calls `sdk.getOrInitConsensusVersionTestHeights()` (no arguments) to prime the SDK's internal consensus version state. The SDK auto-derives the full set of test heights for its snarkVM baseline — on `@provablehq/sdk@^0.11.3` (snarkVM 4.8.1) that set ends at **V17** — so this is count-agnostic and independent of any Leo `--consensus-heights` flag (which Leo 4.3+ no longer accepts). It is required for devnode transaction builders and is non-fatal if the method is absent in older SDK versions. Devnode `prove: true` deploy/upgrade skips `checkDevnodeSdkSupport()` because it does not call the `buildDevnode*` methods, but still initializes consensus heights.
 
 ### Transaction Confirmation
 
