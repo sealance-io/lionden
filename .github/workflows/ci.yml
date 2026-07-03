@@ -177,12 +177,13 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      # v1.1.2 adds Leo 4.2.0 support (leo-lang-v4.2.0); pinned at v1.1.3.
+      # setup-leo-action v1.1.3 builds from source; the pinned SHA resolves the
+      # leo-lang-v4.3.2 tag (Leo 4.3.2 shares the 4.2.0 MSRV, Rust 1.96.0).
       - name: Set up Leo CLI
         uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
         with:
-          version: "4.2.0" # semver-only; must match core examples' leoVersion (preflight checks major.minor)
-          rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
+          version: "4.3.2" # semver-only; must match core examples' leoVersion (preflight checks major.minor)
+          rust-version: "1.96.0" # Leo v4.3.2 MSRV (== 4.2.0)
           enable-cache: true
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
           run-audit: true
@@ -216,7 +217,9 @@ jobs:
       - name: Set up Leo CLI
         uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
         with:
-          version: "4.2.0" # must match the lane's leoVersion
+          # Intentionally pinned to 4.2.0 / consensus V15: the leo-samples lane is
+          # decoupled from the default 4.3.x bump (see docs/leo-version-compatibility.md).
+          version: "4.2.0" # must match the lane's leoVersion (gapfiller/adapter fixtures)
           rust-version: "1.96.0" # Leo v4.2.0 minimum toolchain
           enable-cache: true
           cache-save: ${{ github.ref == 'refs/heads/main' && 'always' || 'never' }}
