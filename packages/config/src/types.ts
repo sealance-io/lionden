@@ -169,8 +169,8 @@ export interface TaskDefinitionRef {
 
 export interface LionDenUserConfig extends LionDenUserConfigExtensions {
   /**
-   * Leo compatibility declaration. Default: "4.2.0".
-   * Supported lines are currently 4.2.x, 4.1.x, 4.0.x, and 3.5.x.
+   * Leo compatibility declaration. Default: "4.3.2".
+   * Supported lines are currently 4.3.x, 4.2.x, 4.1.x, 4.0.x, and 3.5.x.
    */
   readonly leoVersion?: string;
 

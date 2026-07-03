@@ -212,7 +212,7 @@ function buildDefaults(config: LionDenUserConfig, projectRoot: string): LionDenR
   const namedAccounts = resolveNamedAccountsConfig(config.namedAccounts ?? {});
 
   return {
-    leoVersion: config.leoVersion ?? "4.2.0",
+    leoVersion: config.leoVersion ?? "4.3.2",
     skipLeoVersionCheck: config.skipLeoVersionCheck ?? false,
     leoBinary: expandTilde(config.leoBinary ?? "leo"),
     paths,

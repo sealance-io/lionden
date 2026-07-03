@@ -51,7 +51,7 @@ const configHooks: ConfigHookHandlers = {
       });
     }
 
-    const supportedVersion = /^(?:4\.(?:0|1|2)|3\.5)\.(?:0|[1-9]\d*)$/;
+    const supportedVersion = /^(?:4\.(?:0|1|2|3)|3\.5)\.(?:0|[1-9]\d*)$/;
     const plainStableVersion = /^\d+\.\d+\.\d+$/;
     const versionCheckSkipped = config.skipLeoVersionCheck === true;
     const versionPattern = versionCheckSkipped ? plainStableVersion : supportedVersion;
@@ -59,7 +59,7 @@ const configHooks: ConfigHookHandlers = {
     if (config.leoVersion && !versionPattern.test(config.leoVersion)) {
       const message = versionCheckSkipped
         ? `Invalid Leo version "${config.leoVersion}". Expected a stable major.minor.patch version.`
-        : `Unsupported Leo version "${config.leoVersion}". Supported lines: 4.2.x, 4.1.x, 4.0.x, 3.5.x`;
+        : `Unsupported Leo version "${config.leoVersion}". Supported lines: 4.3.x, 4.2.x, 4.1.x, 4.0.x, 3.5.x`;
       errors.push({
         path: "leoVersion",
         message,

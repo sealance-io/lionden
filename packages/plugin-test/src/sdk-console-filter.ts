@@ -11,8 +11,11 @@
  * avoid hiding real diagnostics, this filter suppresses a batch only when every
  * non-empty line is a reviewed SDK progress/status message.
  *
- * Audited against @provablehq/sdk 0.11.1 and @provablehq/wasm 0.11.1. Re-audit
- * this allowlist whenever either package is bumped.
+ * Audited against @provablehq/sdk 0.11.1 and @provablehq/wasm 0.11.1. The
+ * current pin is @provablehq/sdk 0.11.3 (snarkVM 4.8.1), which has not yet been
+ * re-audited against this allowlist — the SDK's progress-message surface is
+ * unchanged in the patch bump as far as we know, but treat this as pending.
+ * Re-audit this allowlist whenever either package is bumped.
  */
 const ansiPattern = new RegExp("\\u001B(?:[@-Z\\\\-_]|\\[[0-?]*[ -/]*[@-~])", "g");
 const leoProgramId = "[A-Za-z][A-Za-z0-9_]*\\.aleo";
