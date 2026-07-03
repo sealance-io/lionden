@@ -120,7 +120,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.2.0",
+  leoVersion: "4.3.2",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -242,7 +242,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.2.0",
+  leoVersion: "4.3.2",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },

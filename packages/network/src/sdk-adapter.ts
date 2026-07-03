@@ -1,7 +1,7 @@
 /**
  * SDK adapter — isolates the @provablehq/sdk initialization ceremony.
  *
- * The Provable SDK v0.11.1 baseline requires:
+ * The Provable SDK v0.11.3 baseline requires:
  * 1. initThreadPool() for multi-threaded WASM
  * 2. Network-specific loading via @provablehq/sdk/dynamic.js
  * 3. getOrInitConsensusVersionTestHeights() for devnode connections
@@ -101,7 +101,7 @@ export function programAddressFromProgramId(programId: string): string {
 // SDK initialization
 // ---------------------------------------------------------------------------
 
-const SDK_VERSION = "^0.11.1";
+const SDK_VERSION = "^0.11.3";
 
 let sdkInitPromise: Promise<void> | undefined;
 const sdkModuleCache = new Map<AleoNetwork, Promise<SdkModule>>();
