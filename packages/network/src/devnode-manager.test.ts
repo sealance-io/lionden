@@ -193,18 +193,60 @@ describe("DevnodeManager", () => {
     expect(args.slice(0, 3)).toEqual(["--disable-update-check", "devnode", "start"]);
   });
 
-  it("start passes --consensus-heights when set", async () => {
+  it("start passes --consensus-heights on Leo < 4.3 when set", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);
     mockFetch.mockResolvedValue({ ok: true });
 
-    await manager.start({ consensusHeights: "0,1,2,3,4,5,6,7,8" });
+    await manager.start({ leoVersion: "4.2.0", consensusHeights: "0,1,2,3,4,5,6,7,8" });
 
     expect(spawn).toHaveBeenCalledWith(
       "leo",
       expect.arrayContaining(["--consensus-heights", "0,1,2,3,4,5,6,7,8"]),
       expect.any(Object),
     );
+  });
+
+  it("start passes --network on Leo < 4.3 when non-testnet", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ leoVersion: "4.2.0", network: "canary" });
+
+    expect(spawn).toHaveBeenCalledWith(
+      "leo",
+      expect.arrayContaining(["--network", "canary"]),
+      expect.any(Object),
+    );
+  });
+
+  it("start omits --consensus-heights / --network on Leo >= 4.3", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({
+      leoVersion: "4.3.2",
+      consensusHeights: "0,1,2,3,4,5,6,7,8",
+      network: "canary",
+    });
+
+    const args = vi.mocked(spawn).mock.calls[0]![1] as string[];
+    expect(args).not.toContain("--consensus-heights");
+    expect(args).not.toContain("--network");
+  });
+
+  it("start omits --consensus-heights / --network when leoVersion is unset (modern default)", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({ consensusHeights: "0,1,2,3,4,5,6,7,8", network: "canary" });
+
+    const args = vi.mocked(spawn).mock.calls[0]![1] as string[];
+    expect(args).not.toContain("--consensus-heights");
+    expect(args).not.toContain("--network");
   });
 
   it("start omits --consensus-heights when not set", async () => {

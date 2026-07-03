@@ -20,6 +20,24 @@ const LOG_TAIL_RENDER_BYTES = 4 * 1024;
 
 type ExitInfo = { code: number | null; signal: NodeJS.Signals | null };
 
+/**
+ * Whether `leo devnode start` for the given `leoVersion` still accepts the
+ * `--consensus-heights` / `--network` flags. Leo 4.3 removed both from the
+ * `devnode start` subcommand, so they are only emitted for Leo < 4.3. An
+ * unparseable/unset version is treated as modern (>= 4.3) and omits both —
+ * emitting a removed flag is a hard `devnode start` failure, whereas omitting
+ * one on an older line only drops the (now-obsolete) explicit heights/network.
+ * Mirrors `emitsLegacyBuildFlags` in leo-compiler.
+ */
+function devnodeEmitsLegacyFlags(leoVersion: string | undefined): boolean {
+  if (!leoVersion) return false;
+  const match = /^(\d+)\.(\d+)\./.exec(leoVersion);
+  if (!match) return false;
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major < 4 || (major === 4 && minor < 3);
+}
+
 type LogCallbacks = {
   onStdout?: (chunk: Buffer) => void;
   onStderr?: (chunk: Buffer) => void;
@@ -421,13 +439,19 @@ export class DevnodeManager {
       args.push("--genesis-path", options.genesisPath);
     }
 
-    if (options.network && options.network !== "testnet") {
+    // `--network` and `--consensus-heights` were removed from `leo devnode start`
+    // in Leo 4.3 (the devnode is TestnetV0-only and auto-activates the latest
+    // consensus version, incl. V16/V17). Emitting either on 4.3+ is a hard clap
+    // "unexpected argument" error, so gate them to the older 4.1/4.0/3.5 lines.
+    const legacyFlags = devnodeEmitsLegacyFlags(options.leoVersion);
+
+    if (legacyFlags && options.network && options.network !== "testnet") {
       args.push("--network", options.network);
     }
 
     args.push("--private-key", options.privateKey ?? DEFAULT_PRIVATE_KEY);
 
-    if (options.consensusHeights) {
+    if (legacyFlags && options.consensusHeights) {
       args.push("--consensus-heights", options.consensusHeights);
     }
 

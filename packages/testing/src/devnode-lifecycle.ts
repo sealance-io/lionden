@@ -63,6 +63,9 @@ export async function startDevnode(
     autoBlock: devnodeConfig?.autoBlock ?? true,
     network,
     leoBinary: devnodeConfig?.leoBinary,
+    // Version-gates the devnode flag surface: --consensus-heights / --network
+    // are only emitted for Leo < 4.3 (see DevnodeManager.buildLeoArgs).
+    leoVersion: config?.leoVersion,
     consensusHeights,
     // Forward the selected devnode's bind/identity settings so the started node
     // matches the one connect() dials. `undefined` lets DevnodeManager keep its
