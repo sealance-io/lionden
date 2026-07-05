@@ -71,7 +71,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Deployed program source fetch via `getProgramSource()` | same |
 | `node` task: `--port` (default 3030), `--manual-blocks`, | `packages/plugin-network/src/index.ts` |
 | `run` task: positional script path; imports the script and calls `default` or `main`; config network selection comes from global `--network` / `defaultNetwork` | same |
-| `--consensus-heights` opt-in field for devnode (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts`, config types |
+| `consensusHeights` devnode config field for the Leo backend on Leo < 4.3; needed for v3.5 constructor programs there; rejected on Leo 4.3+ because the devnode auto-activates the latest consensus version | `packages/network/src/devnode-manager.ts`, config types |
 | SDK egress policy (network-host scope): per-connection guarded `transport` on `AleoNetworkClient` and per-signer clones. Default `allowedNetworkHosts = { connection endpoint }` with `violation: "block"`; users extend via `sdk.egress.networkHosts` (telemetry, sidecars) and switch to `violation: "warn"` for rollout / debugging. Installing any transport flips `hasCustomTransport=true`, forcing state queries through `CallbackQuery` instead of WASM's `https://api.provable.com/v2`-baked SnapshotQuery — the load-bearing leak closure for the execute / prove path. A second WASM entry point, eager key synthesis (`synthesizeKeyPair`), takes no query parameter and is closed by skipping eager synthesis on every filesystem key-cache miss, deferring to lazy `pm.execute` synthesis through the `CallbackQuery`; sidecar/runtime cache hits are still injected. Parameter downloads (credits keys, SRS) use an internal known-host list; not user-configurable. See [`network.md` § Egress Policy](network.md#egress-policy) | `packages/network/src/sdk-adapter.ts` (`makeNetworkTransport`, `makeParameterTransport`, `SdkEgressPolicy`), `packages/network/src/network-manager.ts` (`resolveEgressPolicy`), `packages/network/src/connection.ts` (`getPersistentExecutionOptions`), `packages/core/src/config-resolution.ts` (`resolveSdkEgressConfig`) |
 
 ### Deploy + Upgrade + Export + Recipes
@@ -127,7 +127,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Leo v3.5.x supported for deployable `main.leo` programs (no libraries) | same |
 | `leoBinary` config (with `~/` expansion) to target a specific Leo install | `packages/config/src/types.ts` |
 | `--disable-update-check` always passed to managed Leo CLI invocations | `packages/leo-compiler/src/`, `packages/network/src/devnode-manager.ts` |
-| `consensusHeights` opt-in field on devnode networks (required for v3.5 constructor programs) | `packages/network/src/devnode-manager.ts` |
+| `consensusHeights` devnode config field applies only to the Leo backend on Leo < 4.3; needed for v3.5 constructor programs there; rejected on Leo 4.3+ because the devnode auto-activates the latest consensus version | `packages/network/src/devnode-manager.ts` |
 | ABI parser normalises `transitions`/`functions`, `is_async`/`is_final`, `Future`/`Final` between versions, and preserves Leo 4.1 `views`, `implements`, and non-empty `const_parameters` | `packages/leo-compiler/src/abi-parser.ts` |
 
 ---
