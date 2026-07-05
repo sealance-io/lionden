@@ -1,12 +1,12 @@
+struct NftMetadata {
+  collection_id: u64,
+  serial: u64,
+  uri_hash: field,
+}
+
 program nft_registry.aleo {
     @noupgrade
     constructor() {}
-
-    struct NftMetadata {
-        collection_id: u64,
-        serial: u64,
-        uri_hash: field,
-    }
 
     record Nft {
         owner: address,
