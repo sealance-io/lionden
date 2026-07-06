@@ -64,6 +64,54 @@ describe("resolveDynamicRecordHelpers", () => {
     ).toThrow(/'Ghost' does not match any local record/);
   });
 
+  it("skips helper whose sourceProgram is outside the compiled subset", () => {
+    const result = resolveDynamicRecordHelpers(
+      lreWith({
+        asGoldToken: {
+          helperName: "asGoldToken",
+          sourceRecord: "Token",
+          sourceProgram: "gold_token.aleo",
+          schema: { owner: "address.private" },
+        },
+      }),
+      [programResult("merkle_tree.aleo", [["Leaf"]])],
+      { targetedCompile: true },
+    );
+    expect(result.size).toBe(0);
+  });
+
+  it("throws on sourceProgram typo during full compile", () => {
+    expect(() =>
+      resolveDynamicRecordHelpers(
+        lreWith({
+          asGoldToken: {
+            helperName: "asGoldToken",
+            sourceRecord: "Token",
+            sourceProgram: "gold_token_typo.aleo",
+            schema: { owner: "address.private" },
+          },
+        }),
+        [programResult("gold_token.aleo", [["Token"]])],
+      ),
+    ).toThrow(/'gold_token_typo\.aleo' does not declare record 'Token'/);
+  });
+
+  it("still throws for unscoped helper when compiled subset has no matching record", () => {
+    expect(() =>
+      resolveDynamicRecordHelpers(
+        lreWith({
+          asToken: {
+            helperName: "asToken",
+            sourceRecord: "Token",
+            schema: { owner: "address.private" },
+          },
+        }),
+        [programResult("merkle_tree.aleo", [["Leaf"]])],
+        { targetedCompile: true },
+      ),
+    ).toThrow(/'Token' does not match any local record/);
+  });
+
   it("throws CodegenError on ambiguous sourceRecord when sourceProgram is omitted", () => {
     let err: any;
     try {
