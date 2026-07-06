@@ -285,6 +285,8 @@ For programs with **unresolved external types** (the referenced ABI isn't availa
 
 **Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`. Set `sourceProgram` when more than one compiled program declares the same generated record name; `examples/aleo-ports/dynamic_records` uses this for `gold_token.aleo::Token` and `silver_token.aleo::Token`.
 
+On targeted compile (`compile --program`), helpers with `sourceProgram` outside the compiled subset are ignored for that run. Full compile remains strict. Helpers without `sourceProgram` still validate against the compiled subset and may require explicit `sourceProgram` when compiling one program at a time.
+
 **Schema rules**:
 
 - Schema keys must exactly match the **generated record shape**: implicit `owner: address`, every ABI field that isn't a re-declaration of `owner`, and implicit `_nonce: group`.

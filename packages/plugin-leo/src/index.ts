@@ -141,7 +141,10 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
 
       // Generate per-program bindings
       const allAbis = programResults.map((result) => result.abi);
-      const helpersByProgram = resolveDynamicRecordHelpers(lre, programResults);
+      const targetedCompile = typeof options.program === "string" && options.program.length > 0;
+      const helpersByProgram = resolveDynamicRecordHelpers(lre, programResults, {
+        targetedCompile,
+      });
       for (const result of programResults) {
         const className = programIdToClassName(result.unit.programId);
         const dynamicRecords = helpersByProgram.get(result.unit.programId);
@@ -381,6 +384,7 @@ function validateDynamicRecordsConfig(
 export function resolveDynamicRecordHelpers(
   lre: { readonly config: LionDenResolvedConfig },
   programResults: readonly ProgramCompilationResult[],
+  opts: { readonly targetedCompile?: boolean } = {},
 ): Map<string, NonNullable<GenerateBindingsOptions["dynamicRecords"]>[number][]> {
   const helpersByProgram = new Map<
     string,
@@ -391,6 +395,7 @@ export function resolveDynamicRecordHelpers(
     return helpersByProgram;
   }
 
+  const compiledProgramIds = new Set(programResults.map((result) => result.unit.programId));
   const ownership = new Map<string, string[]>();
   for (const result of programResults) {
     for (const record of result.abi.records) {
@@ -402,6 +407,14 @@ export function resolveDynamicRecordHelpers(
   }
 
   for (const helper of Object.values(dynamicRecords)) {
+    if (
+      opts.targetedCompile === true &&
+      helper.sourceProgram !== undefined &&
+      !compiledProgramIds.has(helper.sourceProgram)
+    ) {
+      continue;
+    }
+
     const candidates = ownership.get(helper.sourceRecord) ?? [];
     if (candidates.length === 0) {
       throw new CodegenError(

@@ -433,4 +433,83 @@ describe("dynamicRecords routing", () => {
     expect(error?.name).toBe("CodegenError");
     expect(error?.message).toContain("'hello.aleo' does not declare record 'Token'");
   });
+
+  it("throws CodegenError on sourceProgram typo during full compile", async () => {
+    const { error } = await runWithHelpers({
+      asPoolToken: {
+        helperName: "asPoolToken",
+        sourceRecord: "Token",
+        sourceProgram: "gold_token_typo.aleo",
+        schema: { amount: "u64.private" },
+      },
+    });
+    expect(error?.name).toBe("CodegenError");
+    expect(error?.message).toContain("'gold_token_typo.aleo' does not declare record 'Token'");
+  });
+
+  it("skips dynamic-record helpers scoped outside a targeted compile subset", async () => {
+    const { compilePipeline, generateBindings } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockResolvedValueOnce({
+      results: [
+        {
+          unit: {
+            kind: "program" as const,
+            programId: "merkle_tree.aleo",
+            sourceDir: "/tmp/test/programs/merkle_tree",
+            entryFile: "/tmp/test/programs/merkle_tree/main.leo",
+            allSources: ["main.leo"],
+          },
+          cached: false,
+          packageDir: "/tmp/test/.cache/merkle_tree",
+          buildDir: "/tmp/test/.cache/merkle_tree/build",
+          abi: {
+            program: "merkle_tree.aleo",
+            structs: [],
+            records: [
+              {
+                path: ["Leaf"],
+                fields: [{ name: "value", ty: { Primitive: "Field" }, mode: "Private" }],
+              },
+            ],
+            mappings: [],
+            storage_variables: [],
+            transitions: [],
+          },
+          aleoSource: "",
+        },
+      ],
+    } as any);
+    (generateBindings as ReturnType<typeof vi.fn>).mockClear();
+
+    result = createContractLre({
+      plugins: [pluginLeo],
+      configOverrides: {
+        codegen: {
+          enabled: true,
+          outDir: "typechain",
+          dynamicRecords: {
+            asGoldToken: {
+              helperName: "asGoldToken",
+              sourceProgram: "gold_token.aleo",
+              sourceRecord: "Token",
+              schema: { amount: "u64.private" },
+            },
+          },
+        },
+      },
+    });
+
+    await result.lre.tasks.run("compile", { program: "merkle_tree" });
+
+    expect(compilePipeline).toHaveBeenCalledWith(
+      result.lre.config,
+      expect.objectContaining({ program: "merkle_tree" }),
+    );
+    expect(generateBindings).toHaveBeenCalledTimes(1);
+    expect(generateBindings).toHaveBeenCalledWith(
+      expect.objectContaining({ program: "merkle_tree.aleo" }),
+      [expect.objectContaining({ program: "merkle_tree.aleo" })],
+      {},
+    );
+  });
 });
