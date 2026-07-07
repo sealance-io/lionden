@@ -21,6 +21,7 @@ import type {
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
+import { checkProgramOnChain, createDegradedRecord } from "./on-chain-check.js";
 import { resolveProveOption } from "./prove.js";
 
 // ---------------------------------------------------------------------------
@@ -93,17 +94,23 @@ export async function upgradeAction(
     await manager.recoverPendingDeployments(networkName, connection);
   }
 
-  // 3. Guard that a prior deployment record exists
+  // 3. Resolve existing deployment state. When local state is missing, upgrade
+  // can still proceed if the target network already has the program.
   let existingRecord: DeploymentRecord | null = null;
   if (manager) {
     existingRecord = await manager.getDeployment(programId, networkName);
   }
 
   if (!existingRecord) {
-    throw new DeployError(
-      `No deployment record found for "${programId}". ` +
-        `Deploy the program first with \`lionden deploy --program ${options.program}\`.`,
-    );
+    const { exists, source } = await checkProgramOnChain(connection, programId);
+    if (!exists) {
+      throw new DeployError(
+        `No deployment record found for "${programId}". ` +
+          `Deploy the program first with \`lionden deploy --program ${options.program}\`.`,
+      );
+    }
+
+    existingRecord = createDegradedRecord(programId, networkName, connection.endpoint, source!);
   }
 
   // 4. Compile the updated program. Forward the effective upgrade network (when

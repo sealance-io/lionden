@@ -212,6 +212,8 @@ Current behavior:
 - requires `--program`
 - connects to the requested network or default network
 - recovers pending deployments
+- uses an existing local deployment record when present
+- if no local record exists but the program is already on-chain, treats it as degraded/untracked state and can still attempt the upgrade
 - compiles the updated program
 - reads the new compiled Aleo source
 - writes a pending marker on non-ephemeral networks
@@ -230,6 +232,8 @@ Current upgrade options:
 - `--skip-confirm`
 
 When `namedAccounts.admin` is set, the upgrade task selects its private key as the signing key (selection only — there is no address-match validation).
+
+LionDen still does not validate the old ABI or admin identity before upgrading; Leo and the target network enforce upgrade correctness.
 
 ## Deployment Recipes
 
