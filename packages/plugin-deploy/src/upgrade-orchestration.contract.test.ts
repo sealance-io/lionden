@@ -362,10 +362,42 @@ describe("upgrade orchestration contract (thin)", () => {
     expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
   });
 
-  it("throws when no deployment record exists", async () => {
-    const { lre } = await createUpgradeFixture({ skipRecord: true });
+  it("succeeds for an on-chain untracked program on HTTP via upgrade fallback", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({ skipRecord: true });
+    (lre.config.networks as Record<string, unknown>)["testnet"] = {
+      type: "http",
+      endpoint: fakeNetwork.endpoint,
+      network: fakeNetwork.networkId,
+    };
+    vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
+    fakeNetwork.setProgramSource("hello.aleo", PROGRAM_SOURCE);
 
-    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
+    expect(await manager.getDeployment("hello.aleo", "testnet")).toBeNull();
+
+    const result = await upgradeAction({ program: "hello", network: "testnet" }, lre);
+
+    expect(result.programId).toBe("hello.aleo");
+    const updatedRecord = manager.getCached("hello.aleo", "testnet");
+    expect(updatedRecord).not.toBeNull();
+    expect(updatedRecord?.status).toBe("complete");
+    if (updatedRecord?.status === "complete") {
+      expect(updatedRecord.txId).toBe(result.txId);
+    }
+  });
+
+  it("throws on HTTP when no deployment record exists and the program is absent on-chain", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({ skipRecord: true });
+    (lre.config.networks as Record<string, unknown>)["testnet"] = {
+      type: "http",
+      endpoint: fakeNetwork.endpoint,
+      network: fakeNetwork.networkId,
+    };
+    vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
+
+    expect(await manager.getDeployment("hello.aleo", "testnet")).toBeNull();
+    expect(await fakeNetwork.getProgramSource("hello.aleo")).toBeNull();
+
+    await expect(upgradeAction({ program: "hello", network: "testnet" }, lre)).rejects.toThrow(
       "No deployment record found",
     );
   });
