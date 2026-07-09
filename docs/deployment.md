@@ -26,7 +26,7 @@ The deploy subsystem owns transaction building, broadcast, and persisted deploym
 - `deploymentsDir`: deployment state directory relative to project root, default `deployments`
 - `skipDeployed`: skip programs already deployed on-chain, default `true`
 - `interDeploymentDelay`: delay between dependent HTTP deployments; default `12_000` for HTTP and `0` for devnode
-- `autoExport`: write an export bundle after each deploy or upgrade, default `false`
+- `autoExport`: write an export bundle after confirming each deploy or upgrade, default `false`
 - `ephemeral`: global ephemeral override — when `true`, all networks skip deployment-state disk reads/writes except export bundles; when `false`, forces disk-backed deployment state even on devnode (overridden by per-network setting)
 
 Per-network config also accepts `ephemeral?: boolean` to override the type-based default for that network.
@@ -54,9 +54,9 @@ Current behavior:
 - deploys either all compiled programs or a selected program plus its transitive local program dependencies
 - connects to the selected config network (`config.defaultNetwork`, possibly overridden by the global CLI `--network <name>`)
 - runs deploy preflight before broadcasting
-- records deployment state after successful deployment (in memory for ephemeral networks, on disk for non-ephemeral networks)
+- records deployment state after successful deployment with initial `edition: 0` (in memory for ephemeral networks, on disk for non-ephemeral networks)
 - fires the `deployment.programDeployed` hook after successful deployment
-- optionally exports deployment data
+- optionally exports deployment data after confirming the deploy
 
 Current deploy options:
 
@@ -74,6 +74,8 @@ Current deploy options:
 `--dry-run` builds deployment transactions without broadcasting. It is currently devnode-only and does not mutate deployment state.
 
 `--no-skip-deployed` makes already-deployed programs a hard preflight error instead of skipping them.
+
+`--export` requires deploy confirmation. `deploy --skip-confirm --export` is rejected before deployment side effects because the deployed program may not yet be visible to validated export reads. `deploy.autoExport` runs for confirming deploys and upgrades; non-confirming deploys and upgrades skip auto-export.
 
 ### `--prove` (global)
 
@@ -119,6 +121,18 @@ Record statuses:
 - `complete`: full local provenance from a successful LionDen deploy or upgrade
 - `degraded`: program discovered on-chain without full local provenance
 - `recovered`: pending marker recovered after a crash or interrupted process
+
+Deployment records include numeric `edition`. First-time deploy records use
+`edition: 0`, the protocol initial edition. Confirmed upgrades record the
+edition observed on-chain after confirmation. `upgrade --skip-confirm` is the
+explicit exception: because confirmation and post-upgrade observation are
+skipped, LionDen records `previousEdition + 1` locally. Degraded and recovered
+records created from on-chain state use the observed on-chain edition. If the
+active network cannot provide the edition for a path that requires it, record
+creation, upgrade recording, or pending recovery fails instead of storing
+partial state.
+`historyCount` remains local deployment-history bookkeeping and is not used as
+the source of truth for program edition.
 
 Network metadata is written to `.network.json` for HTTP networks. The deployment manager validates it before trusting disk state so a reconfigured network endpoint does not silently reuse stale deployment records.
 
@@ -187,7 +201,7 @@ order still follows static `import`s.
 
 On non-ephemeral networks, deploy and upgrade write pending markers before broadcasting. On the next deploy or upgrade, `recoverPendingDeployments()` checks pending markers against the active network. Ephemeral networks skip pending marker writes and pending recovery because the chain and deployment state are memory-only for the session.
 
-If the program is not on-chain, the marker is cleared. If the program is on-chain, the manager records a `recovered` deployment record using the marker's intended action, deployer address, network, and endpoint.
+If the program is not on-chain, the marker is cleared. If the program is on-chain, the manager records a `recovered` deployment record using the marker's intended action, deployer address, network, endpoint, observed on-chain edition, and any confirmed transaction provenance already written to the marker.
 
 ## Export Task
 
@@ -201,7 +215,7 @@ Without `--out`, export writes to `deployments/_exports/<network>.json`. With `-
 
 Export bundles include network metadata and one entry per known program (`ExportedProgram`) with its program ID, ABI when available, transaction ID when complete, and record status.
 
-`deploy --export` exports after deployment. `deploy.autoExport` exports after each deploy or upgrade.
+`deploy --export` exports after a confirming deployment. It is rejected with `--skip-confirm` because validated export may race on-chain propagation. `deploy.autoExport` exports after confirming deploys and confirming upgrades; non-confirming deploys and upgrades skip auto-export.
 
 ## Upgrade Task
 
@@ -221,7 +235,7 @@ Current behavior:
 - waits for confirmation unless skipped
 - records the updated deployment state (in memory for ephemeral networks, on disk for non-ephemeral networks)
 - fires the `deployment.programUpgraded` hook
-- optionally exports deployment data when `deploy.autoExport` is enabled
+- optionally exports deployment data after confirming the upgrade when `deploy.autoExport` is enabled
 
 The task returns `{ programId, txId, blockHeight }`.
 
@@ -260,7 +274,7 @@ lionden recipe --file ./recipes/setup.ts --no-compile
 
 The recipe task compiles all programs once before running the recipe function. Individual `ctx.deploy()` calls default to `{ noCompile: true }` to avoid redundant compilation in multi-deploy recipes.
 
-`ctx.deploy()` may return an existing complete deployment record when the requested program is already deployed and local state has a `txId`. Degraded or recovered records are not returned because they do not identify the original deployment transaction. Use `{ noSkipDeployed: true }` for first-time-only recipes that should fail instead of reusing or skipping an existing deployment.
+`ctx.deploy()` may return an existing complete deployment record when the requested program is already deployed and local state has a `txId`. Degraded or recovered records are not returned because they are not full local deployment provenance. Use `{ noSkipDeployed: true }` for first-time-only recipes that should fail instead of reusing or skipping an existing deployment.
 
 `DeploymentContext` provides:
 

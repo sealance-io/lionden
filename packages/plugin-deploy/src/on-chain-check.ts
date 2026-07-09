@@ -12,10 +12,16 @@ import type { DegradedDeploymentRecord } from "./deployment-types.js";
 // checkProgramOnChain
 // ---------------------------------------------------------------------------
 
-export interface OnChainCheckResult {
-  readonly exists: boolean;
-  readonly source: string | null;
-}
+export type OnChainCheckResult =
+  | {
+      readonly exists: true;
+      readonly source: string;
+      readonly edition: number | null;
+    }
+  | {
+      readonly exists: false;
+      readonly source: null;
+    };
 
 /**
  * Check whether a program is deployed on-chain.
@@ -29,7 +35,46 @@ export async function checkProgramOnChain(
   if (source === null) {
     return { exists: false, source: null };
   }
-  return { exists: true, source };
+  const edition = await connection.getProgramEdition(programId);
+  return { exists: true, source, edition };
+}
+
+export async function getRequiredProgramEdition(
+  connection: NetworkConnection,
+  programId: string,
+  actionDescription: string,
+): Promise<number> {
+  const edition = await connection.getProgramEdition(programId);
+  if (typeof edition === "number" && Number.isInteger(edition) && edition >= 0) {
+    return edition;
+  }
+  throw new Error(
+    `Unable to ${actionDescription} for "${programId}": on-chain program edition could not be observed.`,
+  );
+}
+
+export async function waitForProgramEditionAdvance(
+  connection: NetworkConnection,
+  programId: string,
+  previousEdition: number,
+  timeoutMs: number,
+): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const edition = await connection.getProgramEdition(programId);
+    if (typeof edition === "number" && Number.isInteger(edition) && edition > previousEdition) {
+      return edition;
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    await new Promise((resolve) => setTimeout(resolve, Math.min(500, remaining)));
+  }
+
+  throw new Error(
+    `Timed out waiting for "${programId}" on-chain edition to advance beyond ${previousEdition}.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -45,6 +90,8 @@ export function createDegradedRecord(
   network: string,
   endpoint: string,
   source: string,
+  edition: number,
+  historyCount = 0,
 ): DegradedDeploymentRecord {
   void source; // source kept in the signature for callers; not stored on the record
   return {
@@ -53,7 +100,8 @@ export function createDegradedRecord(
     network,
     endpoint,
     updatedAt: new Date().toISOString(),
-    historyCount: 0,
+    edition,
+    historyCount,
     txId: null,
     blockHeight: null,
     deployerAddress: null,

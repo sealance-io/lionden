@@ -21,7 +21,12 @@ import type {
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { checkProgramOnChain, createDegradedRecord } from "./on-chain-check.js";
+import {
+  checkProgramOnChain,
+  createDegradedRecord,
+  getRequiredProgramEdition,
+  waitForProgramEditionAdvance,
+} from "./on-chain-check.js";
 import { resolveProveOption } from "./prove.js";
 
 // ---------------------------------------------------------------------------
@@ -97,20 +102,36 @@ export async function upgradeAction(
   // 3. Resolve existing deployment state. When local state is missing, upgrade
   // can still proceed if the target network already has the program.
   let existingRecord: DeploymentRecord | null = null;
+  let observedFallbackEdition: number | null = null;
   if (manager) {
     existingRecord = await manager.getDeployment(programId, networkName);
   }
 
   if (!existingRecord) {
-    const { exists, source } = await checkProgramOnChain(connection, programId);
-    if (!exists) {
+    const onChain = await checkProgramOnChain(connection, programId);
+    if (!onChain.exists) {
       throw new DeployError(
         `No deployment record found for "${programId}". ` +
           `Deploy the program first with \`lionden deploy --program ${options.program}\`.`,
       );
     }
 
-    existingRecord = createDegradedRecord(programId, networkName, connection.endpoint, source!);
+    const observedEdition =
+      typeof onChain.edition === "number"
+        ? onChain.edition
+        : await getRequiredProgramEdition(
+            connection,
+            programId,
+            "create degraded deployment record",
+          );
+    existingRecord = createDegradedRecord(
+      programId,
+      networkName,
+      connection.endpoint,
+      onChain.source,
+      observedEdition,
+    );
+    observedFallbackEdition = observedEdition;
   }
 
   // 4. Compile the updated program. Forward the effective upgrade network (when
@@ -133,7 +154,7 @@ export async function upgradeAction(
     throw new DeployError(`No compiled .aleo source found for "${programId}".`);
   }
 
-  // 7. Set pending marker before broadcast
+  // 7. Resolve upgrade provenance before writing a pending marker.
   const deployerAddress = await resolveDeployerAddress(
     connection,
     config,
@@ -141,8 +162,42 @@ export async function upgradeAction(
     adminSignerKey,
   );
 
+  const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
+  const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
+  let previousEdition: number;
+  if (observedFallbackEdition !== null) {
+    previousEdition = observedFallbackEdition;
+  } else if (shouldConfirm) {
+    previousEdition = await getRequiredProgramEdition(
+      connection,
+      programId,
+      "read current edition before upgrade",
+    );
+  } else {
+    let liveEdition: number | null = null;
+    try {
+      liveEdition = await connection.getProgramEdition(programId);
+    } catch {
+      liveEdition = null;
+    }
+    if (typeof liveEdition === "number" && Number.isInteger(liveEdition) && liveEdition >= 0) {
+      previousEdition = liveEdition;
+    } else if (
+      typeof existingRecord.edition === "number" &&
+      Number.isInteger(existingRecord.edition) &&
+      existingRecord.edition >= 0
+    ) {
+      previousEdition = existingRecord.edition;
+    } else {
+      throw new Error(
+        `Unable to read current edition before upgrade for "${programId}": on-chain program edition could not be observed.`,
+      );
+    }
+  }
+
+  let pending: PendingDeployment | null = null;
   if (manager) {
-    const pending: PendingDeployment = {
+    pending = {
       programId,
       action: "upgrade",
       startedAt: new Date().toISOString(),
@@ -151,13 +206,12 @@ export async function upgradeAction(
       privateFee: config.deploy.privateFee,
       network: networkName,
       endpoint: connection.endpoint,
+      previousEdition,
     };
     await manager.setPending(pending);
   }
 
   // 8. Build and broadcast upgrade transaction
-  const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
-
   const txId = await buildAndBroadcastUpgrade({
     programId,
     aleoSource,
@@ -170,16 +224,33 @@ export async function upgradeAction(
     logLevel: config.sdk.logLevel,
     egressPolicy: connection.egressPolicy,
   });
+  if (manager && pending) {
+    pending = { ...pending, txId };
+    await manager.setPending(pending);
+  }
 
   // 9. Wait for confirmation
   let blockHeight = 0;
-  const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
+  let edition = previousEdition + 1;
   if (shouldConfirm) {
     const confirmed = await connection.waitForConfirmation(txId, config.deploy.confirmationTimeout);
     if (confirmed.status === "rejected") {
+      if (manager) {
+        await manager.clearPending(networkName, programId);
+      }
       throw new DeployError(`Upgrade transaction ${txId} was rejected on-chain.`);
     }
     blockHeight = confirmed.blockHeight;
+    if (manager && pending) {
+      pending = { ...pending, txId, blockHeight };
+      await manager.setPending(pending);
+    }
+    edition = await waitForProgramEditionAdvance(
+      connection,
+      programId,
+      previousEdition,
+      config.deploy.confirmationTimeout,
+    );
   }
 
   // 10. Record in deployment state (promotes degraded/recovered to complete).
@@ -196,6 +267,7 @@ export async function upgradeAction(
       network: networkName,
       endpoint: connection.endpoint,
       updatedAt: new Date().toISOString(),
+      edition,
       historyCount: existingRecord.historyCount + 1,
       txId,
       blockHeight,
@@ -218,7 +290,7 @@ export async function upgradeAction(
   });
 
   // 12. Export if autoExport
-  if (manager && config.deploy.autoExport) {
+  if (manager && config.deploy.autoExport && shouldConfirm) {
     await manager.export(networkName);
   }
 

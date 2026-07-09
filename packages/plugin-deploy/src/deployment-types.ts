@@ -21,6 +21,8 @@ interface DeploymentRecordBase {
   readonly endpoint: string;
   /** ISO 8601 timestamp of last update */
   readonly updatedAt: string;
+  /** On-chain program edition. */
+  readonly edition: number;
   /** Number of historical entries for this program */
   readonly historyCount: number;
 }
@@ -56,12 +58,12 @@ export interface DegradedDeploymentRecord extends DeploymentRecordBase {
 
 /**
  * Recovered from a pending marker after a crash — we know the intent and
- * deployer but not the confirmed block height.
+ * deployer, and may know confirmed transaction provenance.
  */
 export interface RecoveredDeploymentRecord extends DeploymentRecordBase {
   readonly status: "recovered";
-  readonly txId: null;
-  readonly blockHeight: null;
+  readonly txId: string | null;
+  readonly blockHeight: number | null;
   readonly deployerAddress: string;
   readonly deployedAt: string;
   readonly feePaid: null;
@@ -109,6 +111,9 @@ export interface NetworkMetadata {
 export interface PendingDeployment {
   readonly programId: string;
   readonly action: "deploy" | "upgrade";
+  readonly txId?: string;
+  readonly blockHeight?: number;
+  readonly previousEdition?: number;
   readonly startedAt: string;
   readonly deployerAddress: string;
   readonly priorityFee: number;

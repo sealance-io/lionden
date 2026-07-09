@@ -6,6 +6,7 @@ import { SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
+import { readPendingMarker } from "./deployment-state.js";
 import type { CompleteDeploymentRecord } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
 import { upgradeAction } from "./upgrade-task.js";
@@ -63,6 +64,7 @@ function makeRecord(opts?: { network?: string; endpoint?: string }): CompleteDep
     deployerAddress: DEVNODE_ACCOUNT_0,
     deployedAt: "2026-04-01T00:00:00.000Z",
     updatedAt: "2026-04-01T00:00:00.000Z",
+    edition: 1,
     historyCount: 1,
   };
 }
@@ -110,6 +112,8 @@ describe("upgrade orchestration contract (thin)", () => {
   async function createUpgradeFixture(opts?: {
     /** Skip writing the prior deployment record (and leave the program off-chain). */
     skipRecord?: boolean;
+    /** Keep deployment state on disk so pending markers can be recovered. */
+    diskBacked?: boolean;
     /** Compiled Aleo source that compile produces for the new version. */
     newAleoSource?: string;
   }) {
@@ -142,6 +146,16 @@ describe("upgrade orchestration contract (thin)", () => {
     });
 
     const { lre, fakeNetwork } = fixture;
+    if (opts?.diskBacked) {
+      (lre.config.networks.devnode as { ephemeral?: boolean }).ephemeral = false;
+    }
+    const broadcastTransaction = fakeNetwork!.broadcastTransaction.bind(fakeNetwork!);
+    vi.spyOn(fakeNetwork!, "broadcastTransaction").mockImplementation(async (transaction) => {
+      const txId = await broadcastTransaction(transaction);
+      fakeNetwork!.setProgramSource("hello.aleo", aleoSource);
+      fakeNetwork!.setProgramEdition("hello.aleo", 2);
+      return txId;
+    });
 
     // Inject DeploymentManager onto lre.deployments
     const manager = new DeploymentManagerImpl(
@@ -155,6 +169,7 @@ describe("upgrade orchestration contract (thin)", () => {
       await manager.record(makeRecord(), "deploy", { abi: makeAbi() });
       // Seed getProgramSource so devnode validation sees the program as on-chain.
       fakeNetwork!.setProgramSource("hello.aleo", PROGRAM_SOURCE);
+      fakeNetwork!.setProgramEdition("hello.aleo", 1);
     }
 
     return {
@@ -202,6 +217,7 @@ describe("upgrade orchestration contract (thin)", () => {
     expect(updatedRecord?.status).toBe("complete");
     if (updatedRecord?.status === "complete") {
       expect(updatedRecord.txId).toBe(result.txId);
+      expect(updatedRecord.edition).toBe(2);
     }
   });
 
@@ -233,7 +249,9 @@ describe("upgrade orchestration contract (thin)", () => {
       ...lre.config.networks.devnode,
     };
     const manager = lre.deployments as DeploymentManagerImpl;
-    await manager.record(makeRecord({ network: "testnet" }), "deploy", { abi: makeAbi() });
+    await manager.record(makeRecord({ network: "testnet" }), "deploy", {
+      abi: makeAbi(),
+    });
     const connect = vi
       .spyOn(lre.network as NetworkManager, "connect")
       .mockResolvedValue(fakeNetwork);
@@ -249,7 +267,9 @@ describe("upgrade orchestration contract (thin)", () => {
       ...lre.config.networks.devnode,
     };
     const manager = lre.deployments as DeploymentManagerImpl;
-    await manager.record(makeRecord({ network: "testnet" }), "deploy", { abi: makeAbi() });
+    await manager.record(makeRecord({ network: "testnet" }), "deploy", {
+      abi: makeAbi(),
+    });
     vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
 
     await upgradeAction({ program: "hello", network: "testnet" }, lre);
@@ -346,12 +366,15 @@ describe("upgrade orchestration contract (thin)", () => {
     expect(mockBuildDevnodeUpgradeTransaction).not.toHaveBeenCalled();
   });
 
-  it("throws DeployError when confirmation returns rejected status", async () => {
-    const { lre, fakeNetwork } = await createUpgradeFixture();
+  it("clears pending marker when confirmation returns rejected status", async () => {
+    const { lre, fakeNetwork } = await createUpgradeFixture({
+      diskBacked: true,
+    });
 
     fakeNetwork.setConfirmBehavior("reject");
 
     await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(DeployError);
+    expect(readPendingMarker(lre.config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
   });
 
   it("skips confirmation when skipConfirm is true", async () => {
@@ -362,8 +385,179 @@ describe("upgrade orchestration contract (thin)", () => {
     expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
   });
 
-  it("succeeds for an on-chain untracked program on HTTP via upgrade fallback", async () => {
-    const { lre, fakeNetwork, manager } = await createUpgradeFixture({ skipRecord: true });
+  it("waits for on-chain edition to advance after confirmation", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture();
+    vi.spyOn(fakeNetwork, "getProgramEdition")
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2);
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.edition).toBe(2);
+    }
+  });
+
+  it("fails instead of writing an upgraded record when edition never advances after confirmation", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture();
+    (lre.config.deploy as any).confirmationTimeout = 5;
+    vi.spyOn(fakeNetwork, "getProgramEdition")
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValue(null);
+
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("Timed out waiting");
+
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.txId).toBe("at1original");
+      expect(record.edition).toBe(1);
+    }
+  });
+
+  it("does not write a pending marker when the pre-broadcast edition baseline cannot be read", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({
+      diskBacked: true,
+    });
+    vi.spyOn(fakeNetwork, "getProgramEdition").mockResolvedValue(null);
+
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow(
+      "read current edition before upgrade",
+    );
+
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+    expect(readPendingMarker(lre.config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    expect(record?.edition).toBe(1);
+  });
+
+  it("recovers confirmed upgrade provenance after edition advance polling times out", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({
+      diskBacked: true,
+    });
+    (lre.config.deploy as { confirmationTimeout: number }).confirmationTimeout = 5;
+    const editionSpy = vi
+      .spyOn(fakeNetwork, "getProgramEdition")
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValue(null);
+
+    await expect(upgradeAction({ program: "hello" }, lre)).rejects.toThrow("Timed out waiting");
+
+    const originalRecord = manager.getCached("hello.aleo", "devnode");
+    expect(originalRecord?.status).toBe("complete");
+    if (originalRecord?.status === "complete") {
+      expect(originalRecord.txId).toBe("at1original");
+      expect(originalRecord.edition).toBe(1);
+      expect(originalRecord.historyCount).toBe(1);
+    }
+
+    editionSpy.mockResolvedValue(2);
+    const recoveringManager = new DeploymentManagerImpl(
+      lre.config,
+      () => lre.network as NetworkManager | null,
+      lre.artifacts,
+    );
+
+    const recovered = await recoveringManager.recoverPendingDeployments("devnode", fakeNetwork);
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      status: "recovered",
+      programId: "hello.aleo",
+      edition: 2,
+      txId: expect.stringMatching(/^at1fake/),
+      blockHeight: 2,
+      historyCount: 2,
+    });
+    const latest = await recoveringManager.getDeployment("hello.aleo", "devnode");
+    expect(latest?.status).toBe("recovered");
+    expect(latest?.historyCount).toBe(2);
+    expect(await recoveringManager.getHistory("hello.aleo", "devnode")).toHaveLength(2);
+  });
+
+  it("records previousEdition + 1 when skipConfirm is true", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture();
+    vi.spyOn(fakeNetwork, "getProgramEdition").mockResolvedValue(1);
+
+    await upgradeAction({ program: "hello", skipConfirm: true }, lre);
+
+    expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.edition).toBe(2);
+    }
+  });
+
+  it("falls back to tracked local edition for skip-confirm when live baseline is unavailable", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture();
+    vi.spyOn(fakeNetwork, "getProgramEdition").mockResolvedValue(null);
+
+    await upgradeAction({ program: "hello", skipConfirm: true }, lre);
+
+    expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.edition).toBe(2);
+    }
+  });
+
+  it("skips auto-export when skip-confirm is true", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture();
+    (lre.config.deploy as { autoExport: boolean }).autoExport = true;
+    vi.spyOn(fakeNetwork, "getProgramEdition").mockResolvedValue(1);
+    const exportSpy = vi.spyOn(manager, "export");
+
+    await upgradeAction({ program: "hello", skipConfirm: true }, lre);
+
+    expect(exportSpy).not.toHaveBeenCalled();
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    expect(record?.edition).toBe(2);
+  });
+
+  it("auto-exports after a confirmed upgrade", async () => {
+    const { lre, manager } = await createUpgradeFixture();
+    (lre.config.deploy as { autoExport: boolean }).autoExport = true;
+    const exportSpy = vi.spyOn(manager, "export");
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    expect(exportSpy).toHaveBeenCalledWith("devnode");
+  });
+
+  it("uses live on-chain edition as upgrade baseline instead of local record edition", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture();
+    await manager.record({ ...makeRecord(), edition: 7, historyCount: 2 }, "deploy", {
+      abi: makeAbi(),
+    });
+    vi.spyOn(fakeNetwork, "getProgramEdition")
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(2);
+
+    await upgradeAction({ program: "hello" }, lre);
+
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.edition).toBe(2);
+    }
+  });
+
+  it("reuses the observed fallback edition as the upgrade baseline", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({
+      skipRecord: true,
+    });
     (lre.config.networks as Record<string, unknown>)["testnet"] = {
       type: "http",
       endpoint: fakeNetwork.endpoint,
@@ -371,6 +565,11 @@ describe("upgrade orchestration contract (thin)", () => {
     };
     vi.spyOn(lre.network as NetworkManager, "connect").mockResolvedValue(fakeNetwork);
     fakeNetwork.setProgramSource("hello.aleo", PROGRAM_SOURCE);
+    fakeNetwork.setProgramEdition("hello.aleo", 1);
+    vi.spyOn(fakeNetwork, "getProgramEdition")
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(2);
 
     expect(await manager.getDeployment("hello.aleo", "testnet")).toBeNull();
 
@@ -382,11 +581,14 @@ describe("upgrade orchestration contract (thin)", () => {
     expect(updatedRecord?.status).toBe("complete");
     if (updatedRecord?.status === "complete") {
       expect(updatedRecord.txId).toBe(result.txId);
+      expect(updatedRecord.edition).toBe(2);
     }
   });
 
   it("throws on HTTP when no deployment record exists and the program is absent on-chain", async () => {
-    const { lre, fakeNetwork, manager } = await createUpgradeFixture({ skipRecord: true });
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({
+      skipRecord: true,
+    });
     (lre.config.networks as Record<string, unknown>)["testnet"] = {
       type: "http",
       endpoint: fakeNetwork.endpoint,
@@ -418,6 +620,7 @@ describe("upgrade orchestration contract (thin)", () => {
       deployedAt: null,
       feePaid: null,
       updatedAt: "2026-04-01T00:00:00.000Z",
+      edition: 1,
       historyCount: 1,
     };
     (manager as any).networkCache("devnode").set("hello.aleo", degraded);

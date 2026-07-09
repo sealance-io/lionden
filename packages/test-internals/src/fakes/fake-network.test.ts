@@ -95,6 +95,21 @@ describe("FakeNetworkConnection", () => {
     expect(await conn.getBlockHeight()).toBe(6);
   });
 
+  it("returns null program edition when program source is absent", async () => {
+    const conn = new FakeNetworkConnection();
+    conn.setProgramEdition("hello.aleo", 2);
+
+    expect(await conn.getProgramEdition("hello.aleo")).toBeNull();
+  });
+
+  it("returns program edition only for existing program source", async () => {
+    const conn = new FakeNetworkConnection();
+    conn.setProgramSource("hello.aleo", "program hello.aleo;");
+    conn.setProgramEdition("hello.aleo", 2);
+
+    expect(await conn.getProgramEdition("hello.aleo")).toBe(2);
+  });
+
   it("waitForConfirmation returns accepted by default", async () => {
     const conn = new FakeNetworkConnection();
     const result = await conn.waitForConfirmation("at1tx");
