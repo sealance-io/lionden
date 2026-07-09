@@ -798,6 +798,13 @@ export class AleoConnection implements NetworkConnection {
     }
   }
 
+  async getProgramEdition(programId: string): Promise<number | null> {
+    this.assertOpen();
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+    return (await getLatestProgramEditionIfAvailable(nc, programId)) ?? null;
+  }
+
   async close(): Promise<void> {
     this._closed = true;
 

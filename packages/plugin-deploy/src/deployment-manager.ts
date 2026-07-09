@@ -13,7 +13,6 @@ import { discoverUnits, parseAbi, resolveDependencies } from "@lionden/leo-compi
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import {
   appendHistory,
-  deleteAbiSnapshot,
   deletePendingMarker,
   listPendingMarkers,
   readAbiSnapshot,
@@ -75,6 +74,7 @@ export interface DeploymentManager {
     options?: RecordOptions,
   ): Promise<void>;
   setPending(pending: PendingDeployment): Promise<void>;
+  getPending(network: string, programId: string): Promise<PendingDeployment | null>;
   clearPending(network: string, programId: string): Promise<void>;
 
   // --- Recovery ---
@@ -165,6 +165,19 @@ export class DeploymentManagerImpl implements DeploymentManager {
     return this.abiCache.get(net)?.get(programId) ?? null;
   }
 
+  private requireProgramEdition(
+    programId: string,
+    edition: number | null,
+    actionDescription: string,
+  ): number {
+    if (typeof edition === "number" && Number.isInteger(edition) && edition >= 0) {
+      return edition;
+    }
+    throw new Error(
+      `Unable to ${actionDescription} for "${programId}": on-chain program edition could not be observed.`,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // HTTP metadata validation
   // ---------------------------------------------------------------------------
@@ -238,9 +251,9 @@ export class DeploymentManagerImpl implements DeploymentManager {
         return nc.get(programId) ?? null;
       }
 
-      const { exists, source } = await checkProgramOnChain(connection, programId);
+      const onChain = await checkProgramOnChain(connection, programId);
 
-      if (!exists) {
+      if (!onChain.exists) {
         nc.delete(programId);
         return null;
       }
@@ -257,7 +270,18 @@ export class DeploymentManagerImpl implements DeploymentManager {
         return existing;
       }
 
-      const degraded = createDegradedRecord(programId, net, connection.endpoint, source!);
+      const observedEdition = this.requireProgramEdition(
+        programId,
+        onChain.edition,
+        "create degraded deployment record",
+      );
+      const degraded = createDegradedRecord(
+        programId,
+        net,
+        connection.endpoint,
+        onChain.source,
+        observedEdition,
+      );
       nc.set(programId, degraded);
       return degraded;
     }
@@ -270,15 +294,22 @@ export class DeploymentManagerImpl implements DeploymentManager {
 
     await this.validateHttpMetadata(net);
 
-    // Cache hit
-    const cached = nc.get(programId);
-    if (cached) return cached;
-
-    // Disk read
-    const disk = readDeploymentRecord(this.deploymentsDir, net, programId);
-    if (disk) {
-      nc.set(programId, disk);
-      return disk;
+    const existing = nc.get(programId) ?? readDeploymentRecord(this.deploymentsDir, net, programId);
+    if (existing) {
+      const manager = this.networkAccessor();
+      if (!manager) {
+        throw new Error(
+          `Unable to validate deployment record for "${programId}" on "${net}": network manager is not available.`,
+        );
+      }
+      const connection = await manager.connect(net);
+      const onChain = await checkProgramOnChain(connection, programId);
+      if (!onChain.exists) {
+        nc.delete(programId);
+        return null;
+      }
+      nc.set(programId, existing);
+      return existing;
     }
 
     return null;
@@ -325,13 +356,18 @@ export class DeploymentManagerImpl implements DeploymentManager {
     if (networkConfig?.type === "http") {
       await this.validateHttpMetadata(net);
     }
-    const records = readAllDeploymentRecords(this.deploymentsDir, net);
-    for (const r of records) {
-      if (!nc.has(r.programId)) {
-        nc.set(r.programId, r);
+    const candidateIds = new Set<string>(nc.keys());
+    for (const record of readAllDeploymentRecords(this.deploymentsDir, net)) {
+      candidateIds.add(record.programId);
+    }
+    const records: DeploymentRecord[] = [];
+    for (const programId of candidateIds) {
+      const record = await this.getDeployment(programId, net);
+      if (record) {
+        records.push(record);
       }
     }
-    return [...nc.values()];
+    return records;
   }
 
   async isDeployed(programId: string, network?: string): Promise<boolean> {
@@ -368,38 +404,19 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const net = record.network;
     const programId = record.programId;
 
+    const edition = (record as unknown as { readonly edition?: unknown }).edition;
+    if (!(typeof edition === "number" && Number.isInteger(edition) && edition >= 0)) {
+      throw new Error(
+        `Cannot record deployment for "${programId}": on-chain program edition is required.`,
+      );
+    }
+
     // Enforce ABI for complete records — export consumers rely on it
     if (record.status === "complete" && !options?.abi) {
       throw new Error(
         `ABI is required when recording a complete deployment for "${programId}". ` +
           `Pass options.abi to manager.record() when status is "complete".`,
       );
-    }
-
-    // Do not downgrade a complete or recovered record to degraded when the existing
-    // record still describes the same on-chain state (same network endpoint).
-    // This guards against the fresh-process cache miss: on devnode, the deploy task
-    // uses getCached() (sync) to populate preflight.existingRecord. If the process
-    // restarted, getCached() returns null even though a complete record exists on disk.
-    // The reconciliation block then calls record(degraded) — without this guard that
-    // would overwrite the complete record and append a spurious history entry.
-    //
-    // The endpoint check keeps the guard narrow: if the endpoint changed, the incoming
-    // degraded record reflects the current observed state and must be written.
-    if (record.status === "degraded") {
-      const nc = this.networkCache(net);
-      const existing =
-        nc.get(programId) ??
-        (this.isEphemeral(net) ? null : readDeploymentRecord(this.deploymentsDir, net, programId));
-      if (
-        existing &&
-        (existing.status === "complete" || existing.status === "recovered") &&
-        existing.endpoint === record.endpoint
-      ) {
-        // Load into cache and skip the write — the existing record is still valid.
-        nc.set(programId, existing);
-        return;
-      }
     }
 
     const ephemeral = this.isEphemeral(net);
@@ -428,12 +445,6 @@ export class DeploymentManagerImpl implements DeploymentManager {
       // Write deployment record
       writeDeploymentRecord(this.deploymentsDir, net, record);
 
-      // Degraded records have an unknown ABI. Delete any existing snapshot so
-      // export() cannot surface a stale prior ABI for the program.
-      if (record.status === "degraded") {
-        deleteAbiSnapshot(this.deploymentsDir, net, programId);
-      }
-
       // Append history
       const historyEntry: DeploymentHistoryEntry = {
         record,
@@ -448,14 +459,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
     // ProgramABI with `transitions` (not the compiler's `functions` format). The artifact
     // store's lazy disk fallback returns raw JSON.parse() output (compiler format), so
     // options.abi may arrive un-normalized when it came through lre.artifacts.getAbi().
-    // Degraded records have an unknown ABI — clear any stale cached entry so
-    // getCachedAbi() cannot return an ABI the degraded record no longer trusts.
     if (options?.abi) {
       const raw = options.abi as ProgramABI;
       const normalized = parseAbi(JSON.stringify(raw));
       this.networkAbiCache(net).set(programId, normalized);
-    } else if (record.status === "degraded") {
-      this.networkAbiCache(net).delete(programId);
     }
 
     // Always: update in-memory record cache
@@ -473,6 +480,12 @@ export class DeploymentManagerImpl implements DeploymentManager {
     }
   }
 
+  async getPending(network: string, programId: string): Promise<PendingDeployment | null> {
+    if (this.isEphemeral(network)) return null;
+    await this.validateHttpMetadata(network);
+    return readPendingMarker(this.deploymentsDir, network, programId);
+  }
+
   async clearPending(network: string, programId: string): Promise<void> {
     if (!this.isEphemeral(network)) {
       deletePendingMarker(this.deploymentsDir, network, programId);
@@ -488,6 +501,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
     connection: NetworkConnection,
   ): Promise<RecoveredDeploymentRecord[]> {
     if (this.isEphemeral(network)) return []; // No markers to recover in ephemeral mode
+    await this.validateHttpMetadata(network);
 
     const markerIds = listPendingMarkers(this.deploymentsDir, network);
     const recovered: RecoveredDeploymentRecord[] = [];
@@ -496,9 +510,9 @@ export class DeploymentManagerImpl implements DeploymentManager {
       const marker = readPendingMarker(this.deploymentsDir, network, programId);
       if (!marker) continue;
 
-      const { exists, source } = await checkProgramOnChain(connection, programId);
+      const onChain = await checkProgramOnChain(connection, programId);
 
-      if (!exists) {
+      if (!onChain.exists) {
         // Not on-chain — delete marker, nothing to recover
         deletePendingMarker(this.deploymentsDir, network, programId);
         console.info(
@@ -508,6 +522,54 @@ export class DeploymentManagerImpl implements DeploymentManager {
         continue;
       }
 
+      let recoveredEdition: number;
+      if (marker.action === "deploy") {
+        recoveredEdition =
+          typeof onChain.edition === "number" &&
+          Number.isInteger(onChain.edition) &&
+          onChain.edition >= 0
+            ? onChain.edition
+            : 0;
+      } else {
+        recoveredEdition = this.requireProgramEdition(
+          programId,
+          onChain.edition,
+          "recover pending deployment",
+        );
+        if (
+          typeof marker.previousEdition !== "number" ||
+          !Number.isInteger(marker.previousEdition) ||
+          marker.previousEdition < 0
+        ) {
+          deletePendingMarker(this.deploymentsDir, network, programId);
+          console.info(
+            `[DeploymentManager] Pending upgrade for "${programId}" did not advance on-chain. ` +
+              `Clearing pending marker.`,
+          );
+          continue;
+        }
+        if (recoveredEdition <= marker.previousEdition) {
+          if (typeof marker.blockHeight === "number") {
+            console.info(
+              `[DeploymentManager] Confirmed upgrade for "${programId}" has not propagated to edition reads yet. ` +
+                `Keeping pending marker.`,
+            );
+            continue;
+          }
+          deletePendingMarker(this.deploymentsDir, network, programId);
+          console.info(
+            `[DeploymentManager] Pending upgrade for "${programId}" did not advance on-chain. ` +
+              `Clearing pending marker.`,
+          );
+          continue;
+        }
+      }
+      const existingRecord =
+        this.networkCache(network).get(programId) ??
+        (this.isEphemeral(network)
+          ? null
+          : readDeploymentRecord(this.deploymentsDir, network, programId));
+
       // On-chain — build RecoveredDeploymentRecord
       const recoveredRecord: RecoveredDeploymentRecord = {
         status: "recovered",
@@ -515,9 +577,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
         network,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),
-        historyCount: 0,
-        txId: null,
-        blockHeight: null,
+        edition: recoveredEdition,
+        historyCount: existingRecord ? existingRecord.historyCount + 1 : 0,
+        txId: marker.txId ?? null,
+        blockHeight: marker.blockHeight ?? null,
         deployerAddress: marker.deployerAddress,
         deployedAt: marker.startedAt,
         feePaid: null,
@@ -527,7 +590,6 @@ export class DeploymentManagerImpl implements DeploymentManager {
         historyEntry: { action: marker.action },
       });
 
-      void source; // source available but we don't need it for RecoveredRecord
       recovered.push(recoveredRecord);
 
       console.info(`[DeploymentManager] Recovered ${marker.action} for "${programId}".`);
@@ -587,7 +649,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
             recoverable: false,
           },
         ],
-        programs: normalizedIds.map((programId) => ({ programId, action: "deploy" as const })),
+        programs: normalizedIds.map((programId) => ({
+          programId,
+          action: "deploy" as const,
+        })),
         totalFeeEstimate: undefined,
       };
     }

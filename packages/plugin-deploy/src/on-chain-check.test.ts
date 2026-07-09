@@ -36,10 +36,13 @@ describe("checkProgramOnChain", () => {
   it("returns exists=true with source when program is on-chain", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(SAMPLE_SOURCE),
+      getProgramEdition: vi.fn().mockResolvedValue(3),
     });
     const result = await checkProgramOnChain(conn, "hello.aleo");
     expect(result.exists).toBe(true);
+    if (!result.exists) throw new Error("expected program to exist on-chain");
     expect(result.source).toBe(SAMPLE_SOURCE);
+    expect(result.edition).toBe(3);
   });
 
   it("returns exists=false with null source when program is not on-chain", async () => {
@@ -49,6 +52,7 @@ describe("checkProgramOnChain", () => {
     const result = await checkProgramOnChain(conn, "missing.aleo");
     expect(result.exists).toBe(false);
     expect(result.source).toBeNull();
+    expect(result).not.toHaveProperty("edition");
   });
 });
 
@@ -63,11 +67,13 @@ describe("createDegradedRecord", () => {
       "devnode",
       "http://127.0.0.1:3030",
       SAMPLE_SOURCE,
+      3,
     );
     expect(record.status).toBe("degraded");
     expect(record.programId).toBe("hello.aleo");
     expect(record.network).toBe("devnode");
     expect(record.endpoint).toBe("http://127.0.0.1:3030");
+    expect(record.edition).toBe(3);
     expect(record.txId).toBeNull();
     expect(record.blockHeight).toBeNull();
     expect(record.deployerAddress).toBeNull();

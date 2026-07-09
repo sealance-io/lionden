@@ -40,6 +40,7 @@ const completeRecord: DeploymentRecord = {
   network: "devnode",
   endpoint: "http://127.0.0.1:3030",
   updatedAt: "2026-01-01T00:00:00.000Z",
+  edition: 1,
   historyCount: 1,
   txId: "at1abc",
   blockHeight: 42,

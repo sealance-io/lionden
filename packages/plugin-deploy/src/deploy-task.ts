@@ -20,7 +20,11 @@ import type {
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
-import { createDegradedRecord } from "./on-chain-check.js";
+import {
+  checkProgramOnChain,
+  createDegradedRecord,
+  getRequiredProgramEdition,
+} from "./on-chain-check.js";
 import { type DeployPreflightResult, runDeployPreflight } from "./preflight.js";
 import { resolveProveOption } from "./prove.js";
 
@@ -90,6 +94,13 @@ export async function deployAction(
   };
 
   const config = lre.config;
+  const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
+  if (options.export && !shouldConfirm) {
+    throw new DeployError(
+      "Export is not available when deploy confirmation is skipped because deployed state may not yet be visible on-chain.",
+    );
+  }
+
   const programsDir = config.paths.programs;
   const manager = lre.deployments as DeploymentManager | null;
 
@@ -274,14 +285,22 @@ export async function deployAction(
   if (manager) {
     for (const outcome of preflightResult.programs) {
       if (outcome.action === "skip" && outcome.reason === "already-deployed" && !outcome.record) {
-        // Fetch source for degraded record creation
-        const source = await connection.getProgramSource(outcome.programId);
-        if (source) {
+        const onChain = await checkProgramOnChain(connection, outcome.programId);
+        if (onChain.exists) {
+          const observedEdition =
+            typeof onChain.edition === "number"
+              ? onChain.edition
+              : await getRequiredProgramEdition(
+                  connection,
+                  outcome.programId,
+                  "create degraded deployment record",
+                );
           const degraded = createDegradedRecord(
             outcome.programId,
             networkName,
             connection.endpoint,
-            source,
+            onChain.source,
+            observedEdition,
           );
           await manager.record(degraded, "deploy");
         }
@@ -293,7 +312,6 @@ export async function deployAction(
   const results: DeployResult[] = [];
   const fee = options.priorityFee ?? config.deploy.defaultPriorityFee;
   const privateFee = config.deploy.privateFee;
-  const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
   const confirmTimeout = config.deploy.confirmationTimeout;
 
   // Inter-deployment delay for HTTP
@@ -375,6 +393,7 @@ export async function deployAction(
         network: networkName,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),
+        edition: 0,
         historyCount: 1,
         txId,
         blockHeight,
@@ -416,9 +435,12 @@ export async function deployAction(
     }
   }
 
-  // 16. Export if requested
+  // 16. Export if requested. Non-confirming deploys are fire-and-forget: the
+  // program may not be visible on-chain yet, and export performs validated reads.
   if (manager && (options.export || config.deploy.autoExport)) {
-    await manager.export(networkName);
+    if (shouldConfirm) {
+      await manager.export(networkName);
+    }
   }
 
   return { mode: "deploy", results };

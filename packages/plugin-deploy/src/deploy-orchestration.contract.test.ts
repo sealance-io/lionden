@@ -10,6 +10,7 @@ import { type NetworkManager, SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeployError, type DeployTaskResult, deployAction } from "./deploy-task.js";
+import { DeploymentManagerImpl } from "./deployment-manager.js";
 
 const mockCreateSdkObjects = vi.hoisted(() => vi.fn());
 const mockBuildDevnodeDeploymentTransaction = vi.hoisted(() => vi.fn());
@@ -100,6 +101,33 @@ describe("deploy orchestration contract", () => {
           `program ${prog.name}.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
       })),
     });
+    const manager = new DeploymentManagerImpl(
+      fixture.lre.config,
+      () => fixture.lre.network as NetworkManager | null,
+      fixture.lre.artifacts,
+    );
+    (fixture.lre as unknown as Record<string, unknown>)["deployments"] = manager;
+    const programState = programs.map((prog) => ({
+      programId: `${prog.name}.aleo`,
+      source:
+        prog.aleoSource ??
+        `program ${prog.name}.aleo;\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`,
+      edition: 0,
+    }));
+    const broadcastTransaction = fixture.fakeNetwork!.broadcastTransaction.bind(
+      fixture.fakeNetwork!,
+    );
+    let broadcastIndex = 0;
+    vi.spyOn(fixture.fakeNetwork!, "broadcastTransaction").mockImplementation(
+      async (transaction) => {
+        const program = programState[broadcastIndex++];
+        if (program) {
+          fixture.fakeNetwork!.setProgramSource(program.programId, program.source);
+          fixture.fakeNetwork!.setProgramEdition(program.programId, program.edition);
+        }
+        return broadcastTransaction(transaction);
+      },
+    );
 
     return {
       lre: fixture.lre,
@@ -128,6 +156,90 @@ describe("deploy orchestration contract", () => {
     const confirmCalls = fakeNetwork.getCallsTo("waitForConfirmation");
     expect(confirmCalls).toHaveLength(1);
     expect(confirmCalls[0]!.args[0]).toBe(results[0]!.txId);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.edition).toBe(0);
+  });
+
+  it("records a confirmed deploy even when on-chain edition cannot be observed", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    vi.spyOn(fakeNetwork, "getProgramEdition").mockResolvedValue(null);
+
+    await deployAction({ program: "hello", noCompile: true }, lre);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.edition).toBe(0);
+    }
+  });
+
+  it("records edition 0 for skip-confirm when on-chain edition is not yet visible", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    vi.spyOn(fakeNetwork, "getProgramEdition").mockResolvedValue(null);
+
+    await deployAction({ program: "hello", noCompile: true, skipConfirm: true }, lre);
+
+    expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    if (record?.status === "complete") {
+      expect(record.edition).toBe(0);
+    }
+  });
+
+  it("fails explicit export when deploy confirmation is skipped", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const exportSpy = vi.spyOn(manager, "export");
+
+    await expect(
+      deployAction({ program: "hello", noCompile: true, skipConfirm: true, export: true }, lre),
+    ).rejects.toThrow(/export.*confirmation is skipped/i);
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+    expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
+    expect(manager.getCached("hello.aleo", "devnode")).toBeNull();
+    expect(exportSpy).not.toHaveBeenCalled();
+  });
+
+  it("skips auto-export when deploy confirmation is skipped", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    (lre.config.deploy as { autoExport: boolean }).autoExport = true;
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const exportSpy = vi.spyOn(manager, "export");
+
+    await deployAction({ program: "hello", noCompile: true, skipConfirm: true }, lre);
+
+    expect(exportSpy).not.toHaveBeenCalled();
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    expect(record?.edition).toBe(0);
+  });
+
+  it("exports after a confirmed deploy when explicitly requested", async () => {
+    const { lre } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const exportSpy = vi.spyOn(manager, "export");
+
+    await deployAction({ program: "hello", noCompile: true, export: true }, lre);
+
+    expect(exportSpy).toHaveBeenCalledWith("devnode");
+    const record = manager.getCached("hello.aleo", "devnode");
+    expect(record?.status).toBe("complete");
+    expect(record?.edition).toBe(0);
   });
 
   it("honors a programmatic network override", async () => {

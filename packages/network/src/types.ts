@@ -422,6 +422,12 @@ export interface NetworkConnection {
    */
   getProgramSource(programId: string): Promise<string | null>;
 
+  /**
+   * Fetch the current on-chain edition for a deployed program.
+   * Returns null when the network/SDK cannot provide it or the program is absent.
+   */
+  getProgramEdition(programId: string): Promise<number | null>;
+
   /** Broadcast a serialized transaction to the network. Returns the transaction ID. */
   broadcastTransaction(transaction: unknown): Promise<string>;
 

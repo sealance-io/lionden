@@ -64,6 +64,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   private blockHeight: number;
   private txCounter = 0;
   private programSources = new Map<string, string>();
+  private programEditions = new Map<string, number>();
   // Per-txId memo of the execute that produced it. Keeps waitForConfirmation
   // returning a transitions[] entry that mirrors the originating execute,
   // so broadcast → decrypt round-trips against the fake work the same way
@@ -135,6 +136,11 @@ export class FakeNetworkConnection implements NetworkConnection {
 
   clearProgramSource(programId: string): void {
     this.programSources.delete(programId);
+    this.programEditions.delete(programId);
+  }
+
+  setProgramEdition(programId: string, edition: number): void {
+    this.programEditions.set(programId, edition);
   }
 
   // -------------------------------------------------------------------------
@@ -308,6 +314,12 @@ export class FakeNetworkConnection implements NetworkConnection {
   async getProgramSource(programId: string): Promise<string | null> {
     this.calls.push({ method: "getProgramSource", args: [programId], timestamp: Date.now() });
     return this.programSources.get(programId) ?? null;
+  }
+
+  async getProgramEdition(programId: string): Promise<number | null> {
+    this.calls.push({ method: "getProgramEdition", args: [programId], timestamp: Date.now() });
+    if (!this.programSources.has(programId)) return null;
+    return this.programEditions.get(programId) ?? null;
   }
 
   async broadcastTransaction(transaction: unknown): Promise<string> {

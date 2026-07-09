@@ -13,15 +13,10 @@ import {
   readHistory,
   readNetworkMetadata,
   readPendingMarker,
-  writeAbiSnapshot,
   writeDeploymentRecord,
+  writeNetworkMetadata,
 } from "./deployment-state.js";
-import type {
-  CompleteDeploymentRecord,
-  DegradedDeploymentRecord,
-  PendingDeployment,
-  RecoveredDeploymentRecord,
-} from "./deployment-types.js";
+import type { CompleteDeploymentRecord, PendingDeployment } from "./deployment-types.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -161,6 +156,7 @@ const completeRecord: CompleteDeploymentRecord = {
   network: "devnode",
   endpoint: "http://127.0.0.1:3030",
   updatedAt: "2026-01-01T00:00:00.000Z",
+  edition: 1,
   historyCount: 1,
   txId: "at1abc",
   blockHeight: 42,
@@ -199,8 +195,9 @@ describe("devnode: getDeployment validates on-chain", () => {
   it("returns cached record when program is on-chain", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
     });
-    const { dm, config } = makeManager({ connection: conn });
+    const { dm, config } = makeManager({ connection: conn, ephemeral: false });
     // Write disk state
     writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
 
@@ -209,15 +206,30 @@ describe("devnode: getDeployment validates on-chain", () => {
     expect(result!.programId).toBe("hello.aleo");
   });
 
+  it("returns existing numeric record when live devnode edition is temporarily unavailable", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(null),
+    });
+    const { dm, config } = makeManager({ connection: conn, ephemeral: false });
+    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
+
+    const result = await dm.getDeployment("hello.aleo");
+
+    expect(result).toEqual(completeRecord);
+  });
+
   it("creates degraded record when on-chain but no prior state", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(compiledSource("hello.aleo", 2)),
+      getProgramEdition: vi.fn().mockResolvedValue(2),
     });
     const { dm } = makeManager({ connection: conn });
 
     const result = await dm.getDeployment("hello.aleo");
     expect(result).not.toBeNull();
     expect(result!.status).toBe("degraded");
+    expect(result!.edition).toBe(2);
   });
 
   it("returns cache-only when no connection available", async () => {
@@ -235,7 +247,10 @@ describe("devnode: getDeployment validates on-chain", () => {
     const getProgramSource = vi.fn(async (programId: string) =>
       compiledSource(programId, programId === "hello.aleo" ? 1 : 2),
     );
-    const conn = createMockConnection({ getProgramSource });
+    const conn = createMockConnection({
+      getProgramSource,
+      getProgramEdition: vi.fn(async (programId: string) => (programId === "hello.aleo" ? 1 : 2)),
+    });
     const config = makeConfig({ ephemeral: false });
     const manager = makeNetworkManager(conn);
     const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
@@ -296,6 +311,7 @@ describe("devnode: getDeployment validates on-chain", () => {
   it("export returns validated programs for devnode", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
     });
     const config = makeConfig();
     const manager = makeNetworkManager(conn);
@@ -308,8 +324,25 @@ describe("devnode: getDeployment validates on-chain", () => {
     expect(bundle.programs["hello.aleo"]).toBeDefined();
   });
 
+  it("export tolerates temporary devnode edition lookup failure for numeric records", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(null),
+    });
+    const config = makeConfig();
+    const manager = makeNetworkManager(conn);
+    const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
+
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+    const bundle = await dm.export("devnode");
+
+    expect(bundle.programs["hello.aleo"]).toBeDefined();
+  });
+
   it("export omits stale cached devnode records", async () => {
-    const conn = createMockConnection({ getProgramSource: vi.fn().mockResolvedValue(null) });
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(null),
+    });
     const config = makeConfig();
     const manager = makeNetworkManager(conn);
     const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
@@ -329,7 +362,11 @@ describe("devnode: getDeployment validates on-chain", () => {
 describe("HTTP: metadata validation", () => {
   it("trusts disk state after metadata validation", async () => {
     const config = makeHttpConfig();
-    const conn = createMockConnection({ type: "http" as const });
+    const conn = createMockConnection({
+      type: "http" as const,
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
+    });
     const manager = makeNetworkManager(conn);
     const dm = new DeploymentManagerImpl(config, () => manager, makeArtifactStore());
 
@@ -356,7 +393,6 @@ describe("HTTP: metadata validation", () => {
     const config = makeHttpConfig();
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
 
-    const { writeNetworkMetadata } = await import("./deployment-state.js");
     writeNetworkMetadata(config.paths.deployments, "testnet", {
       type: "http",
       networkId: "testnet",
@@ -366,6 +402,68 @@ describe("HTTP: metadata validation", () => {
     await expect(dm.getDeployment("hello.aleo", "testnet")).rejects.toThrow(
       "Network metadata mismatch",
     );
+  });
+
+  it("validates HTTP metadata before reading pending markers", async () => {
+    const config = makeHttpConfig();
+    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "upgrade",
+      previousEdition: 1,
+      txId: "at1pending",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "testnet",
+      endpoint: "https://api.example.com",
+    });
+    writeNetworkMetadata(config.paths.deployments, "testnet", {
+      type: "http",
+      networkId: "testnet",
+      endpoint: "https://DIFFERENT-endpoint.com",
+    });
+
+    await expect(dm.getPending("testnet", "hello.aleo")).rejects.toThrow(
+      "Network metadata mismatch",
+    );
+  });
+
+  it("validates HTTP metadata before recovering pending markers", async () => {
+    const config = makeHttpConfig();
+    const conn = createMockConnection({
+      type: "http" as const,
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(2),
+    });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "upgrade",
+      previousEdition: 1,
+      txId: "at1pending",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "testnet",
+      endpoint: "https://api.example.com",
+    });
+    writeNetworkMetadata(config.paths.deployments, "testnet", {
+      type: "http",
+      networkId: "testnet",
+      endpoint: "https://DIFFERENT-endpoint.com",
+    });
+
+    await expect(dm.recoverPendingDeployments("testnet", conn)).rejects.toThrow(
+      "Network metadata mismatch",
+    );
+    expect(readPendingMarker(config.paths.deployments, "testnet", "hello.aleo")).not.toBeNull();
   });
 
   it("throws when records exist but metadata is missing", async () => {
@@ -397,7 +495,11 @@ describe("HTTP: metadata validation", () => {
     const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
 
     await dm.record(
-      { ...completeRecord, network: "testnet", endpoint: "https://api.example.com" },
+      {
+        ...completeRecord,
+        network: "testnet",
+        endpoint: "https://api.example.com",
+      },
       "deploy",
       { abi: mockAbi },
     );
@@ -445,160 +547,6 @@ describe("record()", () => {
     // Cache updated
     expect(dm.getCached("hello.aleo")).not.toBeNull();
   });
-
-  it("does not downgrade a complete on-disk record to degraded when endpoint matches (fresh-process cache miss guard)", async () => {
-    // Simulate devnode fresh-process restart: disk has a complete record but
-    // the in-memory cache is cold (new DeploymentManagerImpl instance).
-    // Uses ephemeral: false so disk reads/writes are exercised.
-    const config = makeConfig({ ephemeral: false });
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
-    // Write complete record directly to disk (as if a previous process did it)
-    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
-
-    // Now call record() with a degraded record at the same endpoint — must NOT overwrite
-    const degraded: DegradedDeploymentRecord = {
-      status: "degraded",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030", // same as completeRecord.endpoint
-      updatedAt: new Date().toISOString(),
-      historyCount: 0,
-      txId: null,
-      blockHeight: null,
-      deployerAddress: null,
-      deployedAt: null,
-      feePaid: null,
-    };
-    await dm.record(degraded, "deploy");
-
-    // Cache should hold the complete record (loaded from disk), not the degraded one
-    const cached = dm.getCached("hello.aleo");
-    expect(cached?.status).toBe("complete");
-    expect(cached?.txId).toBe("at1abc");
-
-    // Disk should still have the complete record
-    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
-    expect(onDisk?.status).toBe("complete");
-
-    // No history entry should have been appended — the early return skips appendHistory()
-    const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
-    expect(history).toHaveLength(0);
-  });
-
-  it("does not downgrade a recovered on-disk record to degraded when endpoint matches", async () => {
-    // Same invariant as complete: a recovered record at the same endpoint must
-    // survive a degraded write from a fresh-process cache miss.
-    const recovered: RecoveredDeploymentRecord = {
-      status: "recovered",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      historyCount: 1,
-      txId: null,
-      blockHeight: null,
-      deployerAddress: "aleo1abc",
-      deployedAt: "2026-01-01T00:00:00.000Z",
-      feePaid: null,
-    };
-    const config = makeConfig({ ephemeral: false });
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
-    writeDeploymentRecord(config.paths.deployments, "devnode", recovered);
-
-    const degraded: DegradedDeploymentRecord = {
-      status: "degraded",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:3030",
-      updatedAt: new Date().toISOString(),
-      historyCount: 0,
-      txId: null,
-      blockHeight: null,
-      deployerAddress: null,
-      deployedAt: null,
-      feePaid: null,
-    };
-    await dm.record(degraded, "deploy");
-
-    const cached = dm.getCached("hello.aleo");
-    expect(cached?.status).toBe("recovered");
-
-    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
-    expect(onDisk?.status).toBe("recovered");
-
-    // No history entry appended
-    const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
-    expect(history).toHaveLength(0);
-  });
-
-  it("writes degraded record and deletes ABI snapshot when endpoint differs from on-disk complete (out-of-band redeploy guard)", async () => {
-    // Disk has a complete record with an ABI snapshot, but the observed degraded record
-    // reports a different endpoint (the program was redeployed against another node).
-    // The degraded record must overwrite the stale disk state, and the old ABI snapshot
-    // must be deleted so export() cannot surface a stale prior ABI.
-    const config = makeConfig({ ephemeral: false });
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), makeArtifactStore());
-    writeDeploymentRecord(config.paths.deployments, "devnode", completeRecord);
-    // Seed the ABI snapshot as a prior complete deploy would have written it
-    writeAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo", mockAbi);
-    expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).not.toBeNull();
-
-    const degradedOtherEndpoint: DegradedDeploymentRecord = {
-      status: "degraded",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:9999", // differs from disk endpoint
-      updatedAt: new Date().toISOString(),
-      historyCount: 0,
-      txId: null,
-      blockHeight: null,
-      deployerAddress: null,
-      deployedAt: null,
-      feePaid: null,
-    };
-    await dm.record(degradedOtherEndpoint, "deploy");
-
-    // The degraded record should have been written
-    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
-    expect(onDisk?.status).toBe("degraded");
-
-    // A history entry must exist for the write
-    const history = readHistory(config.paths.deployments, "devnode", "hello.aleo");
-    expect(history).toHaveLength(1);
-
-    // The ABI snapshot must be deleted — stale prior ABI must not be usable by export()
-    expect(readAbiSnapshot(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
-  });
-
-  it("clears in-memory ABI cache when a complete record is downgraded to degraded", async () => {
-    // Regression: disk snapshot is deleted on degraded write, but the in-memory abiCache
-    // must also be cleared so getCachedAbi() cannot return a stale ABI that the degraded
-    // record no longer trusts (same invariant as the disk deletion, applied to memory).
-    const { dm } = makeManager({ ephemeral: true }); // ephemeral so we verify memory-only path
-
-    // 1. Record complete deployment — populates abiCache
-    await dm.record(completeRecord, "deploy", { abi: mockAbi });
-    expect(dm.getCachedAbi("hello.aleo", "devnode")).not.toBeNull();
-
-    // 2. Downgrade to degraded (different endpoint so guard does not short-circuit)
-    const degraded: DegradedDeploymentRecord = {
-      status: "degraded",
-      programId: "hello.aleo",
-      network: "devnode",
-      endpoint: "http://127.0.0.1:9999", // differs from completeRecord.endpoint — bypasses degraded guard
-      updatedAt: new Date().toISOString(),
-      historyCount: 0,
-      txId: null,
-      blockHeight: null,
-      deployerAddress: null,
-      deployedAt: null,
-      feePaid: null,
-    };
-    await dm.record(degraded, "deploy");
-
-    // 3. ABI cache must be cleared — stale ABI must not be accessible
-    expect(dm.getCachedAbi("hello.aleo", "devnode")).toBeNull();
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -623,10 +571,40 @@ describe("isDeployed / isCachedDeployed", () => {
 // ---------------------------------------------------------------------------
 
 describe("recoverPendingDeployments", () => {
-  it("recovers a program on-chain — creates RecoveredDeploymentRecord", async () => {
+  it("recovers a first deploy with the observed on-chain edition when available", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(3),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "deploy",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    });
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]!.edition).toBe(3);
+  });
+
+  it("recovers a first deploy with edition 0 when on-chain edition cannot be observed", async () => {
     const source = "program hello.aleo;\nconstructor:\n    assert.eq edition 1u16;\n";
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(source),
+      getProgramEdition: vi.fn().mockResolvedValue(null),
     });
     const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(
@@ -651,10 +629,121 @@ describe("recoverPendingDeployments", () => {
     expect(recovered).toHaveLength(1);
     expect(recovered[0]!.status).toBe("recovered");
     expect(recovered[0]!.programId).toBe("hello.aleo");
+    expect(recovered[0]!.edition).toBe(0);
 
     // Marker cleared
     const marker = readPendingMarker(config.paths.deployments, "devnode", "hello.aleo");
     expect(marker).toBeNull();
+  });
+
+  it("preserves confirmed pending provenance and advances history when recovering an upgrade", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource("hello.aleo", 2)),
+      getProgramEdition: vi.fn().mockResolvedValue(2),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+    await dm.record(completeRecord, "deploy", { abi: mockAbi });
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "upgrade",
+      previousEdition: 1,
+      txId: "at1upgrade",
+      blockHeight: 42,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    });
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      status: "recovered",
+      programId: "hello.aleo",
+      edition: 2,
+      txId: "at1upgrade",
+      blockHeight: 42,
+      historyCount: completeRecord.historyCount + 1,
+    });
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo");
+    expect(onDisk?.status).toBe("recovered");
+    expect(onDisk?.historyCount).toBe(completeRecord.historyCount + 1);
+    expect(readHistory(config.paths.deployments, "devnode", "hello.aleo")).toHaveLength(2);
+  });
+
+  it("clears an upgrade marker without recovering when edition did not advance", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource("hello.aleo", 1)),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "upgrade",
+      previousEdition: 1,
+      txId: "at1upgrade",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    });
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+
+    expect(recovered).toHaveLength(0);
+    expect(readPendingMarker(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+    expect(readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+  });
+
+  it("keeps a confirmed upgrade marker when edition reads have not advanced yet", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource("hello.aleo", 1)),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "upgrade",
+      previousEdition: 1,
+      txId: "at1upgrade",
+      blockHeight: 42,
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    });
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+
+    expect(recovered).toHaveLength(0);
+    expect(readPendingMarker(config.paths.deployments, "devnode", "hello.aleo")).toMatchObject({
+      action: "upgrade",
+      previousEdition: 1,
+      blockHeight: 42,
+    });
+    expect(readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
   });
 
   it("clears marker when program not on-chain (never broadcast)", async () => {
@@ -687,6 +776,34 @@ describe("recoverPendingDeployments", () => {
     const marker = readPendingMarker(config.paths.deployments, "devnode", "hello.aleo");
     expect(marker).toBeNull();
   });
+
+  it("throws without writing recovered upgrade state when on-chain edition cannot be observed", async () => {
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(null),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+    await dm.setPending({
+      programId: "hello.aleo",
+      action: "upgrade",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    });
+
+    await expect(dm.recoverPendingDeployments("devnode", conn)).rejects.toThrow(
+      "recover pending deployment",
+    );
+    expect(readDeploymentRecord(config.paths.deployments, "devnode", "hello.aleo")).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -697,6 +814,7 @@ describe("export()", () => {
   it("includes ABI from snapshot when available", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
     });
     const config = makeConfig({ ephemeral: false });
     const dm = new DeploymentManagerImpl(
@@ -721,7 +839,12 @@ describe("export()", () => {
     (artifacts.getAbi as ReturnType<typeof vi.fn>).mockReturnValue(mockAbi);
 
     const config = makeHttpConfig();
-    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(), artifacts);
+    const conn = createMockConnection({
+      type: "http" as const,
+      getProgramSource: vi.fn().mockResolvedValue(compiledSource()),
+      getProgramEdition: vi.fn().mockResolvedValue(1),
+    });
+    const dm = new DeploymentManagerImpl(config, () => makeNetworkManager(conn), artifacts);
 
     // Write disk record directly (no ABI snapshot alongside it)
     writeDeploymentRecord(config.paths.deployments, "testnet", {
