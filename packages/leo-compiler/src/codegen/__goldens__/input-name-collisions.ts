@@ -130,7 +130,7 @@ export class Collisions extends BaseContract {
         serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
         serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
-      return this.settleTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "collisions.aleo", "submit", 0), tpk, "collisions.aleo", "submit", 3, BaseContract.parseField));
+      return this.settleTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "submit", 0), tpk, this.programId, "submit", 3, BaseContract.parseField));
     },
 
     accepted: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoField>>> => {
@@ -139,7 +139,7 @@ export class Collisions extends BaseContract {
         serializeFooInput(b as FooInputInput, this.inputContext("submit", "b")),
         serializeField(c as Field_Input, this.inputContext("submit", "c")),
       ];
-      return this.expectAcceptedTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "collisions.aleo", "submit", 0), tpk, "collisions.aleo", "submit", 3, BaseContract.parseField));
+      return this.expectAcceptedTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "submit", 0), tpk, this.programId, "submit", 3, BaseContract.parseField));
     },
 
     rejected: async (a: Foo_Input, b: FooInputInput, c: Field_Input, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

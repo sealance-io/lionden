@@ -574,6 +574,7 @@ export class DeploymentManagerImpl implements DeploymentManager {
       const recoveredRecord: RecoveredDeploymentRecord = {
         status: "recovered",
         programId,
+        sourceProgramId: marker.sourceProgramId,
         network,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),

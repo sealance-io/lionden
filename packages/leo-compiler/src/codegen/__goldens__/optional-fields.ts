@@ -97,13 +97,13 @@ export class Config extends BaseContract {
     settled: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Settings>> | RejectedTransition> => {
       const _args: string[] = [
       ];
-      return this.settleTyped("get_settings", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "config.aleo", "get_settings", 0), tpk, "config.aleo", "get_settings", 0, (_p: string) => deserializeSettings(_p)));
+      return this.settleTyped("get_settings", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_settings", 0), tpk, this.programId, "get_settings", 0, (_p: string) => deserializeSettings(_p)));
     },
 
     accepted: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Settings>>> => {
       const _args: string[] = [
       ];
-      return this.expectAcceptedTyped("get_settings", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "config.aleo", "get_settings", 0), tpk, "config.aleo", "get_settings", 0, (_p: string) => deserializeSettings(_p)));
+      return this.expectAcceptedTyped("get_settings", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_settings", 0), tpk, this.programId, "get_settings", 0, (_p: string) => deserializeSettings(_p)));
     },
 
     rejected: async (options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

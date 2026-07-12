@@ -742,6 +742,31 @@ describe("AleoConnection", () => {
         );
       });
 
+      it("uses only runtime programId config imports for renamed execution", async () => {
+        mockGetProgram.mockImplementation(async (id: string) => {
+          if (id === "tenant.aleo") return "program tenant.aleo { }";
+          if (id === "runtime_dep.aleo") return "program runtime_dep.aleo;";
+          throw new Error(`unexpected ${id}`);
+        });
+
+        const connection = createHttpConnection({
+          executionImports: {
+            "governance.aleo": [{ kind: "programId", programId: "voting_power.aleo" }],
+            "tenant.aleo": [{ kind: "programId", programId: "runtime_dep.aleo" }],
+          },
+        });
+
+        await connection.execute("tenant.aleo", "main", []);
+
+        expect(mockExecute).toHaveBeenCalledWith(
+          expect.objectContaining({
+            imports: {
+              "runtime_dep.aleo": "program runtime_dep.aleo;",
+            },
+          }),
+        );
+      });
+
       it("forwards imports to pm.run in local mode", async () => {
         mockRun.mockResolvedValue({ getOutputs: () => ["100u64"] });
         mockGetProgram.mockImplementation(async (id: string) => {

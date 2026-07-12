@@ -18,6 +18,7 @@ export type {
   KeyArtifactsMetadata,
   KeyFileRef,
   KeyFingerprint,
+  ProgramArtifactProvenance,
   RuntimeKeyCacheDiagnostics,
   RuntimeKeyCacheMetadata,
   RuntimeKeyIdentity,
@@ -34,6 +35,7 @@ export {
   RUNTIME_KEY_CACHE_FORMAT,
   readCreditsKeyCacheMetadata,
   readKeyArtifactsMetadata,
+  readProgramArtifactProvenance,
   readRuntimeKeyCacheMetadata,
   resolveKeyFileRef,
   sha256Json,
@@ -82,4 +84,4 @@ export type {
   TaskRunner,
   TestingHookHandlers,
 } from "./types.js";
-export { ArgumentType, programNameFromTarget } from "./types.js";
+export { ArgumentType, programNameFromTarget, sourceProgramNameFromTarget } from "./types.js";

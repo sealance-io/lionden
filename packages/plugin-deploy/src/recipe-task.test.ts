@@ -25,10 +25,11 @@ function completeRecord(programId: string, txId = "at1cached"): DeploymentRecord
   };
 }
 
-function degradedRecord(programId: string): DeploymentRecord {
+function degradedRecord(programId: string, sourceProgramId?: string): DeploymentRecord {
   return {
     status: "degraded",
     programId,
+    ...(sourceProgramId === undefined ? {} : { sourceProgramId }),
     network: "devnode",
     endpoint: "http://127.0.0.1:3030",
     updatedAt: "2026-05-13T00:00:00.000Z",
@@ -130,6 +131,31 @@ describe("recipe deployment context", () => {
     expect(lre.tasks.run).not.toHaveBeenCalled();
   });
 
+  it("does not reuse a plain cached record bound to a different source id", async () => {
+    const getCached = vi
+      .fn<DeploymentManager["getCached"]>()
+      .mockReturnValue({ ...completeRecord("tenant.aleo"), sourceProgramId: "hello.aleo" });
+    const lre = mockLre({
+      deployments: mockDeploymentManager(getCached),
+      taskResult: {
+        mode: "deploy",
+        results: [{ programId: "tenant.aleo", txId: "at1deploy" }],
+      },
+    });
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    const result = await ctx.deploy("tenant");
+
+    expect(result).toEqual({ programId: "tenant.aleo", txId: "at1deploy" });
+    expect(getCached).toHaveBeenCalledWith("tenant.aleo", "devnode");
+    expect(lre.tasks.run).toHaveBeenCalledWith(
+      "deploy",
+      expect.objectContaining({
+        program: "tenant",
+      }),
+    );
+  });
+
   it("accepts wrapper identity for cached deployments", async () => {
     const getCached = vi
       .fn<DeploymentManager["getCached"]>()
@@ -142,6 +168,87 @@ describe("recipe deployment context", () => {
     expect(result).toEqual({ programId: "hello.aleo", txId: "at1cached" });
     expect(getCached).toHaveBeenCalledWith("hello.aleo", "devnode");
     expect(lre.tasks.run).not.toHaveBeenCalled();
+  });
+
+  it("deploys a wrapper override by source id with rename set to runtime id", async () => {
+    const lre = mockLre({
+      taskResult: {
+        mode: "deploy",
+        results: [{ programId: "renamed_hello.aleo", txId: "at1deploy" }],
+      },
+    });
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    const result = await ctx.deploy(
+      { sourceProgramId: "hello.aleo", programId: "renamed_hello.aleo" },
+      { noSkipDeployed: true },
+    );
+
+    expect(result).toEqual({
+      programId: "renamed_hello.aleo",
+      txId: "at1deploy",
+    });
+    expect(lre.tasks.run).toHaveBeenCalledWith(
+      "deploy",
+      expect.objectContaining({
+        program: "hello.aleo",
+        rename: "renamed_hello.aleo",
+        noCompile: false,
+      }),
+    );
+  });
+
+  it("does not reuse a renamed wrapper cached under a different source id", async () => {
+    const getCached = vi
+      .fn<DeploymentManager["getCached"]>()
+      .mockReturnValue({ ...completeRecord("tenant.aleo"), sourceProgramId: "other.aleo" });
+    const lre = mockLre({
+      deployments: mockDeploymentManager(getCached),
+      taskResult: {
+        mode: "deploy",
+        results: [{ programId: "tenant.aleo", txId: "at1deploy" }],
+      },
+    });
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    const result = await ctx.deploy({
+      sourceProgramId: "hello.aleo",
+      programId: "tenant.aleo",
+    });
+
+    expect(result).toEqual({ programId: "tenant.aleo", txId: "at1deploy" });
+    expect(getCached).toHaveBeenCalledWith("tenant.aleo", "devnode");
+    expect(lre.tasks.run).toHaveBeenCalledWith(
+      "deploy",
+      expect.objectContaining({
+        program: "hello.aleo",
+        rename: "tenant.aleo",
+      }),
+    );
+  });
+
+  it("respects explicit noCompile for renamed wrapper deploys", async () => {
+    const lre = mockLre({
+      taskResult: {
+        mode: "deploy",
+        results: [{ programId: "renamed_hello.aleo", txId: "at1deploy" }],
+      },
+    });
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    await ctx.deploy(
+      { sourceProgramId: "hello.aleo", programId: "renamed_hello.aleo" },
+      { noCompile: true, noSkipDeployed: true },
+    );
+
+    expect(lre.tasks.run).toHaveBeenCalledWith(
+      "deploy",
+      expect.objectContaining({
+        program: "hello.aleo",
+        rename: "renamed_hello.aleo",
+        noCompile: true,
+      }),
+    );
   });
 
   it("bypasses the cached pre-check when noSkipDeployed is true", async () => {

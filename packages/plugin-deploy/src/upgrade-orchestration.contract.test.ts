@@ -1,5 +1,12 @@
 import type { LionDenPlugin } from "@lionden/core";
-import { task } from "@lionden/core";
+import {
+  KEY_ARTIFACTS_FORMAT,
+  keyArtifactsMetadataPath,
+  sha256Json,
+  sha256Text,
+  task,
+  writeKeyArtifactsMetadata,
+} from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkManager } from "@lionden/network";
 import { SdkDiagnostics } from "@lionden/network";
@@ -35,9 +42,9 @@ vi.mock("@lionden/network", async (importOriginal) => {
 });
 
 /** Minimal ABI with one mapping and one transition. */
-function makeAbi(): ProgramABI {
+function makeAbi(programId = "hello.aleo"): ProgramABI {
   return {
-    program: "hello.aleo",
+    program: programId,
     transitions: [{ name: "increment", inputs: [], outputs: [], is_async: false }],
     structs: [],
     records: [],
@@ -53,10 +60,16 @@ function makeAbi(): ProgramABI {
 }
 
 /** Build a complete deployment record for testing. */
-function makeRecord(opts?: { network?: string; endpoint?: string }): CompleteDeploymentRecord {
+function makeRecord(opts?: {
+  network?: string;
+  endpoint?: string;
+  programId?: string;
+  sourceProgramId?: string;
+}): CompleteDeploymentRecord {
   return {
     status: "complete",
-    programId: "hello.aleo",
+    programId: opts?.programId ?? "hello.aleo",
+    ...(opts?.sourceProgramId === undefined ? {} : { sourceProgramId: opts.sourceProgramId }),
     network: opts?.network ?? "devnode",
     endpoint: opts?.endpoint ?? "http://127.0.0.1:3030",
     txId: "at1original",
@@ -114,11 +127,22 @@ describe("upgrade orchestration contract (thin)", () => {
     skipRecord?: boolean;
     /** Keep deployment state on disk so pending markers can be recovered. */
     diskBacked?: boolean;
+    /** Runtime deployment record id and upgrade target. */
+    runtimeProgramId?: string;
+    /** Local source program id for renamed deployments. */
+    sourceProgramId?: string;
+    /** Artifact id populated by the compile task. */
+    compiledOutputProgramId?: string;
     /** Compiled Aleo source that compile produces for the new version. */
     newAleoSource?: string;
   }) {
-    const aleoSource = opts?.newAleoSource ?? PROGRAM_SOURCE;
-    const newAbi = makeAbi();
+    const runtimeProgramId = opts?.runtimeProgramId ?? "hello.aleo";
+    const sourceProgramId = opts?.sourceProgramId;
+    const compiledOutputProgramId = opts?.compiledOutputProgramId ?? runtimeProgramId;
+    const aleoSource =
+      opts?.newAleoSource ??
+      `program ${compiledOutputProgramId};\nfunction main:\n  input r0 as u32.private;\n  output r0 as u32.private;\n`;
+    const newAbi = makeAbi(compiledOutputProgramId);
 
     let compileCalled = false;
     let compileArgs: Record<string, unknown> | undefined;
@@ -131,8 +155,8 @@ describe("upgrade orchestration contract (thin)", () => {
           .setAction(async (args, lre) => {
             compileCalled = true;
             compileArgs = args;
-            lre.artifacts.setAbi("hello.aleo", newAbi);
-            lre.artifacts.setAleoSource("hello.aleo", aleoSource);
+            lre.artifacts.setAbi(compiledOutputProgramId, newAbi);
+            lre.artifacts.setAleoSource(compiledOutputProgramId, aleoSource);
           })
           .build(),
       ],
@@ -142,18 +166,21 @@ describe("upgrade orchestration contract (thin)", () => {
       programs: [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
       plugins: [compilePlugin],
       withNetwork: true,
-      prePopulateArtifacts: [{ programId: "hello.aleo", abi: newAbi, aleoSource }],
+      prePopulateArtifacts: [{ programId: compiledOutputProgramId, abi: newAbi, aleoSource }],
     });
 
     const { lre, fakeNetwork } = fixture;
+    if (sourceProgramId && sourceProgramId !== runtimeProgramId) {
+      (lre.config as unknown as { leoVersion: string }).leoVersion = "4.3.2";
+    }
     if (opts?.diskBacked) {
       (lre.config.networks.devnode as { ephemeral?: boolean }).ephemeral = false;
     }
     const broadcastTransaction = fakeNetwork!.broadcastTransaction.bind(fakeNetwork!);
     vi.spyOn(fakeNetwork!, "broadcastTransaction").mockImplementation(async (transaction) => {
       const txId = await broadcastTransaction(transaction);
-      fakeNetwork!.setProgramSource("hello.aleo", aleoSource);
-      fakeNetwork!.setProgramEdition("hello.aleo", 2);
+      fakeNetwork!.setProgramSource(runtimeProgramId, aleoSource);
+      fakeNetwork!.setProgramEdition(runtimeProgramId, 2);
       return txId;
     });
 
@@ -166,19 +193,37 @@ describe("upgrade orchestration contract (thin)", () => {
     (lre as unknown as Record<string, unknown>)["deployments"] = manager;
 
     if (!opts?.skipRecord) {
-      await manager.record(makeRecord(), "deploy", { abi: makeAbi() });
+      await manager.record(makeRecord({ programId: runtimeProgramId, sourceProgramId }), "deploy", {
+        abi: makeAbi(compiledOutputProgramId),
+      });
       // Seed getProgramSource so devnode validation sees the program as on-chain.
-      fakeNetwork!.setProgramSource("hello.aleo", PROGRAM_SOURCE);
-      fakeNetwork!.setProgramEdition("hello.aleo", 1);
+      fakeNetwork!.setProgramSource(runtimeProgramId, PROGRAM_SOURCE);
+      fakeNetwork!.setProgramEdition(runtimeProgramId, 1);
     }
 
     return {
       lre,
       fakeNetwork: fakeNetwork!,
       manager,
+      artifactsDir: fixture.project.artifactsDir,
       getCompileCalled: () => compileCalled,
       getCompileArgs: () => compileArgs,
     };
+  }
+
+  function writeArtifactProvenance(
+    artifactsDir: string,
+    programId: string,
+    sourceProgramId: string,
+    metadataProgramId = programId,
+  ): void {
+    writeKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, programId), {
+      format: KEY_ARTIFACTS_FORMAT,
+      programId: metadataProgramId,
+      sourceProgramId,
+      sourceHash: sha256Text(`program ${metadataProgramId};\n`),
+      importsHash: sha256Json({ imports: [] }),
+    });
   }
 
   it("upgrades a program through the full action path (compile → build → broadcast → record)", async () => {
@@ -219,6 +264,194 @@ describe("upgrade orchestration contract (thin)", () => {
       expect(updatedRecord.txId).toBe(result.txId);
       expect(updatedRecord.edition).toBe(2);
     }
+  });
+
+  it("upgrades a renamed deployment by compiling the source id and recording the runtime id", async () => {
+    const { lre, manager, getCompileArgs } = await createUpgradeFixture({
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+
+    const result = await upgradeAction({ program: "tenant" }, lre);
+
+    expect(result.programId).toBe("tenant.aleo");
+    expect(getCompileArgs()).toEqual({
+      program: "hello.aleo",
+      rename: "tenant.aleo",
+    });
+    expect(mockBuildDevnodeUpgradeTransaction).toHaveBeenCalledWith({
+      program: expect.stringContaining("program tenant.aleo"),
+      priorityFee: 0,
+      privateFee: false,
+    });
+
+    const updatedRecord = manager.getCached("tenant.aleo", "devnode");
+    expect(updatedRecord?.status).toBe("complete");
+    if (updatedRecord?.status === "complete") {
+      expect(updatedRecord.programId).toBe("tenant.aleo");
+      expect(updatedRecord.sourceProgramId).toBe("hello.aleo");
+      expect(updatedRecord.txId).toBe(result.txId);
+    }
+  });
+
+  it("reconstructs renamed upgrade provenance from runtime artifacts when local deployment state is missing", async () => {
+    const { lre, fakeNetwork, manager, artifactsDir, getCompileArgs } = await createUpgradeFixture({
+      skipRecord: true,
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+    fakeNetwork.setProgramSource(
+      "tenant.aleo",
+      PROGRAM_SOURCE.replace("hello.aleo", "tenant.aleo"),
+    );
+    fakeNetwork.setProgramEdition("tenant.aleo", 1);
+    writeArtifactProvenance(artifactsDir, "tenant.aleo", "hello.aleo");
+
+    expect(await manager.getDeployment("tenant.aleo", "devnode")).toBeNull();
+
+    const result = await upgradeAction({ program: "tenant" }, lre);
+
+    expect(result.programId).toBe("tenant.aleo");
+    expect(getCompileArgs()).toEqual({
+      program: "hello.aleo",
+      rename: "tenant.aleo",
+    });
+
+    const updatedRecord = manager.getCached("tenant.aleo", "devnode");
+    expect(updatedRecord?.status).toBe("complete");
+    if (updatedRecord?.status === "complete") {
+      expect(updatedRecord.programId).toBe("tenant.aleo");
+      expect(updatedRecord.sourceProgramId).toBe("hello.aleo");
+      expect(updatedRecord.txId).toBe(result.txId);
+    }
+  });
+
+  it("rejects renamed upgrade provenance that does not match the runtime target", async () => {
+    const { lre, fakeNetwork, artifactsDir, getCompileCalled } = await createUpgradeFixture({
+      skipRecord: true,
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+    fakeNetwork.setProgramSource(
+      "tenant.aleo",
+      PROGRAM_SOURCE.replace("hello.aleo", "tenant.aleo"),
+    );
+    fakeNetwork.setProgramEdition("tenant.aleo", 1);
+    writeArtifactProvenance(artifactsDir, "tenant.aleo", "hello.aleo", "other.aleo");
+
+    try {
+      await upgradeAction({ program: "tenant" }, lre);
+      throw new Error("Expected upgradeAction to reject");
+    } catch (err) {
+      expect(err).toBeInstanceOf(DeployError);
+      expect(err).toHaveProperty(
+        "message",
+        expect.stringMatching(
+          /Artifact provenance metadata is invalid for upgrade target "tenant\.aleo"/,
+        ),
+      );
+    }
+
+    expect(getCompileCalled()).toBe(false);
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects renamed upgrades before compile when Leo does not support rename", async () => {
+    const { lre, getCompileCalled } = await createUpgradeFixture({
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+    (lre.config as unknown as { leoVersion: string }).leoVersion = "4.2.9";
+
+    await expect(upgradeAction({ program: "tenant" }, lre)).rejects.toThrow(/requires Leo 4\.3\.0/);
+
+    expect(getCompileCalled()).toBe(false);
+  });
+
+  it("rejects renamed upgrades before compile when compiler.buildTests is enabled", async () => {
+    const { lre, fakeNetwork, getCompileCalled } = await createUpgradeFixture({
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+    (lre.config.compiler as { buildTests: boolean }).buildTests = true;
+
+    await expect(upgradeAction({ program: "tenant" }, lre)).rejects.toThrow(
+      /compiler\.buildTests is enabled/,
+    );
+
+    expect(getCompileCalled()).toBe(false);
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("preserves sourceProgramId in the pending marker for renamed upgrades", async () => {
+    const { lre } = await createUpgradeFixture({
+      diskBacked: true,
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+    mockBuildDevnodeUpgradeTransaction.mockRejectedValueOnce(new Error("builder failed"));
+
+    await expect(upgradeAction({ program: "tenant" }, lre)).rejects.toThrow("builder failed");
+
+    expect(readPendingMarker(lre.config.paths.deployments, "devnode", "tenant.aleo")).toMatchObject(
+      {
+        programId: "tenant.aleo",
+        sourceProgramId: "hello.aleo",
+        action: "upgrade",
+      },
+    );
+  });
+
+  it("keeps sourceProgramId when recovering a renamed upgrade", async () => {
+    const { lre, fakeNetwork, manager } = await createUpgradeFixture({
+      diskBacked: true,
+      runtimeProgramId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      compiledOutputProgramId: "tenant.aleo",
+    });
+    await manager.setPending({
+      programId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      action: "upgrade",
+      txId: "at1renamed",
+      blockHeight: 2,
+      previousEdition: 1,
+      startedAt: "2026-04-01T00:01:00.000Z",
+      deployerAddress: DEVNODE_ACCOUNT_0,
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: fakeNetwork.endpoint,
+    });
+    fakeNetwork.setProgramSource("tenant.aleo", "program tenant.aleo;");
+    fakeNetwork.setProgramEdition("tenant.aleo", 2);
+
+    const recoveringManager = new DeploymentManagerImpl(
+      lre.config,
+      () => lre.network as NetworkManager | null,
+      lre.artifacts,
+    );
+
+    const recovered = await recoveringManager.recoverPendingDeployments("devnode", fakeNetwork);
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      status: "recovered",
+      programId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      edition: 2,
+      txId: "at1renamed",
+      blockHeight: 2,
+      historyCount: 2,
+    });
+    const latest = await recoveringManager.getDeployment("tenant.aleo", "devnode");
+    expect(latest?.sourceProgramId).toBe("hello.aleo");
   });
 
   it("selects the signing key from namedAccounts.admin (selection only)", async () => {

@@ -25,9 +25,16 @@ export interface KeyArtifactFunctionRef {
 export interface KeyArtifactsMetadata {
   readonly format: typeof KEY_ARTIFACTS_FORMAT;
   readonly programId: string;
+  readonly sourceProgramId: string;
   readonly sourceHash: string;
   readonly importsHash: string;
   readonly functions?: readonly KeyArtifactFunctionRef[];
+}
+
+export interface ProgramArtifactProvenance {
+  readonly programId: string;
+  readonly sourceProgramId: string;
+  readonly format: KeyArtifactsMetadata["format"];
 }
 
 export interface RuntimeKeyIdentity {
@@ -80,6 +87,19 @@ export function readKeyArtifactsMetadata(filePath: string): KeyArtifactsMetadata
 export function writeKeyArtifactsMetadata(filePath: string, metadata: KeyArtifactsMetadata): void {
   parseKeyArtifactsMetadata(metadata, filePath);
   writeJsonAtomic(filePath, metadata);
+}
+
+export function readProgramArtifactProvenance(
+  artifactsDir: string,
+  programId: string,
+): ProgramArtifactProvenance | undefined {
+  const metadata = readKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, programId));
+  if (!metadata) return undefined;
+  return {
+    programId: metadata.programId,
+    sourceProgramId: metadata.sourceProgramId,
+    format: metadata.format,
+  };
 }
 
 export function readRuntimeKeyCacheMetadata(filePath: string): RuntimeKeyCacheMetadata | undefined {
@@ -181,6 +201,7 @@ function parseKeyArtifactsMetadata(value: unknown, filePath: string): KeyArtifac
     throw invalidMetadata(filePath, `unsupported format ${JSON.stringify(value["format"])}`);
   }
   const programId = expectString(value, "programId", filePath);
+  const sourceProgramId = expectString(value, "sourceProgramId", filePath);
   const sourceHash = expectString(value, "sourceHash", filePath);
   const importsHash = expectString(value, "importsHash", filePath);
   const functionsRaw = value["functions"];
@@ -190,6 +211,7 @@ function parseKeyArtifactsMetadata(value: unknown, filePath: string): KeyArtifac
   return {
     format: KEY_ARTIFACTS_FORMAT,
     programId,
+    sourceProgramId,
     sourceHash,
     importsHash,
     ...(functions === undefined ? {} : { functions }),

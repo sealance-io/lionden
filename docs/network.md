@@ -156,7 +156,7 @@ Leo v4 supports runtime dynamic dispatch via `Interface@(target)::fn(...)`, wher
 
 Three layers, all additive (deduped by canonical id and absolute path, sorted for cache identity stability):
 
-1. **Config defaults** — `config.execution.imports[programId]` (project-wide).
+1. **Config defaults** — `config.execution.imports[programId]` (project-wide), where `programId` is the runtime program being executed.
 2. **Instance-level** — `createGovernance({ imports: [...] })` on the generated wrapper.
 3. **Per-call** — `options.imports` on `.accepted()` / `.locally()` / `.settled()` / etc., and on raw `connection.execute(..., { imports })`.
 
@@ -170,6 +170,8 @@ Path refs must exist on disk — missing files raise a config error rather than 
 Runtime imports contribute to `importsHash` in the proving-key cache identity, so introducing a new dispatch target invalidates any cached keys for the dispatching program on first execute and re-caches under the new identity.
 
 Runtime imports are **execution-time** dependencies only, not deploy-time deps. The compiler's static-import-based dependency resolver does not follow them, so a dispatch hub's strategy programs must be deployed explicitly (or pulled in via the normal `import` graph elsewhere). See `examples/aleo-ports/dynamic_dispatch` for config-level defaults and `examples/aleo-ports/dynamic_records` for wrapper instance imports plus per-call imports.
+
+For renamed wrappers, config-level runtime imports are still keyed by the wrapper's effective runtime `programId`. `sourceProgramId` is compile/deploy provenance and is not used for execution-config lookup; if a renamed program should use the same runtime imports as its source program, declare those imports explicitly under the renamed runtime id.
 
 ### Id-only record outputs (`dyn record` and external `Record`)
 

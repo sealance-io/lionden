@@ -23,6 +23,7 @@ let TransitionInputError: any;
 let MappingKeyNotFoundError: any;
 let StorageValueNotFoundError: any;
 let createRecordOutputMatcher: any;
+let bindDynamicRecordHelperProgram: any;
 let networkStub: any;
 let tmpDir: string;
 
@@ -88,12 +89,21 @@ beforeAll(async () => {
     ].join("\n"),
   );
 
-  const outPath = join(tmpDir, "BaseContract.mjs");
-  // Rewrite the bare-specifier import so Node can resolve it relative to tmpDir.
-  const rewritten = transpiled.outputText.replace(
-    /from\s+["']@lionden\/network["']/g,
-    `from "./network-stub.mjs"`,
+  const configStubPath = join(tmpDir, "config-stub.mjs");
+  writeFileSync(
+    configStubPath,
+    [
+      "export function normalizeProgramId(programId) {",
+      "  return programId.endsWith('.aleo') ? programId : `${programId}.aleo`;",
+      "}",
+    ].join("\n"),
   );
+
+  const outPath = join(tmpDir, "BaseContract.mjs");
+  // Rewrite bare-specifier imports so Node can resolve them relative to tmpDir.
+  const rewritten = transpiled.outputText
+    .replace(/from\s+["']@lionden\/network["']/g, `from "./network-stub.mjs"`)
+    .replace(/from\s+["']@lionden\/config["']/g, `from "./config-stub.mjs"`);
   writeFileSync(outPath, rewritten);
 
   const mod = await import(outPath);
@@ -106,6 +116,7 @@ beforeAll(async () => {
   MappingKeyNotFoundError = mod.MappingKeyNotFoundError;
   StorageValueNotFoundError = mod.StorageValueNotFoundError;
   createRecordOutputMatcher = mod.createRecordOutputMatcher;
+  bindDynamicRecordHelperProgram = mod.bindDynamicRecordHelperProgram;
 
   // Import the stub module separately so tests can swap the decryption
   // helper implementations via __setDecryptStubs (ESM live bindings).
@@ -119,9 +130,14 @@ afterAll(() => {
 });
 
 /** Create a concrete subclass to access protected methods. */
-function createTestContract(programId = "test.aleo", options?: { imports?: readonly string[] }) {
+function createTestContract(
+  programId = "test.aleo",
+  options?: { programId?: string; imports?: readonly string[] },
+) {
   class TestContract extends BaseContract {
-    constructor(ctorOpts: { imports?: readonly string[] } | undefined = options) {
+    constructor(
+      ctorOpts: { programId?: string; imports?: readonly string[] } | undefined = options,
+    ) {
       super(programId, ctorOpts);
     }
     // Expose protected methods for testing
@@ -202,10 +218,100 @@ describe("BaseContract runtime", () => {
     it("exposes programId and derives the program address from the SDK", () => {
       const contract = createTestContract("compliant_amm.aleo");
 
+      expect(contract.sourceProgramId).toBe("compliant_amm.aleo");
       expect(contract.programId).toBe("compliant_amm.aleo");
       expect(contract.address()).toBe(
         "aleo1xf5fmhacujf7jvyzynr24388hk82x606lgr62fkah054g5yz4ygsauf0wk",
       );
+    });
+
+    it("allows runtime programId to differ from sourceProgramId", () => {
+      const contract = createTestContract("hello.aleo", { programId: "renamed_hello.aleo" });
+
+      expect(contract.sourceProgramId).toBe("hello.aleo");
+      expect(contract.programId).toBe("renamed_hello.aleo");
+    });
+
+    it("normalizes bare runtime programId overrides", () => {
+      const contract = createTestContract("hello.aleo", { programId: "renamed_hello" });
+
+      expect(contract.sourceProgramId).toBe("hello.aleo");
+      expect(contract.programId).toBe("renamed_hello.aleo");
+    });
+
+    it("leaves already-suffixed runtime programId overrides unchanged", () => {
+      const contract = createTestContract("hello.aleo", { programId: "renamed_hello.aleo" });
+
+      expect(contract.programId).toBe("renamed_hello.aleo");
+    });
+
+    it("normalizes bare sourceProgramId constructor input", () => {
+      const contract = createTestContract("token");
+
+      expect(contract.sourceProgramId).toBe("token.aleo");
+      expect(contract.programId).toBe("token.aleo");
+    });
+  });
+
+  describe("bindDynamicRecordHelperProgram", () => {
+    function createHelper() {
+      const fn = (value: string) => Leo.unsafe.dynamicRecord(value);
+      const helper = Object.assign(fn, {
+        output: createRecordOutputMatcher({
+          program: "gold.aleo",
+          recordName: "GoldToken",
+          deserialize: (plaintext: string) => ({ plaintext }),
+        }),
+        forProgram(programId: string) {
+          return bindDynamicRecordHelperProgram(fn, helper.output, programId);
+        },
+      });
+      return helper;
+    }
+
+    it("rebinds the helper output matcher program", () => {
+      const helper = createHelper();
+      const renamed = helper.forProgram("tenant_gold.aleo");
+
+      expect(renamed.output.program).toBe("tenant_gold.aleo");
+      expect(renamed.output.recordName).toBe("GoldToken");
+    });
+
+    it("leaves the original helper unchanged after rebinding", () => {
+      const helper = createHelper();
+      const renamed = helper.forProgram("tenant_gold.aleo");
+
+      expect(helper.output.program).toBe("gold.aleo");
+      expect(renamed.output.program).toBe("tenant_gold.aleo");
+    });
+
+    it("uses the rebound program id for named source selectors", () => {
+      const helper = createHelper();
+      const rebound = helper.forProgram("tenant_gold.aleo");
+      const source = rebound.output.from("transfer", 0).source;
+
+      expect(source).toMatchObject({
+        programId: "tenant_gold.aleo",
+        transitionName: "transfer",
+        outputIndex: 0,
+      });
+    });
+
+    it("keeps input encoding identical while rebinding output matching", () => {
+      const helper = createHelper();
+      const rebound = helper.forProgram("tenant_gold.aleo");
+      const literal = "gold.aleo/GoldToken { owner: aleo1abc.private, amount: 1u64.private }";
+
+      expect(rebound(literal)).toBe(helper(literal));
+    });
+
+    it("rebinding twice uses the latest runtime program id", () => {
+      const helper = createHelper();
+      const rebound = helper.forProgram("tenant_gold.aleo").forProgram("tenant2_gold.aleo");
+      const source = rebound.output.from("transfer", 0).source;
+
+      expect(rebound.output.program).toBe("tenant2_gold.aleo");
+      expect(source).toMatchObject({ programId: "tenant2_gold.aleo" });
     });
   });
 
@@ -1113,6 +1219,15 @@ describe("BaseContract runtime", () => {
       expect(withSig.address()).toBe(contract.address());
     });
 
+    it("preserves runtime program override on the cloned instance", () => {
+      const contract = createTestContract("hello.aleo", { programId: "renamed_hello" });
+
+      const withSig = contract.withSigner(signer1);
+
+      expect(withSig.sourceProgramId).toBe("hello.aleo");
+      expect(withSig.programId).toBe("renamed_hello.aleo");
+    });
+
     it("merges instance signer as default in local execution", async () => {
       const spy = { calls: [] as any[] };
       const contract = createTestContract("hello.aleo");
@@ -1912,6 +2027,51 @@ describe("BaseContract runtime", () => {
       expect(result).toEqual({ viaMatcher: "[plain record1xyz]" });
     });
 
+    it("match(matcher).decrypt(key) rebases source-stable matchers for renamed wrapper records", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeEncryptedRecord(
+        "tenant.aleo",
+        "Tok",
+        "record1xyz",
+        (plaintext: string) => ({ original: plaintext }),
+        "hello.aleo",
+      );
+      const matcher = createRecordOutputMatcher({
+        program: "hello.aleo",
+        recordName: "Tok",
+        deserialize: (plaintext: string) => ({ viaMatcher: plaintext }),
+      });
+
+      const result = await handle.match(matcher).decrypt("AViewKey1abc");
+
+      expect(result).toEqual({ viaMatcher: "[plain record1xyz]" });
+      expect(matcher.program).toBe("hello.aleo");
+    });
+
+    it("match(matcher).decrypt(key) keeps non-renamed encrypted record behavior unchanged", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const handle = BaseContract.makeEncryptedRecord(
+        "hello.aleo",
+        "Tok",
+        "record1xyz",
+        (plaintext: string) => ({ original: plaintext }),
+        "hello.aleo",
+      );
+      const matcher = createRecordOutputMatcher({
+        program: "hello.aleo",
+        recordName: "Tok",
+        deserialize: (plaintext: string) => ({ viaMatcher: plaintext }),
+      });
+
+      const result = await handle.match(matcher).decrypt("AViewKey1abc");
+
+      expect(result).toEqual({ viaMatcher: "[plain record1xyz]" });
+    });
+
     it("match(matcher).decrypt(key) rejects with TransactionShapeError when matcher program/recordName differ", async () => {
       const handle = BaseContract.makeEncryptedRecord(
         "p.aleo",
@@ -1924,6 +2084,25 @@ describe("BaseContract runtime", () => {
         recordName: "Tok",
         deserialize: (s: string) => s,
       });
+      await expect(handle.match(mismatchedMatcher).decrypt("AViewKey1abc")).rejects.toMatchObject({
+        kind: "TransactionShapeError",
+      });
+    });
+
+    it("match(matcher).decrypt(key) rejects unrelated matcher programs for renamed wrapper records", async () => {
+      const handle = BaseContract.makeEncryptedRecord(
+        "tenant.aleo",
+        "Tok",
+        "record1xyz",
+        (plaintext: string) => ({ original: plaintext }),
+        "hello.aleo",
+      );
+      const mismatchedMatcher = createRecordOutputMatcher({
+        program: "other.aleo",
+        recordName: "Tok",
+        deserialize: (s: string) => s,
+      });
+
       await expect(handle.match(mismatchedMatcher).decrypt("AViewKey1abc")).rejects.toMatchObject({
         kind: "TransactionShapeError",
       });
@@ -2003,6 +2182,37 @@ describe("BaseContract runtime", () => {
         .match(calleeMatcher().from("transfer", 0))
         .decrypt("AViewKey1abc");
       expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
+    });
+
+    it("rebases source-stable matchers to the runtime program for renamed wrapper handles", async () => {
+      networkStub.__setDecryptStubs({
+        decryptRecordCiphertext: async (ct: string) => `[plain ${ct}]`,
+      });
+      const renamedTransitions = [
+        {
+          programId: "tenant.aleo",
+          transitionName: "transfer",
+          rawOutputs: [SIBLING_CIPHERTEXT, entry],
+          transitionPublicKey: "tpk_tenant",
+        },
+      ];
+      const matcher = createRecordOutputMatcher({
+        program: "hello.aleo",
+        recordName: "Tok",
+        deserialize: (plaintext: string) => ({ decoded: plaintext }),
+      }).from("transfer", 0);
+      const handle = BaseContract.makeIdOnlyDynamicRecordHandle(
+        entry,
+        renamedTransitions,
+        "hello.aleo",
+        "tenant.aleo",
+      );
+
+      const result = await handle.match(matcher).decrypt("AViewKey1abc");
+
+      expect(result).toEqual({ decoded: `[plain ${SIBLING_CIPHERTEXT}]` });
+      expect(matcher.program).toBe("hello.aleo");
+      expect(matcher.source).toMatchObject({ programId: "hello.aleo" });
     });
 
     it("match(matcher.at(transitionIndex, outputIndex)).decrypt(key) resolves positionally", async () => {
@@ -2597,6 +2807,26 @@ describe("BaseContract runtime", () => {
       expect(spy).toHaveBeenCalledOnce();
       const opts = spy.mock.calls[0]![3];
       expect(opts.imports).toEqual(["voting_power.aleo"]);
+    });
+
+    it("does not pass sourceProgramId into renamed wrapper execution options", async () => {
+      const spy = vi.fn().mockResolvedValue({ outputs: [], txId: "at1ok" });
+      const contract = createTestContract("governance.aleo", {
+        programId: "tenant.aleo",
+      });
+      contract.connect(mockLre({ execute: spy }));
+
+      await contract.testExecuteLocal("get_voting_power", []);
+
+      expect(spy).toHaveBeenCalledWith(
+        "tenant.aleo",
+        "get_voting_power",
+        [],
+        expect.objectContaining({
+          mode: "local",
+        }),
+      );
+      expect(spy.mock.calls[0]![3]).not.toHaveProperty("sourceProgramId");
     });
 
     it("merges instance-level and per-call imports", async () => {

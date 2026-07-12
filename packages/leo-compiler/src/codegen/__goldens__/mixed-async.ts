@@ -93,7 +93,7 @@ export class TokenContract extends BaseContract {
         BaseContract.serializeAddress(receiver, this.inputContext("mint", "receiver")),
         BaseContract.serializeUInt(amount, 64, this.inputContext("mint", "amount")),
       ];
-      return this.settleTyped("mint", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "mint", 0), deserializeToken));
+      return this.settleTyped("mint", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "mint", 0), deserializeToken, this.sourceProgramId));
     },
 
     accepted: async (receiver: AddressInput, amount: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<Token>>> => {
@@ -101,7 +101,7 @@ export class TokenContract extends BaseContract {
         BaseContract.serializeAddress(receiver, this.inputContext("mint", "receiver")),
         BaseContract.serializeUInt(amount, 64, this.inputContext("mint", "amount")),
       ];
-      return this.expectAcceptedTyped("mint", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "mint", 0), deserializeToken));
+      return this.expectAcceptedTyped("mint", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "mint", 0), deserializeToken, this.sourceProgramId));
     },
 
     rejected: async (receiver: AddressInput, amount: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -148,14 +148,14 @@ export class TokenContract extends BaseContract {
       const _args: string[] = [
         BaseContract.serializeAddress(receiver, this.inputContext("mint_and_finalize", "receiver")),
       ];
-      return this.settleTyped("mint_and_finalize", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "mint_and_finalize", 0), deserializeToken));
+      return this.settleTyped("mint_and_finalize", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "mint_and_finalize", 0), deserializeToken, this.sourceProgramId));
     },
 
     accepted: async (receiver: AddressInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<Token>>> => {
       const _args: string[] = [
         BaseContract.serializeAddress(receiver, this.inputContext("mint_and_finalize", "receiver")),
       ];
-      return this.expectAcceptedTyped("mint_and_finalize", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "mint_and_finalize", 0), deserializeToken));
+      return this.expectAcceptedTyped("mint_and_finalize", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "mint_and_finalize", 0), deserializeToken, this.sourceProgramId));
     },
 
     rejected: async (receiver: AddressInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -253,14 +253,14 @@ export class TokenContract extends BaseContract {
       const _args: string[] = [
         serializeToken(token as TokenInput, this.inputContext("split", "token")),
       ];
-      return this.settleTyped("split", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 0), deserializeToken), BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 1), deserializeToken)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
+      return this.settleTyped("split", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "split", 0), deserializeToken, this.sourceProgramId), BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "split", 1), deserializeToken, this.sourceProgramId)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
     },
 
     accepted: async (token: TokenInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<[EncryptedRecord<Token>, EncryptedRecord<Token>]>> => {
       const _args: string[] = [
         serializeToken(token as TokenInput, this.inputContext("split", "token")),
       ];
-      return this.expectAcceptedTyped("split", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 0), deserializeToken), BaseContract.makeEncryptedRecord("token.aleo", "Token", BaseContract.rawOutputAt(rawOutputs, "token.aleo", "split", 1), deserializeToken)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
+      return this.expectAcceptedTyped("split", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => ([BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "split", 0), deserializeToken, this.sourceProgramId), BaseContract.makeEncryptedRecord(this.programId, "Token", BaseContract.rawOutputAt(rawOutputs, this.programId, "split", 1), deserializeToken, this.sourceProgramId)] as [EncryptedRecord<Token>, EncryptedRecord<Token>]));
     },
 
     rejected: async (token: TokenInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

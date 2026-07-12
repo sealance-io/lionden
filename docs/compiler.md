@@ -69,6 +69,13 @@ The materialized package contains the pieces that `leo build` expects, including
 
 This keeps the repo source layout ergonomic while still using the Leo CLI as the compiler of record.
 
+Deploy rename is handled inside this materialization step rather than by
+depending on a Leo CLI build flag. A deploy-triggered compile can provide
+`program` as the source selector and `rename` as the target runtime id; the
+materializer rewrites only the selected primary program's `main.leo`
+declaration and `program.json` program field to the target id. Dependency
+declarations and imports are left untouched.
+
 ## Network Dependencies
 
 `compilePipeline()` fetches network dependencies through `defaultFetchNetworkDep()`, which requests deployed program source from node REST endpoints using `GET /{network}/program/{programId}`. Cached network dependencies are stored under the artifacts cache area and reused when available for the same effective network and endpoint. If a deployed dependency changes at the same endpoint, run `lionden compile --force` to fetch and relink it.
@@ -93,6 +100,12 @@ Compilation caching is driven by:
 - cache records written under `artifacts/.cache`
 
 `--force` on the compile task bypasses the cache.
+
+Renamed deploy builds are cached separately from non-renamed builds. The source
+program id continues to drive local discovery and dependency resolution, while
+the effective runtime program id drives the materialized build-unit directory,
+normalized artifact directory, ABI program id, key-artifact metadata, and
+runtime artifact lookup.
 
 ## ABI and Generated Bindings
 
@@ -164,11 +177,14 @@ const governance = createGovernance({
 ```
 
 Every wrapper exposes the owning program identity through `contract.programId`
-and derives the deterministic Aleo program address with `contract.address()`.
-The address is computed from the program id, so it is available before
-deployment and is not a deployment-state record.
+and the generated source identity through `contract.sourceProgramId`. By
+default they are equal. Passing `createToken({ programId: "renamed_token.aleo" })`
+keeps the same generated class and transition methods but targets the renamed
+on-chain program id for execution, mapping/storage reads, and address
+derivation. The address is computed from the runtime program id, so it is
+available before deployment and is not a deployment-state record.
 
-`imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` as a per-call additive layer, and `withSigner()` clones preserve the instance-level list. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
+`imports` carries runtime imports that the wrapper attaches to every transition call — useful for dispatch hubs that need the same set of dynamic targets on each call. The same option also appears on `BaseCallOptions` as a per-call additive layer, and `withSigner()` clones preserve the instance-level list. Config-level runtime imports are keyed by the effective runtime `programId`, not `sourceProgramId`; see [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full layered model.
 
 `codegen.dynamicRecords` can emit conversion helpers for Leo v4 `dyn record` interface inputs when the concrete source record ABI is known:
 
@@ -302,7 +318,7 @@ The compiler treats `artifacts/<programId>/` as compiler-owned output and recrea
 
 Deploy state is tracked separately by the deploy plugin.
 
-The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records the program id, compiled source hash, a compiler-side import hash over the materialized package `imports/` directory, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. The sidecar import hash currently represents materialized network dependency sources; local program dependencies are resolved by Leo through `program.json` dependency paths and are not staged into that `imports/` directory. Compile-time proving-key synthesis is intentionally deferred — see [`research/key-caching.md`](research/key-caching.md) for the design rationale, the sidecar/runtime `importsHash` distinction, and the SDK gap that would unblock pre-warm.
+The key-artifact sidecar uses `format: "lionden.keyArtifacts.v1"` and records both the runtime `programId` and canonical local `sourceProgramId`, plus the compiled source hash, a compiler-side import hash over the materialized package `imports/` directory, and optional per-transition `.prover` / `.verifier` refs when Leo emits files that can be paired unambiguously. The sidecar import hash currently represents materialized network dependency sources; local program dependencies are resolved by Leo through `program.json` dependency paths and are not staged into that `imports/` directory. Compile-time proving-key synthesis is intentionally deferred — see [`research/key-caching.md`](research/key-caching.md) for the design rationale, the sidecar/runtime `importsHash` distinction, and the SDK gap that would unblock pre-warm.
 
 ## Design Direction
 

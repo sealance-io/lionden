@@ -12,9 +12,9 @@
  */
 
 import * as path from "node:path";
-import { createNamedAccountAccessor } from "@lionden/config";
+import { createNamedAccountAccessor, normalizeProgramId } from "@lionden/config";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import { programNameFromTarget } from "@lionden/core";
+import { programNameFromTarget, sourceProgramNameFromTarget } from "@lionden/core";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import type { DeploymentManager } from "./deployment-manager.js";
@@ -99,20 +99,26 @@ export function createCliDeploymentContext(
 
     async deploy(program, opts) {
       const programName = programNameFromTarget(program);
+      const sourceProgramName = sourceProgramNameFromTarget(program);
       const normalizedId = normalizeProgramId(programName);
+      const normalizedSourceId = normalizeProgramId(sourceProgramName);
+      const rename = normalizedSourceId === normalizedId ? undefined : normalizedId;
+      const expectedSourceProgramId = rename ? normalizedSourceId : undefined;
+      const defaultNoCompile = !rename;
       const deploymentCache = lre.deployments as DeploymentManager | null;
 
       if (!opts?.noSkipDeployed) {
         const cached = getCachedDeployment(deploymentCache, normalizedId, networkName);
-        if (isCompleteDeploymentWithTxId(cached)) {
+        if (isCompleteMatchingRecord(cached, normalizedId, expectedSourceProgramId)) {
           return { programId: normalizedId, txId: cached.txId };
         }
       }
 
       const taskResult = await lre.tasks.run("deploy", {
-        program: programName,
+        program: rename ? normalizedSourceId : programName,
+        ...(rename ? { rename } : {}),
         network: networkName,
-        noCompile: opts?.noCompile ?? true, // pre-compiled by recipe task
+        noCompile: opts?.noCompile ?? defaultNoCompile,
         priorityFee: opts?.priorityFee,
         noSkipDeployed: opts?.noSkipDeployed,
         // Forward the recipe's authoritative prove value (a per-call override
@@ -125,20 +131,25 @@ export function createCliDeploymentContext(
         prove: opts?.prove ?? resolvedProve,
       });
 
-      // Unwrap DeployTaskResult discriminated union
-      const wrapped = taskResult as { mode?: string; results?: unknown[] };
-      if (wrapped.mode && wrapped.mode !== "deploy") {
-        throw new DeployError(
-          `Expected deploy task to return mode "deploy", got "${wrapped.mode}". ` +
-            `This may indicate --preflight or --dry-run was passed unexpectedly.`,
-        );
+      if (rename) {
+        const results = getDeployResults(taskResult);
+        const deployed = getDeployResultForProgram(results, normalizedId, true);
+        if (deployed) {
+          return {
+            programId: normalizeProgramId(deployed.programId),
+            txId: deployed.txId,
+          };
+        }
+
+        const cached = getCachedDeployment(deploymentCache, normalizedId, networkName);
+        if (isCompleteMatchingRecord(cached, normalizedId, expectedSourceProgramId)) {
+          return { programId: normalizedId, txId: cached.txId };
+        }
+
+        throw createEmptyDeployResultError(programName, normalizedId, networkName, cached, true);
       }
 
-      const results: Array<{ programId: string; txId: string }> =
-        wrapped.mode === "deploy" && Array.isArray(wrapped.results)
-          ? (wrapped.results as Array<{ programId: string; txId: string }>)
-          : (taskResult as Array<{ programId: string; txId: string }>);
-
+      const results = getDeployResults(taskResult);
       const deployed = getDeployResultForProgram(results, normalizedId);
       if (deployed) {
         return {
@@ -148,7 +159,7 @@ export function createCliDeploymentContext(
       }
 
       const cached = getCachedDeployment(deploymentCache, normalizedId, networkName);
-      if (isCompleteDeploymentWithTxId(cached)) {
+      if (isCompleteMatchingRecord(cached, normalizedId)) {
         return { programId: normalizedId, txId: cached.txId };
       }
 
@@ -175,10 +186,6 @@ export function createCliDeploymentContext(
   };
 }
 
-function normalizeProgramId(programName: string): string {
-  return programName.endsWith(".aleo") ? programName : `${programName}.aleo`;
-}
-
 function getCachedDeployment(
   deploymentCache: DeploymentManager | null | undefined,
   programId: string,
@@ -196,10 +203,41 @@ function isCompleteDeploymentWithTxId(
 function getDeployResultForProgram(
   results: Array<{ programId: string; txId: string }>,
   normalizedId: string,
+  exact = false,
 ): { programId: string; txId: string } | undefined {
+  const matching = results.find((result) => normalizeProgramId(result.programId) === normalizedId);
+  return matching ?? (exact ? undefined : results[results.length - 1]);
+}
+
+function getDeployResults(taskResult: unknown): Array<{ programId: string; txId: string }> {
+  const wrapped = taskResult as { mode?: string; results?: unknown[] };
+  if (wrapped.mode !== "deploy") {
+    throw new DeployError(
+      `Expected deploy task to return mode "deploy", got "${wrapped.mode}". ` +
+        `This may indicate --preflight or --dry-run was passed unexpectedly.`,
+    );
+  }
+  if (!Array.isArray(wrapped.results)) {
+    throw new DeployError('Expected deploy task to return { mode: "deploy", results: [...] }.');
+  }
+  return wrapped.results as Array<{ programId: string; txId: string }>;
+}
+
+function isCompleteMatchingRecord(
+  record: DeploymentRecord | null | undefined,
+  normalizedId: string,
+  expectedSourceProgramId?: string,
+): record is DeploymentRecord & { readonly status: "complete"; readonly txId: string } {
+  const maybeRecord = record ?? null;
+  if (!isCompleteDeploymentWithTxId(maybeRecord)) return false;
+  if (expectedSourceProgramId === undefined) {
+    return (
+      maybeRecord.sourceProgramId === undefined || maybeRecord.sourceProgramId === normalizedId
+    );
+  }
   return (
-    results.find((result) => normalizeProgramId(result.programId) === normalizedId) ??
-    results[results.length - 1]
+    maybeRecord.programId === normalizedId &&
+    maybeRecord.sourceProgramId === expectedSourceProgramId
   );
 }
 
@@ -208,10 +246,14 @@ function createEmptyDeployResultError(
   normalizedId: string,
   networkName: string,
   cached: DeploymentRecord | null,
+  expectsRename = false,
 ): DeployError {
+  const cacheRequirement = expectsRename
+    ? "no complete cached deployment with matching rename provenance exists"
+    : "no complete cached deployment with a txId exists";
   return new DeployError(
     `Deploy task produced no transaction for "${requestedProgram}" on network "${networkName}", ` +
-      `and no complete cached deployment with a txId exists for "${normalizedId}" ` +
+      `and ${cacheRequirement} for "${normalizedId}" ` +
       `(${describeCachedDeployment(cached)}). ` +
       `Use { noSkipDeployed: true } when the recipe must fail instead of reusing or skipping an existing deployment.`,
   );

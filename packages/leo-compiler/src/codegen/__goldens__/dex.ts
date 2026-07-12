@@ -141,7 +141,7 @@ export class Dex extends BaseContract {
         BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
         BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
-      return this.settleTyped("add_liquidity", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("dex.aleo", "LPToken", BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "add_liquidity", 0), deserializeLPToken));
+      return this.settleTyped("add_liquidity", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord(this.programId, "LPToken", BaseContract.rawOutputAt(rawOutputs, this.programId, "add_liquidity", 0), deserializeLPToken, this.sourceProgramId));
     },
 
     accepted: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedRecord<LPToken>>> => {
@@ -150,7 +150,7 @@ export class Dex extends BaseContract {
         BaseContract.serializeUInt(amount_a, 128, this.inputContext("add_liquidity", "amount_a")),
         BaseContract.serializeUInt(amount_b, 128, this.inputContext("add_liquidity", "amount_b")),
       ];
-      return this.expectAcceptedTyped("add_liquidity", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord("dex.aleo", "LPToken", BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "add_liquidity", 0), deserializeLPToken));
+      return this.expectAcceptedTyped("add_liquidity", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedRecord(this.programId, "LPToken", BaseContract.rawOutputAt(rawOutputs, this.programId, "add_liquidity", 0), deserializeLPToken, this.sourceProgramId));
     },
 
     rejected: async (pair_id: FieldInput, amount_a: bigint, amount_b: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -254,7 +254,7 @@ export class Dex extends BaseContract {
         BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
         BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
-      return this.settleTyped("swap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "swap", 0), tpk, "dex.aleo", "swap", 2, BaseContract.parseBigInt));
+      return this.settleTyped("swap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "swap", 0), tpk, this.programId, "swap", 2, BaseContract.parseBigInt));
     },
 
     accepted: async (pair_id: FieldInput, amount_in: bigint, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<bigint>>> => {
@@ -262,7 +262,7 @@ export class Dex extends BaseContract {
         BaseContract.serializeField(pair_id, this.inputContext("swap", "pair_id")),
         BaseContract.serializeUInt(amount_in, 128, this.inputContext("swap", "amount_in")),
       ];
-      return this.expectAcceptedTyped("swap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "dex.aleo", "swap", 0), tpk, "dex.aleo", "swap", 2, BaseContract.parseBigInt));
+      return this.expectAcceptedTyped("swap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "swap", 0), tpk, this.programId, "swap", 2, BaseContract.parseBigInt));
     },
 
     rejected: async (pair_id: FieldInput, amount_in: bigint, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

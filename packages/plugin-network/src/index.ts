@@ -14,10 +14,6 @@ import {
   resolveDevnodeBackend,
 } from "@lionden/network";
 
-// ---------------------------------------------------------------------------
-// Config hooks
-// ---------------------------------------------------------------------------
-
 /**
  * Whether the Leo devnode for `leoVersion` no longer accepts the
  * `--consensus-heights` / `--network` flags (Leo >= 4.3). An unparseable/unset
@@ -32,6 +28,10 @@ function leoDevnodeDropsConsensusFlags(leoVersion: string): boolean {
   const minor = Number(match[2]);
   return major > 4 || (major === 4 && minor >= 3);
 }
+
+// ---------------------------------------------------------------------------
+// Config hooks
+// ---------------------------------------------------------------------------
 
 const configHooks: ConfigHookHandlers = {
   validateResolvedConfig(config: LionDenResolvedConfig): ConfigValidationError[] {

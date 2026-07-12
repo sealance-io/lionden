@@ -81,7 +81,7 @@ export class V42codegen extends BaseContract {
         BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
         BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
-      return this.settleTyped("add", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "add", 0), tpk, "v42codegen.aleo", "add", 2, BaseContract.parseNumber));
+      return this.settleTyped("add", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "add", 0), tpk, this.programId, "add", 2, BaseContract.parseNumber));
     },
 
     accepted: async (arg0: number, arg1: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
@@ -89,7 +89,7 @@ export class V42codegen extends BaseContract {
         BaseContract.serializeUInt(arg0, 32, this.inputContext("add", "arg0")),
         BaseContract.serializeUInt(arg1, 32, this.inputContext("add", "arg1")),
       ];
-      return this.expectAcceptedTyped("add", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "add", 0), tpk, "v42codegen.aleo", "add", 2, BaseContract.parseNumber));
+      return this.expectAcceptedTyped("add", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "add", 0), tpk, this.programId, "add", 2, BaseContract.parseNumber));
     },
 
     rejected: async (arg0: number, arg1: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -135,14 +135,14 @@ export class V42codegen extends BaseContract {
       const _args: string[] = [
         serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
-      return this.settleTyped("wrap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "wrap", 0), tpk, "v42codegen.aleo", "wrap", 1, (_p: string) => deserializePoint(_p)));
+      return this.settleTyped("wrap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "wrap", 0), tpk, this.programId, "wrap", 1, (_p: string) => deserializePoint(_p)));
     },
 
     accepted: async (arg0: PointInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Point>>> => {
       const _args: string[] = [
         serializePoint(arg0 as PointInput, this.inputContext("wrap", "arg0")),
       ];
-      return this.expectAcceptedTyped("wrap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "v42codegen.aleo", "wrap", 0), tpk, "v42codegen.aleo", "wrap", 1, (_p: string) => deserializePoint(_p)));
+      return this.expectAcceptedTyped("wrap", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "wrap", 0), tpk, this.programId, "wrap", 1, (_p: string) => deserializePoint(_p)));
     },
 
     rejected: async (arg0: PointInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

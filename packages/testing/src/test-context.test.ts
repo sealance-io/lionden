@@ -111,7 +111,10 @@ function mockLre(
     },
     network: manager,
     tasks: {
-      run: vi.fn().mockResolvedValue([{ programId: "hello.aleo", txId: "at1deploy" }]),
+      run: vi.fn().mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "hello.aleo", txId: "at1deploy" }],
+      }),
       has: vi.fn().mockReturnValue(true),
       getTaskIds: vi.fn().mockReturnValue(["compile", "deploy"]),
     },
@@ -137,6 +140,7 @@ function cachedDeployment(
   programId: string,
   options: {
     readonly status?: string;
+    readonly sourceProgramId?: string;
     readonly txId?: string | null;
     readonly blockHeight?: number | null;
   } = {},
@@ -144,6 +148,7 @@ function cachedDeployment(
   return {
     status: options.status ?? "complete",
     programId,
+    ...(options.sourceProgramId === undefined ? {} : { sourceProgramId: options.sourceProgramId }),
     txId: options.txId === undefined ? "at1cached" : options.txId,
     blockHeight: options.blockHeight === undefined ? 1 : options.blockHeight,
   };
@@ -579,6 +584,30 @@ describe("test-context", () => {
       expect(lre.tasks.run).not.toHaveBeenCalled();
     });
 
+    it("does not reuse a plain cached record bound to a different source id", async () => {
+      const lre = mockLre();
+      lre.tasks.run = vi.fn().mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "tenant.aleo", txId: "at1deploy" }],
+      });
+      const getCached = vi
+        .fn<DeploymentCacheAccessor["getCached"]>()
+        .mockReturnValue(cachedDeployment("tenant.aleo", { sourceProgramId: "hello.aleo" }));
+      attachDeploymentCache(lre, getCached);
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.deploy("tenant");
+
+      expect(result).toEqual({ programId: "tenant.aleo", txId: "at1deploy" });
+      expect(getCached).toHaveBeenCalledWith("tenant.aleo", "devnode");
+      expect(lre.tasks.run).toHaveBeenCalledWith(
+        "deploy",
+        expect.objectContaining({
+          program: "tenant",
+        }),
+      );
+    });
+
     it("accepts wrapper identity for cached deployments", async () => {
       const lre = mockLre();
       const getCached = vi
@@ -592,6 +621,60 @@ describe("test-context", () => {
       expect(result).toEqual({ programId: "hello.aleo", txId: "at1cached" });
       expect(getCached).toHaveBeenCalledWith("hello.aleo", "devnode");
       expect(lre.tasks.run).not.toHaveBeenCalled();
+    });
+
+    it("deploys a wrapper override by source id with rename set to runtime id", async () => {
+      const lre = mockLre();
+      lre.tasks.run = vi.fn().mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "renamed_hello.aleo", txId: "at1deploy" }],
+      });
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.deploy(
+        { sourceProgramId: "hello.aleo", programId: "renamed_hello.aleo" },
+        { noSkipDeployed: true },
+      );
+
+      expect(result).toEqual({
+        programId: "renamed_hello.aleo",
+        txId: "at1deploy",
+      });
+      expect(lre.tasks.run).toHaveBeenCalledWith(
+        "deploy",
+        expect.objectContaining({
+          program: "hello.aleo",
+          rename: "renamed_hello.aleo",
+        }),
+      );
+    });
+
+    it("does not reuse a renamed wrapper cached under a different source id", async () => {
+      const lre = mockLre();
+      lre.tasks.run = vi.fn().mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "tenant.aleo", txId: "at1deploy" }],
+      });
+      const getCached = vi
+        .fn<DeploymentCacheAccessor["getCached"]>()
+        .mockReturnValue(cachedDeployment("tenant.aleo", { sourceProgramId: "other.aleo" }));
+      attachDeploymentCache(lre, getCached);
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      const result = await ctx.deploy({
+        sourceProgramId: "hello.aleo",
+        programId: "tenant.aleo",
+      });
+
+      expect(result).toEqual({ programId: "tenant.aleo", txId: "at1deploy" });
+      expect(getCached).toHaveBeenCalledWith("tenant.aleo", "devnode");
+      expect(lre.tasks.run).toHaveBeenCalledWith(
+        "deploy",
+        expect.objectContaining({
+          program: "hello.aleo",
+          rename: "tenant.aleo",
+        }),
+      );
     });
 
     it("bypasses the cached pre-check when noSkipDeployed is true", async () => {

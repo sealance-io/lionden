@@ -93,13 +93,13 @@ export class Test extends BaseContract {
     settled: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<A_Thing>> | RejectedTransition> => {
       const _args: string[] = [
       ];
-      return this.settleTyped("get_a", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "test.aleo", "get_a", 0), tpk, "test.aleo", "get_a", 0, (_p: string) => deserializeA_Thing(_p)));
+      return this.settleTyped("get_a", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_a", 0), tpk, this.programId, "get_a", 0, (_p: string) => deserializeA_Thing(_p)));
     },
 
     accepted: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<A_Thing>>> => {
       const _args: string[] = [
       ];
-      return this.expectAcceptedTyped("get_a", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "test.aleo", "get_a", 0), tpk, "test.aleo", "get_a", 0, (_p: string) => deserializeA_Thing(_p)));
+      return this.expectAcceptedTyped("get_a", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_a", 0), tpk, this.programId, "get_a", 0, (_p: string) => deserializeA_Thing(_p)));
     },
 
     rejected: async (options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -138,13 +138,13 @@ export class Test extends BaseContract {
     settled: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<B_Thing>> | RejectedTransition> => {
       const _args: string[] = [
       ];
-      return this.settleTyped("get_b", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "test.aleo", "get_b", 0), tpk, "test.aleo", "get_b", 0, (_p: string) => deserializeB_Thing(_p)));
+      return this.settleTyped("get_b", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_b", 0), tpk, this.programId, "get_b", 0, (_p: string) => deserializeB_Thing(_p)));
     },
 
     accepted: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<B_Thing>>> => {
       const _args: string[] = [
       ];
-      return this.expectAcceptedTyped("get_b", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "test.aleo", "get_b", 0), tpk, "test.aleo", "get_b", 0, (_p: string) => deserializeB_Thing(_p)));
+      return this.expectAcceptedTyped("get_b", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_b", 0), tpk, this.programId, "get_b", 0, (_p: string) => deserializeB_Thing(_p)));
     },
 
     rejected: async (options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

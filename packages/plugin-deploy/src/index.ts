@@ -78,6 +78,11 @@ const deployTask = task("deploy", "Deploy Aleo programs to a network")
     type: "number",
     description: "Priority fee in microcredits",
   })
+  .addOption({
+    name: "rename",
+    type: "string",
+    description: "Deploy the selected source program under a different on-chain program id",
+  })
   .addFlag({
     name: "skipConfirm",
     description: "Skip waiting for transaction confirmation",

@@ -133,7 +133,7 @@ export class Governance extends BaseContract {
         BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
         serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
-      return this.settleTyped("route", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "governance.aleo", "route", 0), tpk, "governance.aleo", "route", 4, BaseContract.parseIdentifier));
+      return this.settleTyped("route", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "route", 0), tpk, this.programId, "route", 4, BaseContract.parseIdentifier));
     },
 
     accepted: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoIdentifier>>> => {
@@ -143,7 +143,7 @@ export class Governance extends BaseContract {
         BaseContract.serializeArray(strategies, this.inputContext("route", "strategies"), (e: unknown, context: TransitionInputContext | undefined) => BaseContract.serializeIdentifier(e, context)),
         serializeVote(vote as VoteInput, this.inputContext("route", "vote")),
       ];
-      return this.expectAcceptedTyped("route", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "governance.aleo", "route", 0), tpk, "governance.aleo", "route", 4, BaseContract.parseIdentifier));
+      return this.expectAcceptedTyped("route", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "route", 0), tpk, this.programId, "route", 4, BaseContract.parseIdentifier));
     },
 
     rejected: async (strategy: IdentifierInput, maybe_strategy: IdentifierInput | null, strategies: ReadonlyArray<IdentifierInput>, vote: VoteInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

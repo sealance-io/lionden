@@ -51,7 +51,7 @@ export class Hello extends BaseContract {
         BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
         BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
-      return this.settleTyped("main", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "main", 0), tpk, "hello.aleo", "main", 2, BaseContract.parseNumber));
+      return this.settleTyped("main", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "main", 0), tpk, this.programId, "main", 2, BaseContract.parseNumber));
     },
 
     accepted: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
@@ -59,7 +59,7 @@ export class Hello extends BaseContract {
         BaseContract.serializeUInt(a, 32, this.inputContext("main", "a")),
         BaseContract.serializeUInt(b, 32, this.inputContext("main", "b")),
       ];
-      return this.expectAcceptedTyped("main", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "main", 0), tpk, "hello.aleo", "main", 2, BaseContract.parseNumber));
+      return this.expectAcceptedTyped("main", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "main", 0), tpk, this.programId, "main", 2, BaseContract.parseNumber));
     },
 
     rejected: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -110,7 +110,7 @@ export class Hello extends BaseContract {
         BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
         BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
-      return this.settleTyped("multiply", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "multiply", 0), tpk, "hello.aleo", "multiply", 2, BaseContract.parseNumber));
+      return this.settleTyped("multiply", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "multiply", 0), tpk, this.programId, "multiply", 2, BaseContract.parseNumber));
     },
 
     accepted: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
@@ -118,7 +118,7 @@ export class Hello extends BaseContract {
         BaseContract.serializeUInt(a, 32, this.inputContext("multiply", "a")),
         BaseContract.serializeUInt(b, 32, this.inputContext("multiply", "b")),
       ];
-      return this.expectAcceptedTyped("multiply", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "hello.aleo", "multiply", 0), tpk, "hello.aleo", "multiply", 2, BaseContract.parseNumber));
+      return this.expectAcceptedTyped("multiply", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "multiply", 0), tpk, this.programId, "multiply", 2, BaseContract.parseNumber));
     },
 
     rejected: async (a: number, b: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

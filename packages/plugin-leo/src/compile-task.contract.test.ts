@@ -325,6 +325,48 @@ describe("compile task contract", () => {
     expect(indexContent).not.toMatch(/\bcreateLeo\b/);
   });
 
+  it("barrel exports source-stable names for renamed compile results", async () => {
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockResolvedValueOnce({
+      results: [
+        {
+          unit: {
+            kind: "program" as const,
+            programId: "hello.aleo",
+            sourceDir: "/tmp/test/programs/hello",
+            entryFile: "/tmp/test/programs/hello/main.leo",
+            allSources: ["main.leo"],
+          },
+          sourceProgramId: "hello.aleo",
+          programId: "renamed_hello.aleo",
+          cached: false,
+          packageDir: "/tmp/test/.cache/renamed_hello",
+          buildDir: "/tmp/test/.cache/renamed_hello/build",
+          abi: {
+            program: "renamed_hello.aleo",
+            structs: [],
+            records: [],
+            mappings: [],
+            storage_variables: [],
+            transitions: [],
+          },
+          aleoSource: "",
+        },
+      ],
+    } as any);
+
+    const lre = createTestLre(true);
+    await lre.tasks.run("compile");
+
+    const indexContent = fs.readFileSync(
+      path.join(lre.config.paths.typechain, "index.ts"),
+      "utf-8",
+    );
+    expect(indexContent).toContain('export { Hello, createHello } from "./Hello.js";');
+    expect(indexContent).not.toContain("RenamedHello");
+    expect(indexContent).not.toContain("createRenamedHello");
+  });
+
   it("skips TypeScript bindings when --noTypechain is set", async () => {
     const lre = createTestLre(true);
     await lre.tasks.run("compile", { noTypechain: true });

@@ -3,9 +3,10 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import type { LionDenResolvedConfig } from "@lionden/config";
+import { type LionDenResolvedConfig, normalizeProgramId } from "@lionden/config";
 import {
   fingerprintFile,
+  KEY_ARTIFACTS_FORMAT,
   type KeyArtifactFunctionRef,
   type KeyArtifactsMetadata,
   type KeyFileRef,
@@ -19,6 +20,7 @@ import type { ProgramABI } from "./abi-types.js";
 import { computeUnitHash, isCached, writeCache } from "./cache.js";
 import { type DependencyGraph, resolveDependencies } from "./dependency-resolver.js";
 import {
+  effectiveUnitId,
   getCachedNetworkDep,
   linkNetworkDependency,
   materializePackage,
@@ -30,6 +32,7 @@ import type {
   DiscoveredUnit,
   LibraryCompilationResult,
   ProgramCompilationResult,
+  RenameProgramOptions,
 } from "./types.js";
 import { unitId } from "./types.js";
 
@@ -142,6 +145,12 @@ export async function compilePipeline(
   options: CompileOptions = {},
   fetchNetworkDep: FetchNetworkDep = defaultFetchNetworkDep,
 ): Promise<CompilePipelineResult> {
+  if (options.rename !== undefined && !options.program) {
+    throw new Error(
+      "Compile option `rename` requires `program` so the source program is explicit.",
+    );
+  }
+
   // Resolve the effective network for network-dep fetch + `.env`. A programmatic
   // `{ network }` (forwarded from deploy/recipe/upgrade) retargets these from
   // `config.defaultNetwork` so imported on-chain sources are fetched from the
@@ -165,6 +174,7 @@ export async function compilePipeline(
 
   // Filter to specific program if requested
   let compileOrder = graph.order;
+  let renamePlan: RenameProgramOptions | undefined;
   if (options.program) {
     const target = compileOrder.find(
       (u) => unitId(u) === options.program || unitId(u) === `${options.program}.aleo`,
@@ -175,6 +185,12 @@ export async function compilePipeline(
         `Program "${options.program}" not found in ${config.paths.programs}`,
       );
     }
+    if (options.rename !== undefined) {
+      renamePlan = {
+        sourceProgramId: unitId(target),
+        targetProgramId: normalizeProgramId(options.rename),
+      };
+    }
     // Include the target and all its transitive dependencies
     compileOrder = collectTransitiveDeps(target, graph, allUnits);
   }
@@ -182,7 +198,7 @@ export async function compilePipeline(
   // 3. Materialize all packages (needed for dependency linking)
   const packageDirs = new Map<string, string>();
   for (const unit of compileOrder) {
-    const dir = materializePackage(unit, config, graph, effectiveNetwork);
+    const dir = materializePackage(unit, config, graph, effectiveNetwork, renamePlan);
     packageDirs.set(unitId(unit), dir);
   }
 
@@ -228,6 +244,8 @@ export async function compilePipeline(
 
   for (const unit of compileOrder) {
     const id = unitId(unit);
+    const effectiveId = effectiveUnitId(unit, renamePlan);
+    const cacheId = effectiveId === id ? id : `${id}__as__${effectiveId}`;
     const pkgDir = packageDirs.get(id)!;
     const buildDir = path.join(pkgDir, "build");
 
@@ -251,34 +269,37 @@ export async function compilePipeline(
     const hash = computeUnitHash(unit, pkgDir, localDepIds, depHashes, networkDepIds);
     depHashes.set(id, hash);
 
-    const hashMatches = !options.force && isCached(cacheDir, id, hash);
+    const hashMatches = !options.force && isCached(cacheDir, cacheId, hash);
     // A program hash hit only counts if the build output it still needs (ABI +
     // compiled .aleo) survived in the preserved build/ dir; otherwise the later
     // ABI read / artifact copy would fail. Libraries are inline `fn` helpers
     // that emit no build artifacts, so there is nothing to revalidate.
     const cached =
-      hashMatches && (unit.kind !== "program" || hasRequiredProgramArtifacts(buildDir, id));
+      hashMatches &&
+      (unit.kind !== "program" || hasRequiredProgramArtifacts(buildDir, effectiveId));
 
     if (!cached) {
-      await runLeoBuild(pkgDir, id, config);
+      await runLeoBuild(pkgDir, effectiveId, config);
     }
 
     if (unit.kind === "program") {
-      const abi = readProgramAbi(buildDir, id);
+      const abi = readProgramAbi(buildDir, effectiveId);
 
       // Copy final artifacts to artifactsDir/<programId>/
-      const artifactDir = path.join(config.paths.artifacts, unit.programId);
-      const normalized = copyArtifacts(buildDir, artifactDir, id, {
+      const artifactDir = path.join(config.paths.artifacts, effectiveId);
+      const normalized = copyArtifacts(buildDir, artifactDir, effectiveId, {
         requireAbi: true,
         requireAleo: true,
       });
       writeKeyArtifactsMetadata(
-        keyArtifactsMetadataPath(config.paths.artifacts, unit.programId),
-        buildKeyArtifactsMetadata(pkgDir, artifactDir, unit.programId, abi),
+        keyArtifactsMetadataPath(config.paths.artifacts, effectiveId),
+        buildKeyArtifactsMetadata(pkgDir, artifactDir, effectiveId, unit.programId, abi),
       );
 
       results.push({
         unit,
+        sourceProgramId: unit.programId,
+        programId: effectiveId,
         cached,
         packageDir: pkgDir,
         buildDir,
@@ -298,7 +319,7 @@ export async function compilePipeline(
       } satisfies LibraryCompilationResult);
     }
     if (!cached) {
-      writeCache(cacheDir, id, hash);
+      writeCache(cacheDir, cacheId, hash);
     }
   }
 
@@ -531,6 +552,7 @@ function buildKeyArtifactsMetadata(
   packageDir: string,
   artifactDir: string,
   programId: string,
+  sourceProgramId: string,
   abi: ProgramABI,
 ): KeyArtifactsMetadata {
   const sourcePath = path.join(artifactDir, "main.aleo");
@@ -540,8 +562,9 @@ function buildKeyArtifactsMetadata(
   const functions = collectKeyArtifactFunctionRefs(artifactDir, programId, abi);
 
   return {
-    format: "lionden.keyArtifacts.v1",
+    format: KEY_ARTIFACTS_FORMAT,
     programId,
+    sourceProgramId,
     sourceHash,
     importsHash: hashPackageImports(path.join(packageDir, "imports")),
     ...(functions.length === 0 ? {} : { functions }),

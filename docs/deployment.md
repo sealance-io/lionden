@@ -61,6 +61,7 @@ Current behavior:
 Current deploy options:
 
 - `--program`
+- `--rename`
 - `--priority-fee`
 - `--skip-confirm`
 - `--no-compile`
@@ -76,6 +77,16 @@ Current deploy options:
 `--no-skip-deployed` makes already-deployed programs a hard preflight error instead of skipping them.
 
 `--export` requires deploy confirmation. `deploy --skip-confirm --export` is rejected before deployment side effects because the deployed program may not yet be visible to validated export reads. `deploy.autoExport` runs for confirming deploys and upgrades; non-confirming deploys and upgrades skip auto-export.
+
+### Deploy Rename
+
+`deploy --program <source> --rename <name>` deploys one local source program under a different on-chain program id. The source identity remains the local program selected from `programs/`; the runtime identity is the normalized rename target (`<name>.aleo` when the suffix is omitted). LionDen compiles the selected source through its normal SDK-backed deploy path and does not shell out to `leo deploy`.
+
+Rename is supported only when `leoVersion` is `4.3.0` or newer. The deploy task validates rename before compilation, network connection, pending markers, or deployment writes for the checks it owns at that stage: `leoVersion`, `compiler.buildTests`, the requirement that `--rename` is paired with `--program`, and local name collisions. Only the primary deploy target is renamed; imports keep their source-authored ids. For example, if `hello.aleo` imports `token.aleo`, deploying `hello` as `renamed_hello.aleo` still imports `token.aleo`.
+
+Deployment records are keyed by the deployed/runtime `programId`. Renamed records also include `sourceProgramId` so upgrade can recompile the local source program with the recorded runtime rename instead of treating the on-chain id as the local source id. Renamed upgrades require that recorded provenance and `leoVersion` 4.3.0 or newer.
+
+Rename support is defined around the actual deploy flow, wrapper/test/recipe deploy helpers, and renamed upgrade using recorded provenance. `deploy --rename --preflight` is not expanded into a hidden compile or rename-planning flow: on HTTP, preflight still reads the renamed runtime artifact by its runtime id, so a clean rename preflight expects that renamed artifact to already exist locally. This keeps preflight semantics unchanged rather than compiling during preflight.
 
 ### `--prove` (global)
 
@@ -192,10 +203,12 @@ a bare program name, a `.aleo` program id, or a generated wrapper with a
 the context and deploy subsystem; wrappers remain typed ABI clients.
 
 Passing a wrapper is pure sugar for passing its `programId` — `deploy()` reads
-only that field. It does **not** deploy the wrapper's runtime `imports` (those
-are execution-time dispatch targets, see [Runtime Imports For Dynamic
-Dispatch](./network.md#runtime-imports-for-dynamic-dispatch)); dependency deploy
-order still follows static `import`s.
+that field. Generated wrappers may also carry `sourceProgramId`; when
+`sourceProgramId !== programId`, `deploy()` deploys the local source program
+with `rename` set to the wrapper's runtime `programId`. It does **not** deploy
+the wrapper's runtime `imports` (those are execution-time dispatch targets, see
+[Runtime Imports For Dynamic Dispatch](./network.md#runtime-imports-for-dynamic-dispatch));
+dependency deploy order still follows static `import`s.
 
 ## Pending Recovery
 

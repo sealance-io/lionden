@@ -143,6 +143,88 @@ program token.aleo { fn mint() { utils.aleo::add(); } }
     expect(networkDep.location).toBe("network");
   });
 
+  it("renames only the primary program declaration and manifest program", () => {
+    writeFile("utils/main.leo", "program utils.aleo {\n  fn add() {}\n}\n");
+    writeFile(
+      "hello/main.leo",
+      `
+import utils.aleo;
+program hello.aleo {
+  fn main() {
+    utils.aleo::add();
+  }
+}
+`,
+    );
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+    const config = mockConfig();
+    const helloUnit = units.find((u) => unitId(u) === "hello.aleo")!;
+    const pkgDir = materializePackage(helloUnit, config, graph, undefined, {
+      sourceProgramId: "hello.aleo",
+      targetProgramId: "renamed_hello.aleo",
+    });
+
+    expect(path.basename(pkgDir)).toBe("renamed_hello.aleo");
+    const main = fs.readFileSync(path.join(pkgDir, "src", "main.leo"), "utf-8");
+    expect(main).toContain("program renamed_hello.aleo");
+    expect(main).toContain("import utils.aleo;");
+    expect(main).toContain("utils.aleo::add()");
+
+    const programJson = JSON.parse(fs.readFileSync(path.join(pkgDir, "program.json"), "utf-8"));
+    expect(programJson.program).toBe("renamed_hello.aleo");
+    expect(programJson.dependencies.map((dep: { name: string }) => dep.name)).toContain(
+      "utils.aleo",
+    );
+  });
+
+  it("renames the real program declaration without changing an earlier comment", () => {
+    writeFile(
+      "hello/main.leo",
+      `// example: program hello.aleo should stay in this comment
+program hello.aleo {
+  fn main() {}
+}
+`,
+    );
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+    const config = mockConfig();
+    const pkgDir = materializePackage(units[0]!, config, graph, undefined, {
+      sourceProgramId: "hello.aleo",
+      targetProgramId: "renamed_hello.aleo",
+    });
+
+    const main = fs.readFileSync(path.join(pkgDir, "src", "main.leo"), "utf-8");
+    expect(main).toContain("// example: program hello.aleo should stay in this comment");
+    expect(main).toContain("program renamed_hello.aleo {");
+  });
+
+  it("renames the real program declaration without changing an earlier string literal", () => {
+    writeFile(
+      "hello/main.leo",
+      `const MESSAGE: string = "program hello.aleo should stay in this string";
+program hello.aleo {
+  fn main() {}
+}
+`,
+    );
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+    const config = mockConfig();
+    const pkgDir = materializePackage(units[0]!, config, graph, undefined, {
+      sourceProgramId: "hello.aleo",
+      targetProgramId: "renamed_hello.aleo",
+    });
+
+    const main = fs.readFileSync(path.join(pkgDir, "src", "main.leo"), "utf-8");
+    expect(main).toContain('"program hello.aleo should stay in this string"');
+    expect(main).toContain("program renamed_hello.aleo {");
+  });
+
   it("uses .aleo suffix for library program name in manifest", () => {
     writeFile("math/lib.leo", "fn add(a: u32, b: u32) -> u32 { return a + b; }\n");
 

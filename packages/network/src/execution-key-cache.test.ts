@@ -125,6 +125,7 @@ describe("execution key cache", () => {
       sidecar: {
         format: KEY_ARTIFACTS_FORMAT,
         programId: "hello.aleo",
+        sourceProgramId: "hello.aleo",
         sourceHash: sha256Text(source),
         importsHash: sha256Json({ imports: [] }),
         functions: [

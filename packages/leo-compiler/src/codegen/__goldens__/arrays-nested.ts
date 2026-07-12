@@ -93,13 +93,13 @@ export class Grid extends BaseContract {
     settled: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>> | RejectedTransition> => {
       const _args: string[] = [
       ];
-      return this.settleTyped("get_board", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "grid.aleo", "get_board", 0), tpk, "grid.aleo", "get_board", 0, (_p: string) => deserializeBoard(_p)));
+      return this.settleTyped("get_board", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_board", 0), tpk, this.programId, "get_board", 0, (_p: string) => deserializeBoard(_p)));
     },
 
     accepted: async (options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>>> => {
       const _args: string[] = [
       ];
-      return this.expectAcceptedTyped("get_board", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "grid.aleo", "get_board", 0), tpk, "grid.aleo", "get_board", 0, (_p: string) => deserializeBoard(_p)));
+      return this.expectAcceptedTyped("get_board", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "get_board", 0), tpk, this.programId, "get_board", 0, (_p: string) => deserializeBoard(_p)));
     },
 
     rejected: async (options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -158,7 +158,7 @@ export class Grid extends BaseContract {
         BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
         serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
-      return this.settleTyped("set_cell", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "grid.aleo", "set_cell", 0), tpk, "grid.aleo", "set_cell", 4, (_p: string) => deserializeBoard(_p)));
+      return this.settleTyped("set_cell", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "set_cell", 0), tpk, this.programId, "set_cell", 4, (_p: string) => deserializeBoard(_p)));
     },
 
     accepted: async (board: BoardInput, row: number, col: number, val: CellInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<Board>>> => {
@@ -168,7 +168,7 @@ export class Grid extends BaseContract {
         BaseContract.serializeUInt(col, 32, this.inputContext("set_cell", "col")),
         serializeCell(val as CellInput, this.inputContext("set_cell", "val")),
       ];
-      return this.expectAcceptedTyped("set_cell", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "grid.aleo", "set_cell", 0), tpk, "grid.aleo", "set_cell", 4, (_p: string) => deserializeBoard(_p)));
+      return this.expectAcceptedTyped("set_cell", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "set_cell", 0), tpk, this.programId, "set_cell", 4, (_p: string) => deserializeBoard(_p)));
     },
 
     rejected: async (board: BoardInput, row: number, col: number, val: CellInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
