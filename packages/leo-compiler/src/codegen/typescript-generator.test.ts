@@ -22,6 +22,8 @@ function expectGeneratedModulesToTypecheck(outputs: Record<string, string>): voi
   const files: Record<string, string> = {
     "/virtual/package.json": '{ "type": "module" }',
     "/virtual/BaseContract.ts": generateBaseContract(),
+    "/virtual/config.d.ts":
+      "export declare function normalizeProgramId(programId: string): string;",
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
     "/virtual/network.d.ts": [
       'export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
@@ -72,6 +74,13 @@ function expectGeneratedModulesToTypecheck(outputs: Record<string, string>): voi
       if (moduleName === "@lionden/core") {
         return {
           resolvedFileName: "/virtual/core.d.ts",
+          extension: ts.Extension.Dts,
+          isExternalLibraryImport: true,
+        };
+      }
+      if (moduleName === "@lionden/config") {
+        return {
+          resolvedFileName: "/virtual/config.d.ts",
           extension: ts.Extension.Dts,
           isExternalLibraryImport: true,
         };
@@ -658,6 +667,7 @@ describe("generateBindings", () => {
     expect(output).toContain(
       "export function createTokenContract(options?: BaseContractOptions): TokenContract",
     );
+    expect(output).toContain('super("token.aleo", options);');
   });
 
   it("resolves second-order class name collision", () => {
@@ -758,7 +768,9 @@ describe("generateBaseContract", () => {
   it("generates BaseContract class with execute and queryMapping", () => {
     const output = generateBaseContract();
     expect(output).toContain("export abstract class BaseContract");
+    expect(output).toContain("readonly sourceProgramId: string;");
     expect(output).toContain("readonly programId: string;");
+    expect(output).toContain("readonly programId?: string;");
     expect(output).toContain("address(): LeoAddress");
     expect(output).toContain("connect(lre: LionDenRuntimeEnvironment)");
     expect(output).toContain("protected getLre()");
@@ -866,6 +878,36 @@ describe("DynamicRecord handling", () => {
     expect(output).toContain("): Promise<LeoDynamicRecord>");
     // Should pass through as-is, not JSON.stringify
     expect(output).not.toContain("JSON.stringify");
+  });
+
+  it("uses the wrapper runtime program id for instance id-only output projection", () => {
+    const abi: ProgramABI = {
+      program: "proxy.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [
+        {
+          name: "forward",
+          is_async: false,
+          inputs: [],
+          outputs: [{ ty: "DynamicRecord", mode: "Private" as const }],
+        },
+      ],
+    };
+
+    const output = generateBindings(abi);
+
+    expect(output).toContain(
+      'BaseContract.idOnlyRecordOutputAt(rawOutputs, this.programId, "forward", 0)',
+    );
+    expect(output).toContain(
+      'BaseContract.makeIdOnlyDynamicRecordHandle(BaseContract.idOnlyRecordOutputAt(rawOutputs, this.programId, "forward", 0), transitions, this.sourceProgramId, this.programId)',
+    );
+    expect(output).not.toContain(
+      'BaseContract.idOnlyRecordOutputAt(rawOutputs, "proxy.aleo", "forward", 0)',
+    );
   });
 });
 
@@ -1998,6 +2040,10 @@ describe("interface conversion helper emission", () => {
     expect(output).toContain('program: "stable_token.aleo"');
     expect(output).toContain('recordName: "Token"');
     expect(output).toContain("deserialize: deserializeToken");
+    expect(output).toContain("forProgram(programId: string) {");
+    expect(output).toContain(
+      "return bindDynamicRecordHelperProgram(_asPoolTokenImpl, asPoolToken.output, programId);",
+    );
     expect(output).toContain("Leo.dynamicRecord(value, {");
     expect(output).toContain('"address.private"');
     expect(output).toContain('"u8.public"');
@@ -2005,7 +2051,7 @@ describe("interface conversion helper emission", () => {
     // `Leo` and `createRecordOutputMatcher` are value-imports on this program
     // (helpers emitted); the matcher type is a type-only import.
     expect(output).toMatch(
-      /import \{ BaseContract, Leo, createRecordOutputMatcher, .*type RecordOutputMatcher/,
+      /import \{ BaseContract, Leo, bindDynamicRecordHelperProgram, createRecordOutputMatcher, .*type RecordOutputMatcher/,
     );
   });
 
@@ -2181,7 +2227,7 @@ describe("typed-output projector Future index contract", () => {
     ]);
     const output = generateBindings(abi);
     // Single non-Future output → projector returns a bare value (no tuple).
-    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)');
+    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 1)');
     expect(output).not.toContain(
       'BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)',
     );
@@ -2197,8 +2243,8 @@ describe("typed-output projector Future index contract", () => {
       { ty: { Plaintext: { Primitive: { UInt: "U128" } } } },
     ]);
     const output = generateBindings(abi);
-    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 0)');
-    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 2)');
+    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 0)');
+    expect(output).toContain('BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 2)');
     expect(output).not.toContain(
       'BaseContract.rawOutputAt(rawOutputs, "future_demo.aleo", "demo", 1)',
     );
@@ -2254,7 +2300,7 @@ describe("mode-gated plaintext output emission", () => {
     const out = generateBindings(abiOneOutput("Public"));
     expect(out).toContain("Promise<AcceptedTransition<bigint>>");
     expect(out).toContain(
-      'BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0))',
+      'BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 0))',
     );
     // EncryptedValue may appear in the import list, but never as a generic
     // type instantiation in this public-only program.
@@ -2268,7 +2314,7 @@ describe("mode-gated plaintext output emission", () => {
     const out = generateBindings(abiOneOutput("Private"));
     expect(out).toContain("Promise<AcceptedTransition<EncryptedValue<bigint>>>");
     expect(out).toContain(
-      'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mode_demo.aleo", "demo", 0), tpk, "mode_demo.aleo", "demo", 0, BaseContract.parseBigInt)',
+      'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 0), tpk, this.programId, "demo", 0, BaseContract.parseBigInt)',
     );
     // Projector binds `tpk` (no underscore) since at least one private plaintext.
     expect(out).toMatch(
@@ -2290,7 +2336,7 @@ describe("mode-gated plaintext output emission", () => {
         { name: "b", mode: "Public" },
       ]),
     );
-    expect(out).toContain('"mode_demo.aleo", "demo", 2, BaseContract.parseBigInt');
+    expect(out).toContain('this.programId, "demo", 2, BaseContract.parseBigInt');
   });
 
   it("globalIndex for multi-output mix: public output + private output", () => {
@@ -2320,11 +2366,11 @@ describe("mode-gated plaintext output emission", () => {
     expect(out).toContain("Promise<AcceptedTransition<[bigint, EncryptedValue<bigint>]>>");
     // Public@abi0 → eager parse on rawOutputs[0].
     expect(out).toContain(
-      'BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 0))',
+      'BaseContract.parseBigInt(BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 0))',
     );
     // Private@abi1 → makeEncryptedValue on rawOutputs[1] with globalIndex 1 + 1 = 2.
     expect(out).toContain(
-      'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "mixed_mode.aleo", "demo", 1), tpk, "mixed_mode.aleo", "demo", 2, BaseContract.parseBigInt)',
+      'BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "demo", 1), tpk, this.programId, "demo", 2, BaseContract.parseBigInt)',
     );
   });
 });
@@ -2499,7 +2545,9 @@ describe("reserved-name guards", () => {
         },
       ],
     });
-    expect(out).toContain("import { BaseContract, Leo, createRecordOutputMatcher,");
+    expect(out).toContain(
+      "import { BaseContract, Leo, bindDynamicRecordHelperProgram, createRecordOutputMatcher,",
+    );
     expect(out).toContain("export interface createRecordOutputMatcher");
     expect(out).toContain("export interface Leo");
     expect(out).toContain("return Leo.dynamicRecord(value, {");
@@ -2560,7 +2608,9 @@ describe("reserved-name guards", () => {
       ],
     });
 
-    expect(out).toContain("import { BaseContract, Leo, createRecordOutputMatcher,");
+    expect(out).toContain(
+      "import { BaseContract, Leo, bindDynamicRecordHelperProgram, createRecordOutputMatcher,",
+    );
     expect(out).toContain("export class LeoContract extends BaseContract");
     expect(out).toContain("export function createLeoContract(");
     expect(out).not.toContain("export class Leo extends BaseContract");

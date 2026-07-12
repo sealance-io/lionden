@@ -2,7 +2,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
 import type { DependencyGraph } from "./dependency-resolver.js";
-import type { DiscoveredLibrary, DiscoveredProgram, DiscoveredUnit } from "./types.js";
+import { stripCommentsAndStrings } from "./source-scrubber.js";
+import type { DiscoveredLibrary, DiscoveredUnit, RenameProgramOptions } from "./types.js";
 import { unitId } from "./types.js";
 
 /**
@@ -18,9 +19,10 @@ export function materializePackage(
   config: LionDenResolvedConfig,
   graph: DependencyGraph,
   network?: string,
+  renamePlan?: RenameProgramOptions,
 ): string {
-  const id = unitId(unit);
-  const packageDir = path.join(config.paths.artifacts, ".build", id);
+  const effectiveId = effectiveUnitId(unit, renamePlan);
+  const packageDir = path.join(config.paths.artifacts, ".build", effectiveId);
   const srcDir = path.join(packageDir, "src");
   const importsDir = path.join(packageDir, "imports");
 
@@ -29,7 +31,7 @@ export function materializePackage(
   const buildDir = path.join(packageDir, "build");
   const buildExists = fs.existsSync(buildDir);
   const tmpBuildDir = buildExists
-    ? path.join(config.paths.artifacts, ".build", `.preserve-${id}-${process.pid}`)
+    ? path.join(config.paths.artifacts, ".build", `.preserve-${effectiveId}-${process.pid}`)
     : null;
   if (tmpBuildDir) {
     fs.renameSync(buildDir, tmpBuildDir);
@@ -46,11 +48,23 @@ export function materializePackage(
     const src = path.join(unit.sourceDir, relPath);
     const dest = path.join(srcDir, relPath);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(src, dest);
+    if (
+      unit.kind === "program" &&
+      renamePlan &&
+      unit.programId === renamePlan.sourceProgramId &&
+      relPath === "main.leo"
+    ) {
+      fs.writeFileSync(
+        dest,
+        rewriteMainProgramDeclaration(fs.readFileSync(src, "utf-8"), renamePlan),
+      );
+    } else {
+      fs.copyFileSync(src, dest);
+    }
   }
 
   // Generate program.json
-  const programJson = buildProgramJson(unit, config, graph);
+  const programJson = buildProgramJson(unit, config, graph, effectiveId);
   fs.writeFileSync(
     path.join(packageDir, "program.json"),
     JSON.stringify(programJson, null, 2) + "\n",
@@ -73,6 +87,7 @@ function buildProgramJson(
   unit: DiscoveredUnit,
   config: LionDenResolvedConfig,
   graph: DependencyGraph,
+  effectiveId = unitId(unit),
 ): Record<string, unknown> {
   const id = unitId(unit);
   const imports = graph.imports.get(id) ?? [];
@@ -80,9 +95,7 @@ function buildProgramJson(
   // Leo CLI expects the program field to use the .aleo suffix for both
   // programs and libraries (matching import syntax, e.g. "math_utils.aleo").
   const programName =
-    unit.kind === "program"
-      ? (unit as DiscoveredProgram).programId
-      : `${(unit as DiscoveredLibrary).name}.aleo`;
+    unit.kind === "program" ? effectiveId : `${(unit as DiscoveredLibrary).name}.aleo`;
 
   const dependencies: LeoDepEntry[] = [];
 
@@ -107,6 +120,27 @@ function buildProgramJson(
     license: "MIT",
     dependencies: dependencies.length > 0 ? dependencies : undefined,
   };
+}
+
+export function effectiveUnitId(unit: DiscoveredUnit, renamePlan?: RenameProgramOptions): string {
+  return unit.kind === "program" && renamePlan && unit.programId === renamePlan.sourceProgramId
+    ? renamePlan.targetProgramId
+    : unitId(unit);
+}
+
+function rewriteMainProgramDeclaration(source: string, rename: RenameProgramOptions): string {
+  const scrubbed = stripCommentsAndStrings(source);
+  const declaration = /\bprogram\s+([\w]+\.aleo)\s*(?=[:{])/g;
+  const match = declaration.exec(scrubbed);
+  if (!match || match[1] !== rename.sourceProgramId) {
+    throw new Error(
+      `Cannot rename "${rename.sourceProgramId}" to "${rename.targetProgramId}": main.leo does not declare the source program.`,
+    );
+  }
+
+  const idStart = match.index + match[0].indexOf(match[1]);
+  const idEnd = idStart + match[1].length;
+  return `${source.slice(0, idStart)}${rename.targetProgramId}${source.slice(idEnd)}`;
 }
 
 function buildDotEnv(config: LionDenResolvedConfig, network?: string): string {

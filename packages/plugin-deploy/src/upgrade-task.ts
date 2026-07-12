@@ -11,7 +11,11 @@
 
 import type { ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
 import { isSignable } from "@lionden/config";
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import {
+  KeyArtifactsMetadataError,
+  type LionDenRuntimeEnvironment,
+  readProgramArtifactProvenance,
+} from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
 import type { DeploymentManager } from "./deployment-manager.js";
@@ -21,6 +25,7 @@ import type {
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
+import { supportsLeoProgramRename } from "./leo-version.js";
 import {
   checkProgramOnChain,
   createDegradedRecord,
@@ -134,15 +139,35 @@ export async function upgradeAction(
     observedFallbackEdition = observedEdition;
   }
 
+  const sourceProgramId = resolveUpgradeSourceProgramId(
+    config.paths.artifacts,
+    existingRecord,
+    programId,
+  );
+  const rename = sourceProgramId !== programId ? programId : undefined;
+  if (rename && !supportsLeoProgramRename(config.leoVersion)) {
+    throw new DeployError(
+      `upgrade for renamed deployment "${programId}" requires Leo 4.3.0 or newer. ` +
+        `Configured leoVersion is "${config.leoVersion}".`,
+    );
+  }
+  if (rename && config.compiler.buildTests) {
+    throw new DeployError(
+      `upgrade for renamed deployment "${programId}" is not supported when compiler.buildTests is enabled.`,
+    );
+  }
+
   // 4. Compile the updated program. Forward the effective upgrade network (when
   // explicitly supplied) so the implicit compile resolves imported on-chain
   // sources + `.env` from the deploying network; omit it otherwise so compile
   // falls back to `config.defaultNetwork` (byte-for-byte unchanged).
-  const compileArgs: Record<string, unknown> = { program: options.program };
+  const compileArgs: Record<string, unknown> = rename
+    ? { program: sourceProgramId, rename }
+    : { program: options.program };
   if (options.network) compileArgs["network"] = options.network;
   await lre.tasks.run("compile", compileArgs);
 
-  // 5. Read the newly-compiled ABI — recorded so `export` has it.
+  // Read the newly-compiled ABI — recorded so `export` has it.
   const newAbi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
   if (!newAbi) {
     throw new DeployError(`No compiled ABI found for "${programId}". Compilation may have failed.`);
@@ -199,6 +224,7 @@ export async function upgradeAction(
   if (manager) {
     pending = {
       programId,
+      ...(rename ? { sourceProgramId } : {}),
       action: "upgrade",
       startedAt: new Date().toISOString(),
       deployerAddress: deployerAddress ?? "unknown",
@@ -264,6 +290,7 @@ export async function upgradeAction(
     const updatedRecord: CompleteDeploymentRecord = {
       status: "complete",
       programId,
+      ...(rename ? { sourceProgramId } : {}),
       network: networkName,
       endpoint: connection.endpoint,
       updatedAt: new Date().toISOString(),
@@ -377,6 +404,42 @@ async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<stri
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function resolveUpgradeSourceProgramId(
+  artifactsDir: string,
+  existingRecord: DeploymentRecord,
+  programId: string,
+): string {
+  if (existingRecord.sourceProgramId) {
+    return existingRecord.sourceProgramId;
+  }
+
+  let provenance: ReturnType<typeof readProgramArtifactProvenance>;
+  try {
+    provenance = readProgramArtifactProvenance(artifactsDir, programId);
+  } catch (err) {
+    if (err instanceof KeyArtifactsMetadataError) {
+      throw new DeployError(
+        `Artifact provenance metadata is invalid for upgrade target "${programId}". ` +
+          `Recompile the runtime artifact or restore a valid deployment record. Cause: ${err.message}`,
+      );
+    }
+    throw err;
+  }
+
+  if (!provenance) {
+    return programId;
+  }
+
+  if (provenance.programId !== programId) {
+    throw new DeployError(
+      `Artifact provenance metadata is invalid for upgrade target "${programId}": ` +
+        `found programId="${provenance.programId}", sourceProgramId="${provenance.sourceProgramId}".`,
+    );
+  }
+
+  return provenance.sourceProgramId;
+}
 
 async function resolveDeployerAddress(
   connection: NetworkConnection,

@@ -405,17 +405,22 @@ function baseContractImport(includeLeo: boolean, widenImport: string | null): st
 /**
  * Bare value-binding names introduced by `baseContractImport`, in emitted order:
  * `BaseContract`, then `Leo` (only when the module emits dynamic-record helpers),
- * then `createRecordOutputMatcher`. Single source of truth shared by
- * `baseContractImport` (the emitted import line) and the collision guard
- * (`reservedBaseContractImportNames` / `assertNoReservedHelperNames`), so the
- * emitted value imports and the reserved set cannot drift apart — the same
- * single-source treatment the type list gets via `BASE_CONTRACT_TYPE_IMPORT_NAMES`.
+ * then dynamic-record helper support, then `createRecordOutputMatcher`. Single
+ * source of truth shared by `baseContractImport` (the emitted import line) and
+ * the collision guard (`reservedBaseContractImportNames` /
+ * `assertNoReservedHelperNames`), so the emitted value imports and the reserved
+ * set cannot drift apart — the same single-source treatment the type list gets
+ * via `BASE_CONTRACT_TYPE_IMPORT_NAMES`.
  *
  * A generated contract class or its `create${class}` factory must avoid all of
  * these; local interfaces can still coexist with the value-only imports.
  */
 function baseContractValueImportNames(includeLeo: boolean): readonly string[] {
-  return ["BaseContract", ...(includeLeo ? ["Leo"] : []), "createRecordOutputMatcher"];
+  return [
+    "BaseContract",
+    ...(includeLeo ? ["Leo", "bindDynamicRecordHelperProgram"] : []),
+    "createRecordOutputMatcher",
+  ];
 }
 
 /**
@@ -460,6 +465,7 @@ const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
   // named `constructor` would redeclare it
   "constructor",
   // properties
+  "sourceProgramId",
   "programId",
   "instanceImports",
   "lre",
@@ -1202,6 +1208,11 @@ function generateDynamicRecordHelper(
   lines.push(`    recordName: "${helper.sourceRecord}",`);
   lines.push(`    deserialize: deserialize${helper.sourceRecord},`);
   lines.push(`  }),`);
+  lines.push(`  forProgram(programId: string) {`);
+  lines.push(
+    `    return bindDynamicRecordHelperProgram(${fnName}, ${helper.helperName}.output, programId);`,
+  );
+  lines.push("  },");
   lines.push("});");
   return lines;
 }
@@ -1404,7 +1415,13 @@ function generateTransitionMethod(transition: TransitionABI, ctx: GenerationCont
   lines.push("  },");
   lines.push("");
   const typedOutputType = formatTypedOutputType(transition.outputs, ctx);
-  const projectorExpr = formatProjectorExpr(transition, ctx.programId, ctx);
+  const projectorExpr = formatProjectorExpr(
+    transition,
+    ctx.programId,
+    "this.sourceProgramId",
+    "this.programId",
+    ctx,
+  );
 
   lines.push(
     `  submitted: async (${formatTransitionMethodParams(transition.inputs, ctx, safeNames, "OnChainExecutionOptions")}): Promise<SubmittedTransition> => {`,
@@ -2261,6 +2278,8 @@ function typedOutputElementType(output: AbiOutput, ctx: GenerationContext): stri
 function formatProjectorExpr(
   transition: TransitionABI,
   programId: string,
+  sourceProgramExpr: string,
+  runtimeProgramExpr: string,
   ctx: GenerationContext,
 ): string {
   const visibleIndices: number[] = [];
@@ -2280,7 +2299,7 @@ function formatProjectorExpr(
   }
 
   const rawAccess = (abiIndex: number): string =>
-    `BaseContract.rawOutputAt(rawOutputs, "${programId}", "${transitionName}", ${abiIndex})`;
+    `BaseContract.rawOutputAt(rawOutputs, ${runtimeProgramExpr}, "${transitionName}", ${abiIndex})`;
 
   const decodeForIndex = (abiIndex: number): string => {
     const output = transition.outputs[abiIndex]!;
@@ -2288,7 +2307,8 @@ function formatProjectorExpr(
     return projectorElementExpr(
       access,
       output,
-      programId,
+      sourceProgramExpr,
+      runtimeProgramExpr,
       transitionName,
       abiIndex,
       inputCount,
@@ -2324,24 +2344,25 @@ function projectorElementUsesTransitions(output: AbiOutput, ctx: GenerationConte
 function projectorElementExpr(
   rawExpr: string,
   output: AbiOutput,
-  programId: string,
+  sourceProgramExpr: string,
+  runtimeProgramExpr: string,
   transitionName: string,
   abiIndex: number,
   inputCount: number,
   ctx: GenerationContext,
 ): string {
   const ty = output.ty;
-  const idOnlyAccess = `BaseContract.idOnlyRecordOutputAt(rawOutputs, "${programId}", "${transitionName}", ${abiIndex})`;
+  const idOnlyAccess = `BaseContract.idOnlyRecordOutputAt(rawOutputs, ${runtimeProgramExpr}, "${transitionName}", ${abiIndex})`;
   if (ty === "DynamicRecord") {
-    return `BaseContract.makeIdOnlyDynamicRecordHandle(${idOnlyAccess}, transitions)`;
+    return `BaseContract.makeIdOnlyDynamicRecordHandle(${idOnlyAccess}, transitions, ${sourceProgramExpr}, ${runtimeProgramExpr})`;
   }
   if (typeof ty === "object" && ty !== null && "Record" in ty) {
     if (isLocalRecordRef(ty.Record, ctx)) {
-      return `BaseContract.makeEncryptedRecord("${programId}", "${recordRefName(ty.Record)}", ${rawExpr}, deserialize${recordRefName(ty.Record)})`;
+      return `BaseContract.makeEncryptedRecord(${runtimeProgramExpr}, "${recordRefName(ty.Record)}", ${rawExpr}, deserialize${recordRefName(ty.Record)}, ${sourceProgramExpr})`;
     }
     const external = externalRecordInfo(ty.Record, ctx);
     const typeArg = external?.typeName ?? "LeoDynamicRecord";
-    return `BaseContract.makeIdOnlyExternalRecordHandle<${typeArg}>(${idOnlyAccess}, transitions)`;
+    return `BaseContract.makeIdOnlyExternalRecordHandle<${typeArg}>(${idOnlyAccess}, transitions, ${sourceProgramExpr}, ${runtimeProgramExpr})`;
   }
   if (typeof ty === "object" && ty !== null && "Plaintext" in ty) {
     if (isPrivatePlaintextOutput(output)) {
@@ -2349,7 +2370,7 @@ function projectorElementExpr(
       // separation places inputs first; verified by Step 0 devnode decrypt.
       const globalIndex = inputCount + abiIndex;
       const deserializer = plaintextDeserializerFn(ty.Plaintext, ctx);
-      return `BaseContract.makeEncryptedValue(${rawExpr}, tpk, "${programId}", "${transitionName}", ${globalIndex}, ${deserializer})`;
+      return `BaseContract.makeEncryptedValue(${rawExpr}, tpk, ${runtimeProgramExpr}, "${transitionName}", ${globalIndex}, ${deserializer})`;
     }
     return deserializePlaintextExpr(rawExpr, ty.Plaintext, ctx);
   }

@@ -1,5 +1,6 @@
 
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import { normalizeProgramId } from "@lionden/config";
 import {
   decryptRecordCiphertext,
   decryptValueCiphertext,
@@ -99,6 +100,11 @@ export interface BaseCallOptions {
  * dispatch hubs that need the same set of dynamic targets on each call.
  */
 export interface BaseContractOptions {
+  /**
+   * Effective runtime/on-chain program id for this wrapper instance. Defaults
+   * to the generated source program id.
+   */
+  readonly programId?: string;
   /**
    * Runtime imports declared at instance creation time. Same accepted
    * shapes as \`BaseCallOptions.imports\`: bare names, \`.aleo\` ids, or
@@ -308,6 +314,11 @@ export interface RecordOutputMatcher<T, S extends "unbound" | "bound" = "unbound
   at(transitionIndex: number, outputIndex: number): RecordOutputMatcher<T, "bound">;
 }
 
+export type DynamicRecordHelper<TIn, TOut> = ((value: TIn) => LeoDynamicRecord) & {
+  readonly output: RecordOutputMatcher<TOut, "unbound">;
+  forProgram(programId: string): DynamicRecordHelper<TIn, TOut>;
+};
+
 /**
  * Result of \`.match(matcher)\`. All validation, source resolution, and
  * decryption is deferred to \`.decrypt(key)\`. Calling \`.match\` itself is a
@@ -396,6 +407,21 @@ export function createRecordOutputMatcher<T>(base: {
   return buildRecordOutputMatcher(base, undefined) as RecordOutputMatcher<T, "unbound">;
 }
 
+export function bindDynamicRecordHelperProgram<TIn, TOut>(
+  fn: (value: TIn) => LeoDynamicRecord,
+  matcher: RecordOutputMatcher<TOut, "unbound">,
+  programId: string,
+): DynamicRecordHelper<TIn, TOut> {
+  const output = BaseContract.bindRecordOutputMatcherProgram(matcher, programId);
+  const helper = Object.assign(((value: TIn) => fn(value)), {
+    output,
+    forProgram(nextProgramId: string): DynamicRecordHelper<TIn, TOut> {
+      return bindDynamicRecordHelperProgram(fn, helper.output, nextProgramId);
+    },
+  });
+  return helper;
+}
+
 function buildRecordOutputMatcher<T>(
   base: {
     readonly program: string;
@@ -426,6 +452,17 @@ function buildRecordOutputMatcher<T>(
     },
   };
   return matcher as RecordOutputMatcher<T, "unbound"> | RecordOutputMatcher<T, "bound">;
+}
+
+function rebindMatcherSource(
+  source: IdOnlyRecordSource | undefined,
+  fromProgramId: string,
+  toProgramId: string,
+): IdOnlyRecordSource | undefined {
+  if (source === undefined || !("programId" in source) || source.programId !== fromProgramId) {
+    return source;
+  }
+  return { ...source, programId: toProgramId };
 }
 
 /**
@@ -789,13 +826,15 @@ export const Leo = {
 export abstract class BaseContract {
   static readonly RECORD_RAW: typeof RECORD_RAW = RECORD_RAW;
 
+  readonly sourceProgramId: string;
   readonly programId: string;
   protected readonly instanceImports: readonly string[];
   protected lre: LionDenRuntimeEnvironment | null = null;
   protected signer?: SignerInput;
 
-  constructor(programId: string, options?: BaseContractOptions) {
-    this.programId = programId;
+  constructor(sourceProgramId: string, options?: BaseContractOptions) {
+    this.sourceProgramId = normalizeProgramId(sourceProgramId);
+    this.programId = normalizeProgramId(options?.programId ?? sourceProgramId);
     this.instanceImports = options?.imports ?? [];
   }
 
@@ -818,7 +857,10 @@ export abstract class BaseContract {
    */
   withSigner(signer: SignerInput): this {
     const ContractClass = this.constructor as new (options?: BaseContractOptions) => this;
-    const instance = new ContractClass({ imports: this.instanceImports });
+    const instance = new ContractClass({
+      programId: this.programId,
+      imports: this.instanceImports,
+    });
     instance.lre = this.lre;
     instance.signer = signer;
     return instance;
@@ -1214,6 +1256,7 @@ export abstract class BaseContract {
     recordName: string,
     ciphertext: string,
     deserialize: (plaintext: string) => T,
+    sourceProgramId?: string,
   ): EncryptedRecord<T> {
     return {
       program,
@@ -1225,15 +1268,19 @@ export abstract class BaseContract {
       match<TOut = T>(
         matcher: RecordOutputMatcher<TOut, "unbound"> | RecordOutputMatcher<TOut, "bound">,
       ): CapturedRecord<TOut> {
+        const runtimeMatcher =
+          sourceProgramId !== undefined && sourceProgramId !== program && matcher.program === sourceProgramId
+            ? BaseContract.bindRecordOutputMatcherProgram(matcher, program)
+            : matcher;
         return {
           async decrypt(key: DecryptionKey): Promise<TOut> {
-            if (matcher.program !== program || matcher.recordName !== recordName) {
+            if (runtimeMatcher.program !== program || runtimeMatcher.recordName !== recordName) {
               throw new TransactionShapeError(
                 "Matcher identity " + matcher.program + "/" + matcher.recordName + " does not match the encrypted record's identity " + program + "/" + recordName + ". Pass the matcher whose helper corresponds to this record's type.",
                 { programId: program, transition: recordName },
               );
             }
-            return BaseContract.decryptRecord(ciphertext, key, matcher.deserialize);
+            return BaseContract.decryptRecord(ciphertext, key, runtimeMatcher.deserialize);
           },
         };
       },
@@ -1332,6 +1379,39 @@ export abstract class BaseContract {
     return BaseContract.decryptRecord(ciphertext, key, matcher.deserialize);
   }
 
+  static bindRecordOutputMatcherProgram<T, S extends "unbound" | "bound">(
+    matcher: RecordOutputMatcher<T, S>,
+    programId: string,
+  ): RecordOutputMatcher<T, S> {
+    if (matcher.program === programId) {
+      return matcher;
+    }
+    return buildRecordOutputMatcher(
+      {
+        program: programId,
+        recordName: matcher.recordName,
+        deserialize: matcher.deserialize,
+      },
+      rebindMatcherSource(matcher.source, matcher.program, programId),
+    ) as RecordOutputMatcher<T, S>;
+  }
+
+  private static bindOwnRuntimeMatcher<T>(
+    matcher: RecordOutputMatcher<T, "bound">,
+    sourceProgramId: string | undefined,
+    runtimeProgramId: string | undefined,
+  ): RecordOutputMatcher<T, "bound"> {
+    if (
+      sourceProgramId === undefined ||
+      runtimeProgramId === undefined ||
+      sourceProgramId === runtimeProgramId ||
+      matcher.program !== sourceProgramId
+    ) {
+      return matcher;
+    }
+    return BaseContract.bindRecordOutputMatcherProgram(matcher, runtimeProgramId);
+  }
+
   /**
    * Build an \`IdOnlyDynamicRecordHandle\` for a \`dyn record\` output. The
    * chain never exposes a ciphertext for the dynamic-record id itself, so
@@ -1344,6 +1424,8 @@ export abstract class BaseContract {
   static makeIdOnlyDynamicRecordHandle(
     entry: IdOnlyRawOutput,
     transitions: readonly ConfirmedTransitionRecord[],
+    sourceProgramId?: string,
+    runtimeProgramId?: string,
   ): IdOnlyDynamicRecordHandle {
     return {
       kind: "idOnlyDynamicRecord",
@@ -1351,11 +1433,12 @@ export abstract class BaseContract {
       id: entry.id,
       transitions,
       match<TOut>(matcher: RecordOutputMatcher<TOut, "bound">): CapturedRecord<TOut> {
+        const runtimeMatcher = BaseContract.bindOwnRuntimeMatcher(matcher, sourceProgramId, runtimeProgramId);
         return {
           decrypt(key: DecryptionKey): Promise<TOut> {
             return BaseContract.resolveAndDecryptIdOnly(
               transitions,
-              matcher,
+              runtimeMatcher,
               key,
               "The dyn-handle's \`.match(...).decrypt(...)\` does not dereference the dynamic-record id — it expects \`.from(transition, outputIndex)\` or \`.at(...)\` pointing at a sibling concrete record output materialized by a V15-compliant callee.",
             );
@@ -1378,6 +1461,8 @@ export abstract class BaseContract {
   static makeIdOnlyExternalRecordHandle<T>(
     entry: IdOnlyRawOutput,
     transitions: readonly ConfirmedTransitionRecord[],
+    sourceProgramId?: string,
+    runtimeProgramId?: string,
   ): IdOnlyExternalRecordHandle<T> {
     return {
       kind: "idOnlyExternalRecord",
@@ -1385,11 +1470,12 @@ export abstract class BaseContract {
       id: entry.id,
       transitions,
       match<TOut = T>(matcher: RecordOutputMatcher<TOut, "bound">): CapturedRecord<TOut> {
+        const runtimeMatcher = BaseContract.bindOwnRuntimeMatcher(matcher, sourceProgramId, runtimeProgramId);
         return {
           decrypt(key: DecryptionKey): Promise<TOut> {
             return BaseContract.resolveAndDecryptIdOnly(
               transitions,
-              matcher,
+              runtimeMatcher,
               key,
               "The callee transition you selected may not actually hold the source ciphertext for this id-only record.",
             );

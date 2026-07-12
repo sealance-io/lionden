@@ -6,6 +6,16 @@
  * constructors from Leo source, and broadcasts through a mocked NetworkConnection.
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
+import {
+  KEY_ARTIFACTS_FORMAT,
+  keyArtifactsMetadataPath,
+  sha256Json,
+  sha256Text,
+  writeKeyArtifactsMetadata,
+} from "@lionden/core";
+import type { ProgramABI } from "@lionden/leo-compiler";
 import { type NetworkManager, SdkDiagnostics } from "@lionden/network";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,14 +86,17 @@ describe("deploy orchestration contract", () => {
   function createDeployFixture(
     programs: {
       name: string;
+      source?: string;
       imports?: string[];
       annotation?: string;
       aleoSource?: string;
       records?: Array<{ path: string[]; fields: unknown[] }>;
     }[],
+    configOverrides = {},
   ) {
     fixture = createContractLre({
       programs,
+      configOverrides,
       withNetwork: true,
       withMockCompile: true,
       prePopulateArtifacts: programs.map((prog) => ({
@@ -133,7 +146,28 @@ describe("deploy orchestration contract", () => {
       lre: fixture.lre,
       fakeNetwork: fixture.fakeNetwork!,
       artifactsDir: fixture.project.artifactsDir,
+      programsDir: fixture.project.programsDir,
     };
+  }
+
+  function writeLibrary(programsDir: string, name: string): void {
+    const dir = path.join(programsDir, name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "lib.leo"), "fn helper() {}\n");
+  }
+
+  function writeArtifactProvenance(
+    artifactsDir: string,
+    programId: string,
+    sourceProgramId: string,
+  ): void {
+    writeKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, programId), {
+      format: KEY_ARTIFACTS_FORMAT,
+      programId,
+      sourceProgramId,
+      sourceHash: sha256Text(`program ${programId};\n`),
+      importsHash: sha256Json({ imports: [] }),
+    });
   }
 
   it("deploys a single program through the full action path", async () => {
@@ -160,6 +194,510 @@ describe("deploy orchestration contract", () => {
     const manager = lre.deployments as DeploymentManagerImpl;
     const record = manager.getCached("hello.aleo", "devnode");
     expect(record?.edition).toBe(0);
+  });
+
+  it("rejects dependency-conflicting and build-test renames", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre } = createDeployFixture(
+      [
+        { name: "utils", annotation: "@noupgrade\n    constructor() {}" },
+        {
+          name: "hello",
+          imports: ["utils.aleo"],
+          annotation: "@noupgrade\n    constructor() {}",
+        },
+      ],
+      { leoVersion: "4.3.2", compiler },
+    );
+
+    await expect(deployAction({ program: "hello", rename: "utils" }, lre)).rejects.toThrow(
+      /conflicts with another local unit/,
+    );
+
+    (lre.config as unknown as { compiler: typeof compiler }).compiler = {
+      ...compiler,
+      buildTests: true,
+    };
+    await expect(deployAction({ program: "hello", rename: "renamed_hello" }, lre)).rejects.toThrow(
+      /buildTests/,
+    );
+  });
+
+  it("allows same-as-source rename through deploy orchestration", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+
+    const taskResult = await deployAction({ program: "hello", rename: "hello" }, lre);
+    const results = unwrapDeploy(taskResult);
+
+    expect(results.map((result) => result.programId)).toEqual(["hello.aleo"]);
+    const manager = lre.deployments as DeploymentManagerImpl;
+    expect(manager.getCached("hello.aleo", "devnode")).toMatchObject({
+      programId: "hello.aleo",
+      sourceProgramId: "hello.aleo",
+    });
+  });
+
+  it("does not reject invalid rename values during rename validation", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    const connectSpy = vi.spyOn(lre.network as NetworkManager, "connect");
+
+    await expect(
+      deployAction({ program: "hello", rename: "bad-name", noCompile: true }, lre),
+    ).rejects.toThrow(/Missing artifact provenance metadata.*without --noCompile/s);
+
+    expect(connectSpy).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects renaming a program to the name of a local library", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, programsDir } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    writeLibrary(programsDir, "math");
+
+    await expect(deployAction({ program: "hello", rename: "math" }, lre)).rejects.toThrow(
+      /conflicts with another local unit/,
+    );
+  });
+
+  it("rejects renaming to the .aleo form of an imported local library", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, programsDir } = createDeployFixture(
+      [
+        {
+          name: "hello",
+          source: "import math.aleo;\nprogram hello.aleo {\n  @noupgrade\n  constructor() {}\n}\n",
+        },
+      ],
+      { leoVersion: "4.3.2", compiler },
+    );
+    writeLibrary(programsDir, "math");
+
+    await expect(deployAction({ program: "hello", rename: "math.aleo" }, lre)).rejects.toThrow(
+      /conflicts with another local unit/,
+    );
+  });
+
+  it("does not reject renaming to a transitive imported dependency during rename validation", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre } = createDeployFixture(
+      [
+        {
+          name: "dep",
+          source: "import tenant.aleo;\nprogram dep.aleo {\n  @noupgrade\n  constructor() {}\n}\n",
+        },
+        {
+          name: "app",
+          imports: ["dep.aleo"],
+          annotation: "@noupgrade\n    constructor() {}",
+        },
+      ],
+      { leoVersion: "4.3.2", compiler },
+    );
+    const runSpy = vi.spyOn(lre.tasks, "run");
+
+    await deployAction({ program: "app", rename: "tenant", preflight: true }, lre);
+
+    expect(runSpy).not.toHaveBeenCalled();
+  });
+
+  it("deploys a renamed program using renamed runtime identity and source provenance", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, artifactsDir } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    lre.artifacts.setAbi("renamed_hello.aleo", {
+      program: "renamed_hello.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource(
+      "renamed_hello.aleo",
+      "program renamed_hello.aleo;\nfunction main:\n",
+    );
+    writeArtifactProvenance(artifactsDir, "renamed_hello.aleo", "hello.aleo");
+
+    const taskResult = await deployAction(
+      { program: "hello", rename: "renamed_hello", noCompile: true, skipConfirm: true },
+      lre,
+    );
+    const results = unwrapDeploy(taskResult);
+
+    expect(results.map((result) => result.programId)).toEqual(["renamed_hello.aleo"]);
+    const manager = lre.deployments as DeploymentManagerImpl;
+    const record = manager.getCached("renamed_hello.aleo", "devnode");
+    expect(record?.programId).toBe("renamed_hello.aleo");
+    expect(record?.sourceProgramId).toBe("hello.aleo");
+    expect(manager.getCached("hello.aleo", "devnode")).toBeNull();
+  });
+
+  it("plain unfiltered deploy ignores stale renamed artifacts instead of deploying them", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    vi.spyOn(lre.artifacts, "getProgramIds").mockReturnValue(["tenant.aleo"]);
+
+    await expect(deployAction({ noCompile: true }, lre)).rejects.toThrow(
+      "No compiled programs found",
+    );
+
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects renamed noCompile when artifact provenance is missing", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    const connectSpy = vi.spyOn(lre.network as NetworkManager, "connect");
+    lre.artifacts.setAbi("renamed_hello.aleo", {
+      program: "renamed_hello.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource(
+      "renamed_hello.aleo",
+      "program renamed_hello.aleo;\nfunction main:\n",
+    );
+
+    await expect(
+      deployAction({ program: "hello", rename: "renamed_hello", noCompile: true }, lre),
+    ).rejects.toThrow(/Missing artifact provenance metadata.*without --noCompile/s);
+
+    expect(connectSpy).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects an already-deployed renamed target without matching local provenance", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork, artifactsDir } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    lre.artifacts.setAbi("tenant.aleo", {
+      program: "tenant.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    writeArtifactProvenance(artifactsDir, "tenant.aleo", "hello.aleo");
+    fakeNetwork.setProgramSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    fakeNetwork.setProgramEdition("tenant.aleo", 0);
+
+    await expect(
+      deployAction({ program: "hello", rename: "tenant", noCompile: true, skipConfirm: true }, lre),
+    ).rejects.toThrow(/already exists but has no matching local provenance/);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    expect(manager.getCached("tenant.aleo", "devnode")).toBeNull();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects renamed reuse when the local record has different source provenance", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork, artifactsDir } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    lre.artifacts.setAbi("tenant.aleo", {
+      program: "tenant.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    writeArtifactProvenance(artifactsDir, "tenant.aleo", "hello.aleo");
+    fakeNetwork.setProgramSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    fakeNetwork.setProgramEdition("tenant.aleo", 0);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    await manager.record(
+      {
+        status: "complete",
+        programId: "tenant.aleo",
+        sourceProgramId: "other.aleo",
+        network: "devnode",
+        endpoint: fakeNetwork.endpoint,
+        updatedAt: "2026-04-01T00:00:00.000Z",
+        edition: 0,
+        historyCount: 1,
+        txId: "at1other",
+        blockHeight: 1,
+        deployerAddress: "aleo1testdeployer",
+        deployedAt: "2026-04-01T00:00:00.000Z",
+      },
+      "deploy",
+      { abi: lre.artifacts.getAbi("tenant.aleo") as ProgramABI },
+    );
+
+    await expect(
+      deployAction({ program: "hello", rename: "tenant", noCompile: true, skipConfirm: true }, lre),
+    ).rejects.toThrow(
+      /Renamed deploy target "tenant\.aleo" is already associated with source "other\.aleo", not "hello\.aleo"/,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects plain reuse when the local record is bound to a different source program", async () => {
+    const { lre, fakeNetwork } = createDeployFixture([
+      { name: "tenant", annotation: "@noupgrade\n    constructor() {}" },
+    ]);
+    fakeNetwork.setProgramSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    fakeNetwork.setProgramEdition("tenant.aleo", 0);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    await manager.record(
+      {
+        status: "complete",
+        programId: "tenant.aleo",
+        sourceProgramId: "hello.aleo",
+        network: "devnode",
+        endpoint: fakeNetwork.endpoint,
+        updatedAt: "2026-04-01T00:00:00.000Z",
+        edition: 0,
+        historyCount: 1,
+        txId: "at1renamed",
+        blockHeight: 1,
+        deployerAddress: "aleo1testdeployer",
+        deployedAt: "2026-04-01T00:00:00.000Z",
+      },
+      "deploy",
+      { abi: lre.artifacts.getAbi("tenant.aleo") as ProgramABI },
+    );
+
+    await expect(
+      deployAction({ program: "tenant", noCompile: true, skipConfirm: true }, lre),
+    ).rejects.toThrow(
+      /Deploy target "tenant\.aleo" is already associated with source "hello\.aleo", not "tenant\.aleo"/,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects renamed preflight when the local record has different source provenance", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork, artifactsDir } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    lre.artifacts.setAbi("tenant.aleo", {
+      program: "tenant.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    writeArtifactProvenance(artifactsDir, "tenant.aleo", "hello.aleo");
+    fakeNetwork.setProgramSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    fakeNetwork.setProgramEdition("tenant.aleo", 0);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    await manager.record(
+      {
+        status: "complete",
+        programId: "tenant.aleo",
+        sourceProgramId: "other.aleo",
+        network: "devnode",
+        endpoint: fakeNetwork.endpoint,
+        updatedAt: "2026-04-01T00:00:00.000Z",
+        edition: 0,
+        historyCount: 1,
+        txId: "at1other",
+        blockHeight: 1,
+        deployerAddress: "aleo1testdeployer",
+        deployedAt: "2026-04-01T00:00:00.000Z",
+      },
+      "deploy",
+      { abi: lre.artifacts.getAbi("tenant.aleo") as ProgramABI },
+    );
+
+    await expect(
+      deployAction({ program: "hello", rename: "tenant", noCompile: true, preflight: true }, lre),
+    ).rejects.toThrow(
+      /Renamed deploy target "tenant\.aleo" is already associated with source "other\.aleo", not "hello\.aleo"/,
+    );
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("reuses renamed deployment provenance from disk-backed devnode state on a cold cache", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork, artifactsDir } = createDeployFixture(
+      [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
+      { leoVersion: "4.3.2", compiler },
+    );
+    (lre.config.networks.devnode as { ephemeral?: boolean }).ephemeral = false;
+    lre.artifacts.setAbi("tenant.aleo", {
+      program: "tenant.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    writeArtifactProvenance(artifactsDir, "tenant.aleo", "hello.aleo");
+    fakeNetwork.setProgramSource("tenant.aleo", "program tenant.aleo;\nfunction main:\n");
+    fakeNetwork.setProgramEdition("tenant.aleo", 0);
+
+    const warmManager = lre.deployments as DeploymentManagerImpl;
+    await warmManager.record(
+      {
+        status: "complete",
+        programId: "tenant.aleo",
+        sourceProgramId: "hello.aleo",
+        network: "devnode",
+        endpoint: fakeNetwork.endpoint,
+        updatedAt: "2026-04-01T00:00:00.000Z",
+        edition: 0,
+        historyCount: 1,
+        txId: "at1tenant",
+        blockHeight: 1,
+        deployerAddress: "aleo1testdeployer",
+        deployedAt: "2026-04-01T00:00:00.000Z",
+      },
+      "deploy",
+      { abi: lre.artifacts.getAbi("tenant.aleo") as ProgramABI },
+    );
+    const coldManager = new DeploymentManagerImpl(
+      lre.config,
+      () => lre.network as NetworkManager | null,
+      lre.artifacts,
+    );
+    (lre as unknown as Record<string, unknown>)["deployments"] = coldManager;
+
+    const taskResult = await deployAction(
+      { program: "hello", rename: "tenant", noCompile: true, skipConfirm: true },
+      lre,
+    );
+
+    expect(unwrapDeploy(taskResult)).toEqual([]);
+    expect(coldManager.getCached("tenant.aleo", "devnode")).toMatchObject({
+      status: "complete",
+      programId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+    });
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("rejects renamed noCompile when artifact provenance has a different source", async () => {
+    const compiler = {
+      enableDce: true,
+      conditionalBlockMaxDepth: 10,
+      buildTests: false,
+      extraFlags: [],
+    };
+    const { lre, fakeNetwork, artifactsDir } = createDeployFixture(
+      [
+        { name: "hello", annotation: "@noupgrade\n    constructor() {}" },
+        { name: "other", annotation: "@noupgrade\n    constructor() {}" },
+      ],
+      { leoVersion: "4.3.2", compiler },
+    );
+    const connectSpy = vi.spyOn(lre.network as NetworkManager, "connect");
+    lre.artifacts.setAbi("renamed_hello.aleo", {
+      program: "renamed_hello.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    });
+    lre.artifacts.setAleoSource(
+      "renamed_hello.aleo",
+      "program renamed_hello.aleo;\nfunction main:\n",
+    );
+    writeArtifactProvenance(artifactsDir, "renamed_hello.aleo", "other.aleo");
+
+    await expect(
+      deployAction({ program: "hello", rename: "renamed_hello", noCompile: true }, lre),
+    ).rejects.toThrow(/sourceProgramId="other\.aleo".*without --noCompile/s);
+
+    expect(connectSpy).not.toHaveBeenCalled();
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
   });
 
   it("records a confirmed deploy even when on-chain edition cannot be observed", async () => {

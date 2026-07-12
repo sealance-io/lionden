@@ -108,6 +108,7 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       // reserved built-in global (rejected at plugin load); CLI `--network`
       // mutates `defaultNetwork` pre-dispatch and never lands in `args`.
       network: typeof args["network"] === "string" ? (args["network"] as string) : undefined,
+      rename: typeof args["rename"] === "string" ? (args["rename"] as string) : undefined,
     };
 
     await preflightLeo(lre.config);
@@ -119,10 +120,11 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       (r): r is ProgramCompilationResult => r.unit.kind === "program",
     );
     for (const result of programResults) {
-      lre.artifacts.setAbi(result.unit.programId, result.abi);
+      const runtimeProgramId = result.programId ?? result.unit.programId;
+      lre.artifacts.setAbi(runtimeProgramId, result.abi);
       const aleoPath = typeof result.aleoSource === "string" ? result.aleoSource : "";
       if (aleoPath && fs.existsSync(aleoPath)) {
-        lre.artifacts.setAleoSource(result.unit.programId, fs.readFileSync(aleoPath, "utf-8"));
+        lre.artifacts.setAleoSource(runtimeProgramId, fs.readFileSync(aleoPath, "utf-8"));
       }
     }
 
@@ -131,7 +133,9 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       // Fail fast if two programs (or a program and a reserved emitter file)
       // map to the same typechain module file, which would otherwise silently
       // overwrite one program's bindings during the write loop below.
-      assertTypechainModuleNamesUnique(programResults.map((r) => r.unit.programId));
+      assertTypechainModuleNamesUnique(
+        programResults.map((r) => r.sourceProgramId ?? r.unit.programId),
+      );
 
       const typechainDir = lre.config.paths.typechain;
       fs.mkdirSync(typechainDir, { recursive: true });
@@ -140,16 +144,20 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       fs.writeFileSync(path.join(typechainDir, "BaseContract.ts"), generateBaseContract());
 
       // Generate per-program bindings
-      const allAbis = programResults.map((result) => result.abi);
+      const allAbis = programResults.map((result) => ({
+        ...result.abi,
+        program: result.sourceProgramId ?? result.unit.programId,
+      }));
       const targetedCompile = typeof options.program === "string" && options.program.length > 0;
       const helpersByProgram = resolveDynamicRecordHelpers(lre, programResults, {
         targetedCompile,
       });
       for (const result of programResults) {
-        const className = programIdToClassName(result.unit.programId);
-        const dynamicRecords = helpersByProgram.get(result.unit.programId);
+        const sourceProgramId = result.sourceProgramId ?? result.unit.programId;
+        const className = programIdToClassName(sourceProgramId);
+        const dynamicRecords = helpersByProgram.get(sourceProgramId);
         const bindings = generateBindings(
-          result.abi,
+          { ...result.abi, program: sourceProgramId },
           allAbis,
           dynamicRecords ? { dynamicRecords } : {},
         );
@@ -203,10 +211,13 @@ function buildTypechainIndex(
   programResults: readonly ProgramCompilationResult[],
   helpersByProgram: ReadonlyMap<string, NonNullable<GenerateBindingsOptions["dynamicRecords"]>>,
 ): string {
-  const modules = programResults.map((result) => ({
-    fileName: programIdToClassName(result.unit.programId),
-    exports: getProgramExports(result, helpersByProgram.get(result.unit.programId) ?? []),
-  }));
+  const modules = programResults.map((result) => {
+    const sourceProgramId = result.sourceProgramId ?? result.unit.programId;
+    return {
+      fileName: programIdToClassName(sourceProgramId),
+      exports: getProgramExports(result, helpersByProgram.get(sourceProgramId) ?? []),
+    };
+  });
   const counts = new Map<string, number>();
   for (const module of modules) {
     for (const name of [...module.exports.types, ...module.exports.values]) {
@@ -241,14 +252,15 @@ function getProgramExports(
   result: ProgramCompilationResult,
   helpers: readonly NonNullable<GenerateBindingsOptions["dynamicRecords"]>[number][],
 ): { types: string[]; values: string[] } {
-  const abi = result.abi;
+  const sourceProgramId = result.sourceProgramId ?? result.unit.programId;
+  const abi = { ...result.abi, program: sourceProgramId };
   const types = new Set<string>();
   const values = new Set<string>();
   // Match the class name the module actually emits: when the program emits
   // dynamic-record helpers it value-imports `Leo`, which can bump the class name
   // (e.g. `leo.aleo` -> `LeoContract`). Resolving without this flag would export
   // a class/factory name the module no longer declares.
-  const className = resolveGeneratedContractClassName(result.abi, {
+  const className = resolveGeneratedContractClassName(abi, {
     includeLeoValueImport: helpers.length > 0,
   });
 

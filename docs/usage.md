@@ -461,7 +461,7 @@ The recipe task compiles once up front, then individual `ctx.deploy()` calls def
 
 ## Upgrading Programs
 
-`upgrade` is a thin task: it recompiles the program, builds and broadcasts the upgrade transaction, and records a minimal updated record. LionDen does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity — Leo's built-in tooling owns upgrade correctness. The program must still carry the mandatory Leo v4 constructor decorator (`@admin(...)` for upgradeable programs) to be upgradeable on-chain.
+`upgrade` is a thin task: it recompiles the program, builds and broadcasts the upgrade transaction, and records a minimal updated record. Renamed upgrades rely on the recorded local source/runtime mapping in LionDen deployment state. LionDen does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity — Leo's built-in tooling owns upgrade correctness.
 
 ```bash
 lionden upgrade --program counter
@@ -624,7 +624,7 @@ await router.demo_transfer.accepted(
 );
 ```
 
-Each entry can be a bare program name, a `.aleo` program id, or a local `.aleo` path. The three layers are additive: `execution.imports`, wrapper instance imports, then per-call `options.imports`.
+Each entry can be a bare program name, a `.aleo` program id, or a local `.aleo` path. The three layers are additive: `execution.imports[runtimeProgramId]`, wrapper instance imports, then per-call `options.imports`.
 
 Runtime imports are execution-time dependencies only. They do not affect compile or deploy ordering, so deploy strategy/target programs explicitly before deploying or executing the dispatch hub. See `examples/aleo-ports/dynamic_dispatch` for config defaults, `examples/aleo-ports/dynamic_records` for wrapper/per-call imports, and [`network.md`](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
 

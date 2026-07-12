@@ -28,6 +28,11 @@ export interface DiscoveredLibrary {
 
 export type DiscoveredUnit = DiscoveredProgram | DiscoveredLibrary;
 
+export interface RenameProgramOptions {
+  readonly sourceProgramId: string;
+  readonly targetProgramId: string;
+}
+
 /** Get the unique identifier for a compilation unit */
 export function unitId(unit: DiscoveredUnit): string {
   return unit.kind === "program" ? unit.programId : unit.name;
@@ -49,6 +54,10 @@ export interface CompilationUnitResult {
 
 export interface ProgramCompilationResult extends CompilationUnitResult {
   readonly unit: DiscoveredProgram;
+  /** Canonical local source identity. Differs from programId for deploy renames. */
+  readonly sourceProgramId: string;
+  /** Effective compiled/runtime identity. */
+  readonly programId: string;
   /** Parsed ABI (programs only) */
   readonly abi: import("./abi-types.js").ProgramABI;
   /** Absolute path to compiled .aleo file */
@@ -80,4 +89,6 @@ export interface CompileOptions {
    * compile fetches imported on-chain sources from the deploying network.
    */
   readonly network?: string;
+  /** Internal deploy/upgrade-only runtime program id override. Not exposed by the compile task CLI. */
+  readonly rename?: string;
 }

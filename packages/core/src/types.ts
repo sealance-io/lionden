@@ -285,9 +285,16 @@ export interface HookDispatcher {
  * `DeploymentContext.deploy` and `TestContext.deploy` stay structurally
  * identical by construction.
  */
-export type ProgramDeploymentTarget = string | { readonly programId: string };
+export type ProgramDeploymentTarget =
+  | string
+  | { readonly programId: string; readonly sourceProgramId?: string };
 
 /** Resolve a {@link ProgramDeploymentTarget} to its program name/id string. */
 export function programNameFromTarget(program: ProgramDeploymentTarget): string {
   return typeof program === "string" ? program : program.programId;
+}
+
+/** Resolve a {@link ProgramDeploymentTarget} to its local source program id, when available. */
+export function sourceProgramNameFromTarget(program: ProgramDeploymentTarget): string {
+  return typeof program === "string" ? program : (program.sourceProgramId ?? program.programId);
 }

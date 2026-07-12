@@ -62,6 +62,7 @@ export {
 export { parseImports } from "./import-parser.js";
 // Package materializer
 export {
+  effectiveUnitId,
   getCachedNetworkDep,
   linkNetworkDependency,
   materializePackage,
@@ -82,5 +83,6 @@ export type {
   DiscoveredUnit,
   LibraryCompilationResult,
   ProgramCompilationResult,
+  RenameProgramOptions,
 } from "./types.js";
 export { unitId } from "./types.js";

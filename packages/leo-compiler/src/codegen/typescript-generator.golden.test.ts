@@ -52,10 +52,13 @@ const VIRTUAL_NETWORK_DTS = [
   "}",
 ].join("\n");
 
+const VIRTUAL_CONFIG_DTS = "export declare function normalizeProgramId(programId: string): string;";
+
 function virtualBaseFiles(): Record<string, string> {
   return {
     "/virtual/package.json": '{ "type": "module" }',
     "/virtual/BaseContract.ts": generateBaseContract(),
+    "/virtual/config.d.ts": VIRTUAL_CONFIG_DTS,
     "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
     "/virtual/network.d.ts": VIRTUAL_NETWORK_DTS,
   };
@@ -74,6 +77,13 @@ function runTypecheck(files: Record<string, string>): void {
       if (moduleName === "@lionden/core") {
         return {
           resolvedFileName: "/virtual/core.d.ts",
+          extension: ts.Extension.Dts,
+          isExternalLibraryImport: true,
+        };
+      }
+      if (moduleName === "@lionden/config") {
+        return {
+          resolvedFileName: "/virtual/config.d.ts",
           extension: ts.Extension.Dts,
           isExternalLibraryImport: true,
         };

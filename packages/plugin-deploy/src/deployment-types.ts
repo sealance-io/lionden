@@ -15,6 +15,8 @@ import type { ProgramABI } from "@lionden/leo-compiler";
 
 interface DeploymentRecordBase {
   readonly programId: string;
+  /** Canonical local source identity when deployment used a runtime rename. */
+  readonly sourceProgramId?: string;
   /** Name of the network in config (e.g. "devnode", "testnet") */
   readonly network: string;
   /** REST API endpoint of the node */
@@ -110,6 +112,7 @@ export interface NetworkMetadata {
  */
 export interface PendingDeployment {
   readonly programId: string;
+  readonly sourceProgramId?: string;
   readonly action: "deploy" | "upgrade";
   readonly txId?: string;
   readonly blockHeight?: number;

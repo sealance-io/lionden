@@ -46,14 +46,14 @@ export class Consumer extends BaseContract {
       const _args: string[] = [
         BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
-      return this.settleTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "consumer.aleo", "submit", 0), tpk, "consumer.aleo", "submit", 1, (_p: string) => BaseContract.parsePlaintext(_p)));
+      return this.settleTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "submit", 0), tpk, this.programId, "submit", 1, (_p: string) => BaseContract.parsePlaintext(_p)));
     },
 
     accepted: async (info: PlaintextInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<LeoPlaintext>>> => {
       const _args: string[] = [
         BaseContract.serializePlaintext(info, this.inputContext("submit", "info")),
       ];
-      return this.expectAcceptedTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "consumer.aleo", "submit", 0), tpk, "consumer.aleo", "submit", 1, (_p: string) => BaseContract.parsePlaintext(_p)));
+      return this.expectAcceptedTyped("submit", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "submit", 0), tpk, this.programId, "submit", 1, (_p: string) => BaseContract.parsePlaintext(_p)));
     },
 
     rejected: async (info: PlaintextInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {
@@ -98,14 +98,14 @@ export class Consumer extends BaseContract {
       const _args: string[] = [
         BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
-      return this.settleTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyExternalRecordHandle<LeoDynamicRecord>(BaseContract.idOnlyRecordOutputAt(rawOutputs, "consumer.aleo", "forward", 0), transitions));
+      return this.settleTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyExternalRecordHandle<LeoDynamicRecord>(BaseContract.idOnlyRecordOutputAt(rawOutputs, this.programId, "forward", 0), transitions, this.sourceProgramId, this.programId));
     },
 
     accepted: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<AcceptedTransition<IdOnlyExternalRecordHandle<LeoDynamicRecord>>> => {
       const _args: string[] = [
         BaseContract.serializeDynamicRecord(record, this.inputContext("forward", "record")),
       ];
-      return this.expectAcceptedTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyExternalRecordHandle<LeoDynamicRecord>(BaseContract.idOnlyRecordOutputAt(rawOutputs, "consumer.aleo", "forward", 0), transitions));
+      return this.expectAcceptedTyped("forward", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], _tpk: string, transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeIdOnlyExternalRecordHandle<LeoDynamicRecord>(BaseContract.idOnlyRecordOutputAt(rawOutputs, this.programId, "forward", 0), transitions, this.sourceProgramId, this.programId));
     },
 
     rejected: async (record: DynamicRecordInput, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

@@ -46,6 +46,7 @@ Source: `packages/leo-compiler/src/compiler.ts` (`buildKeyArtifactsMetadata`); r
 The sidecar is written per program under `artifacts/<programId>/lionden-key-artifacts.json` after each `leo build` succeeds. It carries:
 
 - `programId`
+- `sourceProgramId`
 - `sourceHash` (SHA-256 of `main.aleo`)
 - `importsHash` (SHA-256 over the sorted, hashed materialized package `imports/` tree)
 - `functions[]` — optional per-transition `prover` / `verifier` refs, populated **only** when Leo emits a `.prover` + `.verifier` pair that can be unambiguously associated with the transition (`findUnambiguousKeyStem` in the compiler).

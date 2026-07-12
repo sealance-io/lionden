@@ -13,12 +13,14 @@ import {
   createNamedAccountAccessor,
   type NamedAccountAccessor,
   type NamedAccounts,
+  normalizeProgramId,
   parseBooleanEnv,
 } from "@lionden/config";
 import {
   type LionDenRuntimeEnvironment,
   type ProgramDeploymentTarget,
   programNameFromTarget,
+  sourceProgramNameFromTarget,
 } from "@lionden/core";
 import type {
   DevnodeAccount,
@@ -321,19 +323,24 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       deployOpts?: DeployOptions,
     ): Promise<DeployResult> {
       const programName = programNameFromTarget(program);
+      const sourceProgramName = sourceProgramNameFromTarget(program);
       const normalizedId = normalizeProgramId(programName);
+      const normalizedSourceId = normalizeProgramId(sourceProgramName);
+      const rename = normalizedSourceId === normalizedId ? undefined : normalizedId;
+      const expectedSourceProgramId = rename ? normalizedSourceId : undefined;
 
       // Check deployment cache first (sync, zero-latency for previously deployed programs)
       const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
       if (deploymentCache && !deployOpts?.noSkipDeployed) {
         const cached = deploymentCache.getCached(normalizedId, connectedNetwork);
-        if (isCompleteDeploymentWithTxId(cached)) {
+        if (isCompleteMatchingRecord(cached, normalizedId, expectedSourceProgramId)) {
           return { programId: normalizedId, txId: cached.txId };
         }
       }
 
       const taskResult = await lre.tasks.run("deploy", {
-        program: programName,
+        program: rename ? normalizedSourceId : programName,
+        rename,
         network: connectedNetwork,
         priorityFee: deployOpts?.priorityFee,
         skipConfirm: deployOpts?.skipConfirm,
@@ -342,21 +349,25 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
         ...(deployOpts?.prove !== undefined || prove ? { prove: deployOpts?.prove ?? prove } : {}),
       });
 
-      // Unwrap DeployTaskResult discriminated union
-      const wrapped = taskResult as { mode?: string; results?: unknown[] };
-      if (wrapped.mode && wrapped.mode !== "deploy") {
-        throw new Error(
-          `Expected deploy task to return mode "deploy", got "${wrapped.mode}". ` +
-            `This may indicate --preflight or --dry-run was passed unexpectedly.`,
-        );
+      if (rename) {
+        const results = getDeployResults(taskResult);
+        const deployed = getDeployResultForProgram(results, normalizedId, true);
+        if (deployed) {
+          return {
+            programId: normalizeProgramId(deployed.programId),
+            txId: deployed.txId,
+          };
+        }
+
+        const cached = deploymentCache?.getCached(normalizedId, connectedNetwork) ?? null;
+        if (isCompleteMatchingRecord(cached, normalizedId, expectedSourceProgramId)) {
+          return { programId: normalizedId, txId: cached.txId };
+        }
+
+        throw createEmptyDeployResultError(programName, normalizedId, connectedNetwork, cached);
       }
 
-      // Support both the new { mode, results } shape and legacy array shape
-      const results: Array<{ programId: string; txId: string }> =
-        wrapped.mode === "deploy" && Array.isArray(wrapped.results)
-          ? (wrapped.results as Array<{ programId: string; txId: string }>)
-          : (taskResult as Array<{ programId: string; txId: string }>);
-
+      const results = getDeployResults(taskResult);
       const deployed = getDeployResultForProgram(results, normalizedId);
       if (deployed) {
         return {
@@ -366,7 +377,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       }
 
       const cached = deploymentCache?.getCached(normalizedId, connectedNetwork) ?? null;
-      if (isCompleteDeploymentWithTxId(cached)) {
+      if (isCompleteMatchingRecord(cached, normalizedId)) {
         return { programId: normalizedId, txId: cached.txId };
       }
 
@@ -513,10 +524,6 @@ function causeMessage(cause: unknown): string {
   return String(cause);
 }
 
-function normalizeProgramId(programName: string): string {
-  return programName.endsWith(".aleo") ? programName : `${programName}.aleo`;
-}
-
 function isCompleteDeploymentWithTxId(
   record: CachedDeploymentRecord | null,
 ): record is CachedDeploymentRecord & { readonly txId: string } {
@@ -526,10 +533,41 @@ function isCompleteDeploymentWithTxId(
 function getDeployResultForProgram(
   results: Array<{ programId: string; txId: string }>,
   normalizedId: string,
+  exact = false,
 ): { programId: string; txId: string } | undefined {
+  const matching = results.find((result) => normalizeProgramId(result.programId) === normalizedId);
+  return matching ?? (exact ? undefined : results[results.length - 1]);
+}
+
+function getDeployResults(taskResult: unknown): Array<{ programId: string; txId: string }> {
+  const wrapped = taskResult as { mode?: string; results?: unknown[] };
+  if (wrapped.mode !== "deploy") {
+    throw new Error(
+      `Expected deploy task to return mode "deploy", got "${wrapped.mode}". ` +
+        `This may indicate --preflight or --dry-run was passed unexpectedly.`,
+    );
+  }
+  if (!Array.isArray(wrapped.results)) {
+    throw new Error('Expected deploy task to return { mode: "deploy", results: [...] }.');
+  }
+  return wrapped.results as Array<{ programId: string; txId: string }>;
+}
+
+function isCompleteMatchingRecord(
+  record: CachedDeploymentRecord | null | undefined,
+  normalizedId: string,
+  expectedSourceProgramId?: string,
+): record is CachedDeploymentRecord & { readonly txId: string } {
+  if (!isCompleteDeploymentWithTxId(record ?? null)) return false;
+  const maybeRecord = record as CachedDeploymentRecord & { sourceProgramId?: string };
+  if (expectedSourceProgramId === undefined) {
+    return (
+      maybeRecord.sourceProgramId === undefined || maybeRecord.sourceProgramId === normalizedId
+    );
+  }
   return (
-    results.find((result) => normalizeProgramId(result.programId) === normalizedId) ??
-    results[results.length - 1]
+    maybeRecord.programId === normalizedId &&
+    maybeRecord.sourceProgramId === expectedSourceProgramId
   );
 }
 

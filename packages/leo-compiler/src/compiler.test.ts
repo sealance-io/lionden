@@ -3,7 +3,11 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { LionDenResolvedConfig } from "@lionden/config";
-import { keyArtifactsMetadataPath, readKeyArtifactsMetadata } from "@lionden/core";
+import {
+  KEY_ARTIFACTS_FORMAT,
+  keyArtifactsMetadataPath,
+  readKeyArtifactsMetadata,
+} from "@lionden/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { computeUnitHash } from "./cache.js";
 import { CompilationError, compilePipeline, defaultFetchNetworkDep } from "./compiler.js";
@@ -489,8 +493,9 @@ describe("compilePipeline network dep handling", () => {
       expect(
         readKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, "app.aleo")),
       ).toMatchObject({
-        format: "lionden.keyArtifacts.v1",
+        format: KEY_ARTIFACTS_FORMAT,
         programId: "app.aleo",
+        sourceProgramId: "app.aleo",
         sourceHash: expect.stringMatching(/^[0-9a-f]{64}$/),
         importsHash: expect.stringMatching(/^[0-9a-f]{64}$/),
       });
@@ -1101,6 +1106,88 @@ describe("compilePipeline network dep handling", () => {
         process.env.LIONDEN_LEO_BUILD_LOG = originalLog;
       }
     }
+  });
+
+  it("keeps original and renamed program builds in separate artifact and cache identities", async () => {
+    writeProgram("app", "program app.aleo {\n  fn main() {}\n}\n");
+
+    const binDir = path.join(tmpDir, "bin");
+    const leoPath = path.join(binDir, "leo");
+    const buildLog = path.join(tmpDir, "rename-build.log");
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(
+      leoPath,
+      [
+        "#!/bin/sh",
+        'pkg=""',
+        'prev=""',
+        'for arg in "$@"; do',
+        '  if [ "$prev" = "--path" ]; then pkg="$arg"; break; fi',
+        '  prev="$arg"',
+        "done",
+        'id=$(sed -n "s/^program \\([A-Za-z0-9_]*\\.aleo\\).*/\\1/p" "$pkg/src/main.leo" | head -n 1)',
+        'printf "%s\\n" "$id" >> "$LIONDEN_LEO_BUILD_LOG"',
+        'unit="$pkg/build/$id"',
+        'mkdir -p "$unit"',
+        'printf "program %s;\\n" "$id" > "$unit/main.aleo"',
+        'printf "{\\"program\\":\\"%s\\",\\"functions\\":[],\\"structs\\":[],\\"records\\":[],\\"mappings\\":[],\\"storage_variables\\":[]}" "$id" > "$unit/abi.json"',
+      ].join("\n") + "\n",
+      { mode: 0o755 },
+    );
+
+    const originalLog = process.env.LIONDEN_LEO_BUILD_LOG;
+    process.env.LIONDEN_LEO_BUILD_LOG = buildLog;
+    try {
+      const config = makeConfig({ leoBinary: leoPath });
+      const original = await compilePipeline(config, { program: "app" });
+      const renamed = await compilePipeline(config, {
+        program: "app",
+        rename: "renamed_app",
+      });
+
+      const originalProgram = original.results.find((result) => result.unit.kind === "program");
+      const renamedProgram = renamed.results.find((result) => result.unit.kind === "program");
+      expect(originalProgram && "programId" in originalProgram && originalProgram.programId).toBe(
+        "app.aleo",
+      );
+      expect(renamedProgram && "programId" in renamedProgram && renamedProgram.programId).toBe(
+        "renamed_app.aleo",
+      );
+      expect(renamedProgram && "abi" in renamedProgram && renamedProgram.abi.program).toBe(
+        "renamed_app.aleo",
+      );
+      expect(fs.existsSync(path.join(artifactsDir, "app.aleo", "main.aleo"))).toBe(true);
+      expect(fs.existsSync(path.join(artifactsDir, "renamed_app.aleo", "main.aleo"))).toBe(true);
+      expect(
+        readKeyArtifactsMetadata(keyArtifactsMetadataPath(artifactsDir, "renamed_app.aleo")),
+      ).toMatchObject({
+        format: KEY_ARTIFACTS_FORMAT,
+        programId: "renamed_app.aleo",
+        sourceProgramId: "app.aleo",
+      });
+      expect(readLogLines(buildLog)).toEqual(["app.aleo", "renamed_app.aleo"]);
+
+      const renamedAgain = await compilePipeline(config, {
+        program: "app",
+        rename: "renamed_app",
+      });
+      expect(renamedAgain.results[0]?.cached).toBe(true);
+      expect(readLogLines(buildLog)).toEqual(["app.aleo", "renamed_app.aleo"]);
+    } finally {
+      if (originalLog === undefined) {
+        delete process.env.LIONDEN_LEO_BUILD_LOG;
+      } else {
+        process.env.LIONDEN_LEO_BUILD_LOG = originalLog;
+      }
+    }
+  });
+
+  it("rejects rename without a source program selector", async () => {
+    const config = makeConfig();
+
+    await expect(compilePipeline(config, { rename: "tenant" })).rejects.toThrow(
+      "Compile option `rename` requires `program`",
+    );
   });
 
   it("compiles an inline-fn library that emits no build artifacts and caches it", async () => {

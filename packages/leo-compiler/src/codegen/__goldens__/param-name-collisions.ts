@@ -61,7 +61,7 @@ export class ParamCollisions extends BaseContract {
         BaseContract.serializeUInt(arg2, 32, this.inputContext("run", "class")),
         BaseContract.serializeUInt(arg1_, 32, this.inputContext("run", "arg1")),
       ];
-      return this.settleTyped("run", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "param_collisions.aleo", "run", 0), tpk, "param_collisions.aleo", "run", 4, BaseContract.parseNumber));
+      return this.settleTyped("run", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "run", 0), tpk, this.programId, "run", 4, BaseContract.parseNumber));
     },
 
     accepted: async (arg0: number, arg1: number, arg2: number, arg1_: number, options?: OnChainExecutionOptions): Promise<AcceptedTransition<EncryptedValue<number>>> => {
@@ -71,7 +71,7 @@ export class ParamCollisions extends BaseContract {
         BaseContract.serializeUInt(arg2, 32, this.inputContext("run", "class")),
         BaseContract.serializeUInt(arg1_, 32, this.inputContext("run", "arg1")),
       ];
-      return this.expectAcceptedTyped("run", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, "param_collisions.aleo", "run", 0), tpk, "param_collisions.aleo", "run", 4, BaseContract.parseNumber));
+      return this.expectAcceptedTyped("run", _args, options ?? {}, (rawOutputs: readonly RawTransitionOutput[], tpk: string, _transitions: readonly ConfirmedTransitionRecord[]) => BaseContract.makeEncryptedValue(BaseContract.rawOutputAt(rawOutputs, this.programId, "run", 0), tpk, this.programId, "run", 4, BaseContract.parseNumber));
     },
 
     rejected: async (arg0: number, arg1: number, arg2: number, arg1_: number, options?: OnChainExecutionOptions): Promise<RejectedTransition> => {

@@ -636,6 +636,47 @@ describe("recoverPendingDeployments", () => {
     expect(marker).toBeNull();
   });
 
+  it("preserves sourceProgramId when recovering a renamed deploy", async () => {
+    const source = "program tenant.aleo;\nconstructor:\n    assert.eq edition 1u16;\n";
+    const conn = createMockConnection({
+      getProgramSource: vi.fn().mockResolvedValue(source),
+      getProgramEdition: vi.fn().mockResolvedValue(0),
+    });
+    const config = makeConfig({ ephemeral: false });
+    const dm = new DeploymentManagerImpl(
+      config,
+      () => makeNetworkManager(conn),
+      makeArtifactStore(),
+    );
+
+    await dm.setPending({
+      programId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+      action: "deploy",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      deployerAddress: "aleo1abc",
+      priorityFee: 0,
+      privateFee: false,
+      network: "devnode",
+      endpoint: "http://127.0.0.1:3030",
+    });
+
+    const recovered = await dm.recoverPendingDeployments("devnode", conn);
+
+    expect(recovered).toHaveLength(1);
+    expect(recovered[0]).toMatchObject({
+      status: "recovered",
+      programId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+    });
+    const onDisk = readDeploymentRecord(config.paths.deployments, "devnode", "tenant.aleo");
+    expect(onDisk).toMatchObject({
+      status: "recovered",
+      programId: "tenant.aleo",
+      sourceProgramId: "hello.aleo",
+    });
+  });
+
   it("preserves confirmed pending provenance and advances history when recovering an upgrade", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue(compiledSource("hello.aleo", 2)),

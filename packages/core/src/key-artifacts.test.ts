@@ -27,6 +27,7 @@ describe("key artifact metadata", () => {
     writeKeyArtifactsMetadata(filePath, {
       format: KEY_ARTIFACTS_FORMAT,
       programId: "hello.aleo",
+      sourceProgramId: "hello.aleo",
       sourceHash: "a".repeat(64),
       importsHash: "b".repeat(64),
     });
@@ -34,6 +35,7 @@ describe("key artifact metadata", () => {
     expect(readKeyArtifactsMetadata(filePath)).toEqual({
       format: KEY_ARTIFACTS_FORMAT,
       programId: "hello.aleo",
+      sourceProgramId: "hello.aleo",
       sourceHash: "a".repeat(64),
       importsHash: "b".repeat(64),
     });
@@ -52,6 +54,21 @@ describe("key artifact metadata", () => {
     );
 
     expect(() => readKeyArtifactsMetadata(filePath)).toThrow(KeyArtifactsMetadataError);
+  });
+
+  it("requires sourceProgramId", () => {
+    const filePath = path.join(tmpDir, "lionden-key-artifacts.json");
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify({
+        format: KEY_ARTIFACTS_FORMAT,
+        programId: "hello.aleo",
+        sourceHash: "a".repeat(64),
+        importsHash: "b".repeat(64),
+      }),
+    );
+
+    expect(() => readKeyArtifactsMetadata(filePath)).toThrow(/sourceProgramId/);
   });
 
   it("verifies key file fingerprints", () => {

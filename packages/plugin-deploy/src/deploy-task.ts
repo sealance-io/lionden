@@ -1,15 +1,23 @@
 import type {
+  LionDenResolvedConfig,
   ResolvedNetworkConfig,
   ResolvedSdkKeyCacheConfig,
   SdkLogLevel,
 } from "@lionden/config";
-import { isSignable } from "@lionden/config";
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
+import { isSignable, normalizeProgramId } from "@lionden/config";
+import {
+  KeyArtifactsMetadataError,
+  type LionDenRuntimeEnvironment,
+  type ProgramArtifactProvenance,
+  readProgramArtifactProvenance,
+} from "@lionden/core";
 import {
   type DependencyGraph,
   type DiscoveredProgram,
+  type DiscoveredUnit,
   discoverUnits,
   type ProgramABI,
+  type RenameProgramOptions,
   resolveDependencies,
 } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
@@ -20,6 +28,7 @@ import type {
   PendingDeployment,
 } from "./deployment-types.js";
 import { DeployError } from "./errors.js";
+import { supportsLeoProgramRename } from "./leo-version.js";
 import {
   checkProgramOnChain,
   createDegradedRecord,
@@ -53,6 +62,8 @@ export interface DeployOptions {
   export?: boolean;
   /** Build a standard/proven transaction even on devnode. */
   prove?: boolean;
+  /** Deploy the selected local source program under this on-chain program id. */
+  rename?: string;
 }
 
 export interface DeployResult {
@@ -91,6 +102,7 @@ export async function deployAction(
     noSkipDeployed: args["noSkipDeployed"] as boolean | undefined,
     export: args["export"] as boolean | undefined,
     prove: resolveProveOption(args, lre),
+    rename: args["rename"] as string | undefined,
   };
 
   const config = lre.config;
@@ -112,6 +124,7 @@ export async function deployAction(
   if (!options.noCompile && !options.preflight) {
     const compileArgs: Record<string, unknown> = {};
     if (options.program) compileArgs["program"] = options.program;
+    if (options.rename) compileArgs["rename"] = options.rename;
     if (options.network) compileArgs["network"] = options.network;
     if (Object.keys(compileArgs).length > 0) {
       await lre.tasks.run("compile", compileArgs);
@@ -126,20 +139,33 @@ export async function deployAction(
   const programMap = new Map(programs.map((p) => [p.programId, p]));
   const graph = resolveDependencies(discovered);
 
+  const renamePlan = validateDeployRename(options, config, graph);
+
   // 3. Determine candidate program IDs for target resolution.
   // In --preflight mode compilation is skipped, so artifacts may be absent.
   // Use discovered program IDs so runDeployPreflight() can emit MISSING_ARTIFACTS
   // per program rather than throwing here before any structured result is produced.
   // In normal (deploy/dry-run) mode, only compiled IDs are valid targets.
   const compiledIds = lre.artifacts.getProgramIds();
-  const candidateIds = options.preflight ? programs.map((p) => p.programId) : compiledIds;
+  const candidateIds = options.preflight
+    ? programs.map((p) => p.programId)
+    : renamePlan
+      ? programs.map((p) => p.programId)
+      : compiledIds.filter((id) => programMap.has(id));
 
-  if (!options.preflight && compiledIds.length === 0) {
+  if (!options.preflight && candidateIds.length === 0) {
     throw new DeployError("No compiled programs found. Run `lionden compile` first.");
   }
 
   // 4. Resolve deploy targets in topological order (deps first)
-  const targetIds = resolveDeployTargets(candidateIds, programMap, graph, options.program);
+  const targetIds = resolveDeployTargets(candidateIds, programMap, graph, options.program).map(
+    (id) => (id === renamePlan?.sourceProgramId ? renamePlan?.targetProgramId : id),
+  );
+  const preflightGraph = renamePlan ? graphWithRenamedPrimary(graph, renamePlan) : graph;
+
+  if (renamePlan && options.noCompile) {
+    validateRenamedNoCompileArtifactProvenance(config, renamePlan);
+  }
 
   // 5. Connect to network
   const networkName = options.network ?? config.defaultNetwork;
@@ -195,7 +221,7 @@ export async function deployAction(
     //          and avoids unnecessary getProgramSource() calls before the program exists.
     // HTTP: use async getDeployment() to load validated disk state on a cold-cache process.
     const existingRecord = manager
-      ? connection.type === "devnode"
+      ? connection.type === "devnode" && (!renamePlan || manager.isEphemeral(networkName))
         ? (manager.getCached(programId, networkName) ?? null)
         : await manager.getDeployment(programId, networkName)
       : null;
@@ -214,9 +240,15 @@ export async function deployAction(
     skipDeployed,
     deployTargets,
     localSources,
-    graph,
+    graph: preflightGraph,
     signerPrivateKey: deployerSignerKey,
   });
+
+  if (renamePlan) {
+    validateRenamedPreflightReuse(preflightResult, renamePlan);
+  } else {
+    validatePlainPreflightReuse(preflightResult, programMap);
+  }
 
   // 10. If --preflight, return pure check result (no state mutations)
   if (options.preflight) {
@@ -348,6 +380,9 @@ export async function deployAction(
     if (manager) {
       const pending: PendingDeployment = {
         programId,
+        ...(renamePlan && programId === renamePlan.targetProgramId
+          ? { sourceProgramId: renamePlan.sourceProgramId }
+          : {}),
         action: "deploy",
         startedAt: new Date().toISOString(),
         deployerAddress: deployerAddress ?? "unknown",
@@ -390,6 +425,9 @@ export async function deployAction(
       const record: CompleteDeploymentRecord = {
         status: "complete",
         programId,
+        ...(renamePlan && programId === renamePlan.targetProgramId
+          ? { sourceProgramId: renamePlan.sourceProgramId }
+          : {}),
         network: networkName,
         endpoint: connection.endpoint,
         updatedAt: new Date().toISOString(),
@@ -426,7 +464,7 @@ export async function deployAction(
     // a program just deployed. Unrelated programs in the same batch skip the wait.
     if (isHttp && interDelay > 0 && i < toDeployIds.length - 1) {
       const nextProgramId = toDeployIds[i + 1]!;
-      const nextImports = graph.imports.get(nextProgramId) ?? [];
+      const nextImports = preflightGraph.imports.get(nextProgramId) ?? [];
       const deployedSoFar = toDeployIds.slice(0, i + 1);
       const nextDependsOnDeployed = nextImports.some((dep) => deployedSoFar.includes(dep));
       if (nextDependsOnDeployed) {
@@ -444,6 +482,46 @@ export async function deployAction(
   }
 
   return { mode: "deploy", results };
+}
+
+function validateRenamedPreflightReuse(
+  preflightResult: DeployPreflightResult,
+  rename: RenameProgramOptions,
+): void {
+  const outcome = preflightResult.programs.find(
+    (program) => program.programId === rename.targetProgramId,
+  );
+  if (!outcome || outcome.action !== "skip") return;
+
+  if (outcome.record?.sourceProgramId === rename.sourceProgramId) return;
+
+  if (outcome.record?.sourceProgramId) {
+    throw new DeployError(
+      `Renamed deploy target "${rename.targetProgramId}" is already associated with source ` +
+        `"${outcome.record.sourceProgramId}", not "${rename.sourceProgramId}".`,
+    );
+  }
+
+  throw new DeployError(
+    `Renamed deploy target "${rename.targetProgramId}" already exists but has no matching local ` +
+      `provenance for source "${rename.sourceProgramId}".`,
+  );
+}
+
+function validatePlainPreflightReuse(
+  preflightResult: DeployPreflightResult,
+  programMap: ReadonlyMap<string, unknown>,
+): void {
+  for (const outcome of preflightResult.programs) {
+    if (outcome.action !== "skip" || !programMap.has(outcome.programId)) continue;
+    const sourceProgramId = outcome.record?.sourceProgramId;
+    if (sourceProgramId && sourceProgramId !== outcome.programId) {
+      throw new DeployError(
+        `Deploy target "${outcome.programId}" is already associated with source ` +
+          `"${sourceProgramId}", not "${outcome.programId}".`,
+      );
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +580,106 @@ export function resolveDeployTargets(
   if (!ordered.includes(normalized)) ordered.push(normalized);
 
   return ordered;
+}
+
+function validateDeployRename(
+  options: DeployOptions,
+  config: LionDenResolvedConfig,
+  graph: DependencyGraph,
+): RenameProgramOptions | null {
+  const rawRename = options.rename?.trim();
+  if (!rawRename) return null;
+
+  if (!supportsLeoProgramRename(config.leoVersion)) {
+    throw new DeployError(
+      `deploy --rename requires Leo 4.3.0 or newer. Configured leoVersion is "${config.leoVersion}".`,
+    );
+  }
+
+  if (config.compiler.buildTests) {
+    throw new DeployError("deploy --rename is not supported when compiler.buildTests is enabled.");
+  }
+
+  if (!options.program) {
+    throw new DeployError(
+      "deploy --rename requires --program so exactly one primary target is selected.",
+    );
+  }
+
+  const sourceProgramId = normalizeProgramId(options.program);
+  const targetProgramId = normalizeProgramId(rawRename);
+
+  const targetBareName = bareProgramName(targetProgramId);
+  const localUnitKeys = new Set(
+    graph.order
+      .filter((unit) => unit.kind !== "program" || unit.programId !== sourceProgramId)
+      .flatMap((unit) => localLookupKeys(unit)),
+  );
+  if (localUnitKeys.has(targetProgramId) || localUnitKeys.has(targetBareName)) {
+    throw new DeployError(
+      `Invalid deploy rename: "${targetProgramId}" conflicts with another local unit.`,
+    );
+  }
+
+  return { sourceProgramId, targetProgramId };
+}
+
+function validateRenamedNoCompileArtifactProvenance(
+  config: LionDenResolvedConfig,
+  rename: RenameProgramOptions,
+): void {
+  let provenance: ProgramArtifactProvenance | undefined;
+  try {
+    provenance = readProgramArtifactProvenance(config.paths.artifacts, rename.targetProgramId);
+  } catch (err) {
+    if (err instanceof KeyArtifactsMetadataError) {
+      throw new DeployError(
+        `Renamed --noCompile deploy for "${rename.targetProgramId}" requires artifact provenance ` +
+          `compiled from source "${rename.sourceProgramId}", but the artifact metadata is invalid. ` +
+          `Run deploy again without --noCompile to recompile the renamed program. Cause: ${err.message}`,
+      );
+    }
+    throw err;
+  }
+
+  const provenanceRequirement =
+    `Renamed --noCompile deploy for "${rename.targetProgramId}" requires artifacts ` +
+    `compiled from source "${rename.sourceProgramId}".`;
+  const recompileInstruction =
+    "Run deploy again without --noCompile to recompile the renamed program.";
+
+  if (!provenance?.sourceProgramId) {
+    throw new DeployError(
+      `${provenanceRequirement} Missing artifact provenance metadata. ${recompileInstruction}`,
+    );
+  }
+
+  if (
+    provenance.programId !== rename.targetProgramId ||
+    provenance.sourceProgramId !== rename.sourceProgramId
+  ) {
+    throw new DeployError(
+      `${provenanceRequirement} Found artifact provenance programId="${provenance.programId}", ` +
+        `sourceProgramId="${provenance.sourceProgramId}". ${recompileInstruction}`,
+    );
+  }
+}
+
+function localLookupKeys(unit: DiscoveredUnit): string[] {
+  return unit.kind === "library" ? [unit.name, `${unit.name}.aleo`] : [unit.programId];
+}
+
+function bareProgramName(programId: string): string {
+  return programId.endsWith(".aleo") ? programId.slice(0, -".aleo".length) : programId;
+}
+
+function graphWithRenamedPrimary(
+  graph: DependencyGraph,
+  rename: RenameProgramOptions,
+): DependencyGraph {
+  const imports = new Map(graph.imports);
+  imports.set(rename.targetProgramId, imports.get(rename.sourceProgramId) ?? []);
+  return { ...graph, imports };
 }
 
 function collectTransitiveProgramDeps(
