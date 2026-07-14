@@ -5,6 +5,7 @@ import {
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
+  logAction,
   task,
 } from "@lionden/core";
 import {
@@ -247,6 +248,8 @@ const runTask = task("run", "Execute a TypeScript script with LRE context")
     const absolutePath = path.isAbsolute(scriptPath)
       ? scriptPath
       : path.resolve(lre.config.paths.root, scriptPath);
+
+    console.log(`${logAction("Running script")} ${absolutePath} on network "${networkName}"`);
 
     // Import and execute the script.
     // The CLI must be invoked via tsx (or node --import tsx) for .ts support.

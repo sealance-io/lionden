@@ -9,7 +9,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type ContractLreResult, createContractLre } from "@lionden/test-internals";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import pluginLeo from "./index.js";
 
 vi.mock("@lionden/core", async (importOriginal) => {
@@ -127,9 +127,22 @@ vi.mock("@lionden/leo-compiler", async (importOriginal) => {
 
 describe("compile task contract", () => {
   let result: ContractLreResult;
+  let originalNoColor: string | undefined;
+
+  beforeEach(() => {
+    originalNoColor = process.env["NO_COLOR"];
+    process.env["NO_COLOR"] = "1";
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
 
   afterEach(() => {
     result?.cleanup();
+    vi.restoreAllMocks();
+    if (originalNoColor === undefined) {
+      delete process.env["NO_COLOR"];
+    } else {
+      process.env["NO_COLOR"] = originalNoColor;
+    }
   });
 
   function createTestLre(codegenEnabled = true) {
@@ -154,6 +167,110 @@ describe("compile task contract", () => {
     expect(lre.artifacts.getAbi("token.aleo")).toBeDefined();
     expect(lre.artifacts.getProgramIds()).toContain("hello.aleo");
     expect(lre.artifacts.getProgramIds()).toContain("token.aleo");
+  });
+
+  it("logs full-scope compile start before preflight and compilation", async () => {
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    const { preflightLeo } = await import("@lionden/core");
+    vi.mocked(compilePipeline).mockClear();
+    vi.mocked(preflightLeo).mockClear();
+    const lre = createTestLre();
+
+    await lre.tasks.run("compile");
+
+    expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toContain(
+      "Compiling programs",
+    );
+    expect(vi.mocked(console.log).mock.invocationCallOrder[1]).toBeLessThan(
+      vi.mocked(preflightLeo).mock.invocationCallOrder[0]!,
+    );
+    expect(vi.mocked(console.log).mock.invocationCallOrder[1]).toBeLessThan(
+      vi.mocked(compilePipeline).mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("logs targeted compile start with the concrete program option", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("compile", { program: "token_registry.aleo" });
+
+    expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toContain(
+      "Compiling token_registry.aleo",
+    );
+  });
+
+  it("logs single-program compile completion with the concrete program id", async () => {
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockResolvedValueOnce({
+      results: [
+        {
+          unit: {
+            kind: "program" as const,
+            programId: "token_registry.aleo",
+            sourceDir: "/tmp/test/programs/token_registry",
+            entryFile: "/tmp/test/programs/token_registry/main.leo",
+            allSources: ["main.leo"],
+          },
+          cached: false,
+          packageDir: "/tmp/test/.cache/token_registry",
+          buildDir: "/tmp/test/.cache/token_registry/build",
+          abi: {
+            program: "token_registry.aleo",
+            version: "1.0.0",
+            functions: [],
+            structs: [],
+            records: [],
+            mappings: [],
+          },
+          aleoSource: "",
+        },
+      ],
+    } as any);
+    const lre = createTestLre();
+
+    await lre.tasks.run("compile");
+
+    const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+    expect(logs).toContain("Compiled token_registry.aleo and generated typechain bindings");
+    expect(logs.join("\n")).not.toContain("[object Object]");
+    expect(logs.join("\n")).not.toContain("undefined");
+  });
+
+  it("logs multi-program compile completion with the program count", async () => {
+    const lre = createTestLre();
+
+    await lre.tasks.run("compile");
+
+    expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toContain(
+      "Compiled 2 programs and generated typechain bindings",
+    );
+  });
+
+  it("logs library-only compile completion without saying 0 programs", async () => {
+    const { compilePipeline } = await import("@lionden/leo-compiler");
+    vi.mocked(compilePipeline).mockResolvedValueOnce({
+      results: [
+        {
+          unit: {
+            kind: "library" as const,
+            name: "math_utils",
+            sourceDir: "/tmp/test/programs/math_utils",
+            entryFile: "/tmp/test/programs/math_utils/lib.leo",
+            allSources: ["lib.leo"],
+          },
+          cached: false,
+          packageDir: "/tmp/test/.cache/math_utils",
+          buildDir: "/tmp/test/.cache/math_utils/build",
+        },
+      ],
+    } as any);
+    const lre = createTestLre();
+
+    await lre.tasks.run("compile");
+
+    const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+    expect(logs).toContain("Compiled library math_utils and generated typechain bindings");
+    expect(logs.join("\n")).not.toContain("Compiled 0 programs");
   });
 
   it("compile task passes options to compilePipeline", async () => {

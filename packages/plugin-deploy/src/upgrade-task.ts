@@ -14,6 +14,9 @@ import { isSignable } from "@lionden/config";
 import {
   KeyArtifactsMetadataError,
   type LionDenRuntimeEnvironment,
+  logAction,
+  logMetadata,
+  logSuccess,
   readProgramArtifactProvenance,
 } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
@@ -88,6 +91,7 @@ export async function upgradeAction(
 
   // 1. Connect to network
   const networkName = options.network ?? config.defaultNetwork;
+  console.log(`${logAction("Upgrading")} ${programId} on network "${networkName}"`);
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
 
@@ -259,6 +263,9 @@ export async function upgradeAction(
   let blockHeight = 0;
   let edition = previousEdition + 1;
   if (shouldConfirm) {
+    console.log(
+      `${logAction("Waiting for confirmation")} of ${programId} ${logMetadata(`(tx: ${txId})`)}`,
+    );
     const confirmed = await connection.waitForConfirmation(txId, config.deploy.confirmationTimeout);
     if (confirmed.status === "rejected") {
       if (manager) {
@@ -306,7 +313,9 @@ export async function upgradeAction(
     await manager.record(updatedRecord, "upgrade", { abi: newAbi });
   }
 
-  console.log(`Upgraded ${programId} (tx: ${txId}, block: ${blockHeight})`);
+  console.log(
+    `${logSuccess("Upgraded")} ${programId} ${logMetadata(`(tx: ${txId}, block: ${blockHeight})`)}`,
+  );
 
   // 11. Fire upgrade hook
   await lre.hooks.serial("deployment", "programUpgraded", {

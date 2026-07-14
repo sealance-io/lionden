@@ -75,23 +75,10 @@ const sdkProgressPatterns = [
   /^Importing verifying key for function: [A-Za-z][A-Za-z0-9_]*$/,
   new RegExp(`^Importing program: ${leoProgramId}$`),
   new RegExp(`^Program ${leoProgramId} does not exist on the network(?:, deploying)?\\.\\.\\.$`),
-  /^Spawning [0-9]+ threads$/,
 ];
 
 const sdkProgramEndpointRetryPattern = new RegExp(
   `^Error - response from \\S*/programs?/${leoProgramId}(?:/(?:latest_edition|amendment_count|[0-9]+))?, retrying in [0-9]+ms$`,
-);
-
-const sdkMissingProgramIndicators = [
-  "404",
-  "not found",
-  "does not exist",
-  "no such program",
-  "program not found",
-];
-
-const sdkEditionFallbackPattern = new RegExp(
-  `^Error finding edition/amendment for ${leoProgramId}\\. Network response: '(.+)'\\. Defaulting to edition [0-9]+, amendment 0\\.$`,
 );
 
 export function isProvableSdkConsoleNoise(log: string): boolean {
@@ -114,12 +101,6 @@ function isSingleLineProvableSdkConsoleNoise(log: string): boolean {
   if (sdkProgressMessages.has(log)) return true;
   if (sdkProgressPatterns.some((pattern) => pattern.test(log))) return true;
   if (sdkProgramEndpointRetryPattern.test(log)) return true;
-
-  const editionFallback = sdkEditionFallbackPattern.exec(log);
-  if (editionFallback) {
-    const networkResponse = editionFallback[1]?.toLowerCase() ?? "";
-    return sdkMissingProgramIndicators.some((indicator) => networkResponse.includes(indicator));
-  }
 
   return false;
 }

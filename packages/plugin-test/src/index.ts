@@ -133,44 +133,53 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     if (effectiveProve) process.env["LIONDEN_PROVE"] = "true";
     else delete process.env["LIONDEN_PROVE"];
 
-    // 1. Compile unless --no-compile
-    if (!noCompile) {
-      console.log("Compiling programs...");
-      await lre.tasks.run("compile");
-    }
-
-    // 2. Dispatch suiteSetup hook
-    await lre.hooks.serial("testing", "suiteSetup", { lre });
-
+    const previousManagedTest = process.env["LIONDEN_MANAGED_TEST"];
+    process.env["LIONDEN_MANAGED_TEST"] = "true";
     try {
-      // 3. Run tests via Vitest. Pass the resolved boolean so runTests simply
-      // re-affirms the canonical env (idempotent) rather than re-deciding.
-      const result = await runTests({
-        root: lre.config.paths.root,
-        configPath,
-        grep,
-        timeout: timeout ?? lre.config.testing.timeout,
-        compile: !noCompile,
-        prove: effectiveProve,
-        network: explicitNetwork,
-        parallel: parallel ?? false,
-        coverage: resolveCoverageOptions(coverage ?? false),
-        files,
-      });
-
-      console.log(
-        `\nTests: ${result.passed} passed, ${result.failed} failed, ${result.skipped} skipped` +
-          ` (${result.testFiles} files)`,
-      );
-
-      if (!result.success) {
-        throw new Error(`${result.failed} test(s) failed.`);
+      // 1. Compile unless --no-compile
+      if (!noCompile) {
+        await lre.tasks.run("compile");
       }
 
-      return result;
+      // 2. Dispatch suiteSetup hook
+      await lre.hooks.serial("testing", "suiteSetup", { lre });
+
+      try {
+        // 3. Run tests via Vitest. Pass the resolved boolean so runTests simply
+        // re-affirms the canonical env (idempotent) rather than re-deciding.
+        const result = await runTests({
+          root: lre.config.paths.root,
+          configPath,
+          grep,
+          timeout: timeout ?? lre.config.testing.timeout,
+          compile: !noCompile,
+          prove: effectiveProve,
+          network: explicitNetwork,
+          parallel: parallel ?? false,
+          coverage: resolveCoverageOptions(coverage ?? false),
+          files,
+        });
+
+        console.log(
+          `\nTests: ${result.passed} passed, ${result.failed} failed, ${result.skipped} skipped` +
+            ` (${result.testFiles} files)`,
+        );
+
+        if (!result.success) {
+          throw new Error(`${result.failed} test(s) failed.`);
+        }
+
+        return result;
+      } finally {
+        // 4. Dispatch suiteTeardown hook
+        await lre.hooks.serial("testing", "suiteTeardown", { lre });
+      }
     } finally {
-      // 4. Dispatch suiteTeardown hook
-      await lre.hooks.serial("testing", "suiteTeardown", { lre });
+      if (previousManagedTest === undefined) {
+        delete process.env["LIONDEN_MANAGED_TEST"];
+      } else {
+        process.env["LIONDEN_MANAGED_TEST"] = previousManagedTest;
+      }
     }
   })
   .build();

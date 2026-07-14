@@ -186,6 +186,12 @@ describe("export task", () => {
 
       expect(networkManager.connect).toHaveBeenCalledWith("devnode");
       expect(Object.keys(bundle.programs)).toEqual(["hello.aleo"]);
+      expect(logSpy.mock.calls.map(([message]) => String(message))).toContain(
+        'Exported 1 program for network "devnode"',
+      );
+      expect(logSpy.mock.calls.map(([message]) => String(message)).join("\n")).not.toContain(
+        "Exported 1 programs",
+      );
     } finally {
       logSpy.mockRestore();
       fs.rmSync(tmpDir, { recursive: true, force: true });

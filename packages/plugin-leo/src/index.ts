@@ -5,17 +5,22 @@ import {
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
+  logAction,
+  logSuccess,
+  pluralize,
   preflightLeo,
   task,
 } from "@lionden/core";
 import {
   assertTypechainModuleNamesUnique,
   CodegenError,
+  type CompilationResult,
   type CompileOptions,
   compilePipeline,
   type GenerateBindingsOptions,
   generateBaseContract,
   generateBindings,
+  type LibraryCompilationResult,
   type ProgramCompilationResult,
   pathToTsName,
   programIdToClassName,
@@ -111,6 +116,14 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       rename: typeof args["rename"] === "string" ? (args["rename"] as string) : undefined,
     };
 
+    console.log(
+      `${logAction("Compiling")} ${
+        typeof options.program === "string" && options.program.length > 0
+          ? options.program
+          : "programs"
+      }`,
+    );
+
     await preflightLeo(lre.config);
 
     const { results } = await compilePipeline(lre.config, options);
@@ -129,7 +142,8 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
     }
 
     // Generate TypeScript bindings for programs
-    if (!options.noTypechain && lre.config.codegen.enabled) {
+    const shouldGenerateTypechain = !options.noTypechain && lre.config.codegen.enabled;
+    if (shouldGenerateTypechain) {
       // Fail fast if two programs (or a program and a reserved emitter file)
       // map to the same typechain module file, which would otherwise silently
       // overwrite one program's bindings during the write loop below.
@@ -170,6 +184,12 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
       );
     }
 
+    console.log(
+      `${logSuccess("Compiled")} ` +
+        `${formatCompileSummaryTarget(results)} ` +
+        `and ${shouldGenerateTypechain ? "generated typechain bindings" : "skipped typechain bindings"}`,
+    );
+
     return results;
   })
   .build();
@@ -187,6 +207,32 @@ const cleanTask = task("clean", "Remove build artifacts and generated bindings")
     }
   })
   .build();
+
+function formatCompileSummaryTarget(results: readonly CompilationResult[]): string {
+  const programResults = results.filter(
+    (result): result is ProgramCompilationResult => result.unit.kind === "program",
+  );
+  const libraryResults = results.filter(
+    (result): result is LibraryCompilationResult => result.unit.kind === "library",
+  );
+  if (programResults.length === 1 && libraryResults.length === 0) {
+    return programResults[0]!.unit.programId;
+  }
+  if (programResults.length > 0 && libraryResults.length === 0) {
+    return `${programResults.length} ${pluralize("program", programResults.length)}`;
+  }
+  if (programResults.length === 0 && libraryResults.length === 1) {
+    return `library ${libraryResults[0]!.unit.name}`;
+  }
+  if (programResults.length === 0) {
+    return formatLibraryCount(libraryResults.length);
+  }
+  return `${programResults.length} ${pluralize("program", programResults.length)} and ${formatLibraryCount(libraryResults.length)}`;
+}
+
+function formatLibraryCount(count: number): string {
+  return `${count} ${count === 1 ? "library" : "libraries"}`;
+}
 
 // ---------------------------------------------------------------------------
 // Plugin definition

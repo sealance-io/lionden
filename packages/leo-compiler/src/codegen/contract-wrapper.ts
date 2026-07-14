@@ -3,8 +3,9 @@
  * Generated wrappers extend this class.
  */
 export const CONTRACT_WRAPPER_TEMPLATE = String.raw`
-import type { LionDenRuntimeEnvironment } from "@lionden/core";
 import { normalizeProgramId } from "@lionden/config";
+import type { LionDenRuntimeEnvironment, LogStyleRole } from "@lionden/core";
+import { logDivider, logMetadata, pluralize, shouldRenderDivider, styleLogRole } from "@lionden/core";
 import {
   decryptRecordCiphertext,
   decryptValueCiphertext,
@@ -117,6 +118,10 @@ export interface BaseContractOptions {
    */
   readonly imports?: readonly string[];
 }
+
+const LOG_ARG_MAX_LENGTH = 120;
+
+type TransitionLogRole = Extract<LogStyleRole, "action" | "success" | "warning">;
 
 export interface LocalExecutionOptions extends Omit<BaseCallOptions, "privateFee"> {}
 
@@ -726,6 +731,28 @@ function childPath(parent: string | undefined, segment: string): string {
   return parent ? parent + "." + segment : segment;
 }
 
+function summarizeLogArg(value: string): string {
+  const singleLine = value.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= LOG_ARG_MAX_LENGTH) return singleLine;
+  return singleLine.slice(0, LOG_ARG_MAX_LENGTH - 3) + "...";
+}
+
+function formatLogArgs(args: readonly string[]): string {
+  try {
+    return args.map((arg) => summarizeLogArg(arg)).join(", ");
+  } catch {
+    return "...args";
+  }
+}
+
+function transitionLogKindRole(kind: string): TransitionLogRole {
+  if (kind === "Executed" || kind === "Accepted") return "success";
+  if (kind === "Submitted") return "action";
+  if (kind === "Rejected") return "warning";
+  if (kind === "Observed expected local failure for") return "warning";
+  return "action";
+}
+
 function createInputError(
   expected: string,
   received: unknown,
@@ -913,11 +940,21 @@ export abstract class BaseContract {
     args: string[],
     options: LocalExecutionOptions = {},
   ): Promise<TransitionExecutionResult> {
+    this.beginTransitionLogBlock();
+    this.logTransitionStart("Executing", transitionName, args, {
+      ...options,
+      mode: "local",
+    });
     try {
       const result = await this.executeRaw(transitionName, args, {
         ...options,
         mode: "local",
       });
+      this.logTransitionDone(
+        "Executed",
+        transitionName,
+        "(" + result.outputs.length + " " + pluralize("output", result.outputs.length) + ")",
+      );
       return result;
     } catch (error) {
       if (error instanceof LionDenTypechainError) throw error;
@@ -944,6 +981,11 @@ export abstract class BaseContract {
         { programId: this.programId, transition: transitionName },
       );
     }
+    this.beginTransitionLogBlock();
+    this.logTransitionStart("Expecting local failure for", transitionName, args, {
+      ...options,
+      mode: "local",
+    });
     try {
       await network.checkLocalExecution(
         this.programId,
@@ -953,6 +995,11 @@ export abstract class BaseContract {
       );
     } catch (error) {
       if (error instanceof LocalVmExecutionError) {
+        this.logTransitionDone(
+          "Observed expected local failure for",
+          transitionName,
+          "",
+        );
         return new LocalTransitionError(
           this.programId + "/" + transitionName + " failed during local execution. This usually means a transition assertion or local runtime check failed. Cause: " + errorMessage(error),
           {
@@ -974,7 +1021,15 @@ export abstract class BaseContract {
     transitionName: string,
     args: string[],
     options: OnChainExecutionOptions = {},
+    logStart = true,
   ): Promise<SubmittedTransition> {
+    if (logStart) {
+      this.beginTransitionLogBlock();
+      this.logTransitionStart("Submitting", transitionName, args, {
+        ...options,
+        mode: "onchain",
+      });
+    }
     try {
       const result = await this.executeRaw(transitionName, args, {
         ...options,
@@ -986,6 +1041,7 @@ export abstract class BaseContract {
           { programId: this.programId, transition: transitionName },
         );
       }
+      this.logTransitionDone("Submitted", transitionName, "(tx: " + result.txId + ")");
       return { txId: result.txId };
     } catch (error) {
       if (error instanceof LionDenTypechainError) throw error;
@@ -1015,6 +1071,11 @@ export abstract class BaseContract {
     }
 
     try {
+      this.logTransitionDone(
+        "Waiting for confirmation of",
+        transitionName,
+        "(tx: " + submitted.txId + ")",
+      );
       const confirmed = await network.waitForConfirmation(submitted.txId, options.confirmTimeout);
       if (
         !confirmed ||
@@ -1030,6 +1091,11 @@ export abstract class BaseContract {
       if (confirmed.status === "accepted") {
         const { rawOutputs, transitionPublicKey } =
           this.selectAcceptedTransition(transitionName, confirmed.transitions);
+        this.logTransitionDone(
+          "Accepted",
+          transitionName,
+          "(tx: " + confirmed.txId + ", block: " + confirmed.blockHeight + ")",
+        );
         return {
           txId: confirmed.txId,
           blockHeight: confirmed.blockHeight,
@@ -1042,6 +1108,11 @@ export abstract class BaseContract {
       const rawOutputs = this.selectRejectedTransitionOutputs(
         transitionName,
         confirmed.transitions,
+      );
+      this.logTransitionDone(
+        "Rejected",
+        transitionName,
+        "(tx: " + confirmed.txId + ", block: " + confirmed.blockHeight + ")",
       );
       return {
         txId: confirmed.txId,
@@ -1213,6 +1284,80 @@ export abstract class BaseContract {
         { programId: this.programId, transition: transitionName, cause },
       );
     }
+  }
+
+  // Transition lifecycle wrappers funnel through these entry points; putting the
+  // separator here avoids duplicate blank lines for settled/accepted/rejected calls.
+  private beginTransitionLogBlock(): void {
+    if (!shouldRenderDivider()) return;
+    console.log(logDivider());
+  }
+
+  private logTransitionStart(
+    kind: string,
+    transitionName: string,
+    args: readonly string[],
+    options: BaseCallOptions & { readonly mode: ExecutionMode },
+  ): void {
+    console.log(
+      styleLogRole(kind, transitionLogKindRole(kind)) +
+        " " +
+        this.formatTransitionCall(transitionName, args) +
+        this.formatSignerSuffix(options),
+    );
+  }
+
+  private logTransitionDone(kind: string, transitionName: string, details: string): void {
+    console.log(
+      details.length > 0
+        ? styleLogRole(kind, transitionLogKindRole(kind)) +
+          " " +
+          this.programId +
+          "/" +
+          transitionName +
+          this.formatTransitionDetails(details)
+        : styleLogRole(kind, transitionLogKindRole(kind)) +
+          " " +
+          this.programId +
+          "/" +
+          transitionName,
+    );
+  }
+
+  private formatTransitionDetails(details: string): string {
+    if (details.startsWith("(") && details.endsWith(")")) {
+      return " " + logMetadata(details);
+    }
+    const metadataStart = details.lastIndexOf(" (");
+    if (metadataStart >= 0 && details.endsWith(")")) {
+      const outcome = details.slice(0, metadataStart);
+      const metadata = details.slice(metadataStart + 1);
+      return " " + outcome + " " + logMetadata(metadata);
+    }
+    return " " + details;
+  }
+
+  private formatTransitionCall(transitionName: string, args: readonly string[]): string {
+    return (
+      this.programId +
+      "/" +
+      transitionName +
+      "(" +
+      formatLogArgs(args) +
+      ")"
+    );
+  }
+
+  private formatSignerSuffix(
+    options: BaseCallOptions & { readonly mode: ExecutionMode },
+  ): string {
+    const effectiveOptions = this.buildEffectiveOptions(options);
+    const signer = effectiveOptions.signer;
+    if (!signer) return "";
+    if (typeof signer.address === "string" && signer.address.length > 0) {
+      return logMetadata(" (signer: " + signer.address + ")");
+    }
+    return logMetadata(" (signer override)");
   }
 
   /**

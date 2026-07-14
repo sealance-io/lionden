@@ -15,6 +15,7 @@ import {
   pickRelevantFailure,
   SdkDiagnostics,
   type SdkTransportFailure,
+  withSuppressedSdkConsoleNoise,
 } from "./sdk-diagnostics.js";
 import { SdkExecutionError } from "./types.js";
 
@@ -201,6 +202,9 @@ describe("isOpaqueWasmError()", () => {
 });
 
 describe("captureSdkCall()", () => {
+  const editionFallbackMessage =
+    "Error finding edition/amendment for hello.aleo. Network response: 'Error fetching amendment count for hello.aleo: Error: 404 Not Found'. Defaulting to edition 1, amendment 0.";
+
   it("returns the result on success and clears the sink at entry", async () => {
     const diag = new SdkDiagnostics();
     diag.record(failure("/stale")); // pre-existing failure from an earlier read
@@ -211,6 +215,20 @@ describe("captureSdkCall()", () => {
     );
     expect(result).toBe("ok");
     expect(diag.snapshot()).toEqual([]);
+  });
+
+  it("suppresses reviewed SDK edition/amendment fallback console output while running the SDK call", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const diag = new SdkDiagnostics();
+    try {
+      await captureSdkCall(diag, { operation: "deploy", programId: "hello.aleo" }, async () => {
+        console.log(editionFallbackMessage);
+        return "ok";
+      });
+      expect(logSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it("enriches an opaque throw with the recorded statePaths failure", async () => {
@@ -400,5 +418,90 @@ describe("captureSdkCall()", () => {
     expect(bErr.programId).toBe("b.aleo");
     expect(bErr.message).toContain("commitments=BBB");
     expect(bErr.diagnostics).toHaveLength(1);
+  });
+});
+
+describe("withSuppressedSdkConsoleNoise()", () => {
+  const editionFallbackMessage =
+    "Error finding edition/amendment for hello.aleo. Network response: 'Error fetching amendment count for hello.aleo: Error: 404 Not Found'. Defaulting to edition 1, amendment 0.";
+
+  let originalLog: typeof console.log;
+  let originalWarn: typeof console.warn;
+  let originalError: typeof console.error;
+
+  beforeEach(() => {
+    originalLog = console.log;
+    originalWarn = console.warn;
+    originalError = console.error;
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    console.log = originalLog;
+    console.warn = originalWarn;
+    console.error = originalError;
+  });
+
+  it("suppresses the exact edition/amendment fallback message on console log, warn, and error", async () => {
+    const logSpy = vi.mocked(console.log);
+    const warnSpy = vi.mocked(console.warn);
+    const errorSpy = vi.mocked(console.error);
+
+    await withSuppressedSdkConsoleNoise(async () => {
+      console.log(editionFallbackMessage);
+      console.warn(editionFallbackMessage);
+      console.error(editionFallbackMessage);
+    });
+
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not suppress unrelated errors or broader edition/amendment messages", async () => {
+    const logSpy = vi.mocked(console.log);
+    const warnSpy = vi.mocked(console.warn);
+
+    await withSuppressedSdkConsoleNoise(async () => {
+      console.log("Error: deployment failed");
+      console.warn("Error finding edition/amendment for hello.aleo.");
+    });
+
+    expect(logSpy).toHaveBeenCalledWith("Error: deployment failed");
+    expect(warnSpy).toHaveBeenCalledWith("Error finding edition/amendment for hello.aleo.");
+  });
+
+  it("restores console methods after a successful wrapped call", async () => {
+    const installedLog = console.log;
+
+    await withSuppressedSdkConsoleNoise(async () => {
+      expect(console.log).not.toBe(installedLog);
+      console.log(editionFallbackMessage);
+    });
+
+    expect(console.log).toBe(installedLog);
+  });
+
+  it("restores console methods after nested wrapped calls and thrown errors", async () => {
+    const installedLog = console.log;
+    const installedWarn = console.warn;
+    const installedError = console.error;
+    const thrown = new Error("boom");
+
+    await expect(
+      withSuppressedSdkConsoleNoise(async () => {
+        await withSuppressedSdkConsoleNoise(async () => {
+          console.error(editionFallbackMessage);
+          throw thrown;
+        });
+      }),
+    ).rejects.toBe(thrown);
+
+    expect(console.log).toBe(installedLog);
+    expect(console.warn).toBe(installedWarn);
+    expect(console.error).toBe(installedError);
   });
 });

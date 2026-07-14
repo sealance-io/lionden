@@ -152,6 +152,8 @@ The programmatic Vitest runner currently:
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
 - sets `LIONDEN_CONFIG_PATH` when the parent CLI loaded an explicit config path, so worker processes honor `--config <file>` instead of falling back to the nearest conventional filename
 - bridges an explicit `--network` to workers via `LIONDEN_NETWORK` (set only when `--network` was supplied; default runs leave it unset). Workers honor it in `lre-factory`'s `buildLre()`, retargeting `config.defaultNetwork`, and an unknown name throws a clear validation error
+- suppresses LionDen divider lines for the full managed `lionden test` flow while keeping the surrounding task and transition logs visible
+- forwards color support to Vitest workers when the parent terminal supports color and `NO_COLOR`/`FORCE_COLOR` are not already set
 - scopes test discovery to `test/**/*.test.ts` by default, or to the provided `lionden test [files...]` include patterns
 - applies timeout overrides from task args or config
 - optionally enables V8 coverage for package source when `--coverage` is set
@@ -159,7 +161,9 @@ The programmatic Vitest runner currently:
 
 Vitest remains a peer dependency of `@lionden/plugin-test`. Running `npx vitest` directly is still available, but it bypasses LionDen's compile step, testing hooks, and managed devnode lifecycle.
 
-Direct Vitest users can opt in to the same narrow Provable SDK console-noise filter that LionDen applies to managed test runs:
+Managed test runs use a narrow Provable SDK console-noise filter for reviewed progress/status messages and program-endpoint retry chatter. Edition/amendment fallback diagnostics and generic thread-pool startup messages are intentionally left visible in Vitest output. Normal runtime SDK operations also suppress one reviewed edition/amendment fallback message while the wrapped SDK call is running, so script/deploy output is less noisy without muting unrelated errors.
+
+Direct Vitest users can opt in to the same test-output filter that LionDen applies to managed test runs:
 
 ```ts
 import { defineConfig } from "vitest/config";

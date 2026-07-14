@@ -135,6 +135,8 @@ The default plugins in this repo register these primary tasks:
 - `recipe`: run a reusable deployment recipe from a TypeScript module
 - `test`: run Vitest suites with LionDen-managed setup and teardown
 
+Task and generated-wrapper execution output is intentionally user-facing: commands print concise lifecycle status, semantic color when the terminal supports it, and quieter divider behavior during tests. See [`docs/usage.md`](docs/usage.md#cli-output) for details.
+
 From the repo root, a typical source-level workflow is:
 
 ```bash

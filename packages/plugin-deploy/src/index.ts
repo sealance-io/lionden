@@ -6,6 +6,8 @@ import {
   type ConfigValidationError,
   type LionDenPlugin,
   type LionDenRuntimeEnvironment,
+  logSuccess,
+  pluralize,
   task,
 } from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
@@ -178,15 +180,15 @@ async function exportAction(
   }
 
   const bundle = await manager.export(networkName);
+  const programCount = Object.keys(bundle.programs).length;
+  const programCountText = `${programCount} ${pluralize("program", programCount)}`;
 
   if (outPath) {
     fs.mkdirSync(path.dirname(path.resolve(outPath)), { recursive: true });
     fs.writeFileSync(path.resolve(outPath), JSON.stringify(bundle, null, 2));
-    console.log(`Exported ${Object.keys(bundle.programs).length} programs to ${outPath}`);
+    console.log(`${logSuccess("Exported")} ${programCountText} to ${outPath}`);
   } else {
-    console.log(
-      `Exported ${Object.keys(bundle.programs).length} programs for network "${networkName}"`,
-    );
+    console.log(`${logSuccess("Exported")} ${programCountText} for network "${networkName}"`);
   }
 
   return bundle;

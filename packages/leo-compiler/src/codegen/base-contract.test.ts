@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { generateBaseContract } from "./typescript-generator.js";
 
 // The dynamically loaded BaseContract class
@@ -26,6 +26,8 @@ let createRecordOutputMatcher: any;
 let bindDynamicRecordHelperProgram: any;
 let networkStub: any;
 let tmpDir: string;
+let originalNoColor: string | undefined;
+let originalVitest: string | undefined;
 
 beforeAll(async () => {
   const source = generateBaseContract();
@@ -41,9 +43,33 @@ beforeAll(async () => {
 
   tmpDir = mkdtempSync(join(tmpdir(), "base-contract-test-"));
 
-  // The generated BaseContract imports decrypt helpers from @lionden/network.
-  // Side-load a runtime stub here so the dynamic import resolves; tests that
-  // exercise decrypt happy-path mock the stub explicitly.
+  // The generated BaseContract imports small runtime helpers from @lionden/core
+  // and decrypt helpers from @lionden/network. Side-load runtime stubs here so
+  // the dynamic import does not depend on prebuilt package output; tests that
+  // exercise decrypt happy-path mock the network stub explicitly.
+  const coreStubPath = join(tmpDir, "core-stub.mjs");
+  writeFileSync(
+    coreStubPath,
+    [
+      "const codes = { cyan: '\\x1b[36m', dim: '\\x1b[2m', green: '\\x1b[32m', red: '\\x1b[31m', yellow: '\\x1b[33m' };",
+      "function shouldColorLogs() {",
+      "  if (process.env.NO_COLOR !== undefined) return false;",
+      "  const forceColor = process.env.FORCE_COLOR;",
+      "  if (forceColor !== undefined && forceColor !== '0') return true;",
+      "  return process.stdout.isTTY === true;",
+      "}",
+      "export function shouldRenderDivider() { return !process.env.VITEST; }",
+      "export function colorLogText(text, color) { return shouldColorLogs() ? codes[color] + text + '\\x1b[0m' : text; }",
+      "export function styleLogRole(text, role) {",
+      "  const color = { action: 'cyan', success: 'green', warning: 'yellow', error: 'red', metadata: 'dim', divider: 'dim' }[role];",
+      "  return colorLogText(text, color);",
+      "}",
+      "export function logMetadata(text) { return styleLogRole(text, 'metadata'); }",
+      "export function logDivider(text = '----------------------------------------') { return colorLogText(text, 'dim'); }",
+      "export function pluralize(word, count) { return count === 1 ? word : word + 's'; }",
+    ].join("\n"),
+  );
+
   const stubPath = join(tmpDir, "network-stub.mjs");
   writeFileSync(
     stubPath,
@@ -102,6 +128,7 @@ beforeAll(async () => {
   const outPath = join(tmpDir, "BaseContract.mjs");
   // Rewrite bare-specifier imports so Node can resolve them relative to tmpDir.
   const rewritten = transpiled.outputText
+    .replace(/from\s+["']@lionden\/core["']/g, `from "./core-stub.mjs"`)
     .replace(/from\s+["']@lionden\/network["']/g, `from "./network-stub.mjs"`)
     .replace(/from\s+["']@lionden\/config["']/g, `from "./config-stub.mjs"`);
   writeFileSync(outPath, rewritten);
@@ -126,6 +153,28 @@ beforeAll(async () => {
 afterAll(() => {
   if (tmpDir) {
     rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+beforeEach(() => {
+  originalNoColor = process.env["NO_COLOR"];
+  originalVitest = process.env["VITEST"];
+  process.env["NO_COLOR"] = "1";
+  delete process.env["VITEST"];
+  vi.spyOn(console, "log").mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  if (originalNoColor === undefined) {
+    delete process.env["NO_COLOR"];
+  } else {
+    process.env["NO_COLOR"] = originalNoColor;
+  }
+  if (originalVitest === undefined) {
+    delete process.env["VITEST"];
+  } else {
+    process.env["VITEST"] = originalVitest;
   }
 });
 
@@ -365,6 +414,11 @@ describe("BaseContract runtime", () => {
         { fee: 100, mode: "local" },
       ]);
       expect(result.outputs).toEqual(["8u32"]);
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        "----------------------------------------",
+        "Executing hello.aleo/main(3u32, 5u32)",
+        "Executed hello.aleo/main (1 output)",
+      ]);
     });
 
     it("throws when lre.network is missing", async () => {
@@ -429,6 +483,11 @@ describe("BaseContract runtime", () => {
       });
       expect(error.cause).toBe(vmError);
       expect(error.message).toContain("hello.aleo/main failed during local execution");
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        "----------------------------------------",
+        "Expecting local failure for hello.aleo/main(1u32)",
+        "Observed expected local failure for hello.aleo/main",
+      ]);
     });
 
     it("delegates to checkLocalExecution with merged local options", async () => {
@@ -540,6 +599,145 @@ describe("BaseContract runtime", () => {
       const result = await contract.testSubmit("main", []);
 
       expect(result.txId).toBe("at1ok");
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        "----------------------------------------",
+        "Submitting hello.aleo/main()",
+        "Submitted hello.aleo/main (tx: at1ok)",
+      ]);
+    });
+
+    it("suppresses transition dividers when running tests", async () => {
+      process.env["VITEST"] = "true";
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: ["42u32"], txId: "at1ok" }),
+        }),
+      );
+
+      await contract.testSubmit("main", []);
+
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        "Submitting hello.aleo/main()",
+        "Submitted hello.aleo/main (tx: at1ok)",
+      ]);
+    });
+
+    it("logs signer address without private key leakage and truncates long args", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+        }),
+      );
+      const signed = contract.withSigner({
+        privateKey: "APrivateKey1secret-private-key",
+        address: "aleo1signer",
+      });
+      const longArg = "ciphertext1" + "x".repeat(200);
+
+      await signed.testSubmit("transfer", [longArg], { fee: 7 });
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs[0]).toBe("----------------------------------------");
+      expect(logs[1]).toContain("(signer: aleo1signer)");
+      expect(logs[1]).toContain("ciphertext1");
+      expect(logs[1]).toContain("...");
+      expect(logs[1]).not.toContain("by aleo1signer");
+      expect(logs[1]).not.toContain("args:");
+      expect(logs[1]).not.toContain("mode:");
+      expect(logs[1]).not.toContain("[");
+      expect(logs[1]).not.toContain("]");
+      expect(logs.join("\n")).not.toContain("APrivateKey1secret-private-key");
+      expect(logs.join("\n")).not.toContain(longArg);
+    });
+
+    it("uses a redacted signer fallback when no signer address is available", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+        }),
+      );
+      const signed = contract.withSigner({
+        privateKey: "APrivateKey1addressless-private-key",
+      } as any);
+
+      await signed.testSubmit("transfer", ["1u64"]);
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs[1]).toBe("Submitting hello.aleo/transfer(1u64) (signer override)");
+      expect(logs[1]).not.toContain("by signer");
+      expect(logs.join("\n")).not.toContain("APrivateKey1addressless-private-key");
+    });
+
+    it("uses a placeholder when log arguments cannot be expanded", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+        }),
+      );
+      const badArg = {
+        replace: () => {
+          throw new Error("cannot format");
+        },
+      } as any;
+
+      await contract.testSubmit("transfer", [badArg]);
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs[1]).toBe("Submitting hello.aleo/transfer(...args)");
+    });
+
+    it("does not emit ANSI color when NO_COLOR is set", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+        }),
+      );
+
+      await contract.testSubmit("main", []);
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs).toEqual([
+        "----------------------------------------",
+        "Submitting hello.aleo/main()",
+        "Submitted hello.aleo/main (tx: at1ok)",
+      ]);
+      expect(logs.join("\n")).not.toContain("\x1b[");
+    });
+
+    it("colors only semantic transition log segments when stdout is a TTY", async () => {
+      const originalIsTTY = process.stdout.isTTY;
+      delete process.env["NO_COLOR"];
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        value: true,
+      });
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+        }),
+      );
+
+      try {
+        await contract.testSubmit("main", []);
+      } finally {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          value: originalIsTTY,
+        });
+      }
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs).toEqual([
+        "\x1b[2m----------------------------------------\x1b[0m",
+        "\x1b[36mSubmitting\x1b[0m hello.aleo/main()",
+        "\x1b[36mSubmitted\x1b[0m hello.aleo/main \x1b[2m(tx: at1ok)\x1b[0m",
+      ]);
     });
   });
 
@@ -580,6 +778,59 @@ describe("BaseContract runtime", () => {
           },
         ],
       });
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        "----------------------------------------",
+        "Submitting hello.aleo/main()",
+        "Submitted hello.aleo/main (tx: at1ok)",
+        "Waiting for confirmation of hello.aleo/main (tx: at1ok)",
+        "Accepted hello.aleo/main (tx: at1ok, block: 12)",
+      ]);
+    });
+
+    it("colors accepted settlement status and metadata when stdout is a TTY", async () => {
+      const originalIsTTY = process.stdout.isTTY;
+      delete process.env["NO_COLOR"];
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        value: true,
+      });
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1ok" }),
+          waitForConfirmation: async () => ({
+            txId: "at1ok",
+            blockHeight: 12,
+            status: "accepted",
+            transitions: [
+              {
+                programId: "hello.aleo",
+                transitionName: "main",
+                rawOutputs: [],
+                transitionPublicKey: "tpk_test_main",
+              },
+            ],
+          }),
+        }),
+      );
+
+      try {
+        await contract.testSettle("main", []);
+      } finally {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          value: originalIsTTY,
+        });
+      }
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs).toEqual([
+        "\x1b[2m----------------------------------------\x1b[0m",
+        "\x1b[36mSubmitting\x1b[0m hello.aleo/main()",
+        "\x1b[36mSubmitted\x1b[0m hello.aleo/main \x1b[2m(tx: at1ok)\x1b[0m",
+        "\x1b[36mWaiting for confirmation of\x1b[0m hello.aleo/main \x1b[2m(tx: at1ok)\x1b[0m",
+        "\x1b[32mAccepted\x1b[0m hello.aleo/main \x1b[2m(tx: at1ok, block: 12)\x1b[0m",
+      ]);
     });
 
     it("distinguishes on-chain rejection from local failure", async () => {
@@ -601,6 +852,72 @@ describe("BaseContract runtime", () => {
         txId: "at1bad",
         status: "rejected",
       });
+    });
+
+    it("logs rejected settlement", async () => {
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1bad" }),
+          waitForConfirmation: async () => ({
+            txId: "at1bad",
+            blockHeight: 13,
+            status: "rejected",
+            transitions: [],
+          }),
+        }),
+      );
+
+      await expect(contract.testSettle("main", [])).resolves.toMatchObject({
+        txId: "at1bad",
+        status: "rejected",
+      });
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        "----------------------------------------",
+        "Submitting hello.aleo/main()",
+        "Submitted hello.aleo/main (tx: at1bad)",
+        "Waiting for confirmation of hello.aleo/main (tx: at1bad)",
+        "Rejected hello.aleo/main (tx: at1bad, block: 13)",
+      ]);
+    });
+
+    it("colors rejected settlement as a warning when stdout is a TTY", async () => {
+      const originalIsTTY = process.stdout.isTTY;
+      delete process.env["NO_COLOR"];
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        value: true,
+      });
+      const contract = createTestContract("hello.aleo");
+      contract.connect(
+        mockLre({
+          execute: async () => ({ outputs: [], txId: "at1bad" }),
+          waitForConfirmation: async () => ({
+            txId: "at1bad",
+            blockHeight: 13,
+            status: "rejected",
+            transitions: [],
+          }),
+        }),
+      );
+
+      try {
+        await contract.testSettle("main", []);
+      } finally {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          value: originalIsTTY,
+        });
+      }
+
+      const logs = vi.mocked(console.log).mock.calls.map(([message]) => String(message));
+      expect(logs).toEqual([
+        "\x1b[2m----------------------------------------\x1b[0m",
+        "\x1b[36mSubmitting\x1b[0m hello.aleo/main()",
+        "\x1b[36mSubmitted\x1b[0m hello.aleo/main \x1b[2m(tx: at1bad)\x1b[0m",
+        "\x1b[36mWaiting for confirmation of\x1b[0m hello.aleo/main \x1b[2m(tx: at1bad)\x1b[0m",
+        "\x1b[33mRejected\x1b[0m hello.aleo/main \x1b[2m(tx: at1bad, block: 13)\x1b[0m",
+      ]);
     });
 
     it("wraps typed network confirmation timeouts without string matching", async () => {

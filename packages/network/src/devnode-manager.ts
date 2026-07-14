@@ -381,13 +381,13 @@ export class DevnodeManager {
     const exitFormatted = formatExit(code, signal);
     if (this._logMode === "inherit") {
       process.stderr.write(
-        `[lionden] devnode exited unexpectedly (${exitFormatted}) — see terminal logs above\n`,
+        `Devnode exited unexpectedly (${exitFormatted}) — see terminal logs above\n`,
       );
       return;
     }
     const tail = this.getLogTail().stderr.slice(-LOG_TAIL_RENDER_BYTES);
     const suffix = tail.length > 0 ? (tail.endsWith("\n") ? tail : `${tail}\n`) : "";
-    process.stderr.write(`[lionden] devnode exited unexpectedly (${exitFormatted}):\n${suffix}`);
+    process.stderr.write(`Devnode exited unexpectedly (${exitFormatted}):\n${suffix}`);
   }
 
   private renderExitError(code: number | null, signal: NodeJS.Signals | null): string {

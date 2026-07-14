@@ -8,6 +8,10 @@ import { isSignable, normalizeProgramId } from "@lionden/config";
 import {
   KeyArtifactsMetadataError,
   type LionDenRuntimeEnvironment,
+  logAction,
+  logMetadata,
+  logSuccess,
+  logWarning,
   type ProgramArtifactProvenance,
   readProgramArtifactProvenance,
 } from "@lionden/core";
@@ -106,6 +110,7 @@ export async function deployAction(
   };
 
   const config = lre.config;
+  const networkName = options.network ?? config.defaultNetwork;
   const shouldConfirm = !options.skipConfirm && config.deploy.confirmTransactions;
   if (options.export && !shouldConfirm) {
     throw new DeployError(
@@ -125,7 +130,7 @@ export async function deployAction(
     const compileArgs: Record<string, unknown> = {};
     if (options.program) compileArgs["program"] = options.program;
     if (options.rename) compileArgs["rename"] = options.rename;
-    if (options.network) compileArgs["network"] = options.network;
+    if (options.network) compileArgs["network"] = networkName;
     if (Object.keys(compileArgs).length > 0) {
       await lre.tasks.run("compile", compileArgs);
     } else {
@@ -168,7 +173,6 @@ export async function deployAction(
   }
 
   // 5. Connect to network
-  const networkName = options.network ?? config.defaultNetwork;
   const networkConfig = config.networks[networkName];
   if (!networkConfig) {
     throw new DeployError(
@@ -274,6 +278,12 @@ export async function deployAction(
     .filter((p) => p.action === "deploy")
     .map((p) => p.programId);
 
+  for (const outcome of preflightResult.programs) {
+    if (outcome.action === "skip" && outcome.reason === "already-deployed") {
+      console.log(`${logWarning("Skipping")} ${outcome.programId}: already deployed`);
+    }
+  }
+
   // 13. If --dry-run, build transactions without broadcasting (devnode only).
   // This must happen BEFORE reconciliation so dry-run never mutates deployment state.
   if (options.dryRun) {
@@ -352,6 +362,7 @@ export async function deployAction(
 
   for (let i = 0; i < toDeployIds.length; i++) {
     const programId = toDeployIds[i]!;
+    console.log(`${logAction("Deploying")} ${programId} on network "${networkName}"`);
 
     const aleoSource = lre.artifacts.getAleoSource(programId);
     if (!aleoSource) {
@@ -411,6 +422,9 @@ export async function deployAction(
     // Wait for confirmation
     let blockHeight = 0;
     if (shouldConfirm) {
+      console.log(
+        `${logAction("Waiting for confirmation")} of ${programId} ${logMetadata(`(tx: ${txId})`)}`,
+      );
       const confirmed = await connection.waitForConfirmation(txId, confirmTimeout);
       if (confirmed.status === "rejected") {
         throw new DeployError(`Deploy transaction ${txId} was rejected on-chain.`);
@@ -449,7 +463,9 @@ export async function deployAction(
     };
     results.push(result);
 
-    console.log(`Deployed ${programId} (tx: ${txId}, block: ${blockHeight})`);
+    console.log(
+      `${logSuccess("Deployed")} ${programId} ${logMetadata(`(tx: ${txId}, block: ${blockHeight})`)}`,
+    );
 
     // Fire deployment hook
     await lre.hooks.serial("deployment", "programDeployed", {

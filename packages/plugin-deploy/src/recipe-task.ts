@@ -14,7 +14,7 @@
 import * as path from "node:path";
 import { createNamedAccountAccessor, normalizeProgramId } from "@lionden/config";
 import type { LionDenRuntimeEnvironment } from "@lionden/core";
-import { programNameFromTarget, sourceProgramNameFromTarget } from "@lionden/core";
+import { logAction, programNameFromTarget, sourceProgramNameFromTarget } from "@lionden/core";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { DEVNODE_ACCOUNTS } from "@lionden/network";
 import type { DeploymentManager } from "./deployment-manager.js";
@@ -74,6 +74,10 @@ export async function recipeAction(
   if (typeof recipeFn !== "function") {
     throw new DeployError(`No function "${exportName}" exported from "${file}".`);
   }
+
+  console.log(
+    `${logAction("Running recipe")} ${resolved}#${exportName} on network "${networkName}"`,
+  );
 
   const result = await recipeFn(ctx);
   return result;
