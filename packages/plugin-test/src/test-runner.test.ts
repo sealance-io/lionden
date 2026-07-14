@@ -21,6 +21,8 @@ describe("test-runner", () => {
   afterEach(() => {
     // Restore original env after each test
     for (const key of [
+      "FORCE_COLOR",
+      "NO_COLOR",
       "LIONDEN_PROJECT_ROOT",
       "LIONDEN_CONFIG_PATH",
       "LIONDEN_PROVE",
@@ -121,6 +123,62 @@ describe("test-runner", () => {
       const vitestConfig = callArgs[2] as Record<string, unknown>;
 
       expect(vitestConfig.onConsoleLog).toBe(silenceProvableSdkConsoleNoise);
+    });
+
+    it("forwards color support to Vitest workers when the parent terminal supports color", async () => {
+      const originalIsTTY = process.stdout.isTTY;
+      delete process.env["NO_COLOR"];
+      delete process.env["FORCE_COLOR"];
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        value: true,
+      });
+      const { startVitest } = await import("vitest/node");
+      vi.mocked(startVitest).mockImplementationOnce(async () => {
+        expect(process.env["FORCE_COLOR"]).toBe("1");
+        return {
+          close: vi.fn().mockResolvedValue(undefined),
+          state: { getFiles: () => [] },
+        } as any;
+      });
+
+      try {
+        await runTests({ root: "/tmp/proj" });
+      } finally {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          value: originalIsTTY,
+        });
+      }
+
+      expect(process.env["FORCE_COLOR"]).toBeUndefined();
+    });
+
+    it("does not force color for Vitest workers when NO_COLOR is set", async () => {
+      const originalIsTTY = process.stdout.isTTY;
+      process.env["NO_COLOR"] = "1";
+      delete process.env["FORCE_COLOR"];
+      Object.defineProperty(process.stdout, "isTTY", {
+        configurable: true,
+        value: true,
+      });
+      const { startVitest } = await import("vitest/node");
+      vi.mocked(startVitest).mockImplementationOnce(async () => {
+        expect(process.env["FORCE_COLOR"]).toBeUndefined();
+        return {
+          close: vi.fn().mockResolvedValue(undefined),
+          state: { getFiles: () => [] },
+        } as any;
+      });
+
+      try {
+        await runTests({ root: "/tmp/proj" });
+      } finally {
+        Object.defineProperty(process.stdout, "isTTY", {
+          configurable: true,
+          value: originalIsTTY,
+        });
+      }
     });
   });
 });

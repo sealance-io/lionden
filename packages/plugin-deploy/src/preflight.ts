@@ -160,7 +160,7 @@ export async function checkFeeEstimate(
   logLevel?: SdkLogLevel,
 ): Promise<{ estimate: bigint | undefined; warning: PreflightWarning | null }> {
   try {
-    const { createSdkObjects } = await import("@lionden/network");
+    const { createSdkObjects, withSuppressedSdkConsoleNoise } = await import("@lionden/network");
     const sdk = await createSdkObjects({
       network: connection.networkId,
       endpoint: connection.endpoint,
@@ -188,9 +188,11 @@ export async function checkFeeEstimate(
       importsObj[id] = src;
     }
 
-    const estimatedFee: number | bigint = await pm.estimateDeploymentFee(
-      aleoSource,
-      Object.keys(importsObj).length > 0 ? importsObj : undefined,
+    const estimatedFee: number | bigint = await withSuppressedSdkConsoleNoise(() =>
+      pm.estimateDeploymentFee(
+        aleoSource,
+        Object.keys(importsObj).length > 0 ? importsObj : undefined,
+      ),
     );
 
     return {

@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { overrideTask, task } from "./task-builder.js";
 import { TaskNotFoundError, TaskRunnerImpl } from "./task-runner.js";
 import { ArgumentType, type LionDenRuntimeEnvironment, type TaskDefinition } from "./types.js";
+
+let originalNoColor: string | undefined;
+let originalVitest: string | undefined;
+let originalManagedTest: string | undefined;
 
 function makeLre(): LionDenRuntimeEnvironment {
   return {
@@ -18,6 +22,146 @@ function makeLre(): LionDenRuntimeEnvironment {
 }
 
 describe("TaskRunnerImpl", () => {
+  beforeEach(() => {
+    originalNoColor = process.env["NO_COLOR"];
+    originalVitest = process.env["VITEST"];
+    originalManagedTest = process.env["LIONDEN_MANAGED_TEST"];
+    process.env["NO_COLOR"] = "1";
+    delete process.env["VITEST"];
+    delete process.env["LIONDEN_MANAGED_TEST"];
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalNoColor === undefined) {
+      delete process.env["NO_COLOR"];
+    } else {
+      process.env["NO_COLOR"] = originalNoColor;
+    }
+    if (originalVitest === undefined) {
+      delete process.env["VITEST"];
+    } else {
+      process.env["VITEST"] = originalVitest;
+    }
+    if (originalManagedTest === undefined) {
+      delete process.env["LIONDEN_MANAGED_TEST"];
+    } else {
+      process.env["LIONDEN_MANAGED_TEST"] = originalManagedTest;
+    }
+  });
+
+  describe("task start logs", () => {
+    it("prints only the task-start line for the first task", async () => {
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([{ id: "compile", description: "compile", action: vi.fn() }]);
+      runner.setLre(makeLre());
+
+      await runner.run("compile");
+
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        'Running task "compile"',
+      ]);
+    });
+
+    it("prints one divider before the second task start line", async () => {
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        { id: "compile", description: "compile", action: vi.fn() },
+        { id: "test", description: "test", action: vi.fn() },
+      ]);
+      runner.setLre(makeLre());
+
+      await runner.run("compile");
+      await runner.run("test");
+
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        'Running task "compile"',
+        "----------------------------------------",
+        'Running task "test"',
+      ]);
+    });
+
+    it("suppresses task dividers when running tests", async () => {
+      process.env["VITEST"] = "true";
+      const runner = new TaskRunnerImpl();
+      runner.registerTasks([
+        { id: "compile", description: "compile", action: vi.fn() },
+        { id: "test", description: "test", action: vi.fn() },
+      ]);
+      runner.setLre(makeLre());
+
+      await runner.run("compile");
+      await runner.run("test");
+
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        'Running task "compile"',
+        'Running task "test"',
+      ]);
+    });
+
+    it("suppresses nested task dividers during managed test task execution", async () => {
+      process.env["LIONDEN_MANAGED_TEST"] = "true";
+      const runner = new TaskRunnerImpl();
+      const lre = makeLre();
+      (lre as unknown as { tasks: TaskRunnerImpl }).tasks = runner;
+      runner.registerTasks([
+        {
+          id: "test",
+          description: "test",
+          action: async (_args, lre) => {
+            await lre.tasks.run("compile");
+          },
+        },
+        { id: "compile", description: "compile", action: vi.fn() },
+      ]);
+      runner.setLre(lre);
+
+      await runner.run("test");
+
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        'Running task "test"',
+        'Running task "compile"',
+      ]);
+    });
+
+    it("separates nested task starts and preserves output order", async () => {
+      const runner = new TaskRunnerImpl();
+      const lre = makeLre();
+      (lre as unknown as { tasks: TaskRunnerImpl }).tasks = runner;
+      runner.registerTasks([
+        {
+          id: "outer",
+          description: "outer",
+          action: async (_args, lre) => {
+            console.log("outer before");
+            await lre.tasks.run("inner");
+            console.log("outer after");
+          },
+        },
+        {
+          id: "inner",
+          description: "inner",
+          action: async () => {
+            console.log("inner action");
+          },
+        },
+      ]);
+      runner.setLre(lre);
+
+      await runner.run("outer");
+
+      expect(vi.mocked(console.log).mock.calls.map(([message]) => String(message))).toEqual([
+        'Running task "outer"',
+        "outer before",
+        "----------------------------------------",
+        'Running task "inner"',
+        "inner action",
+        "outer after",
+      ]);
+    });
+  });
+
   describe("arg normalization", () => {
     it("maps kebab-case flag to camelCase", async () => {
       const action = vi.fn();

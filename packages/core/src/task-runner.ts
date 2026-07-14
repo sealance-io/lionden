@@ -1,4 +1,5 @@
 import { argumentFlagName, getPublicArgumentNames } from "./arg-names.js";
+import { logAction, logDivider, shouldRenderDivider } from "./log-style.js";
 import type {
   LionDenRuntimeEnvironment,
   TaskAction,
@@ -26,6 +27,7 @@ interface RegisteredTask {
 export class TaskRunnerImpl implements TaskRunner {
   private readonly tasks = new Map<string, RegisteredTask>();
   private lre: LionDenRuntimeEnvironment | null = null;
+  private hasStartedTask = false;
 
   /** Bind the LRE (called once during LRE construction) */
   setLre(lre: LionDenRuntimeEnvironment): void {
@@ -79,6 +81,7 @@ export class TaskRunnerImpl implements TaskRunner {
     const action = registered.definition.action;
 
     const finalArgs = this.prepareArgs(registered.definition, args);
+    this.logTaskStart(taskId);
 
     // If there are overrides, create the runSuper chain
     if (registered.overrideChain.length > 0) {
@@ -105,6 +108,14 @@ export class TaskRunnerImpl implements TaskRunner {
 
   getTaskDefinition(taskId: string): TaskDefinition | undefined {
     return this.tasks.get(taskId)?.definition;
+  }
+
+  private logTaskStart(taskId: string): void {
+    if (this.hasStartedTask && shouldRenderDivider()) {
+      console.log(logDivider());
+    }
+    console.log(logAction("Running task") + ` "${taskId}"`);
+    this.hasStartedTask = true;
   }
 
   private buildRunSuper(

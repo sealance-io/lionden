@@ -47,6 +47,20 @@ export {
 } from "./key-artifacts.js";
 // Leo CLI preflight
 export { preflightLeo } from "./leo-preflight.js";
+export type { LogStyleRole } from "./log-style.js";
+export {
+  colorLogText,
+  logAction,
+  logDivider,
+  logError,
+  logMetadata,
+  logSuccess,
+  logWarning,
+  pluralize,
+  shouldColorLogs,
+  shouldRenderDivider,
+  styleLogRole,
+} from "./log-style.js";
 export type { CreateLreOptions } from "./lre.js";
 // LRE
 export { createLre } from "./lre.js";

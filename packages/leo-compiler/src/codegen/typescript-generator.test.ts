@@ -24,7 +24,16 @@ function expectGeneratedModulesToTypecheck(outputs: Record<string, string>): voi
     "/virtual/BaseContract.ts": generateBaseContract(),
     "/virtual/config.d.ts":
       "export declare function normalizeProgramId(programId: string): string;",
-    "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
+    "/virtual/core.d.ts": [
+      "export interface LionDenRuntimeEnvironment { network: unknown }",
+      'export type LogStyleRole = "action" | "success" | "warning" | "error" | "metadata" | "divider";',
+      'export declare function colorLogText(text: string, color: "cyan" | "dim" | "green" | "red" | "yellow"): string;',
+      "export declare function logDivider(text?: string): string;",
+      "export declare function logMetadata(text: string): string;",
+      "export declare function pluralize(word: string, count: number): string;",
+      "export declare function shouldRenderDivider(): boolean;",
+      "export declare function styleLogRole(text: string, role: LogStyleRole): string;",
+    ].join("\n"),
     "/virtual/network.d.ts": [
       'export declare function decryptRecordCiphertext(ciphertext: string, viewKey: string, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',
       'export declare function decryptValueCiphertext(ciphertext: string, viewKey: string, tpk: string, programId: string, transitionName: string, globalIndex: number, options?: { readonly network?: "testnet" | "mainnet" }): Promise<string>;',

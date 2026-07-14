@@ -45,6 +45,7 @@ export {
   type SdkCallContext,
   SdkDiagnostics,
   type SdkTransportFailure,
+  withSuppressedSdkConsoleNoise,
 } from "./sdk-diagnostics.js";
 export { selectMatchingTransition } from "./transition-selector.js";
 export type {

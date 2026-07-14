@@ -84,6 +84,18 @@ Global options include `--config`, `--network`, `--prove`, `--verbose`, `--help`
 
 Bare arguments are stricter. A bare argument before the resolved task id is rejected, and bare arguments after the task id must be consumed by that task's positional schema. So `lionden hello compile` and `lionden compile hello` both fail because `compile` has no positional arguments. `lionden run scripts/deploy.ts` works because `run` declares one `script` positional. `lionden test a.test.ts b.test.ts` works because the `test` task declares its `files` positional as variadic.
 
+## CLI Output
+
+LionDen prints a small set of always-on lifecycle logs for normal CLI, script, and recipe runs. Each task invocation starts with `Running task "<task>"`; when a later task starts in the same run, LionDen prints a `----------------------------------------` divider first. Nested task calls use the same marker, so a script or test that invokes `compile` or `deploy` shows where that task begins.
+
+Task-specific logs describe domain work. `compile` starts with `Compiling programs` or `Compiling <program>` and ends with a short `Compiled ...` summary. `run` prints the resolved script path and network. `recipe` prints the recipe file, export name, and network. `deploy` and `upgrade` print the program, target network, confirmation wait, and final transaction/block summary; deploy also prints when a program is skipped because it is already deployed.
+
+Generated TypeScript contract wrappers log every transition execution through their shared base class. Outside tests, each transition block starts with the same `----------------------------------------` divider. Local calls look like `Executing token.aleo/mint(aleo1..., 1u64)` followed by `Executed token.aleo/mint (1 output)`. On-chain calls log `Submitting`, `Submitted`, `Waiting for confirmation of`, then `Accepted` or `Rejected` as the leading final status. Arguments are rendered as normal call parameters and long encoded values are truncated. If a signer override is present, logs show only `(signer: <address>)` or `(signer override)`, never the private key.
+
+When the terminal supports color, LionDen uses restrained semantic color on the key words only: action verbs, success words, warnings/rejections, metadata such as `(tx: ...)`, and dividers. The plain text remains the same and normal terminal controls such as `NO_COLOR` are respected.
+
+Managed test output is intentionally less visually noisy: divider lines are suppressed for the full `lionden test` flow, including the parent task and Vitest workers, but the surrounding task and transition status logs still print. LionDen also suppresses one reviewed Provable SDK edition/amendment fallback message while normal runtime SDK calls are in progress; unrelated console errors still pass through.
+
 ## Project Layout
 
 A standard LionDen project looks like:
@@ -216,6 +228,8 @@ What `compile` does ([full pipeline](compiler.md#current-compile-pipeline)):
 Caching is content-hash based and stored under `artifacts/.cache`. Use `--force` if a network dependency changed or you want a clean rebuild.
 
 `lionden clean` removes `artifacts/` and `typechain/` (deployment state under `deployments/` is preserved).
+
+`compile` logs immediately when compilation starts, then prints a compact completion summary that names a single compiled program when there is one, otherwise summarizes the compiled program/library count and whether typechain bindings were generated or skipped.
 
 ### Working With Generated Bindings
 
@@ -378,6 +392,8 @@ lionden run scripts/deploy.ts
 lionden run scripts/deploy.ts --network testnet
 ```
 
+Before importing the script, LionDen logs the resolved script path and selected network.
+
 The script's network defaults to `config.defaultNetwork` (or the global `--network` if provided). The LRE exposes:
 
 - `lre.config` — fully resolved config
@@ -419,6 +435,8 @@ What `deploy` does ([full reference](deployment.md#deploy-task)):
 
 Deployment state, ephemeral mode, pending recovery, and the export schema all live under [`deployment.md`](deployment.md#deployment-state).
 
+During deploy, LionDen logs each program as it starts, prints already-deployed skips, logs when it is waiting for transaction confirmation, and prints the final deployed transaction and block. When several programs deploy sequentially, each program's lifecycle is grouped in the terminal output.
+
 ### Deployment recipes
 
 For multi-step setup (deploy several programs, mint initial state, configure roles, …), use a **recipe** instead of a one-shot deploy script. A recipe is a TypeScript module exporting a `DeploymentRecipe`:
@@ -459,6 +477,8 @@ await setupToken(ctx);
 
 The recipe task compiles once up front, then individual `ctx.deploy()` calls default to `noCompile: true`. `ctx.deploy()` may return an existing complete deployment record; pass `{ noSkipDeployed: true }` for first-time-only setup recipes that should fail instead of reusing an existing deployment.
 
+Before calling the recipe export, LionDen logs the resolved recipe module, export name, and network.
+
 ## Upgrading Programs
 
 `upgrade` is a thin task: it recompiles the program, builds and broadcasts the upgrade transaction, and records a minimal updated record. Renamed upgrades rely on the recorded local source/runtime mapping in LionDen deployment state. LionDen does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity — Leo's built-in tooling owns upgrade correctness.
@@ -479,6 +499,8 @@ What `upgrade` does:
 6. Records the updated state; fires `deployment.programUpgraded`.
 
 The task returns `{ programId, txId, blockHeight }`. When `namedAccounts.admin` is signable, its key is selected as the signer (selection only — no address-match check). For v3.5 to v4 migration notes, see [`leo-version-compatibility.md`](leo-version-compatibility.md#migration-notes-v35-to-v4). To spot-check runtime upgrade behaviour, use a disposable probe per [`agent-bug-hunt-workflow.md`](agent-bug-hunt-workflow.md).
+
+Upgrade logs mirror deploy's lifecycle style: start with `Upgrading <programId> on network "<name>"`, then `Waiting for confirmation ...` when confirmation is enabled, then `Upgraded <programId> (tx: ..., block: ...)`.
 
 ## Exporting Deployment Data
 

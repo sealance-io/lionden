@@ -14,7 +14,6 @@ describe("sdk-console-filter", () => {
       "Creating authorization for hello.aleo/run",
       "Creating proving request for hello.aleo/run",
       "Loading the SnarkVM process",
-      "Spawning 10 threads",
       "Setup the program and inputs",
       "Check program imports are valid and add them",
       "Importing verifying key for function: transfer_public",
@@ -63,8 +62,6 @@ PROBE_USER_LOG`),
       "Error - response from http://localhost:3030/program/hello.aleo, retrying in 1000ms",
       "Error - response from http://localhost:3030/program/hello.aleo/latest_edition, retrying in 1000ms",
       "Error - response from http://localhost:3030/programs/hello.aleo/amendment_count, retrying in 1000ms",
-      "Error finding edition/amendment for hello.aleo. Network response: 'Error fetching amendment count for hello.aleo: Error: 404 Not Found'. Defaulting to edition 1, amendment 0.",
-      "Error finding edition/amendment for hello.aleo. Network response: 'Program hello.aleo does not exist'. Defaulting to edition 1, amendment 0.",
     ];
 
     for (const message of messages) {
@@ -74,12 +71,13 @@ PROBE_USER_LOG`),
 
   it("leaves LionDen status logs and normal user logs visible", () => {
     const messages = [
-      "Compiling programs...",
+      "Compiling programs",
       'Running tests against network "altnet"',
       "Tests: 1 passed, 0 failed, 0 skipped (1 files)",
       "user: Creating deployment transaction",
       "Executing program business workflow",
       "Program hello.aleo already exists on the network, please rename your program",
+      "Spawning 10 threads",
     ];
 
     for (const message of messages) {
@@ -95,6 +93,8 @@ PROBE_USER_LOG`),
       "No endpoint specified",
       "Error finding edition/amendment for hello.aleo. Network response: 'No endpoint specified'. Defaulting to edition 1, amendment 0.",
       "Error finding edition/amendment for hello.aleo. Network response: 'fetch failed'. Defaulting to edition 1, amendment 0.",
+      "Error finding edition/amendment for hello.aleo. Network response: 'Error fetching amendment count for hello.aleo: Error: 404 Not Found'. Defaulting to edition 1, amendment 0.",
+      "Error finding edition/amendment for hello.aleo. Network response: 'Program hello.aleo does not exist'. Defaulting to edition 1, amendment 0.",
       "Error - response from https://example.com/status, retrying in 1000ms",
       "Error - disk full, retrying in 1000ms",
     ];

@@ -133,6 +133,14 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   else delete process.env["LIONDEN_NETWORK"];
 
   const { startVitest } = await import("vitest/node");
+  const originalForceColor = process.env["FORCE_COLOR"];
+  const setWorkerForceColor =
+    process.env["NO_COLOR"] === undefined &&
+    originalForceColor === undefined &&
+    process.stdout.isTTY === true;
+  if (setWorkerForceColor) {
+    process.env["FORCE_COLOR"] = "1";
+  }
   const coverageOptions = normalizeCoverageOptions(options.coverage);
   const vitestRoot = coverageOptions?.sourceRoot ?? options.root;
   const coverage = resolveCoverageOptions(options, coverageOptions);
@@ -158,14 +166,22 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
     ...(options.grep ? { testNamePattern: options.grep } : {}),
   };
 
-  const vitest = await startVitest("test", [], vitestOptions);
+  let vitest: Awaited<ReturnType<typeof startVitest>> | undefined;
+  try {
+    vitest = await startVitest("test", [], vitestOptions);
+    if (!vitest) {
+      return { success: false, testFiles: 0, passed: 0, failed: 0, skipped: 0 };
+    }
+
+    // Wait for tests to complete
+    await vitest.close();
+  } finally {
+    restoreForceColor(originalForceColor, setWorkerForceColor);
+  }
 
   if (!vitest) {
     return { success: false, testFiles: 0, passed: 0, failed: 0, skipped: 0 };
   }
-
-  // Wait for tests to complete
-  await vitest.close();
 
   // Collect results
   const state = vitest.state;
@@ -189,6 +205,18 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
     failed,
     skipped,
   };
+}
+
+function restoreForceColor(
+  originalForceColor: string | undefined,
+  didSetForceColor: boolean,
+): void {
+  if (!didSetForceColor) return;
+  if (originalForceColor === undefined) {
+    delete process.env["FORCE_COLOR"];
+  } else {
+    process.env["FORCE_COLOR"] = originalForceColor;
+  }
 }
 
 function countTasks(tasks: readonly VitestTaskLike[]): {

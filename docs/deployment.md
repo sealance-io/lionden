@@ -88,6 +88,25 @@ Deployment records are keyed by the deployed/runtime `programId`. Renamed record
 
 Rename support is defined around the actual deploy flow, wrapper/test/recipe deploy helpers, and renamed upgrade using recorded provenance. `deploy --rename --preflight` is not expanded into a hidden compile or rename-planning flow: on HTTP, preflight still reads the renamed runtime artifact by its runtime id, so a clean rename preflight expects that renamed artifact to already exist locally. This keeps preflight semantics unchanged rather than compiling during preflight.
 
+### Deploy Output
+
+Deploy prints lifecycle progress for the work the user is waiting on. Each program that will be deployed starts with:
+
+```text
+Deploying token_registry.aleo on network "devnode"
+```
+
+If confirmation is enabled, LionDen then prints:
+
+```text
+Waiting for confirmation of token_registry.aleo (tx: at1...)
+Deployed token_registry.aleo (tx: at1..., block: 23)
+```
+
+When deploy preflight determines that a program is already deployed and skip-deployed behavior is enabled, the task prints `Skipping <programId>: already deployed`. Preflight warnings still print as `Warning [CODE]: ...`; `--preflight` returns the structured preflight result without broadcasting or writing deployment state.
+
+When multiple programs are deployed in one command, each program's deploy lifecycle is grouped separately in the terminal output. In color-capable terminals, LionDen colors only the semantic words and metadata: action words such as `Deploying` and `Waiting for confirmation`, success words such as `Deployed`, warning words such as `Skipping`, and metadata such as `(tx: ...)`.
+
 ### `--prove` (global)
 
 `--prove` is a framework **built-in global** (like `--network`), not a deploy-task flag — it works in any position (`lionden --prove deploy`, `lionden deploy --prove`) and on `upgrade`/`recipe`/`test` too. `deploy`/`upgrade` resolve it via `resolveProveOption()` (precedence: a programmatic per-call arg → the `--prove`/`--prove=false` global → a truthy `LIONDEN_PROVE` env → `false`). A truthy `LIONDEN_PROVE` is parsed permissively (`1`/`yes`/`on`/…); an explicit `--prove=false` reliably wins over the env.
@@ -257,6 +276,16 @@ Current upgrade options:
 - `--program`
 - `--priority-fee`
 - `--skip-confirm`
+
+Upgrade output mirrors deploy output for the same lifecycle shape:
+
+```text
+Upgrading token_registry.aleo on network "testnet"
+Waiting for confirmation of token_registry.aleo (tx: at1...)
+Upgraded token_registry.aleo (tx: at1..., block: 12345)
+```
+
+The same restrained semantic color policy applies in color-capable terminals: action words are accented, `Upgraded` is success-colored, and transaction/block metadata is dimmed.
 
 When `namedAccounts.admin` is set, the upgrade task selects its private key as the signing key (selection only — there is no address-match validation).
 

@@ -53,13 +53,23 @@ const VIRTUAL_NETWORK_DTS = [
 ].join("\n");
 
 const VIRTUAL_CONFIG_DTS = "export declare function normalizeProgramId(programId: string): string;";
+const VIRTUAL_CORE_DTS = [
+  "export interface LionDenRuntimeEnvironment { network: unknown }",
+  'export type LogStyleRole = "action" | "success" | "warning" | "error" | "metadata" | "divider";',
+  'export declare function colorLogText(text: string, color: "cyan" | "dim" | "green" | "red" | "yellow"): string;',
+  "export declare function logDivider(text?: string): string;",
+  "export declare function logMetadata(text: string): string;",
+  "export declare function pluralize(word: string, count: number): string;",
+  "export declare function shouldRenderDivider(): boolean;",
+  "export declare function styleLogRole(text: string, role: LogStyleRole): string;",
+].join("\n");
 
 function virtualBaseFiles(): Record<string, string> {
   return {
     "/virtual/package.json": '{ "type": "module" }',
     "/virtual/BaseContract.ts": generateBaseContract(),
     "/virtual/config.d.ts": VIRTUAL_CONFIG_DTS,
-    "/virtual/core.d.ts": "export interface LionDenRuntimeEnvironment { network: unknown }",
+    "/virtual/core.d.ts": VIRTUAL_CORE_DTS,
     "/virtual/network.d.ts": VIRTUAL_NETWORK_DTS,
   };
 }

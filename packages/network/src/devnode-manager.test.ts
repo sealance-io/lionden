@@ -555,7 +555,7 @@ describe("DevnodeManager", () => {
       // Diagnostic uses "signal SIGKILL", not "code null".
       const diagnosticCalls = writeSpy.mock.calls
         .map((c) => String(c[0]))
-        .filter((s) => s.startsWith("[lionden]"));
+        .filter((s) => s.startsWith("Devnode exited unexpectedly"));
       expect(diagnosticCalls.length).toBe(1);
       expect(diagnosticCalls[0]).toContain("signal SIGKILL");
       expect(diagnosticCalls[0]).not.toContain("code null");
@@ -588,8 +588,9 @@ describe("DevnodeManager", () => {
 
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
-        .filter((s) => s.startsWith("[lionden]"));
+        .filter((s) => s.startsWith("Devnode exited unexpectedly"));
       expect(diagnostics.length).toBe(1);
+      expect(diagnostics[0]).not.toContain("[lionden]");
       expect(diagnostics[0]).toContain("code 137");
       expect(diagnostics[0]).toContain("fatal: out of memory");
 
@@ -608,7 +609,7 @@ describe("DevnodeManager", () => {
 
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
-        .filter((s) => s.startsWith("[lionden]"));
+        .filter((s) => s.startsWith("Devnode exited unexpectedly"));
       expect(diagnostics).toEqual([]);
 
       writeSpy.mockRestore();
@@ -631,7 +632,7 @@ describe("DevnodeManager", () => {
 
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
-        .filter((s) => s.startsWith("[lionden]"));
+        .filter((s) => s.startsWith("Devnode exited unexpectedly"));
       expect(diagnostics).toEqual([]);
 
       writeSpy.mockRestore();
@@ -650,7 +651,7 @@ describe("DevnodeManager", () => {
 
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
-        .filter((s) => s.startsWith("[lionden]"));
+        .filter((s) => s.startsWith("Devnode exited unexpectedly"));
       expect(diagnostics.length).toBe(1);
       expect(diagnostics[0]).toContain("see terminal logs above");
 
@@ -692,7 +693,7 @@ describe("DevnodeManager", () => {
       // first (which was a clean stop()).
       const diagnostics = writeSpy.mock.calls
         .map((c) => String(c[0]))
-        .filter((s) => s.startsWith("[lionden]"));
+        .filter((s) => s.startsWith("Devnode exited unexpectedly"));
       expect(diagnostics.length).toBe(1);
       expect(diagnostics[0]).toContain("code 137");
 

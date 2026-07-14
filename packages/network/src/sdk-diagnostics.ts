@@ -41,6 +41,14 @@ export interface SdkTransportFailure {
 }
 
 const SDK_DIAGNOSTICS_RING_CAP = 16;
+const sdkEditionFallbackConsolePattern = new RegExp(
+  `^Error finding edition/amendment for [A-Za-z][A-Za-z0-9_]*\\.aleo\\. Network response: '.+'\\. Defaulting to edition [0-9]+, amendment 0\\.$`,
+);
+
+type ConsoleMethod = "log" | "warn" | "error";
+
+let activeConsoleSuppressionCount = 0;
+let originalConsoleMethods: Record<ConsoleMethod, (...args: unknown[]) => void> | null = null;
 
 /**
  * Bounded ring buffer of transport failures, owned 1:1 by an SDK objects
@@ -125,37 +133,54 @@ export async function captureSdkCall<T>(
 ): Promise<T> {
   return diagnostics.runExclusive(async () => {
     diagnostics.clear();
-    try {
-      return await fn();
-    } catch (error: unknown) {
-      // Never double-wrap a previously-enriched error (defensive against nesting).
-      if (error instanceof SdkExecutionError) {
-        throw error;
+    return withSuppressedSdkConsoleNoise(async () => {
+      try {
+        return await fn();
+      } catch (error: unknown) {
+        // Never double-wrap a previously-enriched error (defensive against nesting).
+        if (error instanceof SdkExecutionError) {
+          throw error;
+        }
+        // Pass a local-execution WASM trap through untouched. Its message contains
+        // "unreachable", which isOpaqueWasmError would otherwise treat as an opaque
+        // abort and re-wrap into a generic SdkExecutionError — burying the trap
+        // class and message that local trap-capture callers assert on.
+        if (error instanceof LocalExecutionWasmTrapError) {
+          throw error;
+        }
+        const failures = diagnostics.snapshot();
+        const relevant = pickRelevantFailure(failures);
+        // Enrich only for the state-query (prove callback) failures this feature
+        // exists to surface, or for an opaque WASM abort. A broadcast/other
+        // failure with a descriptive error path passes through untouched.
+        if (relevant === undefined && !isOpaqueWasmError(error)) {
+          throw error;
+        }
+        throw new SdkExecutionError(buildSdkExecutionMessage(context, relevant, error), {
+          operation: context.operation,
+          programId: context.programId,
+          transitionName: context.transitionName,
+          diagnostics: failures,
+          cause: error,
+        });
       }
-      // Pass a local-execution WASM trap through untouched. Its message contains
-      // "unreachable", which isOpaqueWasmError would otherwise treat as an opaque
-      // abort and re-wrap into a generic SdkExecutionError — burying the trap
-      // class and message that local trap-capture callers assert on.
-      if (error instanceof LocalExecutionWasmTrapError) {
-        throw error;
-      }
-      const failures = diagnostics.snapshot();
-      const relevant = pickRelevantFailure(failures);
-      // Enrich only for the state-query (prove callback) failures this feature
-      // exists to surface, or for an opaque WASM abort. A broadcast/other
-      // failure with a descriptive error path passes through untouched.
-      if (relevant === undefined && !isOpaqueWasmError(error)) {
-        throw error;
-      }
-      throw new SdkExecutionError(buildSdkExecutionMessage(context, relevant, error), {
-        operation: context.operation,
-        programId: context.programId,
-        transitionName: context.transitionName,
-        diagnostics: failures,
-        cause: error,
-      });
-    }
+    });
   });
+}
+
+/**
+ * Temporarily suppress the reviewed SDK edition/amendment fallback console
+ * message while a specific SDK call runs. The patch is process-global but
+ * lifetime-scoped: overlapping wrapped calls share one installed wrapper, and
+ * the original console methods are restored after the last wrapped call exits.
+ */
+export async function withSuppressedSdkConsoleNoise<T>(fn: () => Promise<T>): Promise<T> {
+  installSdkConsoleSuppression();
+  try {
+    return await fn();
+  } finally {
+    uninstallSdkConsoleSuppression();
+  }
 }
 
 /**
@@ -228,6 +253,47 @@ function buildSdkExecutionMessage(
 
   parts.push(`Cause: ${errorMessage(error)}`);
   return parts.join(" ");
+}
+
+function installSdkConsoleSuppression(): void {
+  if (activeConsoleSuppressionCount === 0) {
+    originalConsoleMethods = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+    };
+    console.log = makeFilteredConsoleMethod("log");
+    console.warn = makeFilteredConsoleMethod("warn");
+    console.error = makeFilteredConsoleMethod("error");
+  }
+  activeConsoleSuppressionCount += 1;
+}
+
+function uninstallSdkConsoleSuppression(): void {
+  activeConsoleSuppressionCount -= 1;
+  if (activeConsoleSuppressionCount > 0) return;
+  activeConsoleSuppressionCount = 0;
+  if (originalConsoleMethods) {
+    console.log = originalConsoleMethods.log;
+    console.warn = originalConsoleMethods.warn;
+    console.error = originalConsoleMethods.error;
+    originalConsoleMethods = null;
+  }
+}
+
+function makeFilteredConsoleMethod(method: ConsoleMethod): (...args: unknown[]) => void {
+  return (...args: unknown[]) => {
+    if (isSuppressedSdkConsoleNoise(args)) return;
+    Reflect.apply(originalConsoleMethods![method], console, args);
+  };
+}
+
+function isSuppressedSdkConsoleNoise(args: readonly unknown[]): boolean {
+  return (
+    args.length === 1 &&
+    typeof args[0] === "string" &&
+    sdkEditionFallbackConsolePattern.test(args[0])
+  );
 }
 
 /** One-line error-to-string helper (mirrors the one in connection.ts). */
