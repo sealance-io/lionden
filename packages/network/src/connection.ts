@@ -805,6 +805,22 @@ export class AleoConnection implements NetworkConnection {
     return (await getLatestProgramEditionIfAvailable(nc, programId)) ?? null;
   }
 
+  async getProgramChecksum(programId: string): Promise<Uint8Array | null> {
+    this.assertOpen();
+    const sdk = await this.getSdkObjects();
+    const nc = sdk.networkClient as any;
+    if (typeof nc.getProgram !== "function") return null;
+    try {
+      const source: string | undefined | null = await nc.getProgram(programId);
+      if (source === undefined || source === null) return null;
+      const program = typeof source === "string" ? source : String(source);
+      const { computeProgramChecksum } = await import("./sdk-adapter.js");
+      return await computeProgramChecksum(this.networkId, program);
+    } catch {
+      return null;
+    }
+  }
+
   async close(): Promise<void> {
     this._closed = true;
 

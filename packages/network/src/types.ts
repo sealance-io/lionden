@@ -428,6 +428,13 @@ export interface NetworkConnection {
    */
   getProgramEdition(programId: string): Promise<number | null>;
 
+  /**
+   * Fetch the current on-chain checksum for a deployed program.
+   * Returns the SDK's raw checksum bytes.
+   * Returns null when the network/SDK cannot provide it or the program is absent.
+   */
+  getProgramChecksum(programId: string): Promise<Uint8Array | null>;
+
   /** Broadcast a serialized transaction to the network. Returns the transaction ID. */
   broadcastTransaction(transaction: unknown): Promise<string>;
 

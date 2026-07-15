@@ -16,6 +16,7 @@ const mockGetProgramMappingValue = vi.fn();
 const mockGetLatestHeight = vi.fn();
 const mockGetProgram = vi.fn();
 const mockGetLatestProgramEdition = vi.fn();
+const mockComputeProgramChecksum = vi.fn();
 const mockPrepareInputs = vi.fn();
 const mockCreateSdkObjects = vi.fn();
 const mockCreateSignerSdkObjects = vi.fn();
@@ -25,6 +26,7 @@ const mockCheckDevnodeSdkSupport = vi.fn();
 const mockInitConsensusHeights = vi.fn();
 
 vi.mock("./sdk-adapter.js", () => ({
+  computeProgramChecksum: mockComputeProgramChecksum,
   createSdkObjects: mockCreateSdkObjects,
   createSignerSdkObjects: mockCreateSignerSdkObjects,
   createExecutionKeysFromBytes: mockCreateExecutionKeysFromBytes,
@@ -134,6 +136,7 @@ describe("AleoConnection", () => {
     mockGetProgramMappingValue.mockResolvedValue("100u64");
     mockGetLatestHeight.mockResolvedValue(42);
     mockGetLatestProgramEdition.mockResolvedValue(3);
+    mockComputeProgramChecksum.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockBuildDevnodeExec.mockResolvedValue("mock-tx-bytes");
     mockExecute.mockResolvedValue("at1executed");
     mockBuildAuthorizationUnchecked.mockResolvedValue({ kind: "authorization" });
@@ -2785,6 +2788,50 @@ describe("AleoConnection", () => {
   });
 
   // -------------------------------------------------------------------------
+  // getProgramChecksum()
+  // -------------------------------------------------------------------------
+
+  describe("getProgramChecksum()", () => {
+    it("returns computed checksum when getProgram() returns source", async () => {
+      const checksum = new Uint8Array([4, 5, 6]);
+      mockGetProgram.mockResolvedValue("program hello.aleo;");
+      mockComputeProgramChecksum.mockResolvedValue(checksum);
+      const connection = createDevnodeConnection();
+
+      const result = await connection.getProgramChecksum("hello.aleo");
+      console.log({ result });
+
+      expect(result).toEqual(checksum);
+      expect(mockGetProgram).toHaveBeenCalledWith("hello.aleo");
+      expect(mockComputeProgramChecksum).toHaveBeenCalledWith("testnet", "program hello.aleo;");
+    });
+
+    it("returns null when the program is missing", async () => {
+      mockGetProgram.mockResolvedValue(null);
+      const connection = createDevnodeConnection();
+
+      await expect(connection.getProgramChecksum("hello.aleo")).resolves.toBeNull();
+      expect(mockComputeProgramChecksum).not.toHaveBeenCalled();
+    });
+
+    it("returns null when source fetch throws a not-found style error", async () => {
+      mockGetProgram.mockRejectedValueOnce(new Error("404 not found"));
+      const connection = createDevnodeConnection();
+
+      await expect(connection.getProgramChecksum("hello.aleo")).resolves.toBeNull();
+      expect(mockComputeProgramChecksum).not.toHaveBeenCalled();
+    });
+
+    it("returns null when checksum computation throws", async () => {
+      mockGetProgram.mockResolvedValue("program hello.aleo;");
+      mockComputeProgramChecksum.mockRejectedValueOnce(new Error("unsupported"));
+      const connection = createDevnodeConnection();
+
+      await expect(connection.getProgramChecksum("hello.aleo")).resolves.toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // broadcastTransaction()
   // -------------------------------------------------------------------------
 
@@ -2831,6 +2878,9 @@ describe("AleoConnection", () => {
       await expect(connection.getBlockHeight()).rejects.toThrow("Connection is closed.");
       await expect(connection.getBalance("aleo1abc")).rejects.toThrow("Connection is closed.");
       await expect(connection.getMappingValue("t.aleo", "m", "k")).rejects.toThrow(
+        "Connection is closed.",
+      );
+      await expect(connection.getProgramChecksum("t.aleo")).rejects.toThrow(
         "Connection is closed.",
       );
       await expect(connection.execute("t.aleo", "f", [])).rejects.toThrow("Connection is closed.");
