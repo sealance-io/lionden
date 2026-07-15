@@ -48,6 +48,7 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `examples/multi-program` | Cross-program calls, dependency graph, typechain |
 | `examples/nft-registry` | Structs, records, `loadFixture`, local execution mode |
 | `examples/async-escrow` | Typechain bindings in tests, escrow state machine |
+| `examples/renamed_dynamic_records` | Deploy rename, dynamic records, renamed upgrade |
 | `examples/aleo-ports` | Ported Aleo examples used for compatibility smoke coverage |
 | `docs/` | Focused deep dives for lazy loading |
 
@@ -217,6 +218,12 @@ For subsystem detail, use the focused docs in `docs/` instead of loading everyth
 - generated TypeScript contract wrappers for all transitions
 - escrow state machine with on-chain status transitions
 - `assertMappingValue` for verifying mapping state
+
+`examples/renamed_dynamic_records` demonstrates renamed deployment with dynamic records:
+
+- `deploy --program gold_token --rename tenant_gold`
+- runtime dynamic dispatch into the renamed program
+- admin-authorized upgrade of the renamed deployment
 
 ## Documentation Map
 
