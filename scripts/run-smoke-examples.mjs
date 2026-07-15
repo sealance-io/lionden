@@ -4,7 +4,14 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
-const CORE_EXAMPLES = ["hello-world", "token", "multi-program", "nft-registry", "async-escrow"];
+const CORE_EXAMPLES = [
+  "hello-world",
+  "token",
+  "multi-program",
+  "nft-registry",
+  "async-escrow",
+  "renamed_dynamic_records",
+];
 
 const PROVE_TEST_TIMEOUT_MS = 900_000;
 

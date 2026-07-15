@@ -157,6 +157,7 @@ Five disposable agent-driven probes have been run against the deploy/upgrade sub
 | `examples/multi-program` | Cross-program calls (`treasury.aleo::deposit`), `lib.leo` library import (compile-only), topological deploy, mapping getters |
 | `examples/nft-registry` | Structs nested in records (`NftMetadata` in `Nft`), pure transitions returning tuples, mapping getters with type coercion |
 | `examples/async-escrow` | Finalize-only transitions, mapping state mutation, `.failsLocally()` (off-chain assert), `.rejected()` (on-chain finalize failure) |
+| `examples/renamed_dynamic_records` | Deploy-time rename (`gold_token.aleo` → `tenant_gold.aleo`), runtime imports keyed by the renamed program id, dynamic-record sibling recovery, upgrade by renamed runtime id |
 
 ### `examples/aleo-ports/` — 22 compatibility ports
 

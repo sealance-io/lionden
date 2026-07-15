@@ -26,6 +26,7 @@ Top-level supporting paths:
 - `examples/multi-program`: cross-program calls and dependency graph
 - `examples/nft-registry`: structs, records, `loadFixture`, local mode
 - `examples/async-escrow`: typechain bindings in tests, escrow state machine
+- `examples/renamed_dynamic_records`: deploy rename, dynamic records, and renamed upgrade in one workflow
 - `examples/aleo-ports`: ~22 ported Aleo SDK examples used for compatibility smoke coverage (admin, auction, basic_bank, battleship, bubblesort, dynamic_dispatch, dynamic_records, example_with_test, fibonacci, groups, helloworld, interest, lottery, message, noupgrade, simple_token, tictactoe, timelock, token, twoadicity, upgrades-vote, vote) — each is its own workspace; `admin`/`noupgrade`/`timelock` are Leo constructor/upgrade compatibility coverage (Leo and the network own upgrade correctness — lionden does no upgrade validation)
 - `docs/`: focused implementation docs
 
@@ -75,6 +76,12 @@ Useful starting points for common repo tasks:
 
 - generated TypeScript contract wrappers
 - escrow state machine with on-chain status transitions
+
+`examples/renamed_dynamic_records` demonstrates renamed deployment with dynamic records:
+
+- deploying `gold_token.aleo` as `tenant_gold.aleo`
+- runtime dynamic dispatch into the renamed program
+- successful upgrade by the renamed runtime id
 
 When documenting user workflows, prefer checking the examples before inventing examples from scratch.
 
