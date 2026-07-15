@@ -110,6 +110,22 @@ describe("FakeNetworkConnection", () => {
     expect(await conn.getProgramEdition("hello.aleo")).toBe(2);
   });
 
+  it("returns null program checksum when program source is absent", async () => {
+    const conn = new FakeNetworkConnection();
+    conn.setProgramChecksum("hello.aleo", new Uint8Array([1, 2, 3]));
+
+    expect(await conn.getProgramChecksum("hello.aleo")).toBeNull();
+  });
+
+  it("returns program checksum only for existing program source", async () => {
+    const conn = new FakeNetworkConnection();
+    const checksum = new Uint8Array([1, 2, 3]);
+    conn.setProgramSource("hello.aleo", "program hello.aleo;");
+    conn.setProgramChecksum("hello.aleo", checksum);
+
+    expect(await conn.getProgramChecksum("hello.aleo")).toEqual(checksum);
+  });
+
   it("waitForConfirmation returns accepted by default", async () => {
     const conn = new FakeNetworkConnection();
     const result = await conn.waitForConfirmation("at1tx");

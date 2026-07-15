@@ -97,6 +97,19 @@ export function programAddressFromProgramId(programId: string): string {
   }
 }
 
+export async function computeProgramChecksum(
+  network: AleoNetwork,
+  program: string,
+): Promise<Uint8Array> {
+  const sdk = await loadSdkModule(network);
+  const checksum = (sdk as unknown as { programChecksum?: (program: string) => Uint8Array })
+    .programChecksum;
+  if (typeof checksum !== "function") {
+    throw new Error("Installed @provablehq/sdk does not expose programChecksum().");
+  }
+  return checksum(program);
+}
+
 // ---------------------------------------------------------------------------
 // SDK initialization
 // ---------------------------------------------------------------------------
