@@ -24,7 +24,6 @@ import {
   type ProgramCompilationResult,
   pathToTsName,
   programIdToClassName,
-  resolveContractClassName as resolveGeneratedContractClassName,
 } from "@lionden/leo-compiler";
 
 const VALID_TS_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -153,16 +152,24 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
 
       const typechainDir = lre.config.paths.typechain;
       fs.mkdirSync(typechainDir, { recursive: true });
-
-      // Write BaseContract.ts
-      fs.writeFileSync(path.join(typechainDir, "BaseContract.ts"), generateBaseContract());
-
-      // Generate per-program bindings
       const allAbis = programResults.map((result) => ({
         ...result.abi,
         program: result.sourceProgramId ?? result.unit.programId,
       }));
       const targetedCompile = typeof options.program === "string" && options.program.length > 0;
+      if (targetedCompile) {
+        for (const result of programResults) {
+          const sourceProgramId = result.sourceProgramId ?? result.unit.programId;
+          assertNoExistingTypechainModuleCollision(
+            path.join(typechainDir, `${programIdToClassName(sourceProgramId)}.ts`),
+            sourceProgramId,
+          );
+        }
+      }
+
+      // Write BaseContract.ts
+      fs.writeFileSync(path.join(typechainDir, "BaseContract.ts"), generateBaseContract());
+
       const helpersByProgram = resolveDynamicRecordHelpers(lre, programResults, {
         targetedCompile,
       });
@@ -177,11 +184,6 @@ const compileTask = task("compile", "Compile Leo programs and generate TypeScrip
         );
         fs.writeFileSync(path.join(typechainDir, `${className}.ts`), bindings);
       }
-
-      fs.writeFileSync(
-        path.join(typechainDir, "index.ts"),
-        buildTypechainIndex(programResults, helpersByProgram),
-      );
     }
 
     console.log(
@@ -249,94 +251,40 @@ const pluginLeo: LionDenPlugin = {
 
 export default pluginLeo;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function buildTypechainIndex(
-  programResults: readonly ProgramCompilationResult[],
-  helpersByProgram: ReadonlyMap<string, NonNullable<GenerateBindingsOptions["dynamicRecords"]>>,
-): string {
-  const modules = programResults.map((result) => {
-    const sourceProgramId = result.sourceProgramId ?? result.unit.programId;
-    return {
-      fileName: programIdToClassName(sourceProgramId),
-      exports: getProgramExports(result, helpersByProgram.get(sourceProgramId) ?? []),
-    };
-  });
-  const counts = new Map<string, number>();
-  for (const module of modules) {
-    for (const name of [...module.exports.types, ...module.exports.values]) {
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
+function assertNoExistingTypechainModuleCollision(
+  modulePath: string,
+  sourceProgramId: string,
+): void {
+  if (!fs.existsSync(modulePath)) return;
+  const existingSourceProgramId = readGeneratedModuleSourceProgramId(modulePath);
+  if (existingSourceProgramId === sourceProgramId) {
+    return;
   }
-
-  const lines = ['export * from "./BaseContract.js";'];
-  const suppressed = [...counts.entries()]
-    .filter(([, count]) => count > 1)
-    .map(([name]) => name)
-    .sort();
-  if (suppressed.length > 0) {
-    lines.push(
-      `// Omitted duplicate exports: ${suppressed.join(", ")}. Import them from the specific program module instead.`,
+  if (existingSourceProgramId === undefined) {
+    throw new CodegenError(
+      `Typechain module '${path.basename(modulePath)}' already exists, but its source program could not be determined. Targeted compile for '${sourceProgramId}' might overwrite an unrelated generated module. Run a full compile instead.`,
+      {
+        fileName: path.basename(modulePath),
+        sourceProgramId,
+        phase: "generate",
+      },
     );
   }
-  for (const module of modules) {
-    const safeTypes = module.exports.types.filter((name) => counts.get(name) === 1);
-    const safeValues = module.exports.values.filter((name) => counts.get(name) === 1);
-    if (safeTypes.length > 0) {
-      lines.push(`export type { ${safeTypes.join(", ")} } from "./${module.fileName}.js";`);
-    }
-    if (safeValues.length > 0) {
-      lines.push(`export { ${safeValues.join(", ")} } from "./${module.fileName}.js";`);
-    }
-  }
-  return lines.join("\n") + "\n";
+  throw new CodegenError(
+    `Typechain module '${path.basename(modulePath)}' already exists for source program '${existingSourceProgramId}', so targeted compile for '${sourceProgramId}' would overwrite an unrelated generated module. Run a full compile instead.`,
+    {
+      fileName: path.basename(modulePath),
+      existingSourceProgramId,
+      sourceProgramId,
+      phase: "generate",
+    },
+  );
 }
 
-function getProgramExports(
-  result: ProgramCompilationResult,
-  helpers: readonly NonNullable<GenerateBindingsOptions["dynamicRecords"]>[number][],
-): { types: string[]; values: string[] } {
-  const sourceProgramId = result.sourceProgramId ?? result.unit.programId;
-  const abi = { ...result.abi, program: sourceProgramId };
-  const types = new Set<string>();
-  const values = new Set<string>();
-  // Match the class name the module actually emits: when the program emits
-  // dynamic-record helpers it value-imports `Leo`, which can bump the class name
-  // (e.g. `leo.aleo` -> `LeoContract`). Resolving without this flag would export
-  // a class/factory name the module no longer declares.
-  const className = resolveGeneratedContractClassName(abi, {
-    includeLeoValueImport: helpers.length > 0,
-  });
-
-  for (const struct of abi.structs ?? []) {
-    const name = pathToTsName(struct.path);
-    types.add(name);
-    values.add(`serialize${name}`);
-    values.add(`deserialize${name}`);
-  }
-
-  for (const record of abi.records ?? []) {
-    const name = pathToTsName(record.path);
-    types.add(name);
-    values.add(`serialize${name}`);
-    values.add(`deserialize${name}`);
-    values.add(`decrypt${name}`);
-  }
-
-  if ((abi.storage_variables ?? []).length > 0) {
-    types.add(`${className}Storage`);
-  }
-
-  for (const helper of helpers) {
-    values.add(helper.helperName);
-  }
-
-  values.add(className);
-  values.add(`create${className}`);
-
-  return { types: [...types], values: [...values] };
+function readGeneratedModuleSourceProgramId(modulePath: string): string | undefined {
+  const source = fs.readFileSync(modulePath, "utf-8");
+  const match = source.match(/^\/\/ Program: (.+)$/m);
+  return match?.[1];
 }
 
 /**

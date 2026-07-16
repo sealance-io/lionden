@@ -213,7 +213,6 @@ The helper is emitted from the source program's generated module and wraps `Leo.
 
 - `BaseContract.ts`
 - one generated wrapper per compiled program
-- `index.ts` barrel export
 
 Generated files are written under `config.paths.typechain`.
 
@@ -235,7 +234,7 @@ Each entry mirrors Leo's read operations and reuses the same key/value
 - `tryGet(key): Promise<Value | null>` — returns `null` when the key is absent.
 
 `MappingKeyNotFoundError` is part of the `LionDenTypechainError` hierarchy defined in the
-generated `BaseContract.ts`; consumers import it from their generated `typechain/index.ts`.
+generated `BaseContract.ts`; consumers import it from `typechain/BaseContract.ts`.
 
 #### Option-valued mappings
 

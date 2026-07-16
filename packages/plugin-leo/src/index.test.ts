@@ -3,8 +3,30 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { type ConfigHookHandlers, createLre } from "@lionden/core";
 import { createMockConfig } from "@lionden/test-internals";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import pluginLeo from "./index.js";
+
+function programResult(
+  programId: string,
+  options: {
+    readonly sourceProgramId?: string;
+    readonly records?: readonly (readonly string[])[];
+  } = {},
+) {
+  return {
+    unit: { kind: "program", programId } as const,
+    sourceProgramId: options.sourceProgramId ?? programId,
+    programId,
+    abi: {
+      program: options.sourceProgramId ?? programId,
+      structs: [],
+      records: (options.records ?? []).map((recordPath) => ({ path: recordPath, fields: [] })),
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    },
+  } as any;
+}
 
 describe("plugin-leo", () => {
   it("has correct plugin id and name", () => {
@@ -282,5 +304,88 @@ describe("dynamicRecords config validation", () => {
     expect(
       errors.some((e) => e.path === "codegen.dynamicRecords.asPoolToken.schema.wrongVisibility"),
     ).toBe(true);
+  });
+});
+
+describe("compile task typechain output", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects targeted compile when it would overwrite an unrelated generated module", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-leo-typechain-"));
+    const core = await import("@lionden/core");
+    const compiler = await import("@lionden/leo-compiler");
+
+    vi.spyOn(core, "preflightLeo").mockResolvedValue(undefined);
+    vi.spyOn(compiler, "compilePipeline").mockResolvedValue({
+      results: [programResult("foo__bar.aleo")],
+    } as any);
+    vi.spyOn(compiler, "generateBaseContract").mockReturnValue("// base contract\n");
+
+    try {
+      const typechainDir = path.join(tmpDir, "typechain");
+      fs.mkdirSync(typechainDir, { recursive: true });
+      fs.writeFileSync(path.join(typechainDir, "FooBar.ts"), "// Program: foo_bar.aleo\n");
+
+      const lre = createLre({
+        config: createMockConfig({
+          paths: {
+            root: tmpDir,
+            programs: path.join(tmpDir, "programs"),
+            artifacts: path.join(tmpDir, "artifacts"),
+            typechain: typechainDir,
+            cache: path.join(tmpDir, "cache"),
+            deployments: path.join(tmpDir, "deployments"),
+          },
+        }),
+        plugins: [pluginLeo],
+      });
+
+      await expect(lre.tasks.run("compile", { program: "foo__bar" })).rejects.toThrow(
+        /overwrite an unrelated generated module/,
+      );
+      expect(fs.existsSync(path.join(typechainDir, "BaseContract.ts"))).toBe(false);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects targeted compile when an existing generated module cannot be identified", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-leo-typechain-"));
+    const core = await import("@lionden/core");
+    const compiler = await import("@lionden/leo-compiler");
+
+    vi.spyOn(core, "preflightLeo").mockResolvedValue(undefined);
+    vi.spyOn(compiler, "compilePipeline").mockResolvedValue({
+      results: [programResult("foo__bar.aleo")],
+    } as any);
+    vi.spyOn(compiler, "generateBaseContract").mockReturnValue("// base contract\n");
+
+    try {
+      const typechainDir = path.join(tmpDir, "typechain");
+      fs.mkdirSync(typechainDir, { recursive: true });
+      fs.writeFileSync(path.join(typechainDir, "FooBar.ts"), "// legacy generated module\n");
+
+      const lre = createLre({
+        config: createMockConfig({
+          paths: {
+            root: tmpDir,
+            programs: path.join(tmpDir, "programs"),
+            artifacts: path.join(tmpDir, "artifacts"),
+            typechain: typechainDir,
+            cache: path.join(tmpDir, "cache"),
+            deployments: path.join(tmpDir, "deployments"),
+          },
+        }),
+        plugins: [pluginLeo],
+      });
+
+      await expect(lre.tasks.run("compile", { program: "foo__bar" })).rejects.toThrow(
+        /source program could not be determined/,
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

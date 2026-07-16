@@ -2395,12 +2395,12 @@ export function programIdToClassName(programId: string): string {
  * Typechain file stems the emitter always writes besides per-program modules.
  * A program whose class name equals one of these would overwrite that file.
  */
-const RESERVED_TYPECHAIN_FILE_STEMS: readonly string[] = ["BaseContract", "index"];
+const RESERVED_TYPECHAIN_FILE_STEMS: readonly string[] = ["BaseContract"];
 
 /**
  * Assert that every program id maps to a distinct typechain module file
  * (`${programIdToClassName(id)}.ts`) and that none collides with a reserved
- * emitter file (`BaseContract.ts`, `index.ts`).
+ * emitter file (`BaseContract.ts`).
  *
  * `programIdToClassName` is non-injective — it splits on `[_\-.]` and
  * CamelCases — so e.g. `foo_bar.aleo` and `foo__bar.aleo` both yield `FooBar`,
@@ -2410,10 +2410,10 @@ const RESERVED_TYPECHAIN_FILE_STEMS: readonly string[] = ["BaseContract", "index
  * leaving the generated module set internally inconsistent.
  *
  * Comparison is case-insensitive: the common dev filesystems (macOS APFS,
- * Windows NTFS) are case-insensitive, so `Index.ts` would overwrite the barrel
- * `index.ts`, and two programs whose class names differ only by case (e.g.
- * `ab.aleo` → `Ab`, `a_b.aleo` → `AB`) would share one file. This guard turns
- * any such collision into a clear build-time `CodegenError` instead.
+ * Windows NTFS) are case-insensitive, so two programs whose class names differ
+ * only by case (e.g. `ab.aleo` → `Ab`, `a_b.aleo` → `AB`) would share one
+ * file. This guard turns any such collision into a clear build-time
+ * `CodegenError` instead.
  */
 export function assertTypechainModuleNamesUnique(programIds: readonly string[]): void {
   // Keyed by lower-cased stem (case-insensitive FS); value preserves the

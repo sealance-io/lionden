@@ -40,7 +40,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 | Network dependency fetching via `GET /{network}/program/{id}` with local cache under `artifacts/.cache` | `packages/leo-compiler/src/compiler.ts` (`defaultFetchNetworkDep`) |
 | Content-hash compile cache, bypassed with `--force` | `packages/leo-compiler/src/compiler.ts` |
 | ABI parsing into a normalized internal representation; bridges v4 and v3.5 ABI shapes | `packages/leo-compiler/src/abi-parser.ts` |
-| TypeScript binding generation per program: `BaseContract.ts`, `<Name>.ts`, barrel `index.ts` | `packages/leo-compiler/src/codegen/typescript-generator.ts` |
+| TypeScript binding generation per program: `BaseContract.ts`, `<Name>.ts` | `packages/leo-compiler/src/codegen/typescript-generator.ts` |
 | Generated transition methods: `.locally`, `.failsLocally`, `.captureLocalFailure`, `.submitted`, `.settled`, `.accepted`, `.rejected` | same |
 | Mapping accessors: `mappings.<name>.{ contains, get, getOrUse, tryGet }` mirroring Leo's read ops (`get` throws `MappingKeyNotFoundError` when unset; `tryGet` returns `null`) | same |
 | Record helpers: `serialize<Name>`, `deserialize<Name>`, `decrypt<Name>` | `packages/leo-compiler/src/codegen/` |

@@ -2431,10 +2431,8 @@ describe("assertTypechainModuleNamesUnique", () => {
     expect((caught as CodegenError).message).toContain("reserved");
   });
 
-  it("rejects a program id colliding with the reserved index file (case-insensitive)", () => {
-    // `index.aleo` → `Index` → `Index.ts`, which on a case-insensitive FS
-    // (macOS/Windows) overwrites the barrel `index.ts`.
-    expect(() => assertTypechainModuleNamesUnique(["index.aleo"])).toThrow(CodegenError);
+  it("does not reserve index now that the typechain barrel is not generated", () => {
+    expect(() => assertTypechainModuleNamesUnique(["index.aleo"])).not.toThrow();
   });
 
   it("rejects two program ids whose class names differ only by case", () => {
@@ -2444,8 +2442,8 @@ describe("assertTypechainModuleNamesUnique", () => {
   });
 
   it("does not over-reserve unrelated names (record_output_matcher is fine)", () => {
-    // Only `BaseContract`/`index` file stems are reserved; a program whose class
-    // name is `RecordOutputMatcher` gets its own distinct module file.
+    // Only `BaseContract` is reserved; a program whose class name is
+    // `RecordOutputMatcher` gets its own distinct module file.
     expect(() => assertTypechainModuleNamesUnique(["record_output_matcher.aleo"])).not.toThrow();
   });
 });

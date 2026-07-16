@@ -196,7 +196,7 @@ export default async function (lre: LionDenRuntimeEnvironment) {
 
 const TOKEN_RECIPE = `\
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
-import { createTokenContract } from "../typechain/index.js";
+import { createTokenContract } from "../typechain/Token.js";
 
 export interface TokenSetupResult {
   readonly programId: string;
@@ -317,7 +317,7 @@ program token.aleo {
 const TOKEN_TEST = `\
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { setup, type TestContext } from "@lionden/testing";
-import { createTokenContract } from "../typechain/index.js";
+import { createTokenContract } from "../typechain/Token.js";
 import { setupToken } from "../recipes/setup.js";
 
 let ctx: TestContext | undefined;

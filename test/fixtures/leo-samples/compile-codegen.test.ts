@@ -4,8 +4,8 @@
  * For each lane project: adapt → drive the real `compile` task (network deps
  * pre-seeded from the vendored snapshot, so it stays hermetic) → assert ABI
  * invariants against the parsed `ProgramABI` and that a full importable
- * `typechain/` was emitted (BaseContract + per-program wrappers + barrel
- * `index.ts`). Runs every project in one process and credits coverage to
+ * `typechain/` was emitted (BaseContract + per-program wrappers). Runs every
+ * project in one process and credits coverage to
  * `packages/leo-compiler` + `packages/plugin-leo`.
  *
  * Generated projects are written under `generated/` (gitignored) so the emitted
@@ -79,8 +79,6 @@ async function compileHandAuthored(
 
 function assertTypechainEmittedAt(typechainDir: string, abis: ProgramABI[]): void {
   expect(fs.existsSync(path.join(typechainDir, "BaseContract.ts"))).toBe(true);
-  const index = fs.readFileSync(path.join(typechainDir, "index.ts"), "utf-8");
-  expect(index).toContain('export * from "./BaseContract.js";');
   for (const abi of abis) {
     const fileName = programIdToClassName(abi.program);
     const className = resolveContractClassName(abi);
@@ -89,7 +87,6 @@ function assertTypechainEmittedAt(typechainDir: string, abis: ProgramABI[]): voi
     const wrapper = fs.readFileSync(wrapperPath, "utf-8");
     expect(wrapper).toContain(`export class ${className}`);
     expect(wrapper).toContain(`export function create${className}`);
-    expect(index).toContain(`create${className}`);
   }
 }
 
