@@ -1,5 +1,5 @@
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
-import { createTokenContract } from "../typechain/index.js";
+import { createTokenContract } from "../typechain/Token.js";
 
 export interface TokenSetupResult {
   readonly programId: string;

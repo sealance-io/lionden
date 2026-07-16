@@ -1,7 +1,8 @@
 import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setupToken } from "../recipes/setup.js";
-import { createTokenContract, Leo } from "../typechain/index.js";
+import { Leo } from "../typechain/BaseContract.js";
+import { createTokenContract } from "../typechain/Token.js";
 
 const RECEIVERS = {
   publicTransfer: "aleo1gnkqe9m4f5wdl3q904xsf6ed9kavj0e6fnggtwyt8v8apw05gy9syz34cz",

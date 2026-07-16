@@ -223,7 +223,7 @@ What `compile` does ([full pipeline](compiler.md#current-compile-pipeline)):
 4. Runs `leo build` per unit in topological order.
 5. Parses `build/abi.json` per program.
 6. Copies `abi.json`, `main.aleo`, prover, and verifier into `artifacts/<programId>/`.
-7. Generates `typechain/<Name>.ts`, `typechain/BaseContract.ts`, and `typechain/index.ts` (unless `--no-typechain`).
+7. Generates `typechain/<Name>.ts` and `typechain/BaseContract.ts` (unless `--no-typechain`).
 
 Caching is content-hash based and stored under `artifacts/.cache`. Use `--force` if a network dependency changed or you want a clean rebuild.
 
@@ -233,10 +233,10 @@ Caching is content-hash based and stored under `artifacts/.cache`. Use `--force`
 
 ### Working With Generated Bindings
 
-For each compiled program, codegen emits a typed wrapper that exposes every transition and mapping. Import the factory from `typechain/<Name>.ts` (or the barrel `typechain/index.ts`):
+For each compiled program, codegen emits a typed wrapper that exposes every transition and mapping. Import the factory directly from `typechain/<Name>.ts`:
 
 ```ts
-import { createTokenContract } from "../typechain/index.js";
+import { createTokenContract } from "../typechain/Token.js";
 
 const token = createTokenContract();
 token.connect(ctx.lre);                       // bind to a runtime
@@ -444,7 +444,7 @@ For multi-step setup (deploy several programs, mint initial state, configure rol
 ```ts
 // recipes/setup.ts
 import type { DeploymentRecipe } from "@lionden/plugin-deploy";
-import { createTokenContract } from "../typechain/index.js";
+import { createTokenContract } from "../typechain/Token.js";
 
 export const setupToken: DeploymentRecipe = async (ctx) => {
   const { deployer, treasury } = ctx.named.require({
