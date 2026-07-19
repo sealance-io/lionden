@@ -7,7 +7,7 @@ import {
   type TestingHookHandlers,
   task,
 } from "@lionden/core";
-import type { TestCoverageOptions } from "./test-runner.js";
+import type { TestCoverageOptions, TestRunnerResult } from "./test-runner.js";
 import { runTests } from "./test-runner.js";
 
 // Warn at most once per process when LIONDEN_PROVE holds an unrecognized value.
@@ -141,13 +141,19 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
         await lre.tasks.run("compile");
       }
 
-      // 2. Dispatch suiteSetup hook
-      await lre.hooks.serial("testing", "suiteSetup", { lre });
+      let primaryError: unknown;
+      let hasPrimaryError = false;
+      let teardownError: unknown;
+      let hasTeardownError = false;
+      let result: TestRunnerResult | undefined;
 
       try {
+        // 2. Dispatch suiteSetup hook
+        await lre.hooks.serial("testing", "suiteSetup", { lre });
+
         // 3. Run tests via Vitest. Pass the resolved boolean so runTests simply
         // re-affirms the canonical env (idempotent) rather than re-deciding.
-        const result = await runTests({
+        result = await runTests({
           root: lre.config.paths.root,
           configPath,
           grep,
@@ -168,12 +174,29 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
         if (!result.success) {
           throw new Error(`${result.failed} test(s) failed.`);
         }
-
-        return result;
-      } finally {
-        // 4. Dispatch suiteTeardown hook
-        await lre.hooks.serial("testing", "suiteTeardown", { lre });
+      } catch (error) {
+        hasPrimaryError = true;
+        primaryError = error;
       }
+
+      // 4. Dispatch suiteTeardown hook
+      try {
+        await lre.hooks.serial("testing", "suiteTeardown", { lre });
+      } catch (error) {
+        hasTeardownError = true;
+        teardownError = error;
+      }
+
+      if (hasPrimaryError && hasTeardownError) {
+        throw new AggregateError(
+          [primaryError, teardownError],
+          "Test task failed during run and suite teardown.",
+        );
+      }
+      if (hasPrimaryError) throw primaryError;
+      if (hasTeardownError) throw teardownError;
+
+      return result;
     } finally {
       if (previousManagedTest === undefined) {
         delete process.env["LIONDEN_MANAGED_TEST"];

@@ -159,6 +159,147 @@ describe("test task contract", () => {
     expect(taskIds).toContain("compile");
   });
 
+  it("runs suiteTeardown when a later serial suiteSetup hook fails", async () => {
+    const { startVitest } = await import("vitest/node");
+    const events: string[] = [];
+    const setupError = new Error("suite setup failed");
+    const firstTestingPlugin: LionDenPlugin = {
+      id: "first-testing-plugin",
+      name: "First Testing Plugin",
+      hookHandlers: {
+        testing: {
+          suiteSetup: () => {
+            events.push("first setup");
+          },
+          suiteTeardown: () => {
+            events.push("first teardown");
+          },
+        },
+      },
+    };
+    const failingTestingPlugin: LionDenPlugin = {
+      id: "failing-testing-plugin",
+      name: "Failing Testing Plugin",
+      hookHandlers: {
+        testing: {
+          suiteSetup: () => {
+            events.push("second setup");
+            throw setupError;
+          },
+        },
+      },
+    };
+    fixture = createContractLre({
+      plugins: [pluginTest, firstTestingPlugin, failingTestingPlugin],
+      withMockCompile: true,
+    });
+
+    await expect(fixture.lre.tasks.run("test", { noCompile: true })).rejects.toBe(setupError);
+
+    expect(events).toEqual(["first setup", "second setup", "first teardown"]);
+    expect(startVitest).not.toHaveBeenCalled();
+  });
+
+  it("preserves a test-run failure before an additional suiteTeardown failure", async () => {
+    const { startVitest } = await import("vitest/node");
+    (startVitest as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      close: vi.fn().mockResolvedValue(undefined),
+      state: {
+        getFiles: () => [
+          {
+            tasks: [{ result: { state: "fail" } }],
+          },
+        ],
+      },
+    });
+    const teardownError = new Error("suite teardown failed");
+    const teardownPlugin: LionDenPlugin = {
+      id: "teardown-fails-after-tests",
+      name: "Teardown Fails After Tests",
+      hookHandlers: {
+        testing: {
+          suiteTeardown: () => {
+            throw teardownError;
+          },
+        },
+      },
+    };
+    fixture = createContractLre({
+      plugins: [pluginTest, teardownPlugin],
+      withMockCompile: true,
+    });
+
+    let thrown: unknown;
+    try {
+      await fixture.lre.tasks.run("test", { noCompile: true });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    const errors = (thrown as AggregateError).errors;
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toBeInstanceOf(Error);
+    expect((errors[0] as Error).message).toBe("1 test(s) failed.");
+    expect(errors[1]).toBe(teardownError);
+  });
+
+  it("preserves an undefined setup failure before an additional suiteTeardown failure", async () => {
+    const { startVitest } = await import("vitest/node");
+    const teardownError = new Error("suite teardown failed");
+    const setupThrowsUndefinedPlugin: LionDenPlugin = {
+      id: "setup-throws-undefined",
+      name: "Setup Throws Undefined",
+      hookHandlers: {
+        testing: {
+          suiteSetup: () => {
+            throw undefined;
+          },
+          suiteTeardown: () => {
+            throw teardownError;
+          },
+        },
+      },
+    };
+    fixture = createContractLre({
+      plugins: [pluginTest, setupThrowsUndefinedPlugin],
+      withMockCompile: true,
+    });
+
+    let thrown: unknown;
+    try {
+      await fixture.lre.tasks.run("test", { noCompile: true });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([undefined, teardownError]);
+    expect(startVitest).not.toHaveBeenCalled();
+  });
+
+  it("throws an unwrapped suiteTeardown error when setup and Vitest succeed", async () => {
+    const teardownError = new Error("suite teardown failed");
+    const teardownPlugin: LionDenPlugin = {
+      id: "teardown-only-fails",
+      name: "Teardown Only Fails",
+      hookHandlers: {
+        testing: {
+          suiteSetup: () => undefined,
+          suiteTeardown: () => {
+            throw teardownError;
+          },
+        },
+      },
+    };
+    fixture = createContractLre({
+      plugins: [pluginTest, teardownPlugin],
+      withMockCompile: true,
+    });
+
+    await expect(fixture.lre.tasks.run("test", { noCompile: true })).rejects.toBe(teardownError);
+  });
+
   it("defaults to serial file execution (fileParallelism: false)", async () => {
     const lre = createTestLre();
 
