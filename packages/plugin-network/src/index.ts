@@ -113,7 +113,6 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     name: "port",
     type: "number",
     description: "REST API port",
-    defaultValue: 3030,
   })
   .addFlag({ name: "manualBlocks", description: "Disable automatic block creation" })
   .addFlag({ name: "quiet", description: "Suppress devnode log output" })
@@ -127,7 +126,7 @@ const nodeTask = task("node", "Start a local Aleo devnode")
     description: "Clear the persist directory before starting (requires --persist)",
   })
   .setAction(async (args, lre) => {
-    const port = args.port as number;
+    const port = args.port as number | undefined;
     const manualBlocks = args.manualBlocks as boolean;
     const quiet = args.quiet as boolean;
     const persist = args.persist as string | undefined;
@@ -137,8 +136,6 @@ const nodeTask = task("node", "Start a local Aleo devnode")
       throw new Error("--clear-storage requires --persist <dir>.");
     }
 
-    const socketAddr = `127.0.0.1:${port}`;
-
     // Resolve the devnode network config: prefer default network if devnode,
     // else first devnode found.
     const defaultNet = lre.config.networks[lre.config.defaultNetwork];
@@ -146,18 +143,17 @@ const nodeTask = task("node", "Start a local Aleo devnode")
       defaultNet?.type === "devnode"
         ? defaultNet
         : Object.values(lre.config.networks).find((n) => n.type === "devnode");
+    const socketAddr =
+      port !== undefined ? `127.0.0.1:${port}` : devnodeNet?.socketAddr || `127.0.0.1:3030`;
     const network = devnodeNet?.network;
-    const consensusHeights =
-      devnodeNet?.type === "devnode" ? devnodeNet.consensusHeights : undefined;
-    const storagePath =
-      persist ?? (devnodeNet?.type === "devnode" ? devnodeNet.storagePath : undefined);
-    const clearStorageOnStart =
-      clearStorage || (devnodeNet?.type === "devnode" ? devnodeNet.clearStorageOnStart : false);
+    const consensusHeights = devnodeNet?.consensusHeights;
+    const storagePath = persist ?? devnodeNet?.storagePath;
+    const clearStorageOnStart = clearStorage || (devnodeNet?.clearStorageOnStart ?? false);
 
     const backend = await resolveDevnodeBackend({
-      provider: devnodeNet?.type === "devnode" ? devnodeNet.provider : undefined,
+      provider: devnodeNet?.provider,
       leoBinary: lre.config.leoBinary,
-      binary: devnodeNet?.type === "devnode" ? devnodeNet.binary : undefined,
+      binary: devnodeNet?.binary,
       network,
       consensusHeights,
       requiresPersistence: storagePath !== undefined,
@@ -177,46 +173,54 @@ const nodeTask = task("node", "Start a local Aleo devnode")
       process.exit(0);
     };
 
-    process.on("SIGINT", () => void shutdown());
-    process.on("SIGTERM", () => void shutdown());
+    const onSigint = () => void shutdown();
+    const onSigterm = () => void shutdown();
+
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
 
     console.log(
       `Starting ${backend.provider} devnode at http://${socketAddr}...` +
         (storagePath ? ` (persisting to ${storagePath})` : ""),
     );
 
-    await devnode.start({
-      socketAddr,
-      autoBlock: !manualBlocks,
-      network,
-      provider: backend.provider,
-      leoBinary: lre.config.leoBinary,
-      leoVersion: lre.config.leoVersion,
-      devnodeBinary: backend.command,
-      // consensusHeights is leo-only; resolveDevnodeBackend already rejected it
-      // for standalone, so it's safe to forward unconditionally. buildLeoArgs
-      // version-gates it (emitted only for Leo < 4.3).
-      consensusHeights,
-      ...(storagePath ? { storagePath } : {}),
-      ...(clearStorageOnStart ? { clearStorage: true } : {}),
-      logMode: quiet ? "quiet-buffered" : "inherit",
-    });
+    try {
+      await devnode.start({
+        socketAddr,
+        autoBlock: !manualBlocks,
+        network,
+        provider: backend.provider,
+        leoBinary: lre.config.leoBinary,
+        leoVersion: lre.config.leoVersion,
+        devnodeBinary: backend.command,
+        // consensusHeights is leo-only; resolveDevnodeBackend already rejected it
+        // for standalone, so it's safe to forward unconditionally. buildLeoArgs
+        // version-gates it (emitted only for Leo < 4.3).
+        consensusHeights,
+        ...(storagePath ? { storagePath } : {}),
+        ...(clearStorageOnStart ? { clearStorage: true } : {}),
+        logMode: quiet ? "quiet-buffered" : "inherit",
+      });
 
-    console.log(`Devnode running at ${devnode.endpoint}`);
-    if (manualBlocks) {
-      const advanceHint =
-        backend.provider === "standalone" ? "aleo-devnode advance" : "leo devnode advance";
-      console.log(`Manual block mode: use \`${advanceHint}\` to create blocks`);
+      console.log(`Devnode running at ${devnode.endpoint}`);
+      if (manualBlocks) {
+        const advanceHint =
+          backend.provider === "standalone" ? "aleo-devnode advance" : "leo devnode advance";
+        console.log(`Manual block mode: use \`${advanceHint}\` to create blocks`);
+      }
+      console.log("Press Ctrl-C to stop\n");
+
+      const exit = await devnode.waitForExit();
+      // The SIGINT/SIGTERM shutdown handler calls process.exit(0) before we
+      // reach here, so this branch only runs on an unexpected devnode exit.
+      // Treat both non-zero codes and signal-only exits (e.g. SIGKILL →
+      // { code: null, signal: "SIGKILL" }) as failure.
+      const cleanExit = exit.code === 0 && exit.signal === null;
+      process.exit(cleanExit ? 0 : 1);
+    } finally {
+      process.off("SIGINT", onSigint);
+      process.off("SIGTERM", onSigterm);
     }
-    console.log("Press Ctrl-C to stop\n");
-
-    const exit = await devnode.waitForExit();
-    // The SIGINT/SIGTERM shutdown handler calls process.exit(0) before we
-    // reach here, so this branch only runs on an unexpected devnode exit.
-    // Treat both non-zero codes and signal-only exits (e.g. SIGKILL →
-    // { code: null, signal: "SIGKILL" }) as failure.
-    const cleanExit = exit.code === 0 && exit.signal === null;
-    process.exit(cleanExit ? 0 : 1);
   })
   .build();
 

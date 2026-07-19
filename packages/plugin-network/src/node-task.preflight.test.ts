@@ -74,6 +74,23 @@ function makeConfig(): LionDenResolvedConfig {
   };
 }
 
+function makeConfigWithDevnode(
+  overrides: Partial<Extract<LionDenResolvedConfig["networks"][string], { type: "devnode" }>>,
+): LionDenResolvedConfig {
+  const config = makeConfig();
+  const devnode = config.networks.devnode;
+  if (devnode.type !== "devnode") {
+    throw new Error("test fixture expected devnode network");
+  }
+  return {
+    ...config,
+    networks: {
+      ...config.networks,
+      devnode: { ...devnode, ...overrides },
+    },
+  };
+}
+
 describe("node task devnode preflight", () => {
   const leoBackend = {
     provider: "leo" as const,
@@ -120,6 +137,74 @@ describe("node task devnode preflight", () => {
     );
   });
 
+  it("uses the selected devnode socket address when --port is omitted", async () => {
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const config = makeConfigWithDevnode({ socketAddr: "127.0.0.1:4040" });
+    const lre = { config } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(nodeTask!.action({ manualBlocks: false }, lre)).rejects.toThrow(
+        "stop after start",
+      );
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ socketAddr: "127.0.0.1:4040" }),
+    );
+  });
+
+  it("lets an explicit --port override the configured socket address", async () => {
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const config = makeConfigWithDevnode({ socketAddr: "127.0.0.1:4040" });
+    const lre = { config } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(nodeTask!.action({ port: 5050, manualBlocks: false }, lre)).rejects.toThrow(
+        "stop after start",
+      );
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ socketAddr: "127.0.0.1:5050" }),
+    );
+  });
+
+  it("falls back to 127.0.0.1:3030 when no devnode config or --port is present", async () => {
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const config = {
+      ...makeConfig(),
+      defaultNetwork: "testnet",
+      networks: {
+        testnet: {
+          type: "http",
+          endpoint: "https://api.explorer.provable.com/v1",
+          network: "testnet",
+          ephemeral: false,
+        },
+      },
+    } as LionDenResolvedConfig;
+    const lre = { config } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(nodeTask!.action({ manualBlocks: false }, lre)).rejects.toThrow(
+        "stop after start",
+      );
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ socketAddr: "127.0.0.1:3030" }),
+    );
+  });
+
   it("requests persistence when --persist is passed and forwards storagePath", async () => {
     mocks.resolveDevnodeBackend.mockResolvedValue({
       provider: "standalone",
@@ -143,6 +228,86 @@ describe("node task devnode preflight", () => {
     );
     expect(mocks.devnodeStart).toHaveBeenCalledWith(
       expect.objectContaining({ provider: "standalone", storagePath: "/tmp/ledger" }),
+    );
+  });
+
+  it("uses configured storagePath and requests persistence when --persist is omitted", async () => {
+    mocks.resolveDevnodeBackend.mockResolvedValue({
+      provider: "standalone",
+      command: "aleo-devnode",
+      capabilities: { snapshot: true },
+    });
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const config = makeConfigWithDevnode({ storagePath: "/tmp/config-ledger" });
+    const lre = { config } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(nodeTask!.action({ port: 3030, manualBlocks: false }, lre)).rejects.toThrow(
+        "stop after start",
+      );
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.resolveDevnodeBackend).toHaveBeenCalledWith(
+      expect.objectContaining({ requiresPersistence: true }),
+    );
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "standalone", storagePath: "/tmp/config-ledger" }),
+    );
+  });
+
+  it("forwards configured clearStorageOnStart without a CLI flag", async () => {
+    mocks.resolveDevnodeBackend.mockResolvedValue({
+      provider: "standalone",
+      command: "aleo-devnode",
+      capabilities: { snapshot: true },
+    });
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const config = makeConfigWithDevnode({
+      storagePath: "/tmp/config-ledger",
+      clearStorageOnStart: true,
+    });
+    const lre = { config } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(nodeTask!.action({ port: 3030, manualBlocks: false }, lre)).rejects.toThrow(
+        "stop after start",
+      );
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ storagePath: "/tmp/config-ledger", clearStorage: true }),
+    );
+  });
+
+  it("forwards explicit --clear-storage when --persist is supplied", async () => {
+    mocks.resolveDevnodeBackend.mockResolvedValue({
+      provider: "standalone",
+      command: "aleo-devnode",
+      capabilities: { snapshot: true },
+    });
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
+    const processOn = vi.spyOn(process, "on").mockReturnValue(process);
+
+    try {
+      await expect(
+        nodeTask!.action(
+          { port: 3030, manualBlocks: false, persist: "/tmp/ledger", clearStorage: true },
+          lre,
+        ),
+      ).rejects.toThrow("stop after start");
+    } finally {
+      processOn.mockRestore();
+    }
+
+    expect(mocks.devnodeStart).toHaveBeenCalledWith(
+      expect.objectContaining({ storagePath: "/tmp/ledger", clearStorage: true }),
     );
   });
 
@@ -184,6 +349,37 @@ describe("node task devnode preflight", () => {
       expect(mocks.devnodeStop).toHaveBeenCalledTimes(1);
     } finally {
       processOn.mockRestore();
+      processExit.mockRestore();
+      consoleLog.mockRestore();
+    }
+  });
+
+  it("removes signal listeners when devnode startup fails", async () => {
+    const startupError = new Error("startup failed");
+    mocks.devnodeStart.mockRejectedValue(startupError);
+    const nodeTask = pluginNetwork.tasks?.find((t) => t.id === "node");
+    const lre = { config: makeConfig() } as LionDenRuntimeEnvironment;
+    const initialSigintListeners = process.listenerCount("SIGINT");
+    const initialSigtermListeners = process.listenerCount("SIGTERM");
+    const processOn = vi.spyOn(process, "on");
+    const processOff = vi.spyOn(process, "off");
+    const processExit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    try {
+      await expect(nodeTask!.action({ port: 3030, manualBlocks: false }, lre)).rejects.toThrow(
+        startupError,
+      );
+
+      expect(process.listenerCount("SIGINT")).toBe(initialSigintListeners);
+      expect(process.listenerCount("SIGTERM")).toBe(initialSigtermListeners);
+      expect(processOn).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+      expect(processOn).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+      expect(processOff).toHaveBeenCalledWith("SIGINT", expect.any(Function));
+      expect(processOff).toHaveBeenCalledWith("SIGTERM", expect.any(Function));
+    } finally {
+      processOn.mockRestore();
+      processOff.mockRestore();
       processExit.mockRestore();
       consoleLog.mockRestore();
     }
