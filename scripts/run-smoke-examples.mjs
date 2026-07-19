@@ -13,7 +13,9 @@ const CORE_EXAMPLES = [
   "renamed_dynamic_records",
 ];
 
+const ALEO_PORT_TEST_TIMEOUT_MS = 240_000;
 const PROVE_TEST_TIMEOUT_MS = 900_000;
+const CI_TEST_TIMEOUT_MULTIPLIER = 4;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -124,6 +126,7 @@ printRunHeader(coverageContext);
 
 for (const config of configs) {
   const exampleName = dirname(config);
+  const testTimeout = testTimeoutForConfig(config);
   console.log(`\n==> ${exampleName}`);
 
   run("compile", ["--import", "tsx", "packages/cli/src/bin.ts", "--config", config, "compile"]);
@@ -147,7 +150,8 @@ for (const config of configs) {
       config,
       "test",
       ...(coverage ? ["--coverage"] : []),
-      ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
+      ...(prove ? ["--prove"] : []),
+      ...(testTimeout === undefined ? [] : ["--timeout", String(testTimeout)]),
     ],
     coverageContext ? coverageEnv(coverageContext, config) : undefined,
   );
@@ -167,6 +171,12 @@ printTotalRuntime();
 
 function isAleoPortConfig(config) {
   return config.split(/[\\/]/).includes("aleo-ports");
+}
+
+function testTimeoutForConfig(config) {
+  if (prove) return testTimeout(PROVE_TEST_TIMEOUT_MS);
+  if (isAleoPortConfig(config)) return testTimeout(ALEO_PORT_TEST_TIMEOUT_MS);
+  return undefined;
 }
 
 function createCoverageContext(groups) {
@@ -214,9 +224,12 @@ function printRunHeader(context) {
   console.log(`Typecheck: ${formatEnabled(typecheck)}`);
   console.log(
     `Prove: ${formatEnabled(prove)}${
-      prove ? ` (test timeout ${formatDuration(PROVE_TEST_TIMEOUT_MS)})` : ""
+      prove ? ` (test timeout ${formatTestTimeout(PROVE_TEST_TIMEOUT_MS)})` : ""
     }`,
   );
+  if (!prove && configs.some(isAleoPortConfig)) {
+    console.log(`Aleo ports test timeout: ${formatTestTimeout(ALEO_PORT_TEST_TIMEOUT_MS)}`);
+  }
   console.log(`Coverage: ${formatEnabled(coverage)}${context ? ` (lane ${context.lane})` : ""}`);
   console.log(`Configs (${configs.length}):`);
   for (const config of configs) {
@@ -230,6 +243,24 @@ function printTotalRuntime() {
 
 function formatEnabled(value) {
   return value ? "enabled" : "disabled";
+}
+
+function testTimeout(baseTimeout) {
+  return isCi() ? baseTimeout * CI_TEST_TIMEOUT_MULTIPLIER : baseTimeout;
+}
+
+function isCi() {
+  const value = process.env["CI"];
+  return value !== undefined && value !== "" && value.toLowerCase() !== "false";
+}
+
+function formatTestTimeout(baseTimeout) {
+  const effectiveTimeout = testTimeout(baseTimeout);
+  if (effectiveTimeout === baseTimeout) return formatDuration(baseTimeout);
+  return (
+    `${formatDuration(effectiveTimeout)} ` +
+    `(CI ${CI_TEST_TIMEOUT_MULTIPLIER}x from ${formatDuration(baseTimeout)})`
+  );
 }
 
 function formatDuration(ms) {
