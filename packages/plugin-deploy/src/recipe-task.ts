@@ -137,7 +137,7 @@ export function createCliDeploymentContext(
 
       if (rename) {
         const results = getDeployResults(taskResult);
-        const deployed = getDeployResultForProgram(results, normalizedId, true);
+        const deployed = getDeployResultForProgram(results, normalizedId);
         if (deployed) {
           return {
             programId: normalizeProgramId(deployed.programId),
@@ -207,10 +207,8 @@ function isCompleteDeploymentWithTxId(
 function getDeployResultForProgram(
   results: Array<{ programId: string; txId: string }>,
   normalizedId: string,
-  exact = false,
 ): { programId: string; txId: string } | undefined {
-  const matching = results.find((result) => normalizeProgramId(result.programId) === normalizedId);
-  return matching ?? (exact ? undefined : results[results.length - 1]);
+  return results.find((result) => normalizeProgramId(result.programId) === normalizedId);
 }
 
 function getDeployResults(taskResult: unknown): Array<{ programId: string; txId: string }> {
