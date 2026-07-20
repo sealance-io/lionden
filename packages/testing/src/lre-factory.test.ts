@@ -126,6 +126,45 @@ describe("lre-factory", () => {
     });
   });
 
+  describe("config default export diagnostics", () => {
+    let project: TempProject | undefined;
+
+    afterEach(() => {
+      project?.cleanup();
+      project = undefined;
+    });
+
+    it("rejects with the CLI-equivalent message when the config has no default export", async () => {
+      project = new TempProjectBuilder().withConfig(`export const config = {};`).build();
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      delete process.env["LIONDEN_CONFIG_PATH"];
+
+      try {
+        await expect(createTestLre()).rejects.toThrow(
+          `Config file ${project.configPath} has no default export. ` +
+            "Add `export default defineConfig({ ... })` (or a config object/factory).",
+        );
+      } finally {
+        resetTestLre();
+      }
+    });
+
+    it("rejects with the CLI-equivalent message when the default factory returns undefined", async () => {
+      project = new TempProjectBuilder().withConfig(`export default () => undefined;`).build();
+      process.env["LIONDEN_PROJECT_ROOT"] = project.root;
+      delete process.env["LIONDEN_CONFIG_PATH"];
+
+      try {
+        await expect(createTestLre()).rejects.toThrow(
+          `Config file ${project.configPath} default export returned undefined. ` +
+            "Return `defineConfig({ ... })` (or a config object).",
+        );
+      } finally {
+        resetTestLre();
+      }
+    });
+  });
+
   it("throws when no config file is found", async () => {
     // Point to a dir with no config file
     process.env["LIONDEN_PROJECT_ROOT"] = "/tmp/nonexistent-dir";
