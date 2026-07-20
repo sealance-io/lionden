@@ -77,8 +77,20 @@ async function buildLre(): Promise<LionDenRuntimeEnvironment> {
     default: unknown;
   };
   let rawConfig = configModule.default;
+  if (rawConfig === undefined) {
+    throw new Error(
+      `Config file ${absolutePath} has no default export. ` +
+        "Add `export default defineConfig({ ... })` (or a config object/factory).",
+    );
+  }
   if (typeof rawConfig === "function") {
     rawConfig = await rawConfig();
+    if (rawConfig === undefined) {
+      throw new Error(
+        `Config file ${absolutePath} default export returned undefined. ` +
+          "Return `defineConfig({ ... })` (or a config object).",
+      );
+    }
   }
   const userConfig = rawConfig as LionDenUserConfig;
 
