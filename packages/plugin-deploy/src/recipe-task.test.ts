@@ -317,6 +317,21 @@ describe("recipe deployment context", () => {
     );
   });
 
+  it("throws when nonempty deploy results do not include the requested program", async () => {
+    const lre = mockLre({
+      deployments: mockDeploymentManager(),
+      taskResult: {
+        mode: "deploy",
+        results: [{ programId: "other.aleo", txId: "at1other" }],
+      },
+    });
+    const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");
+
+    await expect(ctx.deploy("requested")).rejects.toThrow(
+      /no complete cached deployment with a txId exists for "requested\.aleo".*cached state: none/s,
+    );
+  });
+
   it("forwards noSkipDeployed to the deploy task", async () => {
     const lre = mockLre();
     const ctx = createCliDeploymentContext(lre, createMockConnection(), "devnode");

@@ -258,7 +258,11 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
       // Startup failed (e.g. aleo-devnode missing) — no TestContext is returned,
       // so teardown() can never run. Remove the temp storage dir here.
       if (snapshotStorageParent) {
-        rmSync(snapshotStorageParent, { recursive: true, force: true });
+        try {
+          rmSync(snapshotStorageParent, { recursive: true, force: true });
+        } catch {
+          // Preserve the original startup failure.
+        }
       }
       throw err;
     }
@@ -270,16 +274,24 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     );
   }
 
-  // 2. Connect to the network
   const manager = lre.network as NetworkManager;
-  const connection = await manager.connect(connectedNetwork);
+  let connection: NetworkConnection;
+  try {
+    // 2. Connect to the network
+    connection = await manager.connect(connectedNetwork);
 
-  if (!managedDevnode && connection.type === "devnode") {
-    await assertManualDevnodeReachable(
-      connection,
-      connectedNetwork,
-      getManualDevnodeReasons(skipDevnode, lre.config.testing.autoStartDevnode),
-    );
+    if (!managedDevnode && connection.type === "devnode") {
+      await assertManualDevnodeReachable(
+        connection,
+        connectedNetwork,
+        getManualDevnodeReasons(skipDevnode, lre.config.testing.autoStartDevnode),
+      );
+    }
+  } catch (err) {
+    if (managedDevnode) {
+      await cleanupManagedDevnodeAfterSetupFailure(manager, managedDevnode, snapshotStorageParent);
+    }
+    throw err;
   }
 
   // 3. Build context
@@ -351,7 +363,7 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
 
       if (rename) {
         const results = getDeployResults(taskResult);
-        const deployed = getDeployResultForProgram(results, normalizedId, true);
+        const deployed = getDeployResultForProgram(results, normalizedId);
         if (deployed) {
           return {
             programId: normalizeProgramId(deployed.programId),
@@ -412,24 +424,73 @@ export async function setup(opts: SetupOptions = {}): Promise<TestContext> {
     },
 
     async teardown(): Promise<void> {
-      clearFixtures();
-      // Invalidate the deployment cache so the next test starts fresh.
-      const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
-      if (deploymentCache) {
-        deploymentCache.invalidateSession(connectedNetwork);
+      let firstError: unknown;
+      const capture = (err: unknown): void => {
+        firstError ??= err;
+      };
+
+      try {
+        clearFixtures();
+      } catch (err) {
+        capture(err);
       }
-      await manager.disconnectAll();
+
+      try {
+        // Invalidate the deployment cache so the next test starts fresh.
+        const deploymentCache = lre.deployments as DeploymentCacheAccessor | null;
+        if (deploymentCache) {
+          deploymentCache.invalidateSession(connectedNetwork);
+        }
+      } catch (err) {
+        capture(err);
+      }
+
+      try {
+        await manager.disconnectAll();
+      } catch (err) {
+        capture(err);
+      }
+
       if (managedDevnode) {
-        await stopDevnode(managedDevnode);
+        try {
+          await stopDevnode(managedDevnode);
+        } catch (err) {
+          capture(err);
+        }
       }
+
       // Remove the snapshot-reset temp storage (ledger + sibling snapshots dir).
       if (snapshotStorageParent) {
-        rmSync(snapshotStorageParent, { recursive: true, force: true });
+        try {
+          rmSync(snapshotStorageParent, { recursive: true, force: true });
+        } catch (err) {
+          capture(err);
+        }
+      }
+
+      if (firstError !== undefined) {
+        throw firstError;
       }
     },
   };
 
   return ctx;
+}
+
+async function cleanupManagedDevnodeAfterSetupFailure(
+  manager: NetworkManager,
+  managedDevnode: ManagedDevnode,
+  snapshotStorageParent: string | undefined,
+): Promise<void> {
+  await manager.disconnectAll().catch(() => {});
+  await stopDevnode(managedDevnode).catch(() => {});
+  if (snapshotStorageParent) {
+    try {
+      rmSync(snapshotStorageParent, { recursive: true, force: true });
+    } catch {
+      // Preserve the original setup failure.
+    }
+  }
 }
 
 function assertSnapshotReady(
@@ -533,10 +594,8 @@ function isCompleteDeploymentWithTxId(
 function getDeployResultForProgram(
   results: Array<{ programId: string; txId: string }>,
   normalizedId: string,
-  exact = false,
 ): { programId: string; txId: string } | undefined {
-  const matching = results.find((result) => normalizeProgramId(result.programId) === normalizedId);
-  return matching ?? (exact ? undefined : results[results.length - 1]);
+  return results.find((result) => normalizeProgramId(result.programId) === normalizedId);
 }
 
 function getDeployResults(taskResult: unknown): Array<{ programId: string; txId: string }> {

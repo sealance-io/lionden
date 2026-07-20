@@ -6,6 +6,19 @@ import { createMockConnection } from "@lionden/test-internals";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CachedDeploymentRecord, DeploymentCacheAccessor } from "./deployment-cache.js";
 
+const fsMocks = vi.hoisted(() => ({
+  rmSync: vi.fn(),
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs")>();
+  fsMocks.rmSync.mockImplementation(original.rmSync);
+  return {
+    ...original,
+    rmSync: fsMocks.rmSync,
+  };
+});
+
 vi.mock("@lionden/core", async (importOriginal) => {
   const original = await importOriginal<typeof import("@lionden/core")>();
   return {
@@ -343,6 +356,29 @@ describe("test-context", () => {
       expect(getBlockHeight).not.toHaveBeenCalled();
     });
 
+    it("cleans up a managed snapshot devnode when connect fails after startup", async () => {
+      const { startDevnode, stopDevnode } = await import("./devnode-lifecycle.js");
+      let passedStoragePath: string | undefined;
+      vi.mocked(startDevnode).mockImplementationOnce(async (_cfg, overrides) => {
+        passedStoragePath = overrides?.storagePath;
+        return {
+          manager: { stop: vi.fn(), capabilities: { snapshot: true } } as never,
+          endpoint: "http://127.0.0.1:3030",
+        };
+      });
+      const connectError = new Error("connect failed");
+      const lre = mockLre();
+      const manager = lre.network as NetworkManager;
+      vi.mocked(manager.connect).mockRejectedValueOnce(connectError);
+
+      await expect(setup({ lre, snapshotReset: true })).rejects.toBe(connectError);
+
+      expect(passedStoragePath).toBeDefined();
+      expect(manager.disconnectAll).toHaveBeenCalledOnce();
+      expect(stopDevnode).toHaveBeenCalledOnce();
+      expect(existsSync(path.dirname(passedStoragePath!))).toBe(false);
+    });
+
     it("times out manual devnode reachability checks with the same clear error shape", async () => {
       vi.useFakeTimers();
       const getBlockHeight = vi.fn(() => new Promise<number>(() => {}));
@@ -519,6 +555,10 @@ describe("test-context", () => {
 
     it("passes deploy options", async () => {
       const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "token.aleo", txId: "at1deploy" }],
+      });
       const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.deploy("token", { priorityFee: 1000, skipConfirm: true });
@@ -536,6 +576,10 @@ describe("test-context", () => {
     it("passes prove=true to deploy when LIONDEN_PROVE is set", async () => {
       process.env["LIONDEN_PROVE"] = "true";
       const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "token.aleo", txId: "at1deploy" }],
+      });
       const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.deploy("token");
@@ -554,6 +598,10 @@ describe("test-context", () => {
     it("allows ctx.deploy prove=false to override LIONDEN_PROVE", async () => {
       process.env["LIONDEN_PROVE"] = "true";
       const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "token.aleo", txId: "at1deploy" }],
+      });
       const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.deploy("token", { prove: false });
@@ -756,8 +804,29 @@ describe("test-context", () => {
       );
     });
 
+    it("throws when nonempty deploy results do not include the requested program", async () => {
+      const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "other.aleo", txId: "at1other" }],
+      });
+      attachDeploymentCache(
+        lre,
+        vi.fn<DeploymentCacheAccessor["getCached"]>().mockReturnValue(null),
+      );
+      const ctx = await setup({ lre, skipDevnode: true });
+
+      await expect(ctx.deploy("requested")).rejects.toThrow(
+        /no complete cached deployment with a txId exists for "requested\.aleo".*cached state: none/s,
+      );
+    });
+
     it("passes noSkipDeployed through to the deploy task", async () => {
       const lre = mockLre();
+      (lre.tasks.run as ReturnType<typeof vi.fn>).mockResolvedValue({
+        mode: "deploy",
+        results: [{ programId: "token.aleo", txId: "at1deploy" }],
+      });
       const ctx = await setup({ lre, skipDevnode: true });
 
       await ctx.deploy("token", { noSkipDeployed: true });
@@ -990,6 +1059,29 @@ describe("test-context", () => {
       expect(stopDevnode).toHaveBeenCalledOnce();
     });
 
+    it("continues cleanup when disconnectAll rejects", async () => {
+      const { startDevnode, stopDevnode } = await import("./devnode-lifecycle.js");
+      let passedStoragePath: string | undefined;
+      vi.mocked(startDevnode).mockImplementationOnce(async (_cfg, overrides) => {
+        passedStoragePath = overrides?.storagePath;
+        return {
+          manager: { stop: vi.fn(), capabilities: { snapshot: true } } as never,
+          endpoint: "http://127.0.0.1:3030",
+        };
+      });
+      const disconnectError = new Error("disconnect failed");
+      const lre = mockLre();
+      const manager = lre.network as NetworkManager;
+      vi.mocked(manager.disconnectAll).mockRejectedValueOnce(disconnectError);
+      const ctx = await setup({ lre, snapshotReset: true });
+
+      await expect(ctx.teardown()).rejects.toBe(disconnectError);
+
+      expect(passedStoragePath).toBeDefined();
+      expect(stopDevnode).toHaveBeenCalledOnce();
+      expect(existsSync(path.dirname(passedStoragePath!))).toBe(false);
+    });
+
     it("skips stopDevnode when devnode was not started", async () => {
       const lre = mockLre();
       const ctx = await setup({ lre, skipDevnode: true });
@@ -1069,6 +1161,29 @@ describe("test-context", () => {
       await expect(setup({ lre, snapshotReset: true })).rejects.toThrow("aleo-devnode not found");
       expect(passedStoragePath).toBeDefined();
       expect(existsSync(path.dirname(passedStoragePath!))).toBe(false);
+    });
+
+    it("preserves the startup error when snapshot temp cleanup fails", async () => {
+      const { startDevnode } = await import("./devnode-lifecycle.js");
+      let passedStoragePath: string | undefined;
+      const startupError = new Error("aleo-devnode not found");
+      const cleanupError = new Error("cleanup failed");
+      vi.mocked(startDevnode).mockImplementationOnce(async (_cfg, overrides) => {
+        passedStoragePath = overrides?.storagePath;
+        throw startupError;
+      });
+      fsMocks.rmSync.mockImplementationOnce(() => {
+        throw cleanupError;
+      });
+      const lre = mockLre();
+
+      try {
+        await expect(setup({ lre, snapshotReset: true })).rejects.toBe(startupError);
+      } finally {
+        if (passedStoragePath) {
+          fsMocks.rmSync(path.dirname(passedStoragePath), { recursive: true, force: true });
+        }
+      }
     });
   });
 });
