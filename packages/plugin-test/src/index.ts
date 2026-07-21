@@ -188,10 +188,11 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
       }
 
       if (hasPrimaryError && hasTeardownError) {
-        throw new AggregateError(
-          [primaryError, teardownError],
-          "Test task failed during run and suite teardown.",
-        );
+        const message =
+          "Test task failed during run and suite teardown. " +
+          `Run: ${describeThrownValue(primaryError)}; ` +
+          `teardown: ${describeThrownValue(teardownError)}`;
+        throw new AggregateError([primaryError, teardownError], message);
       }
       if (hasPrimaryError) throw primaryError;
       if (hasTeardownError) throw teardownError;
@@ -238,4 +239,14 @@ function resolveCoverageOptions(enabled: boolean): false | TestCoverageOptions {
     blobOutputFile: process.env[coverageBlobOutputFileEnv],
     extraInclude: extraInclude ? [extraInclude] : undefined,
   };
+}
+
+function describeThrownValue(error: unknown): string {
+  if (error instanceof Error) return error.message;
+
+  try {
+    return String(error);
+  } catch {
+    return "[unprintable thrown value]";
+  }
 }

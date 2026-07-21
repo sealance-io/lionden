@@ -6,7 +6,7 @@
  */
 
 import { join } from "node:path";
-import type { LionDenPlugin } from "@lionden/core";
+import { type LionDenPlugin, task } from "@lionden/core";
 import {
   type ContractLreResult,
   createContractLre,
@@ -237,6 +237,9 @@ describe("test task contract", () => {
     }
 
     expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).message).toBe(
+      "Test task failed during run and suite teardown. Run: 1 test(s) failed.; teardown: suite teardown failed",
+    );
     const errors = (thrown as AggregateError).errors;
     expect(errors).toHaveLength(2);
     expect(errors[0]).toBeInstanceOf(Error);
@@ -274,7 +277,47 @@ describe("test task contract", () => {
     }
 
     expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).message).toBe(
+      "Test task failed during run and suite teardown. Run: undefined; teardown: suite teardown failed",
+    );
     expect((thrown as AggregateError).errors).toEqual([undefined, teardownError]);
+    expect(startVitest).not.toHaveBeenCalled();
+  });
+
+  it("propagates compile failure unchanged without suite hooks or Vitest", async () => {
+    const { startVitest } = await import("vitest/node");
+    const compileError = new Error("compile failed before tests");
+    const suiteSetup = vi.fn();
+    const suiteTeardown = vi.fn();
+    const failingCompilePlugin: LionDenPlugin = {
+      id: "compile-fails",
+      name: "Compile Fails",
+      tasks: [
+        task("compile", "Failing compile")
+          .setAction(async () => {
+            throw compileError;
+          })
+          .build(),
+      ],
+    };
+    const testingPlugin: LionDenPlugin = {
+      id: "testing-hooks",
+      name: "Testing Hooks",
+      hookHandlers: {
+        testing: {
+          suiteSetup,
+          suiteTeardown,
+        },
+      },
+    };
+    fixture = createContractLre({
+      plugins: [pluginTest, failingCompilePlugin, testingPlugin],
+    });
+
+    await expect(fixture.lre.tasks.run("test")).rejects.toBe(compileError);
+
+    expect(suiteSetup).not.toHaveBeenCalled();
+    expect(suiteTeardown).not.toHaveBeenCalled();
     expect(startVitest).not.toHaveBeenCalled();
   });
 

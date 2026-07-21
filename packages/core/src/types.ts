@@ -45,7 +45,10 @@ export interface TestingHookHandlers {
   /** Before test suite begins (devnode lifecycle). */
   suiteSetup?(context: unknown): Promise<void> | void;
 
-  /** After test suite completes. */
+  /**
+   * After the test suite completes. May run after partial or failed suite setup;
+   * handlers must tolerate uninitialized state.
+   */
   suiteTeardown?(context: unknown): Promise<void> | void;
 
   /** Before each test (snapshot). */
