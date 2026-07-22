@@ -1,6 +1,6 @@
 {
   "name": "@lionden/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
@@ -31,8 +31,8 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@lionden/config": "^0.1.0",
-    "@lionden/core": "^0.1.0",
+    "@lionden/config": "^0.1.1",
+    "@lionden/core": "^0.1.1",
     "tsx": "^4.22.4"
   },
   "devDependencies": {
