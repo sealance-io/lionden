@@ -978,32 +978,35 @@ describe("AleoConnection", () => {
     it.each([
       ["record", { Record: { path: ["Token"], program: "tok.aleo" } }],
       ["dynamic record", "DynamicRecord"],
-    ])("skips eager synthesis on a cache miss for a transition with a %s input", async (_label, ty) => {
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
-      try {
-        const artifactsDir = path.join(tmpDir, "artifacts");
-        const artifactDir = path.join(artifactsDir, "hello.aleo");
-        const cachePath = path.join(tmpDir, ".aleo");
-        const source = "program hello.aleo { }";
-        fs.mkdirSync(artifactDir, { recursive: true });
-        fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
-        fs.writeFileSync(path.join(artifactDir, "abi.json"), recordInputAbi("main", ty));
+    ])(
+      "skips eager synthesis on a cache miss for a transition with a %s input",
+      async (_label, ty) => {
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lionden-connection-cache-"));
+        try {
+          const artifactsDir = path.join(tmpDir, "artifacts");
+          const artifactDir = path.join(artifactsDir, "hello.aleo");
+          const cachePath = path.join(tmpDir, ".aleo");
+          const source = "program hello.aleo { }";
+          fs.mkdirSync(artifactDir, { recursive: true });
+          fs.writeFileSync(path.join(artifactDir, "main.aleo"), source);
+          fs.writeFileSync(path.join(artifactDir, "abi.json"), recordInputAbi("main", ty));
 
-        const connection = createDevnodeConnection({
-          artifactsDir,
-          keyCache: { storage: "filesystem", path: cachePath },
-        });
+          const connection = createDevnodeConnection({
+            artifactsDir,
+            keyCache: { storage: "filesystem", path: cachePath },
+          });
 
-        await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
+          await connection.execute("hello.aleo", "main", ["1u32"], { prove: true });
 
-        expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
-        // Execution still proceeds — keys synthesize lazily inside pm.execute.
-        expect(mockExecute).toHaveBeenCalledOnce();
-        expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("provingKey");
-      } finally {
-        fs.rmSync(tmpDir, { recursive: true, force: true });
-      }
-    });
+          expect(mockSynthesizeExecutionKeyBytes).not.toHaveBeenCalled();
+          // Execution still proceeds — keys synthesize lazily inside pm.execute.
+          expect(mockExecute).toHaveBeenCalledOnce();
+          expect(mockExecute.mock.calls[0]![0]).not.toHaveProperty("provingKey");
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      },
+    );
 
     it("does not enter the SDK SnapshotQuery egress path for a record-consuming cache miss", async () => {
       const { makeNetworkTransport } =

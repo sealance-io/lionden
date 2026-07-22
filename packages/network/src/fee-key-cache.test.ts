@@ -498,14 +498,17 @@ describe("PersistentFunctionKeyProvider write-back", () => {
     ["transferPrivateToPublic", TRANSFER_PRIVATE_TO_PUBLIC_LOCATOR],
     ["public_to_private", TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR],
     ["transferPublicToPrivate", TRANSFER_PUBLIC_TO_PRIVATE_LOCATOR],
-  ] as const)("maps transferKeys(%s) to the correct credits entry and writes it back", async (visibility, locator) => {
-    const { provider } = makePersistent();
-    await provider.transferKeys(visibility);
+  ] as const)(
+    "maps transferKeys(%s) to the correct credits entry and writes it back",
+    async (visibility, locator) => {
+      const { provider } = makePersistent();
+      await provider.transferKeys(visibility);
 
-    const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
-    expect(fs.existsSync(paths.prover)).toBe(true);
-    expect(fs.existsSync(paths.metadata)).toBe(true);
-  });
+      const paths = feePaths(tmpDir, WASM_HASH_A, NETWORK, locator);
+      expect(fs.existsSync(paths.prover)).toBe(true);
+      expect(fs.existsSync(paths.metadata)).toBe(true);
+    },
+  );
 
   it("skips persistence for transferKeys with an unknown visibility but still returns the delegate result", async () => {
     const { provider, delegate } = makePersistent();
