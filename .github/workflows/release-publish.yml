@@ -100,14 +100,19 @@ jobs:
           # Provenance only when the source repo is public (npm can't attest a private repo);
           # auto-flips on going OSS, off while internal so publish doesn't fail.
           NPM_CONFIG_PROVENANCE: ${{ github.event.repository.visibility == 'public' }}
-      - name: Push tags created by changeset publish
-        run: git push --follow-tags
       - name: Determine newly created tags
         id: tags
         run: |
           git tag | sort > "$RUNNER_TEMP/tags-after.txt"
           comm -13 "$RUNNER_TEMP/tags-before.txt" "$RUNNER_TEMP/tags-after.txt" > "$RUNNER_TEMP/new-tags.txt"
           echo "New tags:"; cat "$RUNNER_TEMP/new-tags.txt"
+      - name: Push tags created by changeset publish
+        # `changeset publish` creates lightweight tags, which `git push --follow-tags`
+        # ignores (it only pushes annotated tags). Push the diffed new tags explicitly.
+        run: |
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then git push origin "refs/tags/$tag"; fi
+          done < "$RUNNER_TEMP/new-tags.txt"
       - name: Create per-package GitHub Releases
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:

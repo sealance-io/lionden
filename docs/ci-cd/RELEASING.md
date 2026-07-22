@@ -55,12 +55,24 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 
 ## Prerequisites & gotchas
 
-- **First release is special.** OIDC publishing cannot create brand-new packages, so the very
-  first publish is a one-time manual, token-authenticated step. See
+- **The first release was special (done).** OIDC publishing cannot create brand-new packages,
+  so the very first publish (0.1.0, 2026-07-22) was a one-time manual, token-authenticated
+  step, followed by Trusted Publisher configuration. The 0.1.1 release proved the tokenless
+  OIDC pipeline end-to-end. See
   [REPOSITORY-SETUP.md → One-time bootstrap](./REPOSITORY-SETUP.md#one-time-bootstrap-required-before-oidc-works).
-- **Provenance** is enabled automatically once the repo is public; it stays off while internal.
+- **Provenance** is active (the repo is public): every release since 0.1.1 ships SLSA
+  provenance attestations, verifiable with `npm audit signatures`.
 - **Approval required.** Every publish waits on the `npm-publish` environment reviewers.
-- **Re-runs are safe.** `changeset publish` and the GitHub Release step are idempotent.
+- **Re-runs are safe.** `changeset publish` and the GitHub Release step are idempotent. Note a
+  re-run does **not** re-tag already-published packages — if the tag-push step failed, backfill
+  the missing `<package>@<version>` tags manually at the "Version Packages" merge commit.
+
+## Consuming lionden
+
+Consumers must depend on registry ranges (e.g. `"@lionden/cli": "^0.1.1"`), never on `file:`
+paths into a lionden checkout — `file:` deps bypass the published artifacts and break as soon
+as the checkout moves. `compliant-transfer-aleo` migrated to registry ranges with the 0.1.0
+release; migrating `amm-aleo` is a deferred follow-up.
 
 For the underlying repository/account configuration (environments, GitHub App, npm trusted
 publishers), see [REPOSITORY-SETUP.md](./REPOSITORY-SETUP.md).

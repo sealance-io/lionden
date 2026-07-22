@@ -3,9 +3,9 @@
 This is the one-time GitHub/npm configuration the workflows in `.github/workflows/` depend on.
 Workflows are version-controlled; these settings are not, so they live here.
 
-> Status note: the repo is **internal** today and OSS soon. A few security checks are
-> visibility-gated and stay dormant until the repo is public (see
-> [Dependency review & code scanning](#dependency-review--code-scanning)).
+> Status note: the repo is **public** (since 2026-07-22). The visibility-gated security checks
+> (see [Dependency review & code scanning](#dependency-review--code-scanning)) and npm
+> provenance are active.
 
 ## Workflows at a glance
 
@@ -84,6 +84,12 @@ and npm exchanges the GitHub OIDC token for a short-lived publish credential. No
 token is stored in GitHub.
 
 ### One-time bootstrap (required before OIDC works)
+
+> **Status: completed 2026-07-22.** All 11 packages were published manually at 0.1.0, Trusted
+> Publishers were configured per the steps below (verified with `npm trust list`), and the
+> 0.1.1 release ran tokenless through `release-publish.yml` with provenance attestations on
+> every package. The steps are kept for reference (e.g. adding a brand-new package later, which
+> repeats this bootstrap for that package).
 
 npm Trusted Publishers can only be attached to packages that **already exist** on the registry,
 and OIDC cannot create a brand-new package. So the **first** publish of each package must be a
