@@ -145,6 +145,108 @@ File and glob positionals are passed to Vitest as include patterns with the Lion
 
 LionDen does not currently prevalidate that each positional path exists. A typo such as `test/oders.test.ts` follows Vitest's no-match behavior; clearer no-matching-file UX is a future enhancement.
 
+## Bring Your Own Network Lifecycle
+
+The managed devnode covers the common case. Some suites instead need to test against a network LionDen does not manage — a containerized multi-validator devnet, a shared staging chain, a fixture network started by the CI job. This is supported today through the `testing` hook category; no flag or config passthrough is required.
+
+The recipe has four parts.
+
+**1. Declare the target as an `http` network, not a `devnode` one.** `type` drives real behavior, not just naming. A `devnode` connection takes `useDevnodeFastPath` — it builds **unproven** transactions that a real network rejects — and it exposes `connection.advanceBlocks`, which POSTs to `<endpoint>/<network>/block/create`, an endpoint only the devnode serves. Under `http` neither applies: transactions are proven and `connection.advanceBlocks` is `undefined`, so height-polling helpers guarded by `if (connection.advanceBlocks)` fall through correctly. `setup()` also gates devnode auto-start on the *target* network's type, so an `http` target needs no `skipDevnode` / `autoStartDevnode` juggling.
+
+Set `ephemeral: true` when the chain dies with its container — `HttpNetworkConfig.ephemeral` defaults to `false`, which would otherwise persist deployment records for a chain that no longer exists.
+
+```typescript
+networks: {
+  devnet: {
+    type: "http",
+    endpoint: process.env.DEVNET_ENDPOINT ?? "http://127.0.0.1:3030",
+    network: "testnet",
+    privateKey: configVariable("DEVNET_DEPLOYER_KEY"),
+    ephemeral: true,
+  },
+},
+```
+
+**2. Own the lifecycle from a `suiteSetup` / `suiteTeardown` hook.** Register a local plugin whose `testing` handlers start and stop the network. Because the `test` task dispatches `suiteSetup` in the **parent CLI process**, before Vitest forks any worker, anything the hook writes to `process.env` is inherited by every worker. Workers re-import the project config, so a dynamically discovered endpoint reaches them without a config file rewrite.
+
+Prefer the **lazy factory** form of `hookHandlers`. Workers import the project config too, but never dispatch `testing` hooks — a factory means the container/orchestration module is only ever evaluated in the parent.
+
+Mind the **module specifiers**. The CLI loads the config through tsx and Vitest loads test files through Vite, and both rewrite a `./foo.js` specifier onto `./foo.ts`. Workers do not: they re-import the config with Node's own TypeScript loader, which resolves specifiers literally and fails with `Cannot find module .../foo.js imported from .../lionden.config.ts`. Any local file reachable from the config — the plugin module, and anything it imports at module scope — therefore needs an explicit `.ts` specifier. On a stock generated project (`module`/`moduleResolution: NodeNext`, `declaration: true`) TypeScript rejects those, so a BYO-lifecycle project also needs `allowImportingTsExtensions: true`, which in turn requires `noEmit` or `emitDeclarationOnly`. This bites only the config's own import graph; ordinary test files keep `.js` specifiers because Vite resolves them.
+
+```typescript
+// lionden.config.ts
+import devnetPlugin from "./test/support/devnet-plugin.ts";
+
+// test/support/devnet-plugin.ts
+const devnetPlugin: LionDenPlugin = {
+  id: "myproject/devnet",
+  hookHandlers: {
+    // Lazy: resolved only when the "testing" category is dispatched.
+    testing: () => import("./devnet-container.ts"),
+  },
+};
+
+// test/support/devnet-container.ts — the module namespace *is* the handler map.
+let container: StartedTestContainer | undefined;
+
+export async function suiteSetup(context: unknown): Promise<void> {
+  container = await new GenericContainer(IMAGE).withExposedPorts(3030).start();
+  // Build the endpoint from getHost()/getMappedPort() — a hard-coded
+  // 127.0.0.1 is wrong under a remote or VM-backed Docker host.
+  process.env.DEVNET_ENDPOINT =
+    `http://${container.getHost()}:${container.getMappedPort(3030)}`;
+  await waitUntilReady(process.env.DEVNET_ENDPOINT);
+}
+
+export async function suiteTeardown(): Promise<void> {
+  // Dispatched even when suiteSetup threw — tolerate uninitialized state.
+  await container?.stop();
+  container = undefined;
+}
+```
+
+Gate registration on an env variable (`...(process.env.TEST_MODE === "devnet" ? [devnetPlugin] : [])`) so default devnode runs never load the plugin, and pick the network per run with `lionden test --network devnet` — the task bridges it to workers via `LIONDEN_NETWORK`, so test files keep their bare `await setup()`.
+
+**Known gap — prime consensus heights yourself.** `initConsensusHeights()` (exported from `@lionden/network`) primes the SDK's internal consensus-version state from snarkVM's *test* height table. Deploy and execute only call it when `connection.type === "devnode"`. A test devnet reached over `http` runs that same compressed activation schedule, and without priming it rejects the first LionDen-built deployment:
+
+```
+Invalid deployment transaction '<id>' - missing program checksum
+```
+
+Measured against `aleo-devnet:v4.3.1-v4.8.1`: identical runs fail at the first deploy without the call and pass with it. The mechanism is inferred rather than measured — unprimed, the SDK appears to resolve the consensus version from the production height table and omit the program checksum the chain requires.
+
+Until LionDen primes heights for `http` networks, call it once per process from the project config — the CLI parent and every Vitest worker each hold their own SDK instance, and every one of them imports the config:
+
+```typescript
+if (process.env.TEST_MODE === "devnet") {
+  const { initConsensusHeights } = await import("@lionden/network");
+  await initConsensusHeights();
+}
+```
+
+This is unrelated to proving. An `http` connection always proves: deploy calls `programManager.deploy()` rather than a `buildDevnode*` builder, and `useDevnodeFastPath` requires `type === "devnode"`. Neither `--prove` nor `LIONDEN_PROVE` is needed, and neither fixes the checksum error.
+
+**3. Precompile, then run with `--no-compile`.** The CLI resolves the config and builds the LRE at **boot**, and `compile` reads that already-resolved config rather than `process.env`. A hook that discovers an endpoint later therefore cannot retarget an in-process compile. When the endpoint is dynamically mapped this is unavoidable, so make it explicit in your scripts:
+
+```bash
+lionden compile --network testnet
+TEST_MODE=devnet lionden test test/orders.test.ts --network devnet --no-compile
+```
+
+LionDen cannot enforce this for you: `compile` runs *before* `suiteSetup` (and outside the hook's error-handling scope), so by the time the hook gets control the decision has already been made. Compile failing means the hook never ran and nothing was started — that ordering is intentional and asserted by the `test` task's contract tests.
+
+**4. One chain per test file.** LionDen sets neither `pool` nor `isolate`, so Vitest defaults apply — `forks` with `isolate: true` — and `fileParallelism` is off unless `--parallel`. Each file gets its own worker and its own LRE. A managed devnode inherits one-chain-per-file for free; a single externally managed network does **not**, so every file in one `lionden test` invocation shares that chain and becomes order-dependent.
+
+If your suite relies on per-file isolation, drive one file per invocation rather than reintroducing a file sequencer:
+
+```bash
+for f in test/*.test.ts; do
+  TEST_MODE=devnet lionden test "$f" --network devnet --no-compile || exit 1
+done
+```
+
+A per-file CI matrix is the same shape and parallelizes across runners. Sharing one chain across all files is a legitimate choice too — just make it a deliberate one.
+
 ## Vitest Integration
 
 The programmatic Vitest runner currently:
