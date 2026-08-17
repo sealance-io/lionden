@@ -9,7 +9,7 @@
  * compiled ABI is still recorded so `export` has it.
  */
 
-import type { ResolvedSdkKeyCacheConfig, SdkLogLevel } from "@lionden/config";
+import type { ResolvedNetworkConfig } from "@lionden/config";
 import { isSignable } from "@lionden/config";
 import {
   KeyArtifactsMetadataError,
@@ -20,7 +20,14 @@ import {
   readProgramArtifactProvenance,
 } from "@lionden/core";
 import type { ProgramABI } from "@lionden/leo-compiler";
-import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
+import type { NetworkManager } from "@lionden/network";
+import {
+  buildBackendContext,
+  buildPreflightContext,
+  resolveDeployBackend,
+} from "./deploy-backend/resolve.js";
+import type { DeployBackendRequest } from "./deploy-backend/types.js";
+import { resolveDeployerAddress } from "./deployer-address.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type {
   CompleteDeploymentRecord,
@@ -89,11 +96,18 @@ export async function upgradeAction(
   // Normalize program ID
   const programId = options.program.endsWith(".aleo") ? options.program : `${options.program}.aleo`;
 
-  // 1. Connect to network
+  // 0. Resolve the deploy backend and prove it can run, before connecting. A
+  // backend that cannot run must fail here rather than after a full compile.
   const networkName = options.network ?? config.defaultNetwork;
+  const backendPreflightCtx = buildPreflightContext(config, networkName);
+  const backend = resolveDeployBackend(backendPreflightCtx);
+  await backend.preflight(backendPreflightCtx);
+
+  // 1. Connect to network
   console.log(`${logAction("Upgrading")} ${programId} on network "${networkName}"`);
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
+  const backendCtx = buildBackendContext(config, connection, networkName);
 
   // 1b. Resolve admin signer from namedAccounts (selection only — no validation).
   // An address-only "admin" carries no private key, so there is nothing to select.
@@ -186,8 +200,9 @@ export async function upgradeAction(
   // 7. Resolve upgrade provenance before writing a pending marker.
   const deployerAddress = await resolveDeployerAddress(
     connection,
-    config,
-    networkName,
+    // Present by construction: `buildPreflightContext` already rejected an
+    // unknown network name above.
+    config.networks[networkName] as ResolvedNetworkConfig,
     adminSignerKey,
   );
 
@@ -242,18 +257,22 @@ export async function upgradeAction(
   }
 
   // 8. Build and broadcast upgrade transaction
-  const txId = await buildAndBroadcastUpgrade({
-    programId,
-    aleoSource,
-    connection,
-    fee,
-    privateFee: config.deploy.privateFee,
-    signerPrivateKey: adminSignerKey,
-    prove: options.prove,
-    keyCache: config.sdk.keyCache,
-    logLevel: config.sdk.logLevel,
-    egressPolicy: connection.egressPolicy,
-  });
+  const built = await backend.buildUpgrade(
+    buildUpgradeRequest({
+      programId,
+      ...(rename ? { sourceProgramId } : {}),
+      aleoSource,
+      fee,
+      privateFee: config.deploy.privateFee,
+      ...(adminSignerKey !== undefined ? { signerPrivateKey: adminSignerKey } : {}),
+      ...(options.prove !== undefined ? { prove: options.prove } : {}),
+    }),
+    backendCtx,
+  );
+  const txId =
+    built.kind === "broadcast"
+      ? built.txId
+      : await connection.broadcastTransaction(built.transaction);
   if (manager && pending) {
     pending = { ...pending, txId };
     await manager.setPending(pending);
@@ -337,77 +356,39 @@ export async function upgradeAction(
 // Transaction building
 // ---------------------------------------------------------------------------
 
-interface BuildUpgradeOptions {
+interface BuildUpgradeRequestOptions {
   programId: string;
+  /** Canonical local source id when the upgrade target was renamed. */
+  sourceProgramId?: string;
   aleoSource: string;
-  connection: NetworkConnection;
   fee: number;
   privateFee: boolean;
-  /** Override signing key. When set, overrides connection.privateKey. */
+  /** Override signing key. When set, overrides `ctx.privateKey`. */
   signerPrivateKey?: string;
-  /** Use the standard SDK upgrade builder instead of the devnode fast-path. */
+  /** Build a standard/proven transaction instead of the devnode fast-path. */
   prove?: boolean;
-  /** Resolved SDK key-cache config from `lre.config.sdk.keyCache`. */
-  keyCache?: ResolvedSdkKeyCacheConfig;
-  /** Resolved SDK log level from `lre.config.sdk.logLevel`. */
-  logLevel?: SdkLogLevel;
-  /** Egress policy from `connection.egressPolicy`. */
-  egressPolicy: SdkEgressPolicy;
 }
 
-async function buildAndBroadcastUpgrade(opts: BuildUpgradeOptions): Promise<string> {
-  const { programId, aleoSource, connection, fee, privateFee, signerPrivateKey } = opts;
-
-  const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
-    await import("@lionden/network");
-
-  if (connection.type === "devnode") {
-    await initConsensusHeights();
-    if (!opts.prove) {
-      await checkDevnodeSdkSupport();
-    }
-  }
-
-  const sdk = await createSdkObjects({
-    network: connection.networkId,
-    endpoint: connection.endpoint,
-    privateKey: signerPrivateKey ?? connection.privateKey,
-    apiKey: connection.apiKey,
-    keyCache: opts.keyCache,
-    logLevel: opts.logLevel,
-    egressPolicy: opts.egressPolicy,
-  });
-
-  if (connection.type === "devnode" && !opts.prove) {
-    // Only the build is wrapped; broadcast surfaces its own HTTP error.
-    const tx = await captureSdkCall(sdk.diagnostics, { operation: "upgrade", programId }, () =>
-      sdk.programManager.buildDevnodeUpgradeTransaction({
-        program: aleoSource,
-        priorityFee: fee,
-        privateFee,
-      }),
-    );
-
-    return connection.broadcastTransaction(tx);
-  }
-
-  // Standard upgrade — use buildUpgradeTransaction + manual broadcast
-  const pm = sdk.programManager as any;
-  if (typeof pm.buildUpgradeTransaction === "function") {
-    const tx = await captureSdkCall(sdk.diagnostics, { operation: "upgrade", programId }, () =>
-      pm.buildUpgradeTransaction({
-        program: aleoSource,
-        priorityFee: fee,
-        privateFee,
-      }),
-    );
-    return connection.broadcastTransaction(tx);
-  }
-
-  throw new DeployError(
-    `Unable to upgrade "${programId}" with the standard upgrade builder: ` +
-      `the installed @provablehq/sdk does not expose buildUpgradeTransaction().`,
-  );
+/**
+ * Assemble a backend request for an upgrade.
+ *
+ * `localDependencyIds` is deliberately empty: `upgradeAction` retains no
+ * dependency graph, and the SDK backend ignores the field entirely (it upgrades
+ * exactly the source it is handed). A backend that operates on a Leo package
+ * needs the real closure — rooted at `sourceProgramId`, not the effective id —
+ * and must not be reachable from upgrade until this is populated.
+ */
+function buildUpgradeRequest(opts: BuildUpgradeRequestOptions): DeployBackendRequest {
+  return {
+    programId: opts.programId,
+    ...(opts.sourceProgramId !== undefined ? { sourceProgramId: opts.sourceProgramId } : {}),
+    aleoSource: opts.aleoSource,
+    localDependencyIds: [],
+    priorityFee: opts.fee,
+    privateFee: opts.privateFee,
+    ...(opts.signerPrivateKey !== undefined ? { signerPrivateKey: opts.signerPrivateKey } : {}),
+    prove: opts.prove === true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -448,39 +429,4 @@ function resolveUpgradeSourceProgramId(
   }
 
   return provenance.sourceProgramId;
-}
-
-async function resolveDeployerAddress(
-  connection: NetworkConnection,
-  config: import("@lionden/config").LionDenResolvedConfig,
-  networkName: string,
-  signerPrivateKey?: string,
-): Promise<string | undefined> {
-  const networkConfig = config.networks[networkName];
-  if (!networkConfig) return undefined;
-
-  const privateKey =
-    signerPrivateKey ??
-    connection.privateKey ??
-    (networkConfig.type === "devnode" && networkConfig.accounts.length > 0
-      ? networkConfig.accounts[0]!.privateKey
-      : undefined);
-
-  if (!privateKey) return undefined;
-
-  try {
-    const { createSdkObjects } = await import("@lionden/network");
-    const sdk = await createSdkObjects({
-      network: connection.networkId,
-      endpoint: connection.endpoint,
-      privateKey,
-      egressPolicy: connection.egressPolicy,
-    });
-    const account = sdk.account as any;
-    return typeof account.address === "function"
-      ? account.address().to_string()
-      : String(account.address ?? account);
-  } catch {
-    return undefined;
-  }
 }

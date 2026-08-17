@@ -5,14 +5,11 @@
  * per-program outcomes for deploy.
  */
 
-import type {
-  LionDenResolvedConfig,
-  ResolvedNetworkConfig,
-  ResolvedSdkKeyCacheConfig,
-  SdkLogLevel,
-} from "@lionden/config";
+import type { LionDenResolvedConfig, ResolvedNetworkConfig } from "@lionden/config";
 import type { DependencyGraph } from "@lionden/leo-compiler";
 import type { NetworkConnection } from "@lionden/network";
+import type { DeployBackend, DeployBackendContext } from "./deploy-backend/types.js";
+import { tryDeriveAddress } from "./deployer-address.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import { checkProgramOnChain, fetchImportSources } from "./on-chain-check.js";
 
@@ -146,71 +143,6 @@ export async function checkImportsAvailable(
 }
 
 /**
- * Estimate the deployment fee for a program.
- * Returns the estimate in microcredits, or undefined if estimation fails.
- * HTTP only (devnode skips proof generation so fee estimation is not meaningful).
- */
-export async function checkFeeEstimate(
-  connection: NetworkConnection,
-  programId: string,
-  aleoSource: string,
-  importSources: Map<string, string>,
-  signerPrivateKey?: string,
-  keyCache?: ResolvedSdkKeyCacheConfig,
-  logLevel?: SdkLogLevel,
-): Promise<{ estimate: bigint | undefined; warning: PreflightWarning | null }> {
-  try {
-    const { createSdkObjects, withSuppressedSdkConsoleNoise } = await import("@lionden/network");
-    const sdk = await createSdkObjects({
-      network: connection.networkId,
-      endpoint: connection.endpoint,
-      privateKey: signerPrivateKey ?? connection.privateKey,
-      apiKey: connection.apiKey,
-      egressPolicy: connection.egressPolicy,
-      keyCache,
-      logLevel,
-    });
-    const pm = sdk.programManager as any;
-
-    if (typeof pm.estimateDeploymentFee !== "function") {
-      return {
-        estimate: undefined,
-        warning: {
-          code: "FEE_ESTIMATION_UNAVAILABLE",
-          message: `Fee estimation not available in this SDK version. Cannot estimate deployment cost for "${programId}".`,
-        },
-      };
-    }
-
-    // Build imports object for SDK
-    const importsObj: Record<string, string> = {};
-    for (const [id, src] of importSources) {
-      importsObj[id] = src;
-    }
-
-    const estimatedFee: number | bigint = await withSuppressedSdkConsoleNoise(() =>
-      pm.estimateDeploymentFee(
-        aleoSource,
-        Object.keys(importsObj).length > 0 ? importsObj : undefined,
-      ),
-    );
-
-    return {
-      estimate: BigInt(estimatedFee),
-      warning: null,
-    };
-  } catch (err: unknown) {
-    return {
-      estimate: undefined,
-      warning: {
-        code: "FEE_ESTIMATION_FAILED",
-        message: `Failed to estimate deployment fee for "${programId}": ${err instanceof Error ? err.message : String(err)}`,
-      },
-    };
-  }
-}
-
-/**
  * Check that the deployer's balance is sufficient to cover estimated fees.
  * Warns if balance < 1.5x total estimate, errors if < 1x.
  * HTTP only.
@@ -268,6 +200,10 @@ export interface RunDeployPreflightOptions {
   connection: NetworkConnection;
   networkConfig: ResolvedNetworkConfig;
   config: LionDenResolvedConfig;
+  /** Backend used for fee estimation and signer-address derivation. */
+  backend: DeployBackend;
+  /** Context for `backend`; built from the same connection. */
+  backendCtx: DeployBackendContext;
   skipDeployed: boolean;
   /** All program IDs being deployed in this run (for import availability checks) */
   deployTargets: Set<string>;
@@ -290,6 +226,8 @@ export async function runDeployPreflight(
     programs,
     connection,
     networkConfig,
+    backend,
+    backendCtx,
     skipDeployed,
     deployTargets,
     localSources,
@@ -383,14 +321,14 @@ export async function runDeployPreflight(
         }
       }
 
-      const { estimate, warning: feeWarning } = await checkFeeEstimate(
-        connection,
-        programId,
-        aleoSource,
-        importSourcesForFee,
-        signerPrivateKey,
-        opts.config.sdk.keyCache,
-        opts.config.sdk.logLevel,
+      const { estimate, warning: feeWarning } = await backend.estimateDeploymentFee(
+        {
+          programId,
+          aleoSource,
+          importSources: importSourcesForFee,
+          ...(signerPrivateKey !== undefined ? { signerPrivateKey } : {}),
+        },
+        backendCtx,
       );
       if (feeWarning) warnings.push(feeWarning);
 
@@ -407,27 +345,11 @@ export async function runDeployPreflight(
   // 5. Balance check (HTTP only, batch)
   if (!isDevnode && totalFeeEstimate !== undefined && totalFeeEstimate > 0n) {
     // Derive signer address if a signer key override is provided
-    let signerAddress: string | undefined;
-    if (signerPrivateKey) {
-      try {
-        const { createSdkObjects } = await import("@lionden/network");
-        const sdk = await createSdkObjects({
-          network: connection.networkId,
-          endpoint: connection.endpoint,
-          privateKey: signerPrivateKey,
-          apiKey: connection.apiKey,
-          egressPolicy: connection.egressPolicy,
-          logLevel: opts.config.sdk.logLevel,
-        });
-        const account = sdk.account as any;
-        signerAddress =
-          typeof account.address === "function"
-            ? account.address().to_string()
-            : String(account.address ?? account);
-      } catch {
-        // Best-effort; fall back to connection default
-      }
-    }
+    // Best-effort; `deriveAddress` returns undefined on failure and we fall back
+    // to the connection default.
+    const signerAddress = signerPrivateKey
+      ? await tryDeriveAddress(connection, signerPrivateKey)
+      : undefined;
     const { warning: balanceWarning, error: balanceError } = await checkBalanceSufficient(
       connection,
       totalFeeEstimate,

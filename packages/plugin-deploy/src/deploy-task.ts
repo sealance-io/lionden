@@ -1,9 +1,4 @@
-import type {
-  LionDenResolvedConfig,
-  ResolvedNetworkConfig,
-  ResolvedSdkKeyCacheConfig,
-  SdkLogLevel,
-} from "@lionden/config";
+import type { LionDenResolvedConfig } from "@lionden/config";
 import { isSignable, normalizeProgramId } from "@lionden/config";
 import {
   KeyArtifactsMetadataError,
@@ -24,7 +19,15 @@ import {
   type RenameProgramOptions,
   resolveDependencies,
 } from "@lionden/leo-compiler";
-import type { NetworkConnection, NetworkManager, SdkEgressPolicy } from "@lionden/network";
+import type { NetworkManager } from "@lionden/network";
+import {
+  buildBackendContext,
+  buildPreflightContext,
+  resolveDeployBackend,
+} from "./deploy-backend/resolve.js";
+import type { DeployBackendRequest } from "./deploy-backend/types.js";
+import { resolveDeployerAddress } from "./deployer-address.js";
+import { collectLocalDeploymentClosure } from "./deployment-closure.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type {
   CompleteDeploymentRecord,
@@ -121,6 +124,20 @@ export async function deployAction(
   const programsDir = config.paths.programs;
   const manager = lre.deployments as DeploymentManager | null;
 
+  // 0. Resolve the deploy backend and prove it can run, before compiling or
+  // connecting. A backend that cannot run must fail here rather than after the
+  // user has waited through a full compile.
+  const networkConfig = config.networks[networkName];
+  if (!networkConfig) {
+    throw new DeployError(
+      `Network "${networkName}" not found in config. ` +
+        `Available: ${Object.keys(config.networks).join(", ") || "none"}`,
+    );
+  }
+  const backendPreflightCtx = buildPreflightContext(config, networkName);
+  const backend = resolveDeployBackend(backendPreflightCtx);
+  await backend.preflight(backendPreflightCtx);
+
   // 1. Compile first (unless --noCompile or --preflight). Forward the effective
   // deployment network (when explicitly supplied) so the implicit compile
   // resolves imported on-chain sources + `.env` from the deploying network.
@@ -173,16 +190,9 @@ export async function deployAction(
   }
 
   // 5. Connect to network
-  const networkConfig = config.networks[networkName];
-  if (!networkConfig) {
-    throw new DeployError(
-      `Network "${networkName}" not found in config. ` +
-        `Available: ${Object.keys(config.networks).join(", ") || "none"}`,
-    );
-  }
-
   const networkManager = lre.network as NetworkManager;
   const connection = await networkManager.connect(networkName);
+  const backendCtx = buildBackendContext(config, connection, networkName);
 
   // 5b. Resolve deployer signer from namedAccounts (if configured)
   let deployerSignerKey: string | undefined;
@@ -241,6 +251,8 @@ export async function deployAction(
     connection,
     networkConfig,
     config,
+    backend,
+    backendCtx,
     skipDeployed,
     deployTargets,
     localSources,
@@ -284,10 +296,13 @@ export async function deployAction(
     }
   }
 
-  // 13. If --dry-run, build transactions without broadcasting (devnode only).
+  // 13. If --dry-run, build transactions without broadcasting.
   // This must happen BEFORE reconciliation so dry-run never mutates deployment state.
   if (options.dryRun) {
-    if (connection.type !== "devnode") {
+    // Gate on the backend capability rather than the connection type: whether a
+    // transaction can be produced without broadcasting is a property of the
+    // backend. The SDK's HTTP path cannot (programManager.deploy is atomic).
+    if (!backend.capabilities.buildWithoutBroadcast) {
       throw new DeployError(
         `Dry-run is not supported for HTTP networks in v1. ` +
           `Use --preflight for validation without deployment.`,
@@ -299,22 +314,34 @@ export async function deployAction(
       const aleoSource = lre.artifacts.getAleoSource(programId);
       if (!aleoSource) continue;
 
-      const tx = await buildDeployTransaction({
-        programId,
-        aleoSource,
-        connection,
-        fee: options.priorityFee ?? config.deploy.defaultPriorityFee,
-        privateFee: config.deploy.privateFee,
-        signerPrivateKey: deployerSignerKey,
-        prove: options.prove,
-        keyCache: config.sdk.keyCache,
-        logLevel: config.sdk.logLevel,
-        egressPolicy: connection.egressPolicy,
-      });
+      const built = await backend.buildDeploy(
+        buildDeployRequest({
+          programId,
+          aleoSource,
+          renamePlan,
+          graph: preflightGraph,
+          programMap,
+          fee: options.priorityFee ?? config.deploy.defaultPriorityFee,
+          privateFee: config.deploy.privateFee,
+          signerPrivateKey: deployerSignerKey,
+          prove: options.prove,
+        }),
+        backendCtx,
+      );
+
+      // A backend that claims buildWithoutBroadcast must not broadcast. Treat a
+      // broadcast result here as a bug rather than silently accepting the txId —
+      // the user explicitly asked for no broadcast.
+      if (built.kind !== "built") {
+        throw new DeployError(
+          `Dry-run for "${programId}" expected an unbroadcast transaction, but the ` +
+            `"${backend.provider}" backend broadcast it (tx: ${built.txId}).`,
+        );
+      }
 
       dryRunResults.push({
         programId,
-        transaction: tx,
+        transaction: built.transaction,
         estimatedFee: 0n,
       });
     }
@@ -405,19 +432,27 @@ export async function deployAction(
       await manager.setPending(pending);
     }
 
-    // Build and broadcast
-    const txId = await deployToNetwork({
-      programId,
-      aleoSource,
-      connection,
-      fee,
-      privateFee,
-      signerPrivateKey: deployerSignerKey,
-      prove: options.prove,
-      keyCache: config.sdk.keyCache,
-      logLevel: config.sdk.logLevel,
-      egressPolicy: connection.egressPolicy,
-    });
+    // Build and broadcast. Backends that broadcast as part of building (the
+    // SDK's atomic HTTP path) return the txId directly; everything else hands
+    // back a transaction for us to submit.
+    const built = await backend.buildDeploy(
+      buildDeployRequest({
+        programId,
+        aleoSource,
+        renamePlan,
+        graph: preflightGraph,
+        programMap,
+        fee,
+        privateFee,
+        signerPrivateKey: deployerSignerKey,
+        prove: options.prove,
+      }),
+      backendCtx,
+    );
+    const txId =
+      built.kind === "broadcast"
+        ? built.txId
+        : await connection.broadcastTransaction(built.transaction);
 
     // Wait for confirmation
     let blockHeight = 0;
@@ -581,21 +616,9 @@ export function resolveDeployTargets(
     );
   }
 
-  // Collect transitive local program dependencies via graph traversal
-  const needed = new Set<string>();
-  collectTransitiveProgramDeps(normalized, graph, programMap, needed);
-
-  // Return in topological order from the graph
-  const ordered: string[] = [];
-  for (const unit of graph.order) {
-    if (unit.kind === "program" && needed.has(unit.programId)) {
-      ordered.push(unit.programId);
-    }
-  }
-  // Ensure target is included even if not in graph
-  if (!ordered.includes(normalized)) ordered.push(normalized);
-
-  return ordered;
+  // Collect transitive local program dependencies (includes the target itself),
+  // returned in topological order from the graph.
+  return collectLocalDeploymentClosure(normalized, graph, programMap);
 }
 
 function validateDeployRename(
@@ -698,169 +721,54 @@ function graphWithRenamedPrimary(
   return { ...graph, imports };
 }
 
-function collectTransitiveProgramDeps(
-  unitId: string,
-  graph: DependencyGraph,
-  programMap: ReadonlyMap<string, DiscoveredProgram>,
-  collected: Set<string>,
-  visited: Set<string> = new Set(),
-): void {
-  if (visited.has(unitId)) return;
-  visited.add(unitId);
-
-  if (programMap.has(unitId)) {
-    collected.add(unitId);
-  }
-
-  const deps = graph.imports.get(unitId) ?? [];
-  for (const dep of deps) {
-    if (graph.networkDeps.has(dep)) continue;
-    collectTransitiveProgramDeps(dep, graph, programMap, collected, visited);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Transaction building — split for dry-run support
 // ---------------------------------------------------------------------------
 
-interface BuildDeployOptions {
+interface BuildDeployRequestOptions {
   programId: string;
   aleoSource: string;
-  connection: NetworkConnection;
+  renamePlan: RenameProgramOptions | null;
+  graph: DependencyGraph;
+  programMap: ReadonlyMap<string, DiscoveredProgram>;
   fee: number;
   privateFee: boolean;
-  /** Override the signing key. When set, overrides connection.privateKey. */
   signerPrivateKey?: string;
-  /** Use the standard SDK deployment builder instead of the devnode fast-path. */
   prove?: boolean;
-  /** Resolved SDK key-cache config from `lre.config.sdk.keyCache`. */
-  keyCache?: ResolvedSdkKeyCacheConfig;
-  /** Resolved SDK log level from `lre.config.sdk.logLevel`. */
-  logLevel?: SdkLogLevel;
-  /** Egress policy from `connection.egressPolicy`. */
-  egressPolicy: SdkEgressPolicy;
 }
 
 /**
- * Build a deployment transaction without broadcasting.
- * Only supported on devnode (HTTP deploy() is atomic).
+ * Assemble a backend request for one program.
+ *
+ * The local dependency closure is computed per program rather than reused from
+ * target resolution: `resolveDeployTargets` only traverses when a specific
+ * `--program` was requested, so a full deploy has no per-program closure to
+ * reuse. It is unused by the SDK backend but required by any backend that
+ * operates on a Leo package, since those deploy a package's whole local closure
+ * by default and must be narrowed to one program.
+ *
+ * Traversal roots at the *source* program id for a renamed deploy — the
+ * effective (post-rename) id is not a node in the source graph.
  */
-export async function buildDeployTransaction(opts: BuildDeployOptions): Promise<unknown> {
-  if (opts.connection.type !== "devnode") {
-    throw new DeployError(
-      `Dry-run is not supported for HTTP networks in v1. ` +
-        `Use --preflight for validation without deployment.`,
-    );
-  }
+function buildDeployRequest(opts: BuildDeployRequestOptions): DeployBackendRequest {
+  const isRenamed = opts.renamePlan?.targetProgramId === opts.programId;
+  const rootId = isRenamed ? opts.renamePlan!.sourceProgramId : opts.programId;
+  const localDependencyIds = collectLocalDeploymentClosure(
+    rootId,
+    opts.graph,
+    opts.programMap,
+  ).filter((id) => id !== rootId);
 
-  const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
-    await import("@lionden/network");
-
-  await initConsensusHeights();
-  if (!opts.prove) {
-    await checkDevnodeSdkSupport();
-  }
-
-  const sdk = await createSdkObjects({
-    network: opts.connection.networkId,
-    endpoint: opts.connection.endpoint,
-    privateKey: opts.signerPrivateKey ?? opts.connection.privateKey,
-    apiKey: opts.connection.apiKey,
-    keyCache: opts.keyCache,
-    logLevel: opts.logLevel,
-    egressPolicy: opts.egressPolicy,
-  });
-
-  return captureSdkCall(sdk.diagnostics, { operation: "deploy", programId: opts.programId }, () =>
-    buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts),
-  );
-}
-
-type DeploymentProgramManager = {
-  buildDevnodeDeploymentTransaction(options: {
-    program: string;
-    priorityFee: number;
-    privateFee: boolean;
-  }): Promise<unknown>;
-  buildDeploymentTransaction?: (
-    program: string,
-    priorityFee: number,
-    privateFee: boolean,
-  ) => Promise<unknown>;
-};
-
-async function buildDevnodeDeploymentTransactionForMode(
-  programManager: DeploymentProgramManager,
-  opts: BuildDeployOptions,
-): Promise<unknown> {
-  if (opts.prove === true) {
-    if (typeof programManager.buildDeploymentTransaction !== "function") {
-      throw new DeployError(
-        `Unable to deploy "${opts.programId}" with the standard deployment builder: ` +
-          `the installed @provablehq/sdk does not expose buildDeploymentTransaction().`,
-      );
-    }
-    return programManager.buildDeploymentTransaction(opts.aleoSource, opts.fee, opts.privateFee);
-  }
-
-  return programManager.buildDevnodeDeploymentTransaction({
-    program: opts.aleoSource,
+  return {
+    programId: opts.programId,
+    ...(isRenamed ? { sourceProgramId: opts.renamePlan!.sourceProgramId } : {}),
+    aleoSource: opts.aleoSource,
+    localDependencyIds,
     priorityFee: opts.fee,
     privateFee: opts.privateFee,
-  });
-}
-
-/**
- * Full deploy: build and broadcast. Returns transaction ID.
- */
-async function deployToNetwork(opts: BuildDeployOptions): Promise<string> {
-  const { aleoSource, connection, fee, privateFee } = opts;
-
-  const { createSdkObjects, captureSdkCall, checkDevnodeSdkSupport, initConsensusHeights } =
-    await import("@lionden/network");
-
-  const signerKey = opts.signerPrivateKey ?? connection.privateKey;
-
-  if (connection.type === "devnode") {
-    await initConsensusHeights();
-    if (!opts.prove) {
-      await checkDevnodeSdkSupport();
-    }
-
-    const sdk = await createSdkObjects({
-      network: connection.networkId,
-      endpoint: connection.endpoint,
-      privateKey: signerKey,
-      apiKey: connection.apiKey,
-      keyCache: opts.keyCache,
-      logLevel: opts.logLevel,
-      egressPolicy: opts.egressPolicy,
-    });
-
-    // Only the build is wrapped; broadcast surfaces its own HTTP error.
-    const tx = await captureSdkCall(
-      sdk.diagnostics,
-      { operation: "deploy", programId: opts.programId },
-      () => buildDevnodeDeploymentTransactionForMode(sdk.programManager, opts),
-    );
-
-    return connection.broadcastTransaction(tx);
-  }
-
-  // HTTP: atomic build+broadcast
-  const sdk = await createSdkObjects({
-    network: connection.networkId,
-    endpoint: connection.endpoint,
-    privateKey: signerKey,
-    apiKey: connection.apiKey,
-    keyCache: opts.keyCache,
-    logLevel: opts.logLevel,
-    egressPolicy: opts.egressPolicy,
-  });
-
-  return captureSdkCall(sdk.diagnostics, { operation: "deploy", programId: opts.programId }, () =>
-    sdk.programManager.deploy(aleoSource, fee, privateFee),
-  );
+    ...(opts.signerPrivateKey !== undefined ? { signerPrivateKey: opts.signerPrivateKey } : {}),
+    prove: opts.prove === true,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -872,39 +780,4 @@ export { readLeoSourcesFromDir } from "./leo-sources.js";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Resolve the deployer's address from the network config or connection.
- * Best-effort — returns undefined if derivation fails.
- */
-async function resolveDeployerAddress(
-  connection: NetworkConnection,
-  networkConfig: ResolvedNetworkConfig,
-  signerPrivateKey?: string,
-): Promise<string | undefined> {
-  const privateKey =
-    signerPrivateKey ??
-    connection.privateKey ??
-    (networkConfig.type === "devnode" && networkConfig.accounts.length > 0
-      ? networkConfig.accounts[0]!.privateKey
-      : undefined);
-
-  if (!privateKey) return undefined;
-
-  try {
-    const { createSdkObjects } = await import("@lionden/network");
-    const sdk = await createSdkObjects({
-      network: connection.networkId,
-      endpoint: connection.endpoint,
-      privateKey,
-      egressPolicy: connection.egressPolicy,
-    });
-    const account = sdk.account as any;
-    return typeof account.address === "function"
-      ? account.address().to_string()
-      : String(account.address ?? account);
-  } catch {
-    return undefined;
-  }
 }

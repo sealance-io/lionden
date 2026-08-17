@@ -42,6 +42,7 @@ export type {
   CodegenConfig,
   CompilerConfig,
   DeployConfig,
+  DeployProvider,
   DevnodeNetworkConfig,
   DynamicRecordHelperConfig,
   ExecutionConfig,
@@ -76,4 +77,4 @@ export type {
   TaskDefinitionRef,
   TestingConfig,
 } from "./types.js";
-export { SDK_LOG_LEVELS } from "./types.js";
+export { DEPLOY_PROVIDERS, SDK_LOG_LEVELS } from "./types.js";

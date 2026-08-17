@@ -158,9 +158,16 @@ export class NamedAccountManager {
 
 /**
  * Derive the Aleo address for a private key using the Provable SDK.
- * Address derivation is a local operation — no network calls required.
+ *
+ * Address derivation is a pure local operation — no network calls, and
+ * deliberately no `keyCache`, so it never provisions a filesystem key store as
+ * a side effect. Exported because deploy, upgrade, and preflight each need to
+ * derive an address for a signer key that is *not* the connection's own.
+ *
+ * Throws if derivation fails. Callers that treat an underivable address as
+ * "unknown" rather than fatal must catch.
  */
-async function deriveAddressFromPrivateKey(
+export async function deriveAddressFromPrivateKey(
   privateKey: string,
   network: AleoNetwork,
   endpoint: string,
