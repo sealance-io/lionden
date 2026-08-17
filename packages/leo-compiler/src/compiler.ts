@@ -453,14 +453,23 @@ function copyArtifacts(
   return normalized;
 }
 
-interface ResolvedBuildArtifacts {
+export interface ResolvedBuildArtifacts {
   readonly abiPath?: string;
   readonly aleoPath?: string;
   readonly keyFiles: readonly string[];
   readonly interfacesDirs: readonly string[];
 }
 
-function resolveBuildArtifacts(buildDir: string, id: string): ResolvedBuildArtifacts {
+/**
+ * Probe a materialized Leo package's `build/` directory for its emitted
+ * artifacts.
+ *
+ * Exported so consumers outside the compiler — notably the deploy backends,
+ * which must hash the built `.aleo` before and after handing the package to an
+ * external tool — resolve the `build/<name>` layout through this one function
+ * rather than reimplementing it and drifting from the compiler.
+ */
+export function resolveBuildArtifacts(buildDir: string, id: string): ResolvedBuildArtifacts {
   if (!fs.existsSync(buildDir)) {
     return { keyFiles: [], interfacesDirs: [] };
   }

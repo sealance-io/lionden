@@ -8,7 +8,7 @@
 import type { ResolvedNamedAccountsConfig } from "@lionden/config";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEVNODE_ACCOUNTS } from "./accounts.js";
-import { NamedAccountManager } from "./named-account-manager.js";
+import { deriveAddressFromPrivateKey, NamedAccountManager } from "./named-account-manager.js";
 
 // Mock the dynamic sdk-adapter import used for address derivation
 vi.mock("./sdk-adapter.js", () => ({
@@ -240,5 +240,59 @@ describe("NamedAccountManager", () => {
     // The cache is unaffected: the next call still returns the original value.
     const cached = await manager.resolveForNetwork(makeOpts());
     expect(cached["treasury"]!.address).toBe(TREASURY_ADDR);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deriveAddressFromPrivateKey
+// ---------------------------------------------------------------------------
+
+describe("deriveAddressFromPrivateKey", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("never passes keyCache — derivation must not provision a key store", async () => {
+    mockCreateSdkObjects.mockResolvedValue({
+      account: { address: () => ({ to_string: () => DERIVED_ADDR }) },
+    } as never);
+
+    const egressPolicy = makeOpts().egressPolicy;
+    const address = await deriveAddressFromPrivateKey(
+      PRIVATE_KEY,
+      "testnet",
+      "http://127.0.0.1:3030",
+      "secret-api-key",
+      egressPolicy,
+    );
+
+    expect(address).toBe(DERIVED_ADDR);
+    expect(mockCreateSdkObjects).toHaveBeenCalledTimes(1);
+
+    const opts = mockCreateSdkObjects.mock.calls[0]![0];
+    // The property that matters: a `filesystem` key cache would create a
+    // directory as a side effect of reading an address.
+    expect(opts).not.toHaveProperty("keyCache");
+    expect(opts).toMatchObject({
+      network: "testnet",
+      endpoint: "http://127.0.0.1:3030",
+      privateKey: PRIVATE_KEY,
+      apiKey: "secret-api-key",
+      egressPolicy,
+    });
+  });
+
+  it("propagates derivation failures", async () => {
+    mockCreateSdkObjects.mockRejectedValue(new Error("wasm exploded"));
+
+    await expect(
+      deriveAddressFromPrivateKey(
+        PRIVATE_KEY,
+        "testnet",
+        "http://127.0.0.1:3030",
+        undefined,
+        makeOpts().egressPolicy,
+      ),
+    ).rejects.toThrow("wasm exploded");
   });
 });

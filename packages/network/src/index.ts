@@ -12,7 +12,7 @@ export {
   resolveDevnodeBackend,
 } from "./devnode-backend.js";
 export { DevnodeManager } from "./devnode-manager.js";
-export { NamedAccountManager } from "./named-account-manager.js";
+export { deriveAddressFromPrivateKey, NamedAccountManager } from "./named-account-manager.js";
 export { NetworkManagerImpl } from "./network-manager.js";
 export {
   type CreateSdkObjectsOptions,

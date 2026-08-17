@@ -1,6 +1,8 @@
 import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
+import type { NetworkConnection } from "@lionden/network";
 import { createMockConfig, createMockConnection } from "@lionden/test-internals";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildBackendContext, resolveDeployBackend } from "./deploy-backend/resolve.js";
 import type { DeploymentRecord } from "./deployment-types.js";
 import {
   checkAlreadyDeployed,
@@ -228,6 +230,15 @@ describe("runDeployPreflight", () => {
     ephemeral: false,
   };
 
+  /**
+   * The real SDK backend, over the mocked `createSdkObjects` above — the seam is
+   * not what these tests exercise, so it stays live rather than being faked.
+   */
+  function makeBackend(conn: NetworkConnection) {
+    const backendCtx = buildBackendContext(config, conn, "devnode");
+    return { backend: resolveDeployBackend(backendCtx), backendCtx };
+  }
+
   it("skips deployed programs on devnode when skipDeployed=true", async () => {
     const conn = createMockConnection({
       getProgramSource: vi.fn().mockResolvedValue("program hello.aleo;"),
@@ -243,6 +254,7 @@ describe("runDeployPreflight", () => {
       connection: conn,
       networkConfig: devnodeNetworkConfig,
       config,
+      ...makeBackend(conn),
       skipDeployed: true,
       deployTargets: new Set(["hello.aleo"]),
       localSources: new Map(),
@@ -269,6 +281,7 @@ describe("runDeployPreflight", () => {
       connection: conn,
       networkConfig: devnodeNetworkConfig,
       config,
+      ...makeBackend(conn),
       skipDeployed: true,
       deployTargets: new Set(["hello.aleo"]),
       localSources: new Map(),
@@ -294,6 +307,7 @@ describe("runDeployPreflight", () => {
       connection: conn,
       networkConfig: devnodeNetworkConfig,
       config,
+      ...makeBackend(conn),
       skipDeployed: true,
       deployTargets: new Set(["hello.aleo"]),
       localSources: new Map(),
@@ -321,6 +335,7 @@ describe("runDeployPreflight", () => {
       connection: conn,
       networkConfig: devnodeNetworkConfig,
       config,
+      ...makeBackend(conn),
       skipDeployed: true,
       deployTargets: new Set(["hello.aleo"]),
       localSources: new Map(),
@@ -337,6 +352,7 @@ describe("runDeployPreflight", () => {
       connection: conn,
       networkConfig: devnodeNetworkConfig,
       config,
+      ...makeBackend(conn),
       skipDeployed: true,
       deployTargets: new Set(["hello.aleo"]),
       localSources: new Map(),
@@ -369,6 +385,7 @@ describe("runDeployPreflight", () => {
       connection: conn,
       networkConfig: httpNetworkConfig,
       config,
+      ...makeBackend(conn),
       skipDeployed: true,
       deployTargets: new Set(["alpha.aleo", "beta.aleo"]),
       localSources: new Map(),

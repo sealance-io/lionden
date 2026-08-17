@@ -49,6 +49,8 @@ export {
   defaultFetchNetworkDep,
   type FetchNetworkDep,
   networkDepCacheScope,
+  type ResolvedBuildArtifacts,
+  resolveBuildArtifacts,
 } from "./compiler.js";
 // Dependency resolver
 export {
