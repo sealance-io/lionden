@@ -1,0 +1,114 @@
+
+
+📢 Using the following consensus heights: 0,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+  To override, pass in `--consensus-heights` or override the environment variable `CONSENSUS_VERSION_HEIGHTS`.
+
+Attempting to determine the consensus version from the latest block height at http://127.0.0.1:3030...
+
+🛠️  Deployment Plan Summary
+──────────────────────────────────────────────
+🔧 Configuration:
+  Private Key:        APrivateKey1zkp8CZNn3yeC...
+  Address:            aleo1rhgdu77hgyqd3xjj8uc...
+  Endpoint:           http://127.0.0.1:3030
+  Network:            testnet
+  Consensus Version:  17
+
+📦 Deployment Tasks:
+  • spike_a.aleo  │ priority fee: 0  │ fee record: no (public fee)
+  • zspike_a.aleo  │ priority fee: 0  │ fee record: no (public fee)
+  • spike_main.aleo  │ priority fee: 0  │ fee record: no (public fee)
+
+⚙️ Actions:
+  • Transaction(s) will NOT be printed to the console.
+  • Transaction(s) will be saved to <SPIKE_ROOT>/captures/deploy-multi/save
+  • Transaction(s) will NOT be broadcast to the network.
+──────────────────────────────────────────────
+
+
+🔧 Your program 'spike_a.aleo' has the following constructor.
+──────────────────────────────────────────────
+constructor:
+    assert.eq edition 0u16;
+──────────────────────────────────────────────
+Once it is deployed, it CANNOT be changed.
+
+📦 Creating deployment transaction for 'spike_a.aleo'...
+
+⚠️  Skipping deployment certificate and verifier key generation as per user request.
+
+
+📊 Deployment Summary for spike_a.aleo
+──────────────────────────────────────────────
+  Program Size:         0.43 KB / 2000.00 KB
+💰 Cost Breakdown (credits)
+  Transaction Storage:  0.978000
+  Program Synthesis:    0.030041
+  Namespace:            1000.000000
+  Constructor:          0.002000
+  Priority Fee:         0.000000
+  Total Fee:            1001.010041
+  Function 'bump'
+    Total Execution Cost:   0.001809
+    |- Storage Cost:        0.001296
+    |- Finalize Cost:       0.000513
+──────────────────────────────────────────────
+
+🔧 Your program 'zspike_a.aleo' has the following constructor.
+──────────────────────────────────────────────
+constructor:
+    assert.eq edition 0u16;
+──────────────────────────────────────────────
+Once it is deployed, it CANNOT be changed.
+
+📦 Creating deployment transaction for 'zspike_a.aleo'...
+
+⚠️  Skipping deployment certificate and verifier key generation as per user request.
+
+
+📊 Deployment Summary for zspike_a.aleo
+──────────────────────────────────────────────
+  Program Size:         0.43 KB / 2000.00 KB
+💰 Cost Breakdown (credits)
+  Transaction Storage:  0.984000
+  Program Synthesis:    0.030041
+  Namespace:            100.000000
+  Constructor:          0.002000
+  Priority Fee:         0.000000
+  Total Fee:            101.016041
+  Function 'accrue'
+    Total Execution Cost:   0.001815
+    |- Storage Cost:        0.001302
+    |- Finalize Cost:       0.000513
+──────────────────────────────────────────────
+
+🔧 Your program 'spike_main.aleo' has the following constructor.
+──────────────────────────────────────────────
+constructor:
+    assert.eq edition 0u16;
+──────────────────────────────────────────────
+Once it is deployed, it CANNOT be changed.
+
+📦 Creating deployment transaction for 'spike_main.aleo'...
+
+⚠️  Skipping deployment certificate and verifier key generation as per user request.
+
+
+📊 Deployment Summary for spike_main.aleo
+──────────────────────────────────────────────
+  Program Size:         0.47 KB / 2000.00 KB
+💰 Cost Breakdown (credits)
+  Transaction Storage:  1.061000
+  Program Synthesis:    0.030041
+  Namespace:            1.000000
+  Constructor:          0.002000
+  Priority Fee:         0.000000
+  Total Fee:            2.093041
+  Function 'drive'
+    Total Execution Cost:   0.004028
+    |- Storage Cost:        0.002961
+    |- Finalize Cost:       0.001067
+──────────────────────────────────────────────
+💾 Saving deployment for spike_a.aleo at <SPIKE_ROOT>/captures/deploy-multi/save/spike_a.aleo.deployment.json
+💾 Saving deployment for zspike_a.aleo at <SPIKE_ROOT>/captures/deploy-multi/save/zspike_a.aleo.deployment.json
+💾 Saving deployment for spike_main.aleo at <SPIKE_ROOT>/captures/deploy-multi/save/spike_main.aleo.deployment.json

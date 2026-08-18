@@ -1,0 +1,2 @@
+spike_a.aleo.deployment.json
+spike_main.aleo.deployment.json

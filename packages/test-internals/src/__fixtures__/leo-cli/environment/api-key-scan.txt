@@ -1,0 +1,63 @@
+Evidence for: Leo 4.3.2 offers no way to authenticate its endpoint queries.
+Binary: <HOME>/.cargo/bin/leo
+
+==============================================================
+1. Option surface (the decisive evidence)
+==============================================================
+$ leo deploy --help  | grep -icE "api.?key|authorization|bearer|header|token"
+0
+$ leo upgrade --help | grep -icE "api.?key|authorization|bearer|header|token"
+0
+
+Zero for both. The full option lists are in leo-deploy-help.txt and
+leo-upgrade-help.txt. The only endpoint-related options are --endpoint,
+--network, --network-retries, --consensus-version and --consensus-heights.
+
+==============================================================
+2. Narrow binary scan: is there any api-key/bearer machinery at all?
+==============================================================
+$ strings "$LEO_BIN" | grep -icE "bearer|x-api-key|api[-_]?key"
+0
+
+Zero matches. No token, key or bearer plumbing exists to configure.
+
+==============================================================
+3. What the broad 'authorization' grep actually finds, and why it
+   is not evidence of endpoint auth support
+==============================================================
+$ strings "$LEO_BIN" | grep -icE "authorization"
+26
+
+Those hits are of three kinds, none of them an Aleo endpoint auth path:
+
+  a) HTTP header-name tables embedded by the linked HTTP stacks
+     (h2's HPACK static table, ureq/hyper header lists). These list
+     every standard header name, so 'authorization' and
+     'proxy-authorization' appear in any binary linking them.
+  b) Proxy and git-clone auth: 'Proxy-Authorization: basic ',
+     'Authorization: Basic ', 'proxy authorization required' — used
+     when fetching git dependencies and when tunnelling through a proxy.
+  c) snarkVM's own domain use of the word, which is unrelated to HTTP:
+     'Cannot compute the execution ID for an empty authorization.',
+     'No more requests in the authorization.' — an Authorization is
+     snarkVM's pre-execution request object.
+
+Verbatim sample of the non-header-table matches:
+    ! is already in the authorization.
+    ?The number of requests in the authorization must be less than '
+    /Users/runner/.cargo/git/checkouts/snarkvm-cca64a3992502984/b7f0859/synthesizer/process/src/stack/authorizatio
+    Authorization failed: 
+    Authorization: Basic 
+    Cannot compute the execution ID for an empty authorization.Output record must be Version 1 on or after Consens
+    description() is deprecated; use Displaycalled `Result::unwrap()` on an `Err` valueureq::errorPeer disconnecte
+    Excess bits are not zeroNot enough bits for identifier literalSubdag cannot be emptySubdag structure does not 
+    FromBytes::read failedBadHeaderUnsupportedVersionMethodVersionMismatchTooManyHostHeadersTooManyContentLengthHe
+    Porttunnel error: failed to create underlying connectionio error establishing tunnelmissing destination hostpr
+    Process authorization failed: 
+    Proxy-Authorization: 
+    Proxy-Authorization: basic 
+    secondsoffsetStatusCodeBadUriIoTimeoutHostNotFoundRedirectFailedInvalidProxyUrlTlsPemRustlsLargeResponseHeader
+    Stack authorization failed: 
+    The namespace cost computation overflowed for a deploymentThe total cost computation overflowed for a deployme
+    Tree size must be less than 2^52-0123456789fieldInvalid field from bitsThe field is greater than or equal to t
+    unsupported http versionmore than one host headermore than one content-length headerhost header is not a strin

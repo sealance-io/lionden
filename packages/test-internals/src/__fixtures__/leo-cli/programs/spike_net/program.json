@@ -1,0 +1,14 @@
+{
+  "program": "spike_net.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "leo": "4.3.2",
+  "dependencies": [
+    {
+      "name": "credits.aleo",
+      "location": "network"
+    }
+  ],
+  "dev_dependencies": null
+}
