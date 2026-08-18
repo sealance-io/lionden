@@ -106,6 +106,12 @@ export interface DevnodeNetworkConfig {
    * Default: true (devnode chain dies on process exit).
    */
   readonly ephemeral?: boolean;
+  /**
+   * Backend that builds deploy/upgrade transactions on this network.
+   * Overrides `deploy.backend`; itself overridden by `LIONDEN_DEPLOY_BACKEND`
+   * and `--deploy-backend`. When omitted, `deploy.backend` applies.
+   */
+  readonly deployBackend?: DeployProvider;
 }
 
 export interface HttpNetworkConfig {
@@ -125,6 +131,12 @@ export interface HttpNetworkConfig {
    * Default: false (HTTP chains persist across restarts).
    */
   readonly ephemeral?: boolean;
+  /**
+   * Backend that builds deploy/upgrade transactions on this network.
+   * Overrides `deploy.backend`; itself overridden by `LIONDEN_DEPLOY_BACKEND`
+   * and `--deploy-backend`. When omitted, `deploy.backend` applies.
+   */
+  readonly deployBackend?: DeployProvider;
 }
 
 export type NetworkUserConfig = DevnodeNetworkConfig | HttpNetworkConfig;
@@ -329,7 +341,44 @@ export interface TestingConfig {
 export const DEPLOY_PROVIDERS = ["sdk", "leo"] as const;
 export type DeployProvider = (typeof DEPLOY_PROVIDERS)[number];
 
+/**
+ * How the Leo backend's output is surfaced.
+ *
+ * - `"forward"`: stream Leo's stdout/stderr through to the console as it runs.
+ * - `"quiet-buffered"`: buffer both and print only on failure.
+ *
+ * There is deliberately no `"inherit"` mode. Inherited stdio is wired straight
+ * to the parent's file descriptors and never passes through JS, so the secret
+ * redaction applied to every forwarded line could not hold.
+ */
+export const DEPLOY_LEO_LOG_MODES = ["forward", "quiet-buffered"] as const;
+export type DeployLeoLogMode = (typeof DEPLOY_LEO_LOG_MODES)[number];
+
+/**
+ * Tuning for the Leo deploy backend. Ignored entirely when the effective
+ * backend is `"sdk"`.
+ *
+ * There is deliberately no `extraFlags` passthrough: an unrestricted one could
+ * inject `--broadcast`, `--private-key`, `--endpoint`, `--save`, `--skip`, or
+ * `--no-cache`, each of which breaks a guarantee this backend relies on.
+ */
+export interface DeployLeoConfig {
+  /** Per-invocation timeout in ms. `0` disables the timeout. Default: 1800000 (30 min) */
+  readonly timeout?: number;
+  /** How to surface Leo's output. Default: "forward" */
+  readonly logMode?: DeployLeoLogMode;
+}
+
 export interface DeployConfig {
+  /**
+   * Which backend builds deploy/upgrade transactions. Default: "sdk".
+   *
+   * Overridden per network by `networks.<name>.deployBackend`, and for a single
+   * invocation by `LIONDEN_DEPLOY_BACKEND` or `--deploy-backend`.
+   */
+  readonly backend?: DeployProvider;
+  /** Leo-backend tuning. Ignored when the effective backend is "sdk". */
+  readonly leo?: DeployLeoConfig;
   /** Default priority fee in microcredits. Default: 0 */
   readonly defaultPriorityFee?: number;
   /** Pay fees from private records instead of public balance. Default: false */
@@ -486,6 +535,12 @@ export interface ResolvedTestingConfig {
   readonly autoStartDevnode: boolean;
 }
 
+/** All fields required after defaulting, mirroring `ResolvedSdkKeyCacheConfig`. */
+export interface ResolvedDeployLeoConfig {
+  readonly timeout: number;
+  readonly logMode: DeployLeoLogMode;
+}
+
 export interface ResolvedDeployConfig {
   readonly defaultPriorityFee: number;
   readonly privateFee: boolean;
@@ -495,6 +550,9 @@ export interface ResolvedDeployConfig {
   readonly skipDeployed: boolean;
   readonly interDeploymentDelay?: number;
   readonly autoExport: boolean;
+  /** Project-wide backend default. The lowest-precedence selection layer. */
+  readonly backend: DeployProvider;
+  readonly leo: ResolvedDeployLeoConfig;
 }
 
 export interface ResolvedSdkConfig {
@@ -542,6 +600,11 @@ export interface ResolvedDevnodeNetworkConfig {
   readonly clearStorageOnStart?: boolean;
   /** Deployment state ephemeral mode. Default: true (devnode chain dies on exit). */
   readonly ephemeral: boolean;
+  /**
+   * Per-network deploy backend. Stays `undefined` when unset so the selection
+   * ladder can distinguish "not configured" from "explicitly sdk".
+   */
+  readonly deployBackend?: DeployProvider;
 }
 
 export interface ResolvedHttpNetworkConfig {
@@ -552,6 +615,11 @@ export interface ResolvedHttpNetworkConfig {
   readonly apiKey?: string;
   /** Deployment state ephemeral mode. Default: false (HTTP chains persist). */
   readonly ephemeral: boolean;
+  /**
+   * Per-network deploy backend. Stays `undefined` when unset so the selection
+   * ladder can distinguish "not configured" from "explicitly sdk".
+   */
+  readonly deployBackend?: DeployProvider;
 }
 
 export type ResolvedNetworkConfig = ResolvedDevnodeNetworkConfig | ResolvedHttpNetworkConfig;

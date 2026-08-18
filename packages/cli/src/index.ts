@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { LionDenUserConfig } from "@lionden/config";
+import { DEPLOY_PROVIDERS, type LionDenUserConfig } from "@lionden/config";
 import {
   collectGlobalOptions,
   createLre,
@@ -119,6 +119,21 @@ export async function main(): Promise<void> {
     // Seed the explicit --network into globalOptions so the test task can bridge it
     // to Vitest workers (LIONDEN_NETWORK). Other tasks keep reading config.defaultNetwork.
     globalOptions["network"] = requestedNetwork;
+  }
+
+  // Reject an unknown --deploy-backend value here, following the --network
+  // precedent above. Config resolution and plugin loading have both already
+  // run, so this saves neither — what it prevents is dispatching a task, and
+  // therefore compiling and connecting, on a typo. resolveDeployBackendOption()
+  // validates independently for programmatic LRE use, which never reaches here.
+  const requestedDeployBackend = (parsed.globalArgs as Record<string, unknown>)["deployBackend"];
+  if (typeof requestedDeployBackend === "string" && requestedDeployBackend !== "") {
+    if (!(DEPLOY_PROVIDERS as readonly string[]).includes(requestedDeployBackend)) {
+      throw new Error(
+        `Deploy backend "${requestedDeployBackend}" (from --deploy-backend) is not recognized. ` +
+          `Available backends: ${DEPLOY_PROVIDERS.join(", ")}.`,
+      );
+    }
   }
 
   // Seed the built-in --prove preference into globalOptions so deploy/upgrade/

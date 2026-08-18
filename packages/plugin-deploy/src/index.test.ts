@@ -1,7 +1,13 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { collectGlobalOptions, createLre } from "@lionden/core";
+import type { LionDenResolvedConfig } from "@lionden/config";
+import {
+  ArgumentType,
+  type ConfigValidationError,
+  collectGlobalOptions,
+  createLre,
+} from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
 import { createMockConfig, createMockConnection } from "@lionden/test-internals";
 import { describe, expect, it, vi } from "vitest";
@@ -98,6 +104,28 @@ describe("plugin-deploy", () => {
 
     const flagNames = upgradeTask!.flags?.map((f) => f.name) ?? [];
     expect(flagNames).toContain("skipConfirm");
+  });
+
+  it("registers --deploy-backend as a plugin global option, not a built-in", () => {
+    const defs = collectGlobalOptions([pluginDeploy]);
+    const entry = defs.get("deployBackend");
+    expect(entry).toBeDefined();
+    expect(entry!.definition.type).toBe(ArgumentType.STRING);
+    // BUILT_IN_GLOBAL_ARGUMENT_NAMES is a *reserved* list — collectGlobalOptions
+    // throws if a plugin shadows it, so registering successfully proves this is
+    // not a built-in.
+    expect(entry!.pluginId).toBe(pluginDeploy.id);
+  });
+
+  /**
+   * `cli/src/index.ts` seeds `definition.defaultValue` into `globalOptions`
+   * whenever the flag is absent. A default here would make `--deploy-backend`
+   * look explicitly set on every run, which outranks — and therefore erases —
+   * both config layers of the precedence ladder.
+   */
+  it("gives --deploy-backend no defaultValue, so config layers stay reachable", () => {
+    const entry = collectGlobalOptions([pluginDeploy]).get("deployBackend");
+    expect(entry!.definition.defaultValue).toBeUndefined();
   });
 
   it("tasks are registered in LRE", () => {
@@ -246,5 +274,77 @@ describe("config validation hooks", () => {
       const errorArray = Array.isArray(errors) ? errors : [];
       expect(errorArray).toHaveLength(0);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deploy-backend config validation
+//
+// This hook covers only what is unconditionally decidable from resolved config.
+// Whether the *effective* backend is compatible with the rest of the config
+// depends on --deploy-backend and LIONDEN_DEPLOY_BACKEND, neither of which
+// exists yet at config-resolution time — that is assertDeployBackendCompatible,
+// covered in deploy-backend/compat.test.ts.
+// ---------------------------------------------------------------------------
+
+describe("deploy-backend config validation", () => {
+  /** Unwraps the hook without the surrounding tests' vacuous-if pattern. */
+  function validate(config: LionDenResolvedConfig): ConfigValidationError[] {
+    const configHooks = pluginDeploy.hookHandlers!.config;
+    if (typeof configHooks === "function" || !configHooks?.validateResolvedConfig) {
+      throw new Error("plugin-deploy no longer registers a validateResolvedConfig hook");
+    }
+    const errors = configHooks.validateResolvedConfig(config);
+    if (!Array.isArray(errors)) throw new Error("expected a synchronous ConfigValidationError[]");
+    return errors;
+  }
+
+  function withDeploy(deploy: Record<string, unknown>): LionDenResolvedConfig {
+    return { ...mockConfig, deploy: { ...mockConfig.deploy, ...deploy } } as LionDenResolvedConfig;
+  }
+
+  it("accepts both known providers", () => {
+    expect(validate(withDeploy({ backend: "sdk" }))).toHaveLength(0);
+    expect(validate(withDeploy({ backend: "leo" }))).toHaveLength(0);
+  });
+
+  it("rejects an unknown deploy.backend", () => {
+    const errors = validate(withDeploy({ backend: "provable" }));
+    expect(errors.map((e) => e.path)).toContain("deploy.backend");
+  });
+
+  it("rejects an unknown per-network deployBackend, naming the network", () => {
+    const errors = validate({
+      ...mockConfig,
+      networks: {
+        devnode: { ...mockConfig.networks["devnode"]!, deployBackend: "leocli" },
+      },
+    } as unknown as LionDenResolvedConfig);
+    expect(errors.map((e) => e.path)).toContain("networks.devnode.deployBackend");
+  });
+
+  it("accepts a network that sets no deployBackend at all", () => {
+    expect(validate(mockConfig)).toHaveLength(0);
+  });
+
+  it("rejects a negative Leo timeout but accepts 0 as 'disabled'", () => {
+    expect(validate(withDeploy({ leo: { timeout: -1, logMode: "forward" } })).map((e) => e.path)) //
+      .toContain("deploy.leo.timeout");
+    expect(validate(withDeploy({ leo: { timeout: 0, logMode: "forward" } }))).toHaveLength(0);
+  });
+
+  it("rejects an unknown log mode", () => {
+    const errors = validate(withDeploy({ leo: { timeout: 1000, logMode: "buffered" } }));
+    expect(errors.map((e) => e.path)).toContain("deploy.leo.logMode");
+  });
+
+  /**
+   * "inherit" is the mode a user is most likely to reach for, and the reason it
+   * is absent is not guessable — the error has to say it.
+   */
+  it("explains why logMode 'inherit' is unsupported", () => {
+    const errors = validate(withDeploy({ leo: { timeout: 1000, logMode: "inherit" } }));
+    const logModeError = errors.find((e) => e.path === "deploy.leo.logMode");
+    expect(logModeError?.message).toMatch(/redacted/);
   });
 });

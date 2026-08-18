@@ -31,6 +31,8 @@ describe("resolveConfig", () => {
     expect(resolved.testing.autoStartDevnode).toBe(true);
     expect(resolved.deploy.defaultPriorityFee).toBe(0);
     expect(resolved.deploy.confirmTransactions).toBe(true);
+    expect(resolved.deploy.backend).toBe("sdk");
+    expect(resolved.deploy.leo).toEqual({ timeout: 1_800_000, logMode: "forward" });
     expect(resolved.sdk.logLevel).toBe("warn");
     expect(resolved.sdk.keyCache).toEqual({
       storage: "filesystem",
@@ -531,6 +533,77 @@ describe("resolveConfig", () => {
       projectRoot,
     );
     expect(Object.keys(resolved.codegen.dynamicRecords)).toEqual(["good"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deploy backend selection
+// ---------------------------------------------------------------------------
+
+describe("deploy backend resolution", () => {
+  const root = "/tmp/test-project";
+
+  it("carries deploy.backend and deploy.leo through from user config", async () => {
+    const resolved = await resolve(
+      { deploy: { backend: "leo", leo: { timeout: 0, logMode: "quiet-buffered" } } },
+      [],
+      root,
+    );
+    expect(resolved.deploy.backend).toBe("leo");
+    expect(resolved.deploy.leo).toEqual({ timeout: 0, logMode: "quiet-buffered" });
+  });
+
+  it("defaults each deploy.leo field independently", async () => {
+    const resolved = await resolve({ deploy: { leo: { logMode: "quiet-buffered" } } }, [], root);
+    expect(resolved.deploy.leo).toEqual({ timeout: 1_800_000, logMode: "quiet-buffered" });
+  });
+
+  it("resolves the per-network override on both network types", async () => {
+    const resolved = await resolve(
+      {
+        networks: {
+          local: { type: "devnode", deployBackend: "leo" },
+          remote: {
+            type: "http",
+            endpoint: "https://api.example.com",
+            network: "testnet",
+            deployBackend: "leo",
+          },
+        },
+      },
+      [],
+      root,
+    );
+    expect(resolved.networks["local"]!.deployBackend).toBe("leo");
+    expect(resolved.networks["remote"]!.deployBackend).toBe("leo");
+  });
+
+  /**
+   * Load-bearing for the precedence ladder: an explicit `deployBackend: "sdk"`
+   * on a network must outrank a project-wide `deploy.backend: "leo"`, which is
+   * only possible if "unset" and "explicitly sdk" stay distinguishable. A
+   * `?? undefined` in `resolveNetworkConfig` would erase that distinction.
+   */
+  it("omits deployBackend entirely when unset, rather than defaulting it", async () => {
+    const resolved = await resolve(
+      { deploy: { backend: "leo" }, networks: { local: { type: "devnode" } } },
+      [],
+      root,
+    );
+    expect(resolved.networks["local"]).not.toHaveProperty("deployBackend");
+  });
+
+  it("preserves an explicit per-network sdk against a project-wide leo", async () => {
+    const resolved = await resolve(
+      {
+        deploy: { backend: "leo" },
+        networks: { local: { type: "devnode", deployBackend: "sdk" } },
+      },
+      [],
+      root,
+    );
+    expect(resolved.networks["local"]!.deployBackend).toBe("sdk");
+    expect(resolved.deploy.backend).toBe("leo");
   });
 });
 

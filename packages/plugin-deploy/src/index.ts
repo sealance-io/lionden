@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { LionDenResolvedConfig } from "@lionden/config";
+import { DEPLOY_LEO_LOG_MODES, type LionDenResolvedConfig } from "@lionden/config";
 import {
+  ArgumentType,
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
@@ -11,6 +12,7 @@ import {
   task,
 } from "@lionden/core";
 import type { NetworkManager } from "@lionden/network";
+import { formatDeployProviders, isDeployProvider } from "./deploy-backend/select.js";
 import { deployAction } from "./deploy-task.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import { DeploymentManagerImpl } from "./deployment-manager.js";
@@ -58,6 +60,45 @@ const configHooks: ConfigHookHandlers = {
       errors.push({
         path: "deploy.deploymentsDir",
         message: "Deployments directory cannot be empty",
+      });
+    }
+
+    // Deploy-backend checks here are limited to what is statically knowable and
+    // unconditional. Whether the *effective* backend is compatible with the rest
+    // of the config depends on `--deploy-backend` and `LIONDEN_DEPLOY_BACKEND`,
+    // neither of which exists yet at config-resolution time; that lives in
+    // `assertDeployBackendCompatible`, which runs once the provider is known.
+    if (!isDeployProvider(config.deploy.backend)) {
+      errors.push({
+        path: "deploy.backend",
+        message: `Unknown deploy backend ${JSON.stringify(config.deploy.backend)}. Expected one of: ${formatDeployProviders()}.`,
+      });
+    }
+
+    for (const [name, net] of Object.entries(config.networks)) {
+      if (net.deployBackend !== undefined && !isDeployProvider(net.deployBackend)) {
+        errors.push({
+          path: `networks.${name}.deployBackend`,
+          message: `Unknown deploy backend ${JSON.stringify(net.deployBackend)}. Expected one of: ${formatDeployProviders()}.`,
+        });
+      }
+    }
+
+    if (config.deploy.leo.timeout < 0) {
+      errors.push({
+        path: "deploy.leo.timeout",
+        message: "Leo backend timeout cannot be negative (use 0 to disable the timeout)",
+      });
+    }
+
+    if (!(DEPLOY_LEO_LOG_MODES as readonly string[]).includes(config.deploy.leo.logMode)) {
+      errors.push({
+        path: "deploy.leo.logMode",
+        message:
+          `Unknown log mode ${JSON.stringify(config.deploy.leo.logMode)}. Expected one of: ` +
+          `${DEPLOY_LEO_LOG_MODES.map((m) => `"${m}"`).join(", ")}. ` +
+          `Note that "inherit" is deliberately unsupported: inherited stdio never passes ` +
+          `through JS, so Leo's output could not be redacted.`,
       });
     }
 
@@ -208,6 +249,17 @@ const pluginDeploy: LionDenPlugin = {
   // declared here. deployAction/upgradeAction still read it via
   // resolveProveOption(), which consults lre.globalOptions["prove"] (seeded by
   // the CLI from the built-in --prove) and LIONDEN_PROVE.
+  globalOptions: [
+    {
+      name: "deployBackend",
+      type: ArgumentType.STRING,
+      description: `Backend that builds deploy/upgrade transactions (${formatDeployProviders()})`,
+      // Deliberately no defaultValue: `cli/src/index.ts` seeds defaultValue into
+      // globalOptions whenever the flag is absent, which would make the flag
+      // look explicitly set on every run and collapse the two config layers of
+      // the precedence ladder in resolveDeployBackendOption().
+    },
+  ],
   tasks: [deployTask, upgradeTask, exportTask, recipeTask],
   extendLre(lre: LionDenRuntimeEnvironment): void {
     const networkAccessor = () => lre.network as NetworkManager | null;

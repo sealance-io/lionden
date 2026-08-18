@@ -361,6 +361,8 @@ describe("compilePipeline network dep handling", () => {
         deploymentsDir: "deployments",
         skipDeployed: true,
         autoExport: false,
+        backend: "sdk",
+        leo: { timeout: 1_800_000, logMode: "forward" },
       },
       sdk: { keyCache: { storage: "memory" } },
       execution: { imports: {} },
