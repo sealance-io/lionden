@@ -12,6 +12,7 @@ import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import { discoverUnits, parseAbi, resolveDependencies } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
 import { buildBackendContext, resolveDeployBackend } from "./deploy-backend/resolve.js";
+import { resolveDeployBackendFromEnvAndConfig } from "./deploy-backend/select.js";
 import {
   appendHistory,
   deletePendingMarker,
@@ -685,7 +686,10 @@ export class DeploymentManagerImpl implements DeploymentManager {
     }
 
     const backendCtx = buildBackendContext(this.config, connection, network);
-    const backend = resolveDeployBackend(backendCtx);
+    const backend = resolveDeployBackend(
+      resolveDeployBackendFromEnvAndConfig(this.config, network),
+      backendCtx,
+    );
 
     return runDeployPreflight({
       programs,

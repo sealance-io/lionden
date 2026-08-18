@@ -42,6 +42,8 @@ export type {
   CodegenConfig,
   CompilerConfig,
   DeployConfig,
+  DeployLeoConfig,
+  DeployLeoLogMode,
   DeployProvider,
   DevnodeNetworkConfig,
   DynamicRecordHelperConfig,
@@ -56,6 +58,7 @@ export type {
   ResolvedCodegenConfig,
   ResolvedCompilerConfig,
   ResolvedDeployConfig,
+  ResolvedDeployLeoConfig,
   ResolvedDevnodeNetworkConfig,
   ResolvedDynamicRecordHelper,
   ResolvedExecutionConfig,
@@ -77,4 +80,4 @@ export type {
   TaskDefinitionRef,
   TestingConfig,
 } from "./types.js";
-export { DEPLOY_PROVIDERS, SDK_LOG_LEVELS } from "./types.js";
+export { DEPLOY_LEO_LOG_MODES, DEPLOY_PROVIDERS, SDK_LOG_LEVELS } from "./types.js";

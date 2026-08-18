@@ -26,6 +26,7 @@ import {
   buildPreflightContext,
   resolveDeployBackend,
 } from "./deploy-backend/resolve.js";
+import { resolveDeployBackendOption } from "./deploy-backend/select.js";
 import type { DeployBackendRequest } from "./deploy-backend/types.js";
 import { resolveDeployerAddress } from "./deployer-address.js";
 import type { DeploymentManager } from "./deployment-manager.js";
@@ -100,7 +101,8 @@ export async function upgradeAction(
   // backend that cannot run must fail here rather than after a full compile.
   const networkName = options.network ?? config.defaultNetwork;
   const backendPreflightCtx = buildPreflightContext(config, networkName);
-  const backend = resolveDeployBackend(backendPreflightCtx);
+  const backendProvider = resolveDeployBackendOption(args, lre, networkName);
+  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx);
   await backend.preflight(backendPreflightCtx);
 
   // 1. Connect to network
