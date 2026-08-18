@@ -27,6 +27,7 @@ describe("test-runner", () => {
       "LIONDEN_CONFIG_PATH",
       "LIONDEN_PROVE",
       "LIONDEN_NETWORK",
+      "LIONDEN_DEPLOY_BACKEND",
     ]) {
       if (key in originalEnv) {
         process.env[key] = originalEnv[key];
@@ -93,6 +94,40 @@ describe("test-runner", () => {
       process.env["LIONDEN_NETWORK"] = "stale";
       await runTests({ root: "/tmp/test" });
       expect(process.env["LIONDEN_NETWORK"]).toBeUndefined();
+    });
+
+    /**
+     * Workers rebuild their LRE from disk and receive no globalOptions, so this
+     * env var is the only channel an explicit `--deploy-backend` has. Without
+     * it, `TestContext.deploy()` silently falls back to config.
+     */
+    it("sets LIONDEN_DEPLOY_BACKEND when a backend is provided", async () => {
+      delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      await runTests({ root: "/tmp/test", deployBackend: "leo" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    it("overrides an ambient LIONDEN_DEPLOY_BACKEND with the explicit backend", async () => {
+      process.env["LIONDEN_DEPLOY_BACKEND"] = "sdk";
+      await runTests({ root: "/tmp/test", deployBackend: "leo" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    /**
+     * Unlike LIONDEN_NETWORK, which is only ever this bridge and is cleared when
+     * absent, LIONDEN_DEPLOY_BACKEND is layer 3 of the documented public ladder.
+     * A user who exports it and runs `lionden test` must keep it.
+     */
+    it("preserves an ambient LIONDEN_DEPLOY_BACKEND when no backend is provided", async () => {
+      process.env["LIONDEN_DEPLOY_BACKEND"] = "leo";
+      await runTests({ root: "/tmp/test" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    it("leaves LIONDEN_DEPLOY_BACKEND unset when neither source supplies one", async () => {
+      delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      await runTests({ root: "/tmp/test" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBeUndefined();
     });
   });
 

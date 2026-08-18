@@ -2,6 +2,7 @@
 "@lionden/config": minor
 "@lionden/core": minor
 "@lionden/plugin-deploy": minor
+"@lionden/plugin-test": patch
 "@lionden/cli": patch
 ---
 
@@ -53,6 +54,15 @@ it that way.
 Recipes and `TestContext.deploy()` deliberately gain no per-call override: they dispatch the deploy
 task, so they inherit whatever layers 2–6 resolve to. A per-program knob inside one run would let a
 single recipe be deployed half by Leo and half by the SDK.
+
+**`@lionden/plugin-test`** — `lionden test --deploy-backend <name>` now reaches `TestContext.deploy()`.
+Vitest workers rebuild their own LRE from the config on disk and receive no global options, so the
+`test` task bridges the selected backend across the process boundary through
+`LIONDEN_DEPLOY_BACKEND`, alongside the existing `LIONDEN_NETWORK` and `LIONDEN_PROVE` bridges. An
+explicit flag overrides an ambient `LIONDEN_DEPLOY_BACKEND`; with no flag, the ambient value is
+left alone — unlike `LIONDEN_NETWORK`, which is purely an internal bridge and is cleared when
+absent, `LIONDEN_DEPLOY_BACKEND` is layer 3 of the public ladder and a user may have exported it
+deliberately.
 
 Compatibility validation runs on the **effective** backend, not on `deploy.backend`, because config
 resolution happens before the CLI flag and environment variable exist and would miss Leo selected

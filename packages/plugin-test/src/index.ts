@@ -1,9 +1,15 @@
-import { type LionDenResolvedConfig, parseBooleanEnv } from "@lionden/config";
+import {
+  DEPLOY_PROVIDERS,
+  type DeployProvider,
+  type LionDenResolvedConfig,
+  parseBooleanEnv,
+} from "@lionden/config";
 import {
   ArgumentType,
   type ConfigHookHandlers,
   type ConfigValidationError,
   type LionDenPlugin,
+  type LionDenRuntimeEnvironment,
   type TestingHookHandlers,
   task,
 } from "@lionden/core";
@@ -18,6 +24,37 @@ function warnOnceInvalidProveEnv(value: string): void {
   if (warnedInvalidProveEnv) return;
   warnedInvalidProveEnv = true;
   console.warn(`Ignoring unrecognized LIONDEN_PROVE value "${value}" — treating as not set.`);
+}
+
+/**
+ * The deploy backend this run should force on its Vitest workers, or
+ * `undefined` to leave the worker-side ladder alone.
+ *
+ * Reads only the two "this invocation" layers — a programmatic argument and the
+ * CLI's `--deploy-backend` (seeded into `lre.globalOptions`). Deliberately does
+ * *not* consult `LIONDEN_DEPLOY_BACKEND`: workers inherit `process.env`, so an
+ * ambient value already reaches them, and re-reading it here would turn
+ * "preserve the ambient variable" into "re-assert it", which is the same thing
+ * until someone changes one of the two code paths.
+ *
+ * Validated here rather than trusted, because `tasks.run("test", { ... })`
+ * never passes through the CLI's own `assertDeployBackendArg`. The ambient env
+ * is intentionally left unvalidated — the worker rejects a bad value at the
+ * point it is used, and a test run that never deploys should not fail on it.
+ */
+function readExplicitDeployBackend(
+  args: Record<string, unknown>,
+  lre: LionDenRuntimeEnvironment,
+): DeployProvider | undefined {
+  const raw = args["deployBackend"] ?? lre.globalOptions["deployBackend"];
+  if (raw === undefined) return undefined;
+  if (typeof raw === "string" && (DEPLOY_PROVIDERS as readonly string[]).includes(raw)) {
+    return raw as DeployProvider;
+  }
+  throw new Error(
+    `Invalid deploy backend ${JSON.stringify(raw)} for the test task. ` +
+      `Expected one of: ${DEPLOY_PROVIDERS.join(", ")}.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +160,17 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
     if (explicitNetwork) {
       console.log(`Running tests against network "${explicitNetwork}"`);
     }
+    // Resolve an explicit --deploy-backend (seeded into globalOptions by the CLI
+    // boot path) and bridge it to workers via LIONDEN_DEPLOY_BACKEND. Workers
+    // rebuild their LRE from disk with no globalOptions, so without this
+    // `TestContext.deploy()` would silently ignore the flag. Validated here
+    // because a programmatic `tasks.run("test", { deployBackend })` never passes
+    // through the CLI's own check.
+    const explicitDeployBackend = readExplicitDeployBackend(args, lre);
+    if (explicitDeployBackend) {
+      console.log(`Deploying via the "${explicitDeployBackend}" backend`);
+    }
+
     const globalConfigPath = lre.globalOptions["configPath"];
     const configPath = typeof globalConfigPath === "string" ? globalConfigPath : undefined;
 
@@ -161,6 +209,7 @@ const testTask = task("test", "Run tests with managed devnode lifecycle")
           compile: !noCompile,
           prove: effectiveProve,
           network: explicitNetwork,
+          deployBackend: explicitDeployBackend,
           parallel: parallel ?? false,
           coverage: resolveCoverageOptions(coverage ?? false),
           files,
