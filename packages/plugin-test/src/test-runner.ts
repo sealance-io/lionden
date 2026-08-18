@@ -18,6 +18,7 @@
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isAbsolute, join, relative } from "node:path";
+import type { DeployProvider } from "@lionden/config";
 import { parseBooleanEnv } from "@lionden/config";
 import type { startVitest as startVitestType } from "vitest/node";
 import { silenceProvableSdkConsoleNoise } from "./sdk-console-filter.js";
@@ -64,6 +65,16 @@ export interface TestRunnerOptions {
    * same network instead of the on-disk config default.
    */
   network?: string;
+  /**
+   * Deploy backend to bridge to Vitest workers via `LIONDEN_DEPLOY_BACKEND`.
+   *
+   * Unlike `network`, omitting this **preserves** any ambient
+   * `LIONDEN_DEPLOY_BACKEND` rather than clearing it: that variable is layer 3
+   * of the documented selection ladder, so a user who exports it and runs
+   * `lionden test` must keep it. `LIONDEN_NETWORK` has no such public meaning —
+   * it exists only as this bridge — so clearing it there is correct.
+   */
+  deployBackend?: DeployProvider;
   /**
    * Test file or glob patterns to include. Defaults to the standard test glob.
    *
@@ -131,6 +142,13 @@ export async function runTests(options: TestRunnerOptions): Promise<TestRunnerRe
   // so default runs leave LIONDEN_NETWORK unset (zero behavior change).
   if (options.network) process.env["LIONDEN_NETWORK"] = options.network;
   else delete process.env["LIONDEN_NETWORK"];
+
+  // Bridge the effective deploy backend. Workers rebuild their LRE from disk
+  // (`@lionden/testing` lre-factory) and get no globalOptions, so an explicit
+  // `--deploy-backend` would otherwise be lost and `TestContext.deploy()` would
+  // silently fall back to config. Deliberately NOT cleared when absent — see
+  // `deployBackend` on TestRunnerOptions.
+  if (options.deployBackend) process.env["LIONDEN_DEPLOY_BACKEND"] = options.deployBackend;
 
   const { startVitest } = await import("vitest/node");
   const originalForceColor = process.env["FORCE_COLOR"];
