@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { DEPLOY_PROVIDERS, type LionDenUserConfig } from "@lionden/config";
+import type { LionDenUserConfig } from "@lionden/config";
 import {
   collectGlobalOptions,
   createLre,
@@ -9,6 +9,7 @@ import {
   type TaskDefinition,
 } from "@lionden/core";
 import { findConfigFile, loadConfigFile } from "./config-discovery.js";
+import { assertDeployBackendArg } from "./deploy-backend-arg.js";
 import { logger } from "./output/logger.js";
 import {
   dispatchTask,
@@ -21,8 +22,10 @@ import {
 const VERSION = "0.1.0";
 
 export async function main(): Promise<void> {
+  const argv = process.argv.slice(2);
+
   // Initial parse for early exits (--version, --help without config)
-  let parsed = parseArgs(process.argv.slice(2));
+  let parsed = parseArgs(argv);
 
   if (parsed.globalArgs.version) {
     console.log(`lionden v${VERSION}`);
@@ -62,7 +65,7 @@ export async function main(): Promise<void> {
 
   // Collect plugin global options and re-parse with them
   const globalOptionDefs = collectGlobalOptions(plugins);
-  parsed = parseArgs(process.argv.slice(2), globalOptionDefs);
+  parsed = parseArgs(argv, globalOptionDefs);
 
   // Resolve config through the full lifecycle
   const { resolved: resolvedConfig, extendedUserConfig } = await resolveConfig(
@@ -85,9 +88,7 @@ export async function main(): Promise<void> {
 
   // Re-parse WITH task metadata so named args are routed by schema rather than
   // by whether they appeared before or after the task name.
-  parsed = parseArgs(process.argv.slice(2), globalOptionDefs, (taskId) =>
-    lre.tasks.getTaskDefinition(taskId),
-  );
+  parsed = parseArgs(argv, globalOptionDefs, (taskId) => lre.tasks.getTaskDefinition(taskId));
 
   // Help should render before validating task/global option values. This keeps
   // recovery/documentation available even when an invocation includes an invalid
@@ -121,20 +122,9 @@ export async function main(): Promise<void> {
     globalOptions["network"] = requestedNetwork;
   }
 
-  // Reject an unknown --deploy-backend value here, following the --network
-  // precedent above. Config resolution and plugin loading have both already
-  // run, so this saves neither — what it prevents is dispatching a task, and
-  // therefore compiling and connecting, on a typo. resolveDeployBackendOption()
-  // validates independently for programmatic LRE use, which never reaches here.
-  const requestedDeployBackend = (parsed.globalArgs as Record<string, unknown>)["deployBackend"];
-  if (typeof requestedDeployBackend === "string" && requestedDeployBackend !== "") {
-    if (!(DEPLOY_PROVIDERS as readonly string[]).includes(requestedDeployBackend)) {
-      throw new Error(
-        `Deploy backend "${requestedDeployBackend}" (from --deploy-backend) is not recognized. ` +
-          `Available backends: ${DEPLOY_PROVIDERS.join(", ")}.`,
-      );
-    }
-  }
+  // Reject a bad --deploy-backend here, following the --network precedent above.
+  // See deploy-backend-arg.ts for why this reads raw argv, not just the parse.
+  assertDeployBackendArg(argv, (parsed.globalArgs as Record<string, unknown>)["deployBackend"]);
 
   // Seed the built-in --prove preference into globalOptions so deploy/upgrade/
   // recipe/test resolve it via resolveProveOption()/lre.globalOptions. Unlike

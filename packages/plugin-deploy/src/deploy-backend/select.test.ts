@@ -139,11 +139,52 @@ describe("resolveDeployBackendOption", () => {
     });
   });
 
-  it("treats an empty string as unset on every layer", () => {
-    process.env[DEPLOY_BACKEND_ENV_VAR] = "";
-    const config = makeConfig({ backend: "leo" });
-    const lre = makeLre(config, { deployBackend: "" });
-    expect(resolveDeployBackendOption({ deployBackend: "" }, lre, "devnode")).toBe("leo");
+  /**
+   * An empty value is *present*, so on every layer a user can type it directly
+   * it has to fail rather than fall through — `--deploy-backend=` must not
+   * quietly select the SDK.
+   */
+  describe("empty values", () => {
+    it("rejects an empty argument", () => {
+      const lre = makeLre(makeConfig({ backend: "leo" }));
+      expect(() => resolveDeployBackendOption({ deployBackend: "" }, lre, "devnode")).toThrow(
+        /empty value/,
+      );
+    });
+
+    it("rejects an empty --deploy-backend", () => {
+      const lre = makeLre(makeConfig({ backend: "leo" }), { deployBackend: "" });
+      expect(() => resolveDeployBackendOption({}, lre, "devnode")).toThrow(/empty value/);
+    });
+
+    it("rejects an empty per-network override", () => {
+      const lre = makeLre(makeConfig({ backend: "leo" }, ""));
+      expect(() => resolveDeployBackendOption({}, lre, "devnode")).toThrow(
+        /networks\.devnode\.deployBackend/,
+      );
+    });
+
+    it("rejects an empty deploy.backend", () => {
+      const lre = makeLre(makeConfig({ backend: "" as "sdk" }));
+      expect(() => resolveDeployBackendOption({}, lre, "devnode")).toThrow(/deploy\.backend/);
+    });
+
+    /**
+     * The one exemption. `FOO=` is an ordinary way to clear a shell variable,
+     * and `parseBooleanEnv` already reads an empty env value as unset.
+     */
+    it("treats an empty env var as unset, matching parseBooleanEnv", () => {
+      process.env[DEPLOY_BACKEND_ENV_VAR] = "";
+      const lre = makeLre(makeConfig({ backend: "leo" }));
+      expect(resolveDeployBackendOption({}, lre, "devnode")).toBe("leo");
+    });
+  });
+
+  it("rejects null rather than treating it as unset", () => {
+    const lre = makeLre(makeConfig({ backend: "leo" }));
+    expect(() => resolveDeployBackendOption({ deployBackend: null }, lre, "devnode")).toThrow(
+      DeployError,
+    );
   });
 });
 
