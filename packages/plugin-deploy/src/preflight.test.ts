@@ -236,7 +236,7 @@ describe("runDeployPreflight", () => {
    */
   function makeBackend(conn: NetworkConnection) {
     const backendCtx = buildBackendContext(config, conn, "devnode");
-    return { backend: resolveDeployBackend(backendCtx), backendCtx };
+    return { backend: resolveDeployBackend("sdk", backendCtx), backendCtx };
   }
 
   it("skips deployed programs on devnode when skipDeployed=true", async () => {

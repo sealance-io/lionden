@@ -119,6 +119,8 @@ function mockLre(
         deploymentsDir: "deployments",
         skipDeployed: true,
         autoExport: false,
+        backend: "sdk",
+        leo: { timeout: 1_800_000, logMode: "forward" },
       },
       namedAccounts: {},
     },

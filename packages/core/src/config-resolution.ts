@@ -178,6 +178,15 @@ function buildDefaults(config: LionDenUserConfig, projectRoot: string): LionDenR
     skipDeployed: config.deploy?.skipDeployed ?? true,
     interDeploymentDelay: config.deploy?.interDeploymentDelay,
     autoExport: config.deploy?.autoExport ?? false,
+    backend: config.deploy?.backend ?? "sdk",
+    // `mergePartial` shallow-spreads `deploy`, so a plugin partial that sets
+    // `deploy` without `leo` leaves this object intact — but one that sets
+    // `deploy.leo` partially would replace it wholesale. No plugin does that
+    // today; if one ever needs to, `mergePartial` has to merge `leo` explicitly.
+    leo: {
+      timeout: config.deploy?.leo?.timeout ?? 1_800_000,
+      logMode: config.deploy?.leo?.logMode ?? "forward",
+    },
   };
 
   const sdk: ResolvedSdkConfig = resolveSdkConfig(config, projectRoot, paths.artifacts);
@@ -369,6 +378,9 @@ function resolveNetworkConfig(
           ? { clearStorageOnStart: config.clearStorageOnStart }
           : {}),
         ephemeral: config.ephemeral ?? deployEphemeral ?? true,
+        // Conditional rather than `?? undefined`: the selection ladder must be
+        // able to tell "unset" from "explicitly sdk".
+        ...(config.deployBackend !== undefined ? { deployBackend: config.deployBackend } : {}),
       };
     case "http":
       return {
@@ -378,6 +390,7 @@ function resolveNetworkConfig(
         privateKey: resolveStringOrVariable(config.privateKey),
         apiKey: resolveStringOrVariable(config.apiKey),
         ephemeral: config.ephemeral ?? deployEphemeral ?? false,
+        ...(config.deployBackend !== undefined ? { deployBackend: config.deployBackend } : {}),
       };
     default: {
       const unknownType = (config as { type: string }).type;

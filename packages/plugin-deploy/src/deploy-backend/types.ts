@@ -17,6 +17,8 @@
 import type {
   AleoNetwork,
   DeployProvider,
+  ResolvedDeployLeoConfig,
+  ResolvedSdkEgressConfig,
   ResolvedSdkKeyCacheConfig,
   SdkLogLevel,
 } from "@lionden/config";
@@ -47,6 +49,21 @@ export interface DeployBackendPreflightContext {
   readonly consensusHeights?: string;
   readonly leoBinary: string;
   readonly leoVersion: string;
+  /** Resolved `deploy.leo`. Consumed by the Leo backend only. */
+  readonly leo: ResolvedDeployLeoConfig;
+  /**
+   * User-supplied SDK egress overrides (`config.sdk.egress`), NOT the
+   * per-connection runtime policy. Present here because
+   * `assertDeployBackendCompatible` must reject a Leo + egress combination at
+   * step 0, before any connection exists to carry a policy.
+   */
+  readonly sdkEgress?: ResolvedSdkEgressConfig;
+  readonly keyCache?: ResolvedSdkKeyCacheConfig;
+  readonly logLevel?: SdkLogLevel;
+  /** Absolute `config.paths.artifacts`. */
+  readonly artifactsDir: string;
+  /** Absolute `config.paths.root`. */
+  readonly projectRoot: string;
 }
 
 /**
@@ -55,13 +72,16 @@ export interface DeployBackendPreflightContext {
  * Between the two, every field the pre-seam SDK call sites read must be
  * present — see the former `BuildDeployOptions` / `BuildUpgradeOptions` bags and
  * `checkFeeEstimate`'s parameter list.
+ *
+ * The dividing line is provenance, not convenience: config-derived fields live
+ * on the preflight context so `preflight()` and
+ * `assertDeployBackendCompatible()` can read them, and only genuinely
+ * connection-derived values are added here.
  */
 export interface DeployBackendContext extends DeployBackendPreflightContext {
   readonly privateKey?: string;
   /** From `connection.egressPolicy`; built per-connection by the network layer. */
   readonly egressPolicy: SdkEgressPolicy;
-  readonly keyCache?: ResolvedSdkKeyCacheConfig;
-  readonly logLevel?: SdkLogLevel;
 }
 
 // ---------------------------------------------------------------------------
