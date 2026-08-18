@@ -1,0 +1,67 @@
+Deploy a program
+
+Usage: leo deploy [OPTIONS]
+
+Options:
+  -d
+          Print additional information for debugging
+      --priority-fees <PRIORITY_FEES>
+          Priority fee in microcredits, delimited by `|`, and used in order. The fees must either be valid `u64` or `default`. Defaults to 0.
+  -f, --fee-records <FEE_RECORDS>
+          Records to pay for fees privately, delimited by '|', and used in order. The fees must either be valid plaintext, ciphertext, or `default`. Defaults to public fees.
+  -q
+          Suppress CLI output
+      --json-output[=<JSON_OUTPUT>]
+          Write command results as JSON. Pass `--json-output=<FILE>` for a custom path; with no value it defaults to build/json-outputs/<command>.json.
+      --print
+          Print the transaction to stdout.
+      --broadcast
+          Broadcast the transaction to the network.
+      --disable-update-check
+          Disable Leo's daily check for version updates
+      --save <SAVE>
+          Save the transaction to the provided directory.
+      --network <NETWORK>
+          The network type to use. e.g `mainnet`, `testnet, and `canary`. Overrides the `NETWORK` environment variable in your shell or `.env` file.
+      --endpoint <ENDPOINT>
+          The endpoint to deploy to. Overrides the `ENDPOINT` environment variable. We recommend using `https://api.explorer.provable.com/v1` for live networks and `http://localhost:3030` for local devnets.
+      --network-retries <NETWORK_RETRIES>
+          Number of times to retry a failed network request before giving up. [env: NETWORK_RETRIES=] [default: 2]
+      --private-key <PRIVATE_KEY>
+          The private key to use for the deployment. Overrides the `PRIVATE_KEY` environment variable in your shell or `.env` file. We recommend using `APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH` for local devnets. This key should NEVER be used in production.
+      --devnet
+          Whether the network is a devnet. If not set, defaults to the `DEVNET` environment variable in your shell.
+      --consensus-heights <CONSENSUS_HEIGHTS>
+          Optional consensus heights to use. This should only be set if you are using a custom devnet.
+  -y, --yes
+          Don't ask for confirmation. DO NOT SET THIS FLAG UNLESS YOU KNOW WHAT YOU ARE DOING
+      --consensus-version <CONSENSUS_VERSION>
+          Consensus version to use. If one is not provided, the CLI will attempt to determine it from the latest block.
+      --max-wait <MAX_WAIT>
+          Seconds to wait for a block to appear when searching for a transaction. [default: 8]
+      --blocks-to-check <BLOCKS_TO_CHECK>
+          Number of blocks to look at when searching for a transaction. [default: 12]
+      --skip <SKIP>...
+          Skips deployment of any program that contains one of the given substrings.
+      --rename <RENAME>
+          Deploy the program under a different name, producing a genuinely distinct on-chain deployment. Programs importing the original name are not redirected to the renamed copy.
+      --build-tests
+          Build tests along with the main program and dependencies.
+      --no-cache
+          Don't use the dependency cache.
+      --path <PATH>
+          Path to Leo program root folder
+      --home <HOME>
+          Path to aleo program registry
+      --no-local
+          Don't use the local source code.
+      --offline
+          Resolve git dependencies from the lock file and local cache only; don't fetch from remotes.
+  -p, --package <PACKAGE>
+          Target a specific workspace member by name
+      --checksums
+          Print the program checksum and the checksum of each entry and view function (the `Program::function_checksum` targets).
+      --skip-deploy-certificate
+          Use placeholder certificate and verifying keys during deployment.
+  -h, --help
+          Print help

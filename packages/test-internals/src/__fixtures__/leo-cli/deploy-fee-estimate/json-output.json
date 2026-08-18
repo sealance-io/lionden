@@ -1,0 +1,76 @@
+{
+  "config": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "network": "testnet",
+    "endpoint": "http://127.0.0.1:3030",
+    "consensus_version": 17
+  },
+  "deployments": [
+    {
+      "program_id": "spike_a.aleo",
+      "transaction_id": "at1wq945ha7zq6lvfsrpth8yh39r7vezq2ns5p0a6mhu8l9zyeu3ggs5sf4r3",
+      "stats": {
+        "program_size_bytes": 440,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 978000,
+        "namespace_cost": 1000000000,
+        "synthesis_cost": 30041,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 1001010041,
+        "function_costs": [
+          {
+            "name": "bump",
+            "finalize_cost": 513,
+            "storage_cost": 1296,
+            "execution_cost": 1809
+          }
+        ]
+      }
+    },
+    {
+      "program_id": "zspike_a.aleo",
+      "transaction_id": "at1r99k7msup7kdnqzalwzzu9p4a470w8xvp2aeas46ld58angvqvyq5g0s8v",
+      "stats": {
+        "program_size_bytes": 444,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 984000,
+        "namespace_cost": 100000000,
+        "synthesis_cost": 30041,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 101016041,
+        "function_costs": [
+          {
+            "name": "accrue",
+            "finalize_cost": 513,
+            "storage_cost": 1302,
+            "execution_cost": 1815
+          }
+        ]
+      }
+    },
+    {
+      "program_id": "spike_main.aleo",
+      "transaction_id": "at1zeth3ahe4mpeqvh0mn4pjd6njjfm8lzcvsallrw97al3xt5x2qps2clkpu",
+      "stats": {
+        "program_size_bytes": 480,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 1061000,
+        "namespace_cost": 1000000,
+        "synthesis_cost": 30041,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 2093041,
+        "function_costs": [
+          {
+            "name": "drive",
+            "finalize_cost": 1067,
+            "storage_cost": 2961,
+            "execution_cost": 4028
+          }
+        ]
+      }
+    }
+  ]
+}

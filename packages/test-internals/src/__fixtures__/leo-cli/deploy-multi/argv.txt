@@ -1,0 +1,1 @@
+leo deploy --disable-update-check --network testnet --endpoint http://127.0.0.1:3030 --devnet --save <SPIKE_ROOT>/captures/deploy-multi/save --json-output=<SPIKE_ROOT>/captures/deploy-multi/json-output.json -y --skip-deploy-certificate --path <SPIKE_ROOT>/spike_main

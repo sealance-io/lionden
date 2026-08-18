@@ -1,0 +1,38 @@
+{
+  "config": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "network": "testnet",
+    "endpoint": "http://127.0.0.1:3030",
+    "consensus_version": 17
+  },
+  "deployments": [
+    {
+      "program_id": "spike_up.aleo",
+      "transaction_id": "at1wld5encnmvga00tqfafsufka7krjm09grqtxvdg69rvcpcrewsqsnl959m",
+      "stats": {
+        "program_size_bytes": 627,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 1796000,
+        "namespace_cost": 100000000,
+        "synthesis_cost": 60082,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 101858082,
+        "function_costs": [
+          {
+            "name": "put",
+            "finalize_cost": 432,
+            "storage_cost": 1296,
+            "execution_cost": 1728
+          },
+          {
+            "name": "clear",
+            "finalize_cost": 432,
+            "storage_cost": 1249,
+            "execution_cost": 1681
+          }
+        ]
+      }
+    }
+  ]
+}

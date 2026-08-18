@@ -1,0 +1,29 @@
+
+
+📢 Using the following consensus heights: 0,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+  To override, pass in `--consensus-heights` or override the environment variable `CONSENSUS_VERSION_HEIGHTS`.
+
+Attempting to determine the consensus version from the latest block height at http://127.0.0.1:3030...
+
+🛠️  Deployment Plan Summary
+──────────────────────────────────────────────
+🔧 Configuration:
+  Private Key:        APrivateKey1zkp8CZNn3yeC...
+  Address:            aleo1rhgdu77hgyqd3xjj8uc...
+  Endpoint:           http://127.0.0.1:3030
+  Network:            testnet
+  Consensus Version:  17
+
+📦 Deployment Tasks:
+
+🚫 Skipped Programs:
+  • zspike_a.aleo
+  • spike_a.aleo
+  • spike_main.aleo
+
+⚙️ Actions:
+  • Transaction(s) will NOT be printed to the console.
+  • Transaction(s) will be saved to <SPIKE_ROOT>/captures/deploy-skip-all/save
+  • Transaction(s) will NOT be broadcast to the network.
+──────────────────────────────────────────────
+

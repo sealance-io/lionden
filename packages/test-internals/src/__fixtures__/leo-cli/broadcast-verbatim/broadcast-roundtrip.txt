@@ -1,0 +1,23 @@
+Claim under test: the --save artifact is accepted verbatim, with no unwrapping,
+re-encoding, or field extraction.
+
+source file : <SPIKE_ROOT>/captures/tmp-bcast/save/zspike_a.aleo.deployment.json
+bytes       : 4436
+sha256      : f4556d3a5af722d46a248785a56d0418a84682144a3417965322496fbe3c259f
+program     : zspike_a.aleo
+
+precondition: GET /program/zspike_a.aleo -> 500 (not deployed, as required)
+
+request     : POST http://127.0.0.1:3030/testnet/transaction/broadcast
+              Content-Type: application/json
+              body = the file's exact bytes, unmodified
+response    : 200 OK
+              "at13xhczymczrn5lwm8ftae2ghfeajj2zjf87lc3cs2944ytc45zcgsqr6r0a"
+
+file .id    : at13xhczymczrn5lwm8ftae2ghfeajj2zjf87lc3cs2944ytc45zcgsqr6r0a
+returned id : at13xhczymczrn5lwm8ftae2ghfeajj2zjf87lc3cs2944ytc45zcgsqr6r0a
+match       : YES
+
+confirmation: GET /program/zspike_a.aleo -> 200 after ~1s (467 bytes)
+
+RESULT: the saved file is broadcastable verbatim.

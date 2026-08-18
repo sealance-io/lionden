@@ -1,0 +1,1 @@
+leo deploy --disable-update-check --network testnet --endpoint http://127.0.0.1:3999 --devnet --save <SPIKE_ROOT>/captures/deploy-endpoint-unreachable/save --json-output=<SPIKE_ROOT>/captures/deploy-endpoint-unreachable/json-output.json -y --skip-deploy-certificate --path <SPIKE_ROOT>/spike_up

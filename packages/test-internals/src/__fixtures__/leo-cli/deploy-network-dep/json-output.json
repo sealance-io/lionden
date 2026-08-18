@@ -1,0 +1,32 @@
+{
+  "config": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "network": "testnet",
+    "endpoint": "http://127.0.0.1:3030",
+    "consensus_version": 17
+  },
+  "deployments": [
+    {
+      "program_id": "spike_net.aleo",
+      "transaction_id": "at1lga5r4ugywffan4xhp67dz4290wh5exun7fcvlsjl2my32uzuuzsjy72l2",
+      "stats": {
+        "program_size_bytes": 367,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 993000,
+        "namespace_cost": 10000000,
+        "synthesis_cost": 30041,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 11025041,
+        "function_costs": [
+          {
+            "name": "pay",
+            "finalize_cost": 1325,
+            "storage_cost": 2349,
+            "execution_cost": 3674
+          }
+        ]
+      }
+    }
+  ]
+}
