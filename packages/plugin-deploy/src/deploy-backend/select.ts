@@ -26,16 +26,28 @@ export function isDeployProvider(value: unknown): value is DeployProvider {
 }
 
 /**
- * Narrow one layer's raw value. `undefined` means "this layer is unset, fall
- * through"; anything present but unrecognized is a hard error rather than a
- * silent fall-through, so a typo (`--deploy-backend Leo`) can never quietly
- * resolve to the default.
+ * Narrow one layer's raw value. Only `undefined` means "this layer is unset,
+ * fall through"; anything else present but unrecognized — including `null` and
+ * `""` — is a hard error rather than a silent fall-through, so a typo
+ * (`--deploy-backend Leo`) or a malformed invocation (`--deploy-backend=`) can
+ * never quietly resolve to the default.
+ *
+ * `emptyIsUnset` exists for the environment variable alone. In a shell, `FOO=`
+ * is an ordinary way to clear a variable, and `parseBooleanEnv` (`config/env.ts`)
+ * already treats an empty env value as unset; diverging from that here would be
+ * surprising. No other layer gets the exemption.
  */
-function readLayer(value: unknown, source: string): DeployProvider | undefined {
-  if (value === undefined || value === null || value === "") return undefined;
+function readLayer(
+  value: unknown,
+  source: string,
+  { emptyIsUnset = false }: { emptyIsUnset?: boolean } = {},
+): DeployProvider | undefined {
+  if (value === undefined) return undefined;
+  if (emptyIsUnset && value === "") return undefined;
   if (isDeployProvider(value)) return value;
+  const shown = value === "" ? "an empty value" : JSON.stringify(value);
   throw new DeployError(
-    `Invalid deploy backend ${JSON.stringify(value)} from ${source}. ` +
+    `Invalid deploy backend ${shown} from ${source}. ` +
       `Expected one of: ${formatDeployProviders()}.`,
   );
 }
@@ -88,7 +100,9 @@ export function resolveDeployBackendFromEnvAndConfig(
   config: LionDenResolvedConfig,
   networkName: string,
 ): DeployProvider {
-  const env = readLayer(process.env[DEPLOY_BACKEND_ENV_VAR], DEPLOY_BACKEND_ENV_VAR);
+  const env = readLayer(process.env[DEPLOY_BACKEND_ENV_VAR], DEPLOY_BACKEND_ENV_VAR, {
+    emptyIsUnset: true,
+  });
   if (env) return env;
 
   const perNetwork = readLayer(
