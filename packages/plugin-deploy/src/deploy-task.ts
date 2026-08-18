@@ -1,4 +1,4 @@
-import type { LionDenResolvedConfig } from "@lionden/config";
+import type { DeployProvider, LionDenResolvedConfig } from "@lionden/config";
 import { isSignable, normalizeProgramId } from "@lionden/config";
 import {
   KeyArtifactsMetadataError,
@@ -72,6 +72,13 @@ export interface DeployOptions {
   prove?: boolean;
   /** Deploy the selected local source program under this on-chain program id. */
   rename?: string;
+  /**
+   * Backend that builds this deployment's transactions. The highest-precedence
+   * layer of the selection ladder — outranks `--deploy-backend`,
+   * `LIONDEN_DEPLOY_BACKEND`, `networks.<n>.deployBackend`, and
+   * `deploy.backend`. See `resolveDeployBackendOption`.
+   */
+  deployBackend?: DeployProvider;
 }
 
 export interface DeployResult {
@@ -111,6 +118,9 @@ export async function deployAction(
     export: args["export"] as boolean | undefined,
     prove: resolveProveOption(args, lre),
     rename: args["rename"] as string | undefined,
+    // Narrowed by resolveDeployBackendOption below, which reads the same key —
+    // it rejects an unrecognized value rather than trusting this cast.
+    deployBackend: args["deployBackend"] as DeployProvider | undefined,
   };
 
   const config = lre.config;

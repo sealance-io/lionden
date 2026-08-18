@@ -19,8 +19,9 @@ certain program size `lionden deploy` cannot succeed at all. The Leo CLI has no 
 caches synthesized keys under `~/.aleo`, so a failed run resumes cheaply.
 
 **`@lionden/config`** — new `DeployProvider` type and `DEPLOY_PROVIDERS` const (`"sdk" | "leo"`), the
-vocabulary the seam is typed against. User-facing selection (`deploy.backend`,
-`networks.<n>.deployBackend`, `--deploy-backend`, `LIONDEN_DEPLOY_BACKEND`) lands in a follow-up.
+vocabulary the seam is typed against. The user-facing selection built on it (`deploy.backend`,
+`networks.<n>.deployBackend`, `--deploy-backend`, `LIONDEN_DEPLOY_BACKEND`) is described in its own
+entry.
 
 **`@lionden/leo-compiler`** — `resolveBuildArtifacts` and `ResolvedBuildArtifacts` are now exported.
 A backend that hands a materialized package to an external tool must hash the built `.aleo` before

@@ -9,7 +9,7 @@
  * compiled ABI is still recorded so `export` has it.
  */
 
-import type { ResolvedNetworkConfig } from "@lionden/config";
+import type { DeployProvider, ResolvedNetworkConfig } from "@lionden/config";
 import { isSignable } from "@lionden/config";
 import {
   KeyArtifactsMetadataError,
@@ -60,6 +60,13 @@ export interface UpgradeOptions {
   network?: string;
   /** Build a standard/proven transaction even on devnode. */
   prove?: boolean;
+  /**
+   * Backend that builds this upgrade's transactions. The highest-precedence
+   * layer of the selection ladder — outranks `--deploy-backend`,
+   * `LIONDEN_DEPLOY_BACKEND`, `networks.<n>.deployBackend`, and
+   * `deploy.backend`. See `resolveDeployBackendOption`.
+   */
+  deployBackend?: DeployProvider;
 }
 
 export interface UpgradeResult {
@@ -89,6 +96,9 @@ export async function upgradeAction(
     skipConfirm: args["skipConfirm"] as boolean | undefined,
     network: args["network"] as string | undefined,
     prove: resolveProveOption(args, lre),
+    // Narrowed by resolveDeployBackendOption below, which reads the same key —
+    // it rejects an unrecognized value rather than trusting this cast.
+    deployBackend: args["deployBackend"] as DeployProvider | undefined,
   };
 
   const config = lre.config;
