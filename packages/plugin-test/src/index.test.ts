@@ -88,6 +88,69 @@ describe("plugin-test", () => {
     });
   });
 
+  /**
+   * The link that was missing: the CLI parks `--deploy-backend` in
+   * `lre.globalOptions`, but Vitest workers rebuild their LRE from disk with no
+   * globalOptions at all. Unless the task action copies it into the environment,
+   * `TestContext.deploy()` never sees the flag and silently uses the SDK.
+   */
+  describe("bridges --deploy-backend to workers", () => {
+    const originalBackend = process.env["LIONDEN_DEPLOY_BACKEND"];
+
+    afterEach(() => {
+      if (originalBackend === undefined) delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      else process.env["LIONDEN_DEPLOY_BACKEND"] = originalBackend;
+    });
+
+    /** Run the real `test` task action with `noCompile`, so only bridging runs. */
+    async function runTestTask(globalOptions: Record<string, unknown>, args = {}) {
+      const lre = createLre({
+        config: createMockConfig(),
+        plugins: [pluginTest],
+        globalOptions,
+      });
+      const testTask = pluginTest.tasks!.find((t) => t.id === "test")!;
+      await testTask.action({ noCompile: true, ...args }, lre);
+    }
+
+    it("copies an explicit --deploy-backend into LIONDEN_DEPLOY_BACKEND", async () => {
+      delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      await runTestTask({ deployBackend: "leo" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    it("lets the flag override an ambient LIONDEN_DEPLOY_BACKEND", async () => {
+      process.env["LIONDEN_DEPLOY_BACKEND"] = "sdk";
+      await runTestTask({ deployBackend: "leo" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    it("preserves an ambient LIONDEN_DEPLOY_BACKEND when no flag is given", async () => {
+      process.env["LIONDEN_DEPLOY_BACKEND"] = "leo";
+      await runTestTask({});
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    it("leaves the env untouched on a plain run", async () => {
+      delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      await runTestTask({});
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBeUndefined();
+    });
+
+    it("accepts a programmatic deployBackend argument", async () => {
+      delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      await runTestTask({}, { deployBackend: "leo" });
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBe("leo");
+    });
+
+    /** `tasks.run("test", ...)` never passes through the CLI's own validation. */
+    it("rejects an unrecognized backend before starting Vitest", async () => {
+      await expect(runTestTask({}, { deployBackend: "provable" })).rejects.toThrow(
+        /Invalid deploy backend "provable"/,
+      );
+    });
+  });
+
   describe("config validation", () => {
     const configHooks = pluginTest.hookHandlers!.config as {
       validateResolvedConfig: (config: unknown) => { path: string; message: string }[];
