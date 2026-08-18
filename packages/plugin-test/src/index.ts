@@ -46,7 +46,13 @@ function readExplicitDeployBackend(
   args: Record<string, unknown>,
   lre: LionDenRuntimeEnvironment,
 ): DeployProvider | undefined {
-  const raw = args["deployBackend"] ?? lre.globalOptions["deployBackend"];
+  // `=== undefined`, not `??`: only `undefined` means "this layer is unset".
+  // With `??`, a malformed higher-precedence `deployBackend: null` would fall
+  // through to the global layer and silently run on a backend the caller did
+  // not ask for. `readLayer` in plugin-deploy's selector rejects `null` for the
+  // same reason; these two must not disagree.
+  const fromArgs = args["deployBackend"];
+  const raw = fromArgs === undefined ? lre.globalOptions["deployBackend"] : fromArgs;
   if (raw === undefined) return undefined;
   if (typeof raw === "string" && (DEPLOY_PROVIDERS as readonly string[]).includes(raw)) {
     return raw as DeployProvider;
