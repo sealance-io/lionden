@@ -1,0 +1,98 @@
+{
+  "type": "deploy",
+  "id": "at1wld5encnmvga00tqfafsufka7krjm09grqtxvdg69rvcpcrewsqsnl959m",
+  "owner": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "signature": "sign1pdrmwgwzy32jz9qlru4t672vzavcyldwq55f7rrhmxj7jqxnsqpx5k2ev6g2x9q08lpl429wyzlqtycze26j63wzs0wyt34gel5n7qyr22qjwn4zc0pzv87twjygsz9m7ekljmuw4jpzf68rwuq99r0tp735vs6220q7tp60nr7llkwstcvu49wdhydx5x2s3sftjskzawhqve0dt5p"
+  },
+  "deployment": {
+    "edition": 1,
+    "program": "program spike_up.aleo;\n\nmapping slots:\n    key as u32.public;\n    value as u32.public;\n\nfunction put:\n    input r0 as u32.public;\n    input r1 as u32.public;\n    async put r0 r1 into r2;\n    output r2 as spike_up.aleo/put.future;\n\nfinalize put:\n    input r0 as u32.public;\n    input r1 as u32.public;\n    set r1 into slots[r0];\n\nfunction clear:\n    input r0 as u32.public;\n    async clear r0 into r1;\n    output r1 as spike_up.aleo/clear.future;\n\nfinalize clear:\n    input r0 as u32.public;\n    set 0u32 into slots[r0];\n\nconstructor:\n    assert.eq program_owner aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px;\n",
+    "verifying_keys": [
+      [
+        "put",
+        [
+          "verifier1q9qqqqqqqqqqqqyvxgqqqqqqqqq87vsqqqqqqqqqhe7sqqqqqqqqqma4qqqqqqqqqq65yqqqqqqqqqqvqqqqqqqqqqqgtlaj49fmrk2d8slmselaj9tpucgxv6awu6yu4pfcn5xa0yy0tpxpc8wemasjvvxr9248vt3509vpk3u60ejyfd9xtvjmudpp7ljq2csk4yqz70ug3x8xp3xn3ul0yrrw0mvd2g8ju7rts50u3smue03gp99j88f0ky8h6fjlpvh58rmxv53mldmgrxa3fq6spsh8gt5whvsyu2rk4a2wmeyrgvvdf29pwp02srktxnvht3k6ff094usjtllggva2ym75xc4lzuqu9xx8ylfkm3qc7lf7ktk9uu9du5raukh828dzgq26hrarq5ajjl7pz7zk924kekjrp92r6jh9dpp05mxtuffwlmvew84dvnqrkre7lw29mkdzgdxwe7q8z0vnkv2vwwdraekw2va3plu7rkxhtnkuxvce0qkgxcxn5mtg9q2c3vxdf2r7jjse2g68dgvyh85q4mzfnvn07lletrpty3vypus00gfu9m47rzay4mh5w9f03z9zgzgzhkv0mupdqsk8naljqm9tc2qqzhf6yp3mnv2ey89xk7sw9pslzzlkndfd2upzmew4e4vnrkr556kexs9qrykkuhsr260mnrgh7uv0sp2meky0keeukaxgjdsnmy77kl48g3swcvqdjm50ejzr7x04vy7hn7anhd0xeetclxunnl7pd6e52qxdlr3nmutz4zr8f2xqa57a2zkl59a28w842cj4783zpy9hxw03k6vz4a3uu7sm072uqknpxjk8fyq4vxtqd08kd93c2mt40lj9ag35nm4rwcfjayejk57m9qqu83qnkrj3sz90pw808srmf705n2yu6gvqazpvu2mwm8x6mgtlsntxfhr0qas43rqxnccft36z4ygty86390t7vrt08derz8368z8ekn3yywxgp4uq24gm6e58tpp0lcvtpsm3nkwpnmzztx4qvkaf6vk38wg787h8mfpqqqqqqqqqqffkful",
+          "certificate1qyqsqqqqqqqqqqxvwszp09v860w62s2l4g6eqf0kzppyax5we36957ywqm2dplzwvvlqg0kwlnmhzfatnax7uaqt7yqqqw0sc4u"
+        ]
+      ],
+      [
+        "clear",
+        [
+          "verifier1q9qqqqqqqqqqqqyvxgqqqqqqqqq87vsqqqqqqqqqhe7sqqqqqqqqqma4qqqqqqqqqq65yqqqqqqqqqqvqqqqqqqqqqqgtlaj49fmrk2d8slmselaj9tpucgxv6awu6yu4pfcn5xa0yy0tpxpc8wemasjvvxr9248vt3509vpk3u60ejyfd9xtvjmudpp7ljq2csk4yqz70ug3x8xp3xn3ul0yrrw0mvd2g8ju7rts50u3smue03gp99j88f0ky8h6fjlpvh58rmxv53mldmgrxa3fq6spsh8gt5whvsyu2rk4a2wmeyrgvvdf29pwp02srktxnvht3k6ff094usjtllggva2ym75xc4lzuqu9xx8ylfkm3qc7lf7ktk9uu9du5raukh828dzgq26hrarq5ajjl7pz7zk924kekjrp92r6jh9dpp05mxtuffwlmvew84dvnqrkre7lw29mkdzgdxwe7q8z0vnkv2vwwdraekw2va3plu7rkxhtnkuxvce0qkgxcxn5mtg9q2c3vxdf2r7jjse2g68dgvyh85q4mzfnvn07lletrpty3vypus00gfu9m47rzay4mh5w9f03z9zgzgzhkv0mupdqsk8naljqm9tc2qqzhf6yp3mnv2ey89xk7sw9pslzzlkndfd2upzmew4e4vnrkr556kexs9qrykkuhsr260mnrgh7uv0sp2meky0keeukaxgjdsnmy77kl48g3swcvqdjm50ejzr7x04vy7hn7anhd0xeetclxunnl7pd6e52qxdlr3nmutz4zr8f2xqa57a2zkl59a28w842cj4783zpy9hxw03k6vz4a3uu7sm072uqknpxjk8fyq4vxtqd08kd93c2mt40lj9ag35nm4rwcfjayejk57m9qqu83qnkrj3sz90pw808srmf705n2yu6gvqazpvu2mwm8x6mgtlsntxfhr0qas43rqxnccft36z4ygty86390t7vrt08derz8368z8ekn3yywxgp4uq24gm6e58tpp0lcvtpsm3nkwpnmzztx4qvkaf6vk38wg787h8mfpqqqqqqqqqqffkful",
+          "certificate1qyqsqqqqqqqqqqxvwszp09v860w62s2l4g6eqf0kzppyax5we36957ywqm2dplzwvvlqg0kwlnmhzfatnax7uaqt7yqqqw0sc4u"
+        ]
+      ]
+    ],
+    "program_checksum": [
+      "33u8",
+      "120u8",
+      "243u8",
+      "31u8",
+      "60u8",
+      "100u8",
+      "63u8",
+      "217u8",
+      "127u8",
+      "250u8",
+      "47u8",
+      "122u8",
+      "109u8",
+      "145u8",
+      "72u8",
+      "179u8",
+      "231u8",
+      "111u8",
+      "237u8",
+      "143u8",
+      "163u8",
+      "200u8",
+      "48u8",
+      "171u8",
+      "111u8",
+      "72u8",
+      "222u8",
+      "200u8",
+      "248u8",
+      "231u8",
+      "141u8",
+      "158u8"
+    ],
+    "program_owner": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px"
+  },
+  "fee": {
+    "transition": {
+      "id": "au1pt656tmaww2xw7aqxhkrrtqqwygut35lxqn5cccp869etuzklsyqe8k9f9",
+      "program": "credits.aleo",
+      "function": "fee_public",
+      "inputs": [
+        {
+          "type": "public",
+          "id": "6028491246880188018652441198119724713952014998607568607459308533895645579230field",
+          "value": "101858082u64"
+        },
+        {
+          "type": "public",
+          "id": "8387413294075799720928776873992609857161746667861518596267985242477048527437field",
+          "value": "0u64"
+        },
+        {
+          "type": "public",
+          "id": "6886273087023906096777372399091311310470061768917208474283199402211509173554field",
+          "value": "5169409644301053430577708473106182494757110854595682107348265871338699931490field"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "future",
+          "id": "1317528425532736978448603609819260322320001538852629333983276072304354389968field",
+          "value": "{\n  program_id: credits.aleo,\n  function_name: fee_public,\n  arguments: [\n    aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px,\n    101858082u64\n  ]\n}"
+        }
+      ],
+      "tpk": "3029548815921228362751514989547183157405235102120609844430037658459408579480group",
+      "tcm": "2086846263042808100304813364934305780665015195861680258538604813225271195287field",
+      "scm": "6795934856120178391369868843533069753827904360341451005623236990470113119168field"
+    },
+    "global_state_root": "sr1ka7e5r0a3wnsh7cw0q2x33cpx73fapux5e02fxkzmxzyk2fk5vzqweahld"
+  }
+}

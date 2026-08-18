@@ -1,0 +1,67 @@
+
+
+📢 Using the following consensus heights: 0,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+  To override, pass in `--consensus-heights` or override the environment variable `CONSENSUS_VERSION_HEIGHTS`.
+
+Attempting to determine the consensus version from the latest block height at http://127.0.0.1:3030...
+
+🛠️  Deployment Plan Summary
+──────────────────────────────────────────────
+🔧 Configuration:
+  Private Key:        APrivateKey1zkp8CZNn3yeC...
+  Address:            aleo1rhgdu77hgyqd3xjj8uc...
+  Endpoint:           http://127.0.0.1:3030
+  Network:            testnet
+  Consensus Version:  17
+
+📦 Deployment Tasks:
+  • spike_up.aleo  │ priority fee: 0  │ fee record: no (public fee)
+
+⚙️ Actions:
+  • Transaction(s) will NOT be printed to the console.
+  • Transaction(s) will NOT be saved to a file.
+  • Transaction(s) will be broadcast to http://127.0.0.1:3030
+──────────────────────────────────────────────
+
+
+🔧 Your program 'spike_up.aleo' has the following constructor.
+──────────────────────────────────────────────
+constructor:
+    assert.eq program_owner aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px;
+──────────────────────────────────────────────
+Once it is deployed, it CANNOT be changed.
+
+📦 Creating deployment transaction for 'spike_up.aleo'...
+
+⚠️  Skipping deployment certificate and verifier key generation as per user request.
+
+
+📊 Deployment Summary for spike_up.aleo
+──────────────────────────────────────────────
+  Program Size:         0.42 KB / 2000.00 KB
+💰 Cost Breakdown (credits)
+  Transaction Storage:  0.968000
+  Program Synthesis:    0.030041
+  Namespace:            100.000000
+  Constructor:          0.002000
+  Priority Fee:         0.000000
+  Total Fee:            101.000041
+  Function 'put'
+    Total Execution Cost:   0.001728
+    |- Storage Cost:        0.001296
+    |- Finalize Cost:       0.000432
+──────────────────────────────────────────────
+
+📡 Broadcasting deployment for spike_up.aleo...
+💰Your current public balance is 9374999.894112 credits.
+
+✉️ Broadcasted transaction with:
+  - transaction ID: 'at13fx2zhtpqprjvsd0cpmd27lhyfnk56zp3hysdarrej5wmqj0xg8sa5q0e3'
+  - fee ID: 'au166jwkeadjd6xznd9v3tna8amm2mqwv3ltcxzywxwgulf3v5a7srqjms0x6'
+  - fee transaction ID: 'at1affve2aer2tvl8uzjvnvuwktpmh6ekd2rxkfdmy2uvm895t7d5pqv6haqg'
+    (use this to check for rejected transactions)
+
+🔄 Searching up to 12 blocks to confirm transaction (this may take several seconds)...
+Explored 1 blocks.
+Transaction accepted.
+✅ Deployment confirmed!

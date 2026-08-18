@@ -1,0 +1,91 @@
+{
+  "type": "deploy",
+  "id": "at1v0gnkdn6s2snm6xwpwqyurmhqcalke0uw5yxjct47q9hvak88q9sn07lyu",
+  "owner": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "signature": "sign1q0undhfdnmwds0mdx705p5ruxzjknnq9jfan7cmr5nzslm2r4cpx9xqk0ej5dd5whnjuju52fn3ualrn43lk0tpzaxhqu86czqjjwqur22qjwn4zc0pzv87twjygsz9m7ekljmuw4jpzf68rwuq99r0tp735vs6220q7tp60nr7llkwstcvu49wdhydx5x2s3sftjskzawhqv2ut980"
+  },
+  "deployment": {
+    "edition": 0,
+    "program": "program zspike_a.aleo;\n\nmapping total:\n    key as u32.public;\n    value as u32.public;\n\nfunction accrue:\n    input r0 as u32.public;\n    input r1 as u32.public;\n    async accrue r0 r1 into r2;\n    output r2 as zspike_a.aleo/accrue.future;\n\nfinalize accrue:\n    input r0 as u32.public;\n    input r1 as u32.public;\n    get.or_use total[r0] 0u32 into r2;\n    add r2 r1 into r3;\n    set r3 into total[r0];\n\nconstructor:\n    assert.eq edition 0u16;\n",
+    "verifying_keys": [
+      [
+        "accrue",
+        [
+          "verifier1q9qqqqqqqqqqqqyvxgqqqqqqqqq87vsqqqqqqqqqhe7sqqqqqqqqqma4qqqqqqqqqq65yqqqqqqqqqqvqqqqqqqqqqqgtlaj49fmrk2d8slmselaj9tpucgxv6awu6yu4pfcn5xa0yy0tpxpc8wemasjvvxr9248vt3509vpk3u60ejyfd9xtvjmudpp7ljq2csk4yqz70ug3x8xp3xn3ul0yrrw0mvd2g8ju7rts50u3smue03gp99j88f0ky8h6fjlpvh58rmxv53mldmgrxa3fq6spsh8gt5whvsyu2rk4a2wmeyrgvvdf29pwp02srktxnvht3k6ff094usjtllggva2ym75xc4lzuqu9xx8ylfkm3qc7lf7ktk9uu9du5raukh828dzgq26hrarq5ajjl7pz7zk924kekjrp92r6jh9dpp05mxtuffwlmvew84dvnqrkre7lw29mkdzgdxwe7q8z0vnkv2vwwdraekw2va3plu7rkxhtnkuxvce0qkgxcxn5mtg9q2c3vxdf2r7jjse2g68dgvyh85q4mzfnvn07lletrpty3vypus00gfu9m47rzay4mh5w9f03z9zgzgzhkv0mupdqsk8naljqm9tc2qqzhf6yp3mnv2ey89xk7sw9pslzzlkndfd2upzmew4e4vnrkr556kexs9qrykkuhsr260mnrgh7uv0sp2meky0keeukaxgjdsnmy77kl48g3swcvqdjm50ejzr7x04vy7hn7anhd0xeetclxunnl7pd6e52qxdlr3nmutz4zr8f2xqa57a2zkl59a28w842cj4783zpy9hxw03k6vz4a3uu7sm072uqknpxjk8fyq4vxtqd08kd93c2mt40lj9ag35nm4rwcfjayejk57m9qqu83qnkrj3sz90pw808srmf705n2yu6gvqazpvu2mwm8x6mgtlsntxfhr0qas43rqxnccft36z4ygty86390t7vrt08derz8368z8ekn3yywxgp4uq24gm6e58tpp0lcvtpsm3nkwpnmzztx4qvkaf6vk38wg787h8mfpqqqqqqqqqqffkful",
+          "certificate1qyqsqqqqqqqqqqxvwszp09v860w62s2l4g6eqf0kzppyax5we36957ywqm2dplzwvvlqg0kwlnmhzfatnax7uaqt7yqqqw0sc4u"
+        ]
+      ]
+    ],
+    "program_checksum": [
+      "48u8",
+      "164u8",
+      "239u8",
+      "179u8",
+      "123u8",
+      "211u8",
+      "92u8",
+      "251u8",
+      "165u8",
+      "136u8",
+      "110u8",
+      "177u8",
+      "218u8",
+      "60u8",
+      "15u8",
+      "42u8",
+      "72u8",
+      "81u8",
+      "44u8",
+      "146u8",
+      "201u8",
+      "139u8",
+      "249u8",
+      "243u8",
+      "16u8",
+      "110u8",
+      "55u8",
+      "252u8",
+      "108u8",
+      "208u8",
+      "227u8",
+      "23u8"
+    ],
+    "program_owner": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px"
+  },
+  "fee": {
+    "transition": {
+      "id": "au14hqn8ydcxc3ep9rjefk60hmymdce6plt4dxp3zqfastgjxl3w59shgfwq5",
+      "program": "credits.aleo",
+      "function": "fee_public",
+      "inputs": [
+        {
+          "type": "public",
+          "id": "6129565152788527523027556894154767944343590801224058936863374116595768148737field",
+          "value": "101016041u64"
+        },
+        {
+          "type": "public",
+          "id": "2707022103233623602814137870342983969990586727577693320383530663827287183028field",
+          "value": "0u64"
+        },
+        {
+          "type": "public",
+          "id": "8260089527546359966569493620649490220277749645295068827267869789198197505585field",
+          "value": "2785562109474976496889449621559508136575934856504086460620467527765207859507field"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "future",
+          "id": "122669205679916506924746663118322014888848413899054312816585512370806293369field",
+          "value": "{\n  program_id: credits.aleo,\n  function_name: fee_public,\n  arguments: [\n    aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px,\n    101016041u64\n  ]\n}"
+        }
+      ],
+      "tpk": "7122828509207325651167370900249796073414720794433894410972556812881792314181group",
+      "tcm": "5784145417051733408144285266695081079953074915428559282827942829629631849914field",
+      "scm": "1893826192871051884643143614069556814315654380046120248123175204522845674558field"
+    },
+    "global_state_root": "sr1cgjhqef835qyr5ryuxuumy4htjnyytdswf9zpanduy2ycv3dzqzqz52vuk"
+  }
+}

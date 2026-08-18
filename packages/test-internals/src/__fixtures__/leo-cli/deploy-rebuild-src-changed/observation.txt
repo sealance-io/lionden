@@ -1,0 +1,8 @@
+build/ artifact hashes before deploy:
+  5d8ded5d3edc63224e47bf66f0942272d78f6f3a841e5e1bdc5e9ef695db172b  build/spike_up/abi.json
+  a99a1e9b90b9bb6051bb9d7d487167e74fe62ecb859f1c530d1dfa77f5b8835f  build/spike_up/spike_up.aleo
+build/ artifact hashes after deploy:
+  9f4242cd6872d3a12b50bffc4a2ecbc2dbf17964ef8a3d69227766eef350d28b  build/spike_up/abi.json
+  68778d5da0df83820b9609489fcd5bb629a6dc9ff1bb2533f3257c473f7d5d68  build/spike_up/spike_up.aleo
+
+RESULT: leo deploy REWROTE build/ (it recompiled from src/).

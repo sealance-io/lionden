@@ -1,0 +1,65 @@
+
+
+📢 Using the following consensus heights: 0,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+  To override, pass in `--consensus-heights` or override the environment variable `CONSENSUS_VERSION_HEIGHTS`.
+
+Attempting to determine the consensus version from the latest block height at http://127.0.0.1:3030...
+
+🛠️  Deployment Plan Summary
+──────────────────────────────────────────────
+🔧 Configuration:
+  Private Key:        APrivateKey1zkp8CZNn3yeC...
+  Address:            aleo1rhgdu77hgyqd3xjj8uc...
+  Endpoint:           http://127.0.0.1:3030
+  Network:            testnet
+  Consensus Version:  17
+
+📦 Deployment Tasks:
+  • spike_a.aleo  │ priority fee: 0  │ fee record: no (public fee)
+
+⚙️ Actions:
+  • Transaction(s) will NOT be printed to the console.
+  • Transaction(s) will NOT be saved to a file.
+  • Transaction(s) will be broadcast to http://127.0.0.1:3030
+──────────────────────────────────────────────
+
+Loaded the following programs into the VM:
+ - credits.aleo (default)
+ - spike_a.aleo (edition 0)
+
+⚠️  Skipping deployment certificate generation as per user request.
+
+edition for deployed program: 1
+
+📊 Deployment Summary for spike_a.aleo
+──────────────────────────────────────────────
+  Program Size:         0.62 KB / 2000.00 KB
+💰 Cost Breakdown (credits)
+  Transaction Storage:  1.807000
+  Program Synthesis:    0.060082
+  Namespace:            1000.000000
+  Constructor:          0.002000
+  Priority Fee:         0.000000
+  Total Fee:            1001.869082
+  Function 'bump'
+    Total Execution Cost:   0.001809
+    |- Storage Cost:        0.001296
+    |- Finalize Cost:       0.000513
+  Function 'reset'
+    Total Execution Cost:   0.001679
+    |- Storage Cost:        0.001247
+    |- Finalize Cost:       0.000432
+──────────────────────────────────────────────
+📡 Broadcasting upgrade for spike_a.aleo...
+💰Your current public balance is 9373897.88403 credits.
+
+✉️ Broadcasted transaction with:
+  - transaction ID: 'at1c950c2gepj4562v02ghunxf06n6pm0n0ge0pw4cy6drlrhlkpuxsfy4lka'
+  - fee ID: 'au1kmakuqkvl48vl07zxv09jlrr0kdzr3vyal4pfaysmzcxmmlqzcysrzxdw4'
+  - fee transaction ID: 'at1dyq9fxga8sa5wnfwdydc9egpu5t3d5x2pmtpz9gwdxmaxthalc8qx4hdfl'
+    (use this to check for rejected transactions)
+
+🔄 Searching up to 12 blocks to confirm transaction (this may take several seconds)...
+Explored 1 blocks.
+Transaction rejected.
+❌ Failed to upgrade program spike_a.aleo: could not find the transaction on the network.

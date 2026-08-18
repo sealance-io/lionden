@@ -1,0 +1,1 @@
+leo deploy --disable-update-check --network testnet --endpoint http://127.0.0.1:3999 --devnet --consensus-version 17 --save <SPIKE_ROOT>/captures/deploy-offline-consensus/save --json-output=<SPIKE_ROOT>/captures/deploy-offline-consensus/json-output.json -y --skip-deploy-certificate --path <SPIKE_ROOT>/spike_up

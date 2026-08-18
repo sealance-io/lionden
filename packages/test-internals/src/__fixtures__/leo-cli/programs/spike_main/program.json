@@ -1,0 +1,20 @@
+{
+  "program": "spike_main.aleo",
+  "version": "0.1.0",
+  "description": "",
+  "license": "MIT",
+  "leo": "4.3.2",
+  "dependencies": [
+    {
+      "name": "spike_a.aleo",
+      "location": "local",
+      "path": "../spike_a"
+    },
+    {
+      "name": "zspike_a.aleo",
+      "location": "local",
+      "path": "../zspike_a"
+    }
+  ],
+  "dev_dependencies": null
+}

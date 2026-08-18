@@ -1,0 +1,91 @@
+{
+  "type": "deploy",
+  "id": "at1qpwg8uexl3h3swth4r4503sw6wyx4j5keymd2z0zzqcupjg4lvzqdq4v4v",
+  "owner": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "signature": "sign14vg3wmnu5pxpz0dwy34utjhj2wheq7lxts4jgdred79r9lehwcqxpgk2squ7a0av2s39jtym9yr82ad7ek753hy2y70lrherfsmjcqyr22qjwn4zc0pzv87twjygsz9m7ekljmuw4jpzf68rwuq99r0tp735vs6220q7tp60nr7llkwstcvu49wdhydx5x2s3sftjskzawhqvm8llzf"
+  },
+  "deployment": {
+    "edition": 0,
+    "program": "import spike_a.aleo;\nimport zspike_a.aleo;\n\nprogram spike_main.aleo;\n\nfunction drive:\n    input r0 as u32.public;\n    input r1 as u32.public;\n    call spike_a.aleo/bump r0 r1 into r2;\n    call zspike_a.aleo/accrue r0 r1 into r3;\n    async drive r2 r3 into r4;\n    output r4 as spike_main.aleo/drive.future;\n\nfinalize drive:\n    input r0 as spike_a.aleo/bump.future;\n    input r1 as zspike_a.aleo/accrue.future;\n    await r0;\n    await r1;\n\nconstructor:\n    assert.eq edition 0u16;\n",
+    "verifying_keys": [
+      [
+        "drive",
+        [
+          "verifier1q9qqqqqqqqqqqqyvxgqqqqqqqqq87vsqqqqqqqqqhe7sqqqqqqqqqma4qqqqqqqqqq65yqqqqqqqqqqvqqqqqqqqqqqgtlaj49fmrk2d8slmselaj9tpucgxv6awu6yu4pfcn5xa0yy0tpxpc8wemasjvvxr9248vt3509vpk3u60ejyfd9xtvjmudpp7ljq2csk4yqz70ug3x8xp3xn3ul0yrrw0mvd2g8ju7rts50u3smue03gp99j88f0ky8h6fjlpvh58rmxv53mldmgrxa3fq6spsh8gt5whvsyu2rk4a2wmeyrgvvdf29pwp02srktxnvht3k6ff094usjtllggva2ym75xc4lzuqu9xx8ylfkm3qc7lf7ktk9uu9du5raukh828dzgq26hrarq5ajjl7pz7zk924kekjrp92r6jh9dpp05mxtuffwlmvew84dvnqrkre7lw29mkdzgdxwe7q8z0vnkv2vwwdraekw2va3plu7rkxhtnkuxvce0qkgxcxn5mtg9q2c3vxdf2r7jjse2g68dgvyh85q4mzfnvn07lletrpty3vypus00gfu9m47rzay4mh5w9f03z9zgzgzhkv0mupdqsk8naljqm9tc2qqzhf6yp3mnv2ey89xk7sw9pslzzlkndfd2upzmew4e4vnrkr556kexs9qrykkuhsr260mnrgh7uv0sp2meky0keeukaxgjdsnmy77kl48g3swcvqdjm50ejzr7x04vy7hn7anhd0xeetclxunnl7pd6e52qxdlr3nmutz4zr8f2xqa57a2zkl59a28w842cj4783zpy9hxw03k6vz4a3uu7sm072uqknpxjk8fyq4vxtqd08kd93c2mt40lj9ag35nm4rwcfjayejk57m9qqu83qnkrj3sz90pw808srmf705n2yu6gvqazpvu2mwm8x6mgtlsntxfhr0qas43rqxnccft36z4ygty86390t7vrt08derz8368z8ekn3yywxgp4uq24gm6e58tpp0lcvtpsm3nkwpnmzztx4qvkaf6vk38wg787h8mfpqqqqqqqqqqffkful",
+          "certificate1qyqsqqqqqqqqqqxvwszp09v860w62s2l4g6eqf0kzppyax5we36957ywqm2dplzwvvlqg0kwlnmhzfatnax7uaqt7yqqqw0sc4u"
+        ]
+      ]
+    ],
+    "program_checksum": [
+      "87u8",
+      "93u8",
+      "147u8",
+      "29u8",
+      "53u8",
+      "38u8",
+      "206u8",
+      "115u8",
+      "49u8",
+      "211u8",
+      "117u8",
+      "137u8",
+      "235u8",
+      "107u8",
+      "19u8",
+      "57u8",
+      "5u8",
+      "177u8",
+      "253u8",
+      "137u8",
+      "162u8",
+      "253u8",
+      "94u8",
+      "83u8",
+      "212u8",
+      "206u8",
+      "87u8",
+      "22u8",
+      "141u8",
+      "128u8",
+      "122u8",
+      "14u8"
+    ],
+    "program_owner": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px"
+  },
+  "fee": {
+    "transition": {
+      "id": "au15rlmamsqwhznfqzfhr4nrqhhsnz56d5x0pnlwp9msek2tyqj4qzqag7p9d",
+      "program": "credits.aleo",
+      "function": "fee_public",
+      "inputs": [
+        {
+          "type": "public",
+          "id": "2666835193731572419052682522339641494660369759436695965679787382313857106325field",
+          "value": "2093041u64"
+        },
+        {
+          "type": "public",
+          "id": "4251868907110636010612460436676503438962677927203329441317683028471125012658field",
+          "value": "0u64"
+        },
+        {
+          "type": "public",
+          "id": "2257457519020795312002397397150232922366077604824523457187620163089518534906field",
+          "value": "3387799513951943271606579611846722819568625860149128244032621644967875338851field"
+        }
+      ],
+      "outputs": [
+        {
+          "type": "future",
+          "id": "1145141605865808364892734055228966291572091976438924800245487180064417054042field",
+          "value": "{\n  program_id: credits.aleo,\n  function_name: fee_public,\n  arguments: [\n    aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px,\n    2093041u64\n  ]\n}"
+        }
+      ],
+      "tpk": "5442157334049906132737604976966974080336808548670947584183606781112418014202group",
+      "tcm": "6991317469497164765275467464470058157028167753411334714948080071358965948935field",
+      "scm": "5676439585968353079176411787430100023773524449804234196322730716920586662328field"
+    },
+    "global_state_root": "sr1x2e579xla9p6rqlfskxkcfjw5m62w8x4w3nyvj87lj5fp77u5uxq0x6dcr"
+  }
+}

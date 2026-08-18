@@ -1,0 +1,61 @@
+
+
+📢 Using the following consensus heights: 0,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
+  To override, pass in `--consensus-heights` or override the environment variable `CONSENSUS_VERSION_HEIGHTS`.
+
+Attempting to determine the consensus version from the latest block height at http://127.0.0.1:3030...
+
+🛠️  Deployment Plan Summary
+──────────────────────────────────────────────
+🔧 Configuration:
+  Private Key:        APrivateKey1zkp8CZNn3yeC...
+  Address:            aleo1rhgdu77hgyqd3xjj8uc...
+  Endpoint:           http://127.0.0.1:3030
+  Network:            testnet
+  Consensus Version:  17
+
+📦 Deployment Tasks:
+  • spike_net.aleo  │ priority fee: 0  │ fee record: no (public fee)
+
+🌐 Remote Dependencies:
+(Leo will not generate transactions for these programs)
+  • credits.aleo
+
+⚙️ Actions:
+  • Transaction(s) will NOT be printed to the console.
+  • Transaction(s) will be saved to <SPIKE_ROOT>/captures/deploy-with-certificate/save
+  • Transaction(s) will NOT be broadcast to the network.
+──────────────────────────────────────────────
+
+
+🔧 Your program 'spike_net.aleo' has the following constructor.
+──────────────────────────────────────────────
+constructor:
+    assert.eq edition 0u16;
+──────────────────────────────────────────────
+Once it is deployed, it CANNOT be changed.
+
+📦 Creating deployment transaction for 'spike_net.aleo'...
+
+
+📊 Deployment Summary for spike_net.aleo
+──────────────────────────────────────────────
+  Program Size:         0.36 KB / 2000.00 KB
+  Total Variables:      21,044
+  Total Constraints:    14,669
+  Max Variables:        2,097,152
+  Max Constraints:      2,097,152
+
+💰 Cost Breakdown (credits)
+  Transaction Storage:  0.993000
+  Program Synthesis:    0.035713
+  Namespace:            10.000000
+  Constructor:          0.002000
+  Priority Fee:         0.000000
+  Total Fee:            11.030713
+  Function 'pay'
+    Total Execution Cost:   0.003674
+    |- Storage Cost:        0.002349
+    |- Finalize Cost:       0.001325
+──────────────────────────────────────────────
+💾 Saving deployment for spike_net.aleo at <SPIKE_ROOT>/captures/deploy-with-certificate/save/spike_net.aleo.deployment.json

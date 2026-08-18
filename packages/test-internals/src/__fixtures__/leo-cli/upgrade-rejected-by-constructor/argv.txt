@@ -1,0 +1,1 @@
+leo upgrade --disable-update-check --network testnet --endpoint http://127.0.0.1:3030 --devnet --broadcast --json-output=<SPIKE_ROOT>/captures/upgrade-rejected/json-output.json -y --skip-deploy-certificate --path <SPIKE_ROOT>/spike_a

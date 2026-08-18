@@ -1,0 +1,54 @@
+{
+  "config": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "network": "testnet",
+    "endpoint": "http://127.0.0.1:3030",
+    "consensus_version": 17
+  },
+  "deployments": [
+    {
+      "program_id": "spike_a.aleo",
+      "transaction_id": "at1wseultgnldjtsf0h6qeef3e2pxlh6529sv3m5505c6cptmcf5cfqcdnutd",
+      "stats": {
+        "program_size_bytes": 440,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 978000,
+        "namespace_cost": 1000000000,
+        "synthesis_cost": 30041,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 1001010041,
+        "function_costs": [
+          {
+            "name": "bump",
+            "finalize_cost": 513,
+            "storage_cost": 1296,
+            "execution_cost": 1809
+          }
+        ]
+      }
+    },
+    {
+      "program_id": "spike_main.aleo",
+      "transaction_id": "at1h7wtkxkpe98akmd63rr8x6nru3f0jchxzrkh424j9v7m7sefwygs7xz3sn",
+      "stats": {
+        "program_size_bytes": 480,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 1061000,
+        "namespace_cost": 1000000,
+        "synthesis_cost": 30041,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 2093041,
+        "function_costs": [
+          {
+            "name": "drive",
+            "finalize_cost": 1067,
+            "storage_cost": 2961,
+            "execution_cost": 4028
+          }
+        ]
+      }
+    }
+  ]
+}

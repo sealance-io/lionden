@@ -1,0 +1,38 @@
+{
+  "config": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "network": "testnet",
+    "endpoint": "http://127.0.0.1:3030",
+    "consensus_version": 17
+  },
+  "deployments": [
+    {
+      "program_id": "spike_a.aleo",
+      "transaction_id": "at1c950c2gepj4562v02ghunxf06n6pm0n0ge0pw4cy6drlrhlkpuxsfy4lka",
+      "stats": {
+        "program_size_bytes": 633,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 1807000,
+        "namespace_cost": 1000000000,
+        "synthesis_cost": 60082,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 1001869082,
+        "function_costs": [
+          {
+            "name": "bump",
+            "finalize_cost": 513,
+            "storage_cost": 1296,
+            "execution_cost": 1809
+          },
+          {
+            "name": "reset",
+            "finalize_cost": 432,
+            "storage_cost": 1247,
+            "execution_cost": 1679
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "config": {
+    "address": "aleo1rhgdu77hgyqd3xjj8ucu3jj9r2krwz6mnzyd80gncr5fxcwlh5rsvzp9px",
+    "network": "testnet",
+    "endpoint": "http://127.0.0.1:3030",
+    "consensus_version": 17
+  },
+  "deployments": [
+    {
+      "program_id": "spike_up.aleo",
+      "transaction_id": "at1z3l6cs4wq6zvhfydujspp7sarmmpm8fh9m707fqt4puxd3yt7yqqzux5ej",
+      "stats": {
+        "program_size_bytes": 1011,
+        "max_program_size_bytes": 2048000,
+        "storage_cost": 3452000,
+        "namespace_cost": 100000000,
+        "synthesis_cost": 120164,
+        "constructor_cost": 2000,
+        "priority_fee": 0,
+        "total_cost": 103574164,
+        "function_costs": [
+          {
+            "name": "put",
+            "finalize_cost": 432,
+            "storage_cost": 1296,
+            "execution_cost": 1728
+          },
+          {
+            "name": "clear",
+            "finalize_cost": 432,
+            "storage_cost": 1249,
+            "execution_cost": 1681
+          },
+          {
+            "name": "probe",
+            "finalize_cost": 432,
+            "storage_cost": 1249,
+            "execution_cost": 1681
+          },
+          {
+            "name": "touch",
+            "finalize_cost": 432,
+            "storage_cost": 1249,
+            "execution_cost": 1681
+          }
+        ]
+      }
+    }
+  ]
+}
