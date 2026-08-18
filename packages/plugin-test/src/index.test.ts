@@ -149,6 +149,27 @@ describe("plugin-test", () => {
         /Invalid deploy backend "provable"/,
       );
     });
+
+    /**
+     * Only `undefined` means "unset". A `??` between the two layers would treat
+     * a malformed `null` as absent and quietly run on the global's backend —
+     * the caller asked for something broken and would get a silent substitution
+     * instead of an error. The valid global here is what makes the fall-through
+     * observable: with `??` this resolves to "leo" and passes.
+     */
+    it("rejects a null argument instead of falling through to the global", async () => {
+      delete process.env["LIONDEN_DEPLOY_BACKEND"];
+      await expect(runTestTask({ deployBackend: "leo" }, { deployBackend: null })).rejects.toThrow(
+        /Invalid deploy backend null/,
+      );
+      expect(process.env["LIONDEN_DEPLOY_BACKEND"]).toBeUndefined();
+    });
+
+    it("rejects a null global rather than treating it as unset", async () => {
+      await expect(runTestTask({ deployBackend: null })).rejects.toThrow(
+        /Invalid deploy backend null/,
+      );
+    });
   });
 
   describe("config validation", () => {
