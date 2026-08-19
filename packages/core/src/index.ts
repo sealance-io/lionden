@@ -45,8 +45,11 @@ export {
   writeKeyArtifactsMetadata,
   writeRuntimeKeyCacheMetadata,
 } from "./key-artifacts.js";
-// Leo CLI preflight
-export { preflightLeo } from "./leo-preflight.js";
+// Leo CLI preflight. `parseLeoVersionOutput` is exported for the Leo deploy
+// backend's own mandatory version gate, which must run even when
+// `skipLeoVersionCheck` short-circuits `preflightLeo`.
+export type { ParsedLeoVersion } from "./leo-preflight.js";
+export { parseLeoVersionOutput, preflightLeo } from "./leo-preflight.js";
 export type { LogStyleRole } from "./log-style.js";
 export {
   colorLogText,
@@ -70,6 +73,8 @@ export {
   PluginLoadError,
   resolvePluginOrder,
 } from "./plugin-loader.js";
+export type { StreamRedactor } from "./redact.js";
+export { createStreamRedactor, REDACTED, redactSecrets } from "./redact.js";
 // Task builder
 export { OverrideTaskBuilder, overrideTask, TaskBuilder, task } from "./task-builder.js";
 // Task runner
