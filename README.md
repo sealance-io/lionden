@@ -237,6 +237,7 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/compiler.md`](docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
 - [`docs/network.md`](docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
 - [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, and hooks
+- [`docs/deploy-backends.md`](docs/deploy-backends.md): SDK vs Leo CLI transaction backends, selection, limits, security
 - [`docs/testing.md`](docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
 - [`docs/json-abi.md`](docs/json-abi.md): JSON ABI schema, parser normalization, and generated binding type rules
