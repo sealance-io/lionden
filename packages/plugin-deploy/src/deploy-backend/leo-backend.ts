@@ -2,12 +2,19 @@
  * The Leo CLI deploy backend.
  *
  * Exists because the SDK builds a deployment in one monolithic WASM operation,
- * synthesizing and retaining proving keys for every function, record circuit
- * and uncached import until it completes. Large programs can exhaust WASM's
- * ~4 GiB limit during key setup and hang before control returns to JavaScript,
- * so the SDK cannot persist partial progress or resume. The Leo CLI caches
- * synthesized keys under `~/.aleo`, so a failed run resumes cheaply — that is
- * the capability gap, not a preference.
+ * synthesizing and retaining keys for every function of the program and for
+ * every function it calls across its import closure, until it completes. A
+ * large enough deployment exhausts WASM's ~4 GiB limit during key setup and
+ * hangs before control returns to JavaScript, and the SDK cannot persist
+ * partial progress or resume. The Leo CLI caches synthesized keys under
+ * `~/.aleo`, so a failed run resumes cheaply — that is the capability gap, not
+ * a preference.
+ *
+ * Measured, on four moderate libraries plus a thin program importing all four:
+ * the SDK pins around 4.8 GB against that ceiling and never returns, while Leo
+ * deploys the same program in 54 seconds — wanting a comparable 4.7 GB, which
+ * it can have because it is a native process and not a 32-bit WASM one. See
+ * `scripts/verify-deploy-scale.mjs`.
  *
  * Leo **builds only**. `--save` without `--broadcast` hands lionden a
  * transaction, and lionden broadcasts it, so dependency ordering, pending

@@ -80,7 +80,7 @@ LionDen commands follow:
 lionden [global-options] <task> [task-options] [task-positionals]
 ```
 
-Global options include `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, and `--version`/`-v`. Named task options can appear before or after the task id because the final CLI parse routes them through the resolved task schema. For example, `lionden --program hello deploy` and `lionden deploy --program hello` both target the `deploy` task's `program` option.
+Global options include `--config`, `--network`, `--prove`, `--deploy-backend`, `--verbose`, `--help`/`-h`, and `--version`/`-v`. Named task options can appear before or after the task id because the final CLI parse routes them through the resolved task schema. For example, `lionden --program hello deploy` and `lionden deploy --program hello` both target the `deploy` task's `program` option.
 
 Bare arguments are stricter. A bare argument before the resolved task id is rejected, and bare arguments after the task id must be consumed by that task's positional schema. So `lionden hello compile` and `lionden compile hello` both fail because `compile` has no positional arguments. `lionden run scripts/deploy.ts` works because `run` declares one `script` positional. `lionden test a.test.ts b.test.ts` works because the `test` task declares its `files` positional as variadic.
 
@@ -414,7 +414,7 @@ lionden deploy --program token            # compile + deploy token (and its loca
 lionden deploy --network testnet          # select config.networks.testnet
 lionden deploy --no-compile               # use existing artifacts
 lionden deploy --preflight                # validation only — no compile, no broadcast
-lionden deploy --dry-run                  # build but don't broadcast (devnode only)
+lionden deploy --dry-run                  # build but don't broadcast (devnode, or any network with --deploy-backend leo)
 lionden deploy --priority-fee 50000       # microcredits
 lionden deploy --skip-confirm             # don't wait for confirmation
 lionden deploy --export                   # write the export bundle afterwards
@@ -428,7 +428,7 @@ What `deploy` does ([full reference](deployment.md#deploy-task)):
 3. Resolves topological order across deployable programs.
 4. Runs preflight: on-chain status, fee estimation (HTTP), balance (HTTP), …
 5. Writes pending marker (non-ephemeral networks).
-6. Builds and broadcasts via the Provable SDK. Devnode uses fast-path `buildDevnode*` builders that skip proof generation.
+6. Builds the transaction through the selected deploy backend and broadcasts it. By default that is the Provable SDK; devnode uses fast-path `buildDevnode*` builders that skip proof generation. The SDK's HTTP deploy path is the one case that builds and broadcasts in a single atomic call, which is why `--dry-run` is unavailable there.
 7. Waits for confirmation up to `deploy.confirmationTimeout` unless `--skip-confirm`.
 8. Records the deployment in memory (devnode) or under `deployments/<network>/<programId>.json` (HTTP).
 9. Fires the `deployment.programDeployed` hook.
@@ -436,6 +436,26 @@ What `deploy` does ([full reference](deployment.md#deploy-task)):
 Deployment state, ephemeral mode, pending recovery, and the export schema all live under [`deployment.md`](deployment.md#deployment-state).
 
 During deploy, LionDen logs each program as it starts, prints already-deployed skips, logs when it is waiting for transaction confirmation, and prints the final deployed transaction and block. When several programs deploy sequentially, each program's lifecycle is grouped in the terminal output.
+
+### Choosing a deploy backend
+
+If a deploy fails by running out of memory during proving-key synthesis — the SDK does that work inside one WASM call with a ~4 GiB ceiling, and nothing survives the failure — switch that program to the Leo CLI backend:
+
+```bash
+lionden deploy --program big_program --deploy-backend leo
+```
+
+Leo runs as a separate process and caches synthesized keys under `~/.aleo`, so a run that times out or fails resumes cheaply instead of starting over. Everything else is unchanged: LionDen still orders dependencies, broadcasts, confirms, and records exactly as before.
+
+Make it the default for a project or a network in config:
+
+```ts
+deploy: { backend: "leo" },
+// or, per network:
+networks: { testnet: { type: "http", endpoint: "…", deployBackend: "leo" } },
+```
+
+The Leo backend requires a `4.3.x` Leo binary, cannot use `sdk.egress` or a network `apiKey`, and does not estimate fees before deploying. It also unlocks `--dry-run` against real networks, which the SDK backend cannot do. Full comparison and limits: [`deploy-backends.md`](deploy-backends.md).
 
 ### Deployment recipes
 
@@ -494,7 +514,7 @@ What `upgrade` does:
 1. Connects to the target network.
 2. Recovers any pending deployments.
 3. Recompiles the program.
-4. Broadcasts the upgrade transaction (devnode fast-path or HTTP build-then-broadcast).
+4. Builds the upgrade transaction through the selected deploy backend (`--deploy-backend` applies here too) and broadcasts it.
 5. Waits for confirmation unless `--skip-confirm`.
 6. Records the updated state; fires `deployment.programUpgraded`.
 
@@ -759,6 +779,8 @@ If you run a non-default `socketAddr`/`--port`, substitute that port for `3030`.
 
 **Deploy says "skipping — already deployed".** — Default behavior under `skipDeployed: true`. Use `--no-skip-deployed` to make it a hard error, or `upgrade --program <name>` if you meant to ship an upgrade.
 
+**Deploy hangs or dies with an out-of-memory error during key synthesis.** — The SDK backend synthesizes every proving key inside one WASM call with a ~4 GiB ceiling and keeps nothing on failure, so retrying repeats the same work. Re-run with `--deploy-backend leo` (requires a `4.3.x` Leo binary): Leo runs out of process and caches keys under `~/.aleo`, so a failed run resumes cheaply. See [`deploy-backends.md`](deploy-backends.md).
+
 **`lionden run script.ts` fails to import a `.ts` file.** — The CLI must be invoked through `tsx`. The packaged binary handles this; if running from source use `node --import tsx packages/cli/src/bin.ts run ...`.
 
 **`npm install` runs unexpected lifecycle scripts.** — Always pass `--ignore-scripts`. Set `ignore-scripts=true` in `~/.npmrc` to make it default.
@@ -771,6 +793,7 @@ This guide stays at the happy-path level. For subsystem internals, follow the fo
 - [`compiler.md`](compiler.md) — source discovery, dependency resolution, materialization, `leo build`, ABI, codegen.
 - [`network.md`](network.md) — network manager, devnode lifecycle, SDK adapter, transaction confirmation, `node` and `run`.
 - [`deployment.md`](deployment.md) — deploy, upgrade, export, deployment state, ephemeral mode, recipes, named accounts.
+- [`deploy-backends.md`](deploy-backends.md) — SDK vs Leo CLI transaction backends, selection, flag mapping, limits, security.
 - [`testing.md`](testing.md) — `setup()`, fixtures, assertions, typed broadcast results, decryption, dynamic records.
 - [`testing-strategy.md`](testing-strategy.md) — repo-wide test taxonomy and CI lanes.
 - [`json-abi.md`](json-abi.md) — JSON ABI schema, serde rules, codegen type mapping.
