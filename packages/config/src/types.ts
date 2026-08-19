@@ -333,10 +333,11 @@ export interface TestingConfig {
  * - `"sdk"`: `@provablehq/sdk` `ProgramManager` (default).
  * - `"leo"`: shell out to the Leo CLI (`leo deploy` / `leo upgrade`).
  *
- * The SDK synthesizes and retains proving keys for the whole program in one
- * WASM operation, so large programs can exhaust WASM's ~4 GiB ceiling and hang
- * before control returns to JS. The Leo backend has no such ceiling and caches
- * synthesized keys under `~/.aleo`, so a failed run resumes cheaply.
+ * The SDK synthesizes and retains keys for the whole deployment — the program
+ * and every function it calls across its import closure — in one WASM
+ * operation, so a large enough deployment exhausts WASM's ~4 GiB ceiling and
+ * hangs before control returns to JS. The Leo backend has no such ceiling and
+ * caches synthesized keys under `~/.aleo`, so a failed run resumes cheaply.
  */
 export const DEPLOY_PROVIDERS = ["sdk", "leo"] as const;
 export type DeployProvider = (typeof DEPLOY_PROVIDERS)[number];

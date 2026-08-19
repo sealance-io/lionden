@@ -112,6 +112,7 @@ Use this doc for navigation only. For behavior-level detail:
 - compile pipeline: [`compiler.md`](compiler.md)
 - network behavior: [`network.md`](network.md)
 - deployment behavior: [`deployment.md`](deployment.md)
+- SDK vs Leo CLI deploy backends: [`deploy-backends.md`](deploy-backends.md)
 - test helpers: [`testing.md`](testing.md)
 - repo-wide test strategy and CI: [`testing-strategy.md`](testing-strategy.md)
 - JSON ABI schema and codegen types: [`json-abi.md`](json-abi.md)

@@ -3,8 +3,9 @@
  *
  * One class rather than a hierarchy, matching the tone of `devnode-backend.ts`:
  * every failure here is "the Leo CLI could not produce a transaction", and the
- * useful discrimination is the `stage` field plus a message that always ends in
- * a concrete remedy.
+ * useful discrimination is the `stage` field plus a message that carries a
+ * concrete remedy. When there is a stderr tail, `composeMessage` appends it
+ * after that remedy, so the remedy is not necessarily the last thing printed.
  */
 
 import { DeployError } from "../../errors.js";
