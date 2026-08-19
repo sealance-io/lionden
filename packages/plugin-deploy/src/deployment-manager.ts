@@ -637,7 +637,6 @@ export class DeploymentManagerImpl implements DeploymentManager {
     const backend = resolveDeployBackend(
       resolveDeployBackendFromEnvAndConfig(this.config, network),
       backendPreflightCtx,
-      "deploy",
     );
     await backend.preflight(backendPreflightCtx);
 

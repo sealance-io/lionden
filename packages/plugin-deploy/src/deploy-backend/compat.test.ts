@@ -41,26 +41,25 @@ describe("assertDeployBackendCompatible", () => {
         egress: { violation: "warn" },
       },
     });
-    expect(assertDeployBackendCompatible("sdk", ctxFor(config), "deploy")).toEqual([]);
+    expect(assertDeployBackendCompatible("sdk", ctxFor(config))).toEqual([]);
   });
 
   it("accepts leo on a supported line with nothing conflicting", () => {
-    expect(assertDeployBackendCompatible("leo", ctxFor(leoReadyConfig()), "deploy")).toEqual([]);
+    expect(assertDeployBackendCompatible("leo", ctxFor(leoReadyConfig()))).toEqual([]);
   });
 
   /**
-   * Temporary, and removed by the PR that adds HTTP support — which also forces
-   * `DEVNET=false` in the child environment and stops `buildDotEnv` writing a
-   * live private key into the materialized package for HTTP networks. Both are
-   * prerequisites, so shipping HTTP here would put the security-sensitive path
-   * in production one PR ahead of its guards.
+   * HTTP is admitted on exactly the same terms as devnode. The two things that
+   * made it unsafe before are gone: `buildLeoEnv` now pins `DEVNET=false` so a
+   * stale devnode-materialized package cannot drag a real deployment into
+   * devnet mode, and `buildDotEnv` no longer writes a live private key into the
+   * materialized package.
    *
-   * It sits in the compatibility check rather than the dry-run gate because
-   * `capabilities.buildWithoutBroadcast` is unconditionally true for this
-   * backend, so `--deploy-backend leo --dryRun` against HTTP would otherwise be
-   * admitted.
+   * The connection type still decides two flags — `--devnet` and
+   * `--skip-deploy-certificate` — which is `buildLeoArgv`'s business, asserted
+   * in `argv.test.ts`. Nothing about it belongs in the compatibility check.
    */
-  describe("HTTP is not supported yet", () => {
+  describe("HTTP networks", () => {
     function httpCtx(): DeployBackendPreflightContext {
       const config = leoReadyConfig({
         networks: {
@@ -76,70 +75,27 @@ describe("assertDeployBackendCompatible", () => {
       return buildPreflightContext(config, "testnet");
     }
 
-    it("rejects an HTTP network", () => {
+    it("accepts leo on an HTTP network", () => {
       expect(httpCtx().connectionType).toBe("http");
-      expect(() => assertDeployBackendCompatible("leo", httpCtx(), "deploy")).toThrow(
-        /does not support HTTP networks yet/,
-      );
+      expect(assertDeployBackendCompatible("leo", httpCtx())).toEqual([]);
     });
 
-    it("names the network and offers the SDK backend", () => {
-      try {
-        assertDeployBackendCompatible("leo", httpCtx(), "deploy");
-        expect.unreachable();
-      } catch (error) {
-        expect((error as Error).message).toContain("testnet");
-        expect((error as Error).message).toContain("--deploy-backend sdk");
-      }
+    it("returns the Leo backend rather than falling back to the SDK", () => {
+      expect(resolveDeployBackend("leo", httpCtx()).provider).toBe("leo");
     });
 
-    it("blocks the dry-run path too, since resolve happens before it", () => {
-      expect(() => resolveDeployBackend("leo", httpCtx(), "deploy")).toThrow(
-        /does not support HTTP networks yet/,
-      );
+    /**
+     * `--dryRun` keys on `capabilities.buildWithoutBroadcast`, which is
+     * unconditionally true here because `--save` without `--broadcast` *is* a
+     * dry run. That is now the intended HTTP dry-run path, not an oversight the
+     * compatibility check has to close.
+     */
+    it("advertises build-without-broadcast on HTTP, enabling dry-run", () => {
+      expect(resolveDeployBackend("leo", httpCtx()).capabilities.buildWithoutBroadcast).toBe(true);
     });
 
     it("leaves the sdk provider on HTTP alone", () => {
-      expect(assertDeployBackendCompatible("sdk", httpCtx(), "deploy")).toEqual([]);
-    });
-  });
-
-  /**
-   * Temporary, and removed by the PR that implements `buildUpgrade`.
-   *
-   * The reason it lives here rather than only in `LeoDeployBackend.buildUpgrade`
-   * is ordering: `upgradeAction` calls this at step 0, but does not reach
-   * `buildUpgrade` until after it has connected, recovered pending deployments,
-   * compiled, and written a pending upgrade marker. Throwing only from the
-   * backend leaves that marker behind on a non-ephemeral network.
-   */
-  describe("upgrade is not supported yet", () => {
-    it("rejects leo + upgrade on an otherwise perfectly valid config", () => {
-      // Nothing else here is wrong: same config, `deploy` passes.
-      const ctx = ctxFor(leoReadyConfig());
-      expect(assertDeployBackendCompatible("leo", ctx, "deploy")).toEqual([]);
-      expect(() => assertDeployBackendCompatible("leo", ctx, "upgrade")).toThrow(DeployError);
-    });
-
-    it("says what is unsupported and offers the SDK backend", () => {
-      try {
-        assertDeployBackendCompatible("leo", ctxFor(leoReadyConfig()), "upgrade");
-        expect.unreachable();
-      } catch (error) {
-        expect((error as Error).message).toMatch(/cannot run `upgrade` yet/);
-        expect((error as Error).message).toContain("--deploy-backend sdk");
-      }
-    });
-
-    it("rejects before returning a backend, so no upgrade can start", () => {
-      expect(() => resolveDeployBackend("leo", ctxFor(leoReadyConfig()), "upgrade")).toThrow(
-        /cannot run `upgrade` yet/,
-      );
-    });
-
-    it("leaves sdk + upgrade alone", () => {
-      expect(assertDeployBackendCompatible("sdk", ctxFor(leoReadyConfig()), "upgrade")).toEqual([]);
-      expect(resolveDeployBackend("sdk", ctxFor(leoReadyConfig()), "upgrade").provider).toBe("sdk");
+      expect(assertDeployBackendCompatible("sdk", httpCtx())).toEqual([]);
     });
   });
 
@@ -148,12 +104,8 @@ describe("assertDeployBackendCompatible", () => {
       const config = leoReadyConfig({
         sdk: { keyCache: { storage: "memory" }, egress: { networkHosts: ["telemetry.example"] } },
       });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config), "deploy")).toThrow(
-        DeployError,
-      );
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config), "deploy")).toThrow(
-        /sdk\.egress/,
-      );
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(DeployError);
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(/sdk\.egress/);
     });
 
     it("rejects a network apiKey, which Leo has no flag to send", () => {
@@ -168,9 +120,9 @@ describe("assertDeployBackendCompatible", () => {
           },
         },
       });
-      expect(() =>
-        assertDeployBackendCompatible("leo", ctxFor(config, "remote"), "deploy"),
-      ).toThrow(/apiKey/);
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config, "remote"))).toThrow(
+        /apiKey/,
+      );
     });
 
     it.each([
@@ -182,26 +134,24 @@ describe("assertDeployBackendCompatible", () => {
       "5.0.0",
     ])("rejects leoVersion %s as outside the verified 4.3 line", (leoVersion) => {
       const config = createMockConfig({ leoVersion });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config), "deploy")).toThrow(
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(
         /supports Leo 4\.3\.x only/,
       );
     });
 
     it.each(["4.3.0", "4.3.2", "4.3.11"])("accepts leoVersion %s", (leoVersion) => {
       const config = createMockConfig({ leoVersion });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config), "deploy")).not.toThrow();
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).not.toThrow();
     });
 
     it("rejects an unparseable leoVersion rather than assuming it is modern", () => {
       const config = createMockConfig({ leoVersion: "4.3.0-rc.1" });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config), "deploy")).toThrow(
-        DeployError,
-      );
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(DeployError);
     });
 
     it("names the sdk escape hatch in every rejection", () => {
       const config = createMockConfig({ leoVersion: "4.1.0" });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config), "deploy")).toThrow(
+      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(
         /--deploy-backend sdk/,
       );
     });
@@ -212,7 +162,6 @@ describe("assertDeployBackendCompatible", () => {
       const warnings = assertDeployBackendCompatible(
         "leo",
         ctxFor(withKeyCache({ storage: "filesystem", path: "/tmp/keys/.aleo" })),
-        "deploy",
       );
       expect(warnings).toHaveLength(1);
       expect(warnings[0]!.code).toBe("LEO_BACKEND_IGNORES_KEY_CACHE");
@@ -221,7 +170,7 @@ describe("assertDeployBackendCompatible", () => {
 
     it("stays silent for a memory key cache", () => {
       expect(
-        assertDeployBackendCompatible("leo", ctxFor(withKeyCache({ storage: "memory" })), "deploy"),
+        assertDeployBackendCompatible("leo", ctxFor(withKeyCache({ storage: "memory" }))),
       ).toEqual([]);
     });
 
@@ -230,7 +179,6 @@ describe("assertDeployBackendCompatible", () => {
         assertDeployBackendCompatible(
           "sdk",
           ctxFor(withKeyCache({ storage: "filesystem", path: "/tmp/keys/.aleo" })),
-          "deploy",
         ),
       ).toEqual([]);
     });
@@ -239,12 +187,12 @@ describe("assertDeployBackendCompatible", () => {
 
 describe("resolveDeployBackend", () => {
   it("returns the SDK backend for the sdk provider", () => {
-    const backend = resolveDeployBackend("sdk", ctxFor(createMockConfig()), "deploy");
+    const backend = resolveDeployBackend("sdk", ctxFor(createMockConfig()));
     expect(backend.provider).toBe("sdk");
   });
 
   it("returns the Leo backend for the leo provider on a supported devnode config", () => {
-    const backend = resolveDeployBackend("leo", ctxFor(leoReadyConfig()), "deploy");
+    const backend = resolveDeployBackend("leo", ctxFor(leoReadyConfig()));
     expect(backend.provider).toBe("leo");
   });
 
@@ -254,7 +202,7 @@ describe("resolveDeployBackend", () => {
    * `--save` without `--broadcast` is exactly a dry run.
    */
   it("advertises unconditional build-without-broadcast and resumable synthesis", () => {
-    const backend = resolveDeployBackend("leo", ctxFor(leoReadyConfig()), "deploy");
+    const backend = resolveDeployBackend("leo", ctxFor(leoReadyConfig()));
     expect(backend.capabilities.buildWithoutBroadcast).toBe(true);
     expect(backend.capabilities.resumableKeySynthesis).toBe(true);
     expect(backend.capabilities.feeEstimation).toBe(false);
@@ -267,9 +215,7 @@ describe("resolveDeployBackend", () => {
    */
   it("reports a compatibility failure instead of returning a backend", () => {
     const config = createMockConfig({ leoVersion: "4.1.0" });
-    expect(() => resolveDeployBackend("leo", ctxFor(config), "deploy")).toThrow(
-      /supports Leo 4\.3\.x only/,
-    );
+    expect(() => resolveDeployBackend("leo", ctxFor(config))).toThrow(/supports Leo 4\.3\.x only/);
   });
 
   it("emits compatibility warnings and still returns a usable backend", () => {
@@ -279,14 +225,12 @@ describe("resolveDeployBackend", () => {
       resolveDeployBackend(
         "sdk",
         ctxFor(withKeyCache({ storage: "filesystem", path: "/k/.aleo" })),
-        "deploy",
       );
       expect(warn).not.toHaveBeenCalled();
 
       const backend = resolveDeployBackend(
         "leo",
         ctxFor(withKeyCache({ storage: "filesystem", path: "/k/.aleo" })),
-        "deploy",
       );
       expect(backend.provider).toBe("leo");
       expect(warn).toHaveBeenCalledOnce();
