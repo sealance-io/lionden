@@ -275,11 +275,47 @@ program hello.aleo {
     const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
     expect(env).toContain("NETWORK=mainnet");
     expect(env).toContain("ENDPOINT=https://api.explorer.provable.com/v1");
-    expect(env).toContain(
-      "PRIVATE_KEY=APrivateKey1zkpAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAlt",
-    );
+    // The real network's key is a live credential and never goes to disk — not
+    // even the devnode placeholder, which would be a misleading identity to
+    // leave lying in an HTTP package. `leo build` needs no key, and the deploy
+    // backend supplies one through the child environment.
+    expect(env).not.toContain("PRIVATE_KEY");
+    expect(env).not.toContain("AltKeyAltKey");
     // HTTP network → no DEVNET marker
     expect(env).not.toContain("DEVNET=true");
+  });
+
+  /**
+   * The materialized package is a build artifact: it gets archived, copied into
+   * containers and committed by accident. A key belongs in the child process
+   * environment, which none of that captures.
+   */
+  it("writes no private key at all for an http network, configured or not", () => {
+    writeFile("hello/main.leo", "program hello.aleo {\n  fn main() {}\n}\n");
+
+    const units = discoverUnits(programsDir);
+    const graph = resolveDependencies(units);
+
+    for (const [name, privateKey] of [
+      ["with_key", "APrivateKey1zkpAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAltKeyAlt"],
+      ["without_key", undefined],
+    ] as const) {
+      const config = mockConfig();
+      (config.networks as Record<string, unknown>)[name] = {
+        type: "http",
+        endpoint: "https://api.explorer.provable.com/v1",
+        network: "mainnet",
+        ...(privateKey !== undefined ? { privateKey } : {}),
+        ephemeral: false,
+      };
+
+      const pkgDir = materializePackage(units[0]!, config, graph, name);
+      const env = fs.readFileSync(path.join(pkgDir, ".env"), "utf-8");
+      expect(env, name).not.toContain("PRIVATE_KEY");
+      // Not even the well-known devnode key, which the pre-fix `else` branch
+      // emitted for a keyless HTTP network.
+      expect(env, name).not.toContain("APrivateKey1");
+    }
   });
 
   it("emits the override network's .env (devnode branch) when default is http", () => {

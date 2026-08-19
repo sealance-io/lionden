@@ -157,6 +157,64 @@ describe("LeoDeployBackend.buildDeploy", () => {
     });
 
     /**
+     * Verified against Leo 4.3.2: with `PRIVATE_KEY` absent from the child
+     * environment, Leo picks it up from a `.env` at the working directory (the
+     * project root) and proceeds. So an unset variable is not "no key", it is
+     * "whatever key is on disk" — and a deployment signed by an identity
+     * lionden never selected succeeds under the wrong account.
+     *
+     * Rejecting is therefore the only safe answer, and it has to happen before
+     * the spawn.
+     */
+    describe("when lionden has no key to select", () => {
+      /** No `signerPrivateKey` on the request, no `privateKey` on the context. */
+      const keyless = () => {
+        const base = ctx();
+        delete (base as { privateKey?: string }).privateKey;
+        return base;
+      };
+
+      it.each(["deploy", "upgrade"] as const)("refuses to spawn Leo at all (%s)", async (op) => {
+        const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+        const backend = backendWith(fake);
+        const build = op === "deploy" ? backend.buildDeploy : backend.buildUpgrade;
+
+        await expect(build.call(backend, req(), keyless())).rejects.toThrow(
+          /has no signing key for network "devnode"/,
+        );
+        expect(fake.calls).toHaveLength(0);
+      });
+
+      it("explains the .env fallback and names the setting to use", async () => {
+        const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+        const error = await rejectionOf(backendWith(fake).buildDeploy(req(), keyless()));
+
+        expect(error.message).toContain("`.env`");
+        expect(error.message).toContain("networks.devnode.privateKey");
+        expect(error.message).toContain('"deployer"');
+      });
+
+      /** Upgrade signs as `admin`, so that is the role to point at. */
+      it("names the admin role on upgrade", async () => {
+        const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+        const error = await rejectionOf(backendWith(fake).buildUpgrade(req(), keyless()));
+        expect(error.message).toContain('"admin"');
+      });
+
+      /** A named-role key is enough on its own — the network need not have one. */
+      it("accepts a request-supplied key with no network key", async () => {
+        const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+        await backendWith(fake).buildDeploy(
+          req({ signerPrivateKey: "APrivateKey1zkpROLExxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }),
+          keyless(),
+        );
+        expect(fake.onlyCall.env["PRIVATE_KEY"]).toBe(
+          "APrivateKey1zkpROLExxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        );
+      });
+    });
+
+    /**
      * `LeoDeployError` folds the output tail into `message`, because `bin.ts`
      * prints only `error.message` — so an unredacted tail is a key printed to
      * the terminal and into whatever captures it. The tail Leo actually prints
@@ -378,12 +436,169 @@ describe("LeoDeployBackend.preflight", () => {
   });
 });
 
+/**
+ * `leo upgrade` shares `leo deploy`'s flag surface — including `--skip`, whose
+ * help text differs only in the verb — so both operations run through the same
+ * invocation path. What is asserted here is that the shared path really is
+ * shared, and that the one thing that must differ, the subcommand, does.
+ */
 describe("LeoDeployBackend.buildUpgrade", () => {
-  it("is not implemented yet and says which backend to use", async () => {
+  it("runs `leo upgrade` and returns the saved transaction", async () => {
     const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
-    await expect(backendWith(fake).buildUpgrade(req(), ctx())).rejects.toThrow(
-      /does not support `upgrade` yet/,
+    const result = await backendWith(fake).buildUpgrade(req(), ctx());
+    expect(fake.onlyCall.argv[1]).toBe("upgrade");
+    expect(result).toEqual({ kind: "built", transaction: TX });
+  });
+
+  /**
+   * The whole point of `--save` without `--broadcast`. An upgrade that
+   * broadcast itself would bypass the pending marker, the edition bookkeeping
+   * and `waitForProgramEditionAdvance`.
+   */
+  it("never broadcasts", async () => {
+    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+    const result = await backendWith(fake).buildUpgrade(req(), ctx());
+    expect(result.kind).toBe("built");
+    expect(fake.onlyCall.argv).not.toContain("--broadcast");
+  });
+
+  /**
+   * On upgrade the named-role key is `admin`, not `deployer`. Falling back to
+   * the network default would sign the upgrade with an account that is probably
+   * not the program's admin — and Leo's constructor check rejects it on-chain,
+   * after the fee is spent.
+   */
+  it("signs with the admin role key from the request, through the environment", async () => {
+    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+    await backendWith(fake).buildUpgrade(
+      req({ signerPrivateKey: "APrivateKey1zkpADMINxxxxxxxxxxxxxxxxxxxxxxxxxxx" }),
+      ctx(),
     );
+    expect(fake.onlyCall.env["PRIVATE_KEY"]).toBe(
+      "APrivateKey1zkpADMINxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    );
+    expect(fake.onlyCall.argv.join(" ")).not.toMatch(/APrivateKey1/);
+  });
+
+  /**
+   * `leo upgrade` upgrades the package's whole local closure by default, so
+   * every dependency has to be suppressed for lionden to keep owning one
+   * program per invocation.
+   */
+  it("suppresses the local dependency closure", async () => {
+    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+    await backendWith(fake).buildUpgrade(req({ localDependencyIds: ["dep.aleo"] }), ctx());
+    const argv = fake.onlyCall.argv;
+    expect(argv[argv.indexOf("--skip") + 1]).toBe("dep.aleo");
+  });
+
+  /**
+   * `materializePackage` already rewrote the declaration into
+   * `.build/<effective-id>/`, so `--path` points at the post-rename package and
+   * `--rename` would rename a second time.
+   */
+  it("targets the post-rename package and never passes --rename", async () => {
+    const target = "renamed_hello.aleo";
+    const buildDir = path.join(artifactsDir(), ".build", target, "build", target);
+    fs.mkdirSync(buildDir, { recursive: true });
+    fs.writeFileSync(path.join(buildDir, "main.aleo"), ALEO_V1);
+    fs.mkdirSync(path.join(artifactsDir(), target), { recursive: true });
+    fs.writeFileSync(path.join(artifactsDir(), target, "main.aleo"), ALEO_V1);
+
+    const fake = new FakeLeoCli({
+      savedTransactions: { [target]: fakeDeploymentTransaction(target) },
+    });
+    await backendWith(fake).buildUpgrade(
+      req({ programId: target, sourceProgramId: PROGRAM, localDependencyIds: ["dep.aleo"] }),
+      ctx(),
+    );
+
+    const argv = fake.onlyCall.argv;
+    expect(argv[argv.indexOf("--path") + 1]).toBe(path.join(artifactsDir(), ".build", target));
+    expect(argv).not.toContain("--rename");
+    // The source id must not have survived into the skip list: it is a
+    // substring of the effective id, so Leo would skip the upgrade itself.
+    expect(argv).not.toContain(PROGRAM);
+  });
+
+  /** Same guard as deploy: what Leo built must be what lionden recorded. */
+  it("aborts when Leo rebuilt the program mid-run, before broadcasting", async () => {
+    const fake = new FakeLeoCli({
+      savedTransactions: { [PROGRAM]: TX },
+      onRun: () => writePackage(ALEO_V2),
+    });
+    const error = await rejectionOf(backendWith(fake).buildUpgrade(req(), ctx()));
+    expect(error.message).toMatch(/Leo rebuilt "hello\.aleo" during the run/);
+    expect(error.message).toContain("was NOT broadcast");
+  });
+
+  it("names the operation in its failure messages", async () => {
+    const fake = new FakeLeoCli({ timedOut: true, stderr: "..." });
+    const error = await rejectionOf(backendWith(fake).buildUpgrade(req(), ctx()));
+    expect(error.stage).toBe("timeout");
+    expect(error.message).toContain("Leo upgrade");
+  });
+
+  it("treats exit 0 with no saved transaction as a failure", async () => {
+    const fake = new FakeLeoCli({ exitCode: 0 });
+    await expect(backendWith(fake).buildUpgrade(req(), ctx())).rejects.toThrow(
+      /wrote no transaction/,
+    );
+  });
+});
+
+/**
+ * The connection type is the only thing that changes between a devnode run and
+ * a real one, and it changes exactly two flags. Both are unsafe against a live
+ * network: `--devnet` puts Leo in devnet mode, and `--skip-deploy-certificate`
+ * substitutes placeholder certificates and verifying keys that a real network
+ * rejects.
+ */
+describe("LeoDeployBackend against an HTTP network", () => {
+  const httpCtx = () =>
+    ctx({ connectionType: "http", endpoint: "https://api.explorer.provable.com/v1" });
+
+  it.each([
+    "deploy",
+    "upgrade",
+  ] as const)("omits --devnet and --skip-deploy-certificate on %s, even unproven", async (operation) => {
+    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+    const backend = backendWith(fake);
+    const build = operation === "deploy" ? backend.buildDeploy : backend.buildUpgrade;
+
+    await build.call(backend, req({ prove: false }), httpCtx());
+
+    expect(fake.onlyCall.argv).not.toContain("--devnet");
+    expect(fake.onlyCall.argv).not.toContain("--skip-deploy-certificate");
+    expect(fake.onlyCall.argv[fake.onlyCall.argv.indexOf("--endpoint") + 1]).toBe(
+      "https://api.explorer.provable.com/v1",
+    );
+  });
+
+  /**
+   * The failure this closes: Leo reads `DEVNET` from a `.env` file in its
+   * working directory and every parent of it, and the runner's cwd is the
+   * project root. A project whose `.env` carries `DEVNET=true` from local
+   * devnode work would, on an unset shell variable, send a real-network
+   * deployment out in devnet mode. `--devnet` is valueless with no negative
+   * form, so an explicit `DEVNET=false` is the only way to force it off.
+   */
+  it("pins DEVNET=false in the child environment", async () => {
+    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+    await backendWith(fake).buildUpgrade(req(), httpCtx());
+    expect(fake.onlyCall.env["DEVNET"]).toBe("false");
+  });
+
+  /**
+   * `--save` without `--broadcast` is what makes an HTTP dry-run possible at
+   * all: the transaction is built against the real network and handed back
+   * without ever reaching it.
+   */
+  it("still builds without broadcasting", async () => {
+    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+    const result = await backendWith(fake).buildDeploy(req(), httpCtx());
+    expect(result).toEqual({ kind: "built", transaction: TX });
+    expect(fake.onlyCall.argv).not.toContain("--broadcast");
   });
 });
 

@@ -62,7 +62,13 @@ export interface DeployOptions {
   noCompile?: boolean;
   /** Run pre-flight checks only — do not deploy */
   preflight?: boolean;
-  /** Build transaction but do not broadcast (devnode only) */
+  /**
+   * Build the transaction but do not broadcast it.
+   *
+   * Available wherever the selected backend can build without broadcasting: the
+   * Leo backend always can (`--save` without `--broadcast`), the SDK backend
+   * only on devnode, since its HTTP path builds and broadcasts atomically.
+   */
   dryRun?: boolean;
   /** Fail if any program is already deployed on-chain */
   noSkipDeployed?: boolean;
@@ -147,7 +153,7 @@ export async function deployAction(
   }
   const backendPreflightCtx = buildPreflightContext(config, networkName);
   const backendProvider = resolveDeployBackendOption(args, lre, networkName);
-  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx, "deploy");
+  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx);
   await backend.preflight(backendPreflightCtx);
 
   // 1. Compile first (unless --noCompile or --preflight). Forward the effective
@@ -313,11 +319,15 @@ export async function deployAction(
   if (options.dryRun) {
     // Gate on the backend capability rather than the connection type: whether a
     // transaction can be produced without broadcasting is a property of the
-    // backend. The SDK's HTTP path cannot (programManager.deploy is atomic).
+    // backend. The SDK's HTTP path cannot — `programManager.deploy` builds and
+    // broadcasts as one operation — while the Leo backend can on any network,
+    // because `--save` without `--broadcast` is exactly a dry run.
     if (!backend.capabilities.buildWithoutBroadcast) {
       throw new DeployError(
-        `Dry-run is not supported for HTTP networks in v1. ` +
-          `Use --preflight for validation without deployment.`,
+        `The ${backend.provider} deploy backend cannot dry-run against network "${networkName}": ` +
+          `it builds and broadcasts as a single operation, so there is no transaction to hand ` +
+          `back without sending it. Use \`--deploy-backend leo\` to build without broadcasting, ` +
+          `or \`--preflight\` to validate without deploying.`,
       );
     }
 
