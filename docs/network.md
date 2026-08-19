@@ -199,7 +199,9 @@ Matchers come from three sources:
 
 ## Provable SDK Integration
 
-`packages/network/src/sdk-adapter.ts` is the single point of contact with `@provablehq/sdk`. It loads the SDK module dynamically on first use and initializes the WASM thread pool once per process. Other network and deploy code imports helpers from that module rather than touching the SDK directly.
+`packages/network/src/sdk-adapter.ts` is the single point of contact with `@provablehq/sdk`. It loads the SDK module dynamically on first use and initializes the WASM thread pool once per process. Other network and deploy code imports helpers from that module rather than touching the SDK directly — nothing reaches around it.
+
+That remains true, with one path that opts out of the SDK altogether rather than bypassing the adapter: when `deploy.backend` is `"leo"`, deploy and upgrade transactions are built by a `leo deploy` / `leo upgrade` child process and never enter the SDK at all. Broadcast and confirmation still go through `NetworkConnection`, and execution is always SDK-backed. The practical consequence is that `sdk.egress` cannot be enforced for that build step — Leo issues its own HTTP requests from a separate process, outside `makeNetworkTransport` — so LionDen refuses the combination outright rather than dropping the policy silently. Likewise `sdk.keyCache` is inert there, since Leo caches under `~/.aleo`. See [`deploy-backends.md`](deploy-backends.md).
 
 ### SDK Objects
 

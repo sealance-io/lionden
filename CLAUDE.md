@@ -99,6 +99,7 @@ Read `AGENTS.md` for navigation rules and selective disclosure guidance. Load on
 | Leo compilation, materialization, ABI, codegen | `docs/compiler.md` |
 | Network types, devnode/HTTP, `node`, `run` | `docs/network.md` |
 | Deployment state, deploy, upgrade, export | `docs/deployment.md` |
+| SDK vs Leo CLI deploy backends, selection, Leo argv/env, backend security | `docs/deploy-backends.md` |
 | Test context, fixtures, assertions | `docs/testing.md` |
 | Repo-wide test strategy, CI lanes, tier taxonomy | `docs/testing-strategy.md` |
 | JSON ABI schema, serde rules, compiler-vs-TS normalization | `docs/json-abi.md` |
