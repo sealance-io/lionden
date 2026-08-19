@@ -25,6 +25,13 @@ export interface ContractLreOptions {
   }>;
   /** Use FakeNetworkManager for lre.network. Pass options or `true` for defaults. */
   withNetwork?: boolean | FakeNetworkOptions;
+  /**
+   * Network names `connect()` accepts. Defaults to `["devnode"]`, matching
+   * `FakeNetworkManager`. Set this when a task is driven with an explicit
+   * `--network`, or the connect will fail the way production does for a name
+   * that is not in config.
+   */
+  knownNetworks?: string[];
   /** Register a stub "compile" task so other tasks can depend on it. */
   withMockCompile?: boolean;
   /** Pre-populate artifacts for these program IDs after LRE creation. */
@@ -63,6 +70,7 @@ export function createContractLre(options: ContractLreOptions = {}): ContractLre
     configOverrides,
     programs = [],
     withNetwork,
+    knownNetworks,
     withMockCompile,
     prePopulateArtifacts = [],
   } = options;
@@ -111,7 +119,10 @@ export function createContractLre(options: ContractLreOptions = {}): ContractLre
   if (withNetwork) {
     const networkOpts = typeof withNetwork === "object" ? withNetwork : undefined;
     const conn = new FakeNetworkConnection(networkOpts);
-    const manager = new FakeNetworkManager({ connection: conn });
+    const manager = new FakeNetworkManager({
+      connection: conn,
+      ...(knownNetworks ? { knownNetworks } : {}),
+    });
     fakeNetwork = conn;
 
     internalPlugins.push({

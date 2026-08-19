@@ -3,9 +3,9 @@
 "@lionden/plugin-deploy": minor
 ---
 
-Implement the **Leo CLI deploy backend** for `deploy`, on devnode networks.
-`--deploy-backend leo` now builds real deployment transactions by invoking the
-Leo CLI, instead of failing with "not implemented yet".
+Implement the **Leo CLI deploy backend** for `deploy`. `--deploy-backend leo`
+now builds real deployment transactions by invoking the Leo CLI, instead of
+failing with "not implemented yet".
 
 **Why this exists.** The Provable SDK builds a deployment in one monolithic WASM
 operation, synthesizing and retaining proving keys for every function, record
@@ -22,9 +22,8 @@ pending markers, deployment records, confirmation polling and hooks all stay
 exactly where they were. The saved file is a bare snarkVM transaction and is
 broadcast byte for byte.
 
-**Scope.** Devnode only, and `deploy` only. `upgrade` and HTTP networks are
-refused with a clear message and remain on the SDK backend for now — HTTP has
-security prerequisites that ship with it. Fee estimation returns the existing
+**Scope.** `deploy`, on devnode networks. `upgrade` and HTTP support land in the
+companion change alongside their security prerequisites. Fee estimation returns the existing
 `FEE_ESTIMATION_UNAVAILABLE` warning rather than an estimate; the SDK path is no
 better there, since `estimateDeploymentFee` synthesizes keys and hits the same
 memory wall as the deploy it is estimating.
@@ -55,11 +54,11 @@ thing:
   is refused. The original bytes are broadcast unchanged — never re-serialized.
 
 **Security.** The signing key is passed through the child environment and never
-in argv, so it stays off the process list. `DEVNET` is always assigned an
-explicit `true`/`false` rather than deleted — deleting it lets a stale
-`DEVNET=true` in a materialized package's `.env` win, which would run a real
-network deployment in devnet mode. Transactions are saved to a `0o700` temporary
-directory outside `artifacts/`, removed in a `finally`.
+in argv, so it stays off the process list. Every variable Leo can also read from
+a `.env` file is assigned an explicit value rather than deleted — `DEVNET` above
+all, since `--devnet` has no negative form and a `DEVNET=true` left on disk
+would otherwise win. Transactions are saved to a `0o700` temporary directory
+outside `artifacts/`, removed in a `finally`.
 
 **`@lionden/core`** gains `redactSecrets` and `createStreamRedactor`, plus the
 existing `parseLeoVersionOutput` is now exported. Every byte of Leo's output

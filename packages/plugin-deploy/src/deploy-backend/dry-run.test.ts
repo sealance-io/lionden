@@ -32,8 +32,20 @@ vi.mock("@lionden/network", async (importOriginal) => {
   };
 });
 
+/**
+ * Kept aside so a test can put the *real* resolver back for one run. Most tests
+ * here need a stub backend that can lie about its capabilities — something no
+ * real backend does — but the SDK-on-HTTP rejection is precisely about whether
+ * selection and context wiring produce the right backend, so it has to use the
+ * genuine article.
+ */
+const realResolveDeployBackend = vi.hoisted(() => ({
+  current: undefined as typeof import("./resolve.js").resolveDeployBackend | undefined,
+}));
+
 vi.mock("./resolve.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("./resolve.js")>();
+  realResolveDeployBackend.current = original.resolveDeployBackend;
   return { ...original, resolveDeployBackend: mockResolveDeployBackend };
 });
 
@@ -80,25 +92,45 @@ describe("deploy --dry-run contract", () => {
     vi.restoreAllMocks();
   });
 
-  function createFixture() {
+  /**
+   * @param http Configure the project against a real HTTP network named
+   * `testnet` — config entry, connection type and all — instead of the devnode.
+   * The gate reads a capability, but the capability comes from the connection
+   * type, so a test about SDK-on-HTTP has to have one.
+   */
+  function createFixture({ http = false }: { http?: boolean } = {}) {
+    const networkName = http ? "testnet" : "devnode";
     fixture = createContractLre({
       programs: [{ name: "hello", annotation: "@noupgrade\n    constructor() {}" }],
       // Non-ephemeral, or `record()` writes nothing and the "no state written"
       // assertions below would pass vacuously.
       configOverrides: {
-        networks: {
-          devnode: {
-            type: "devnode",
-            socketAddr: "127.0.0.1:3030",
-            autoBlock: true,
-            verbosity: 0,
-            accounts: [],
-            network: "testnet",
-            ephemeral: false,
-          },
-        },
+        networks: http
+          ? {
+              testnet: {
+                type: "http",
+                endpoint: "https://api.explorer.provable.com/v1",
+                network: "testnet",
+                privateKey: "APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH",
+                ephemeral: false,
+              },
+            }
+          : {
+              devnode: {
+                type: "devnode",
+                socketAddr: "127.0.0.1:3030",
+                autoBlock: true,
+                verbosity: 0,
+                accounts: [],
+                network: "testnet",
+                ephemeral: false,
+              },
+            },
       },
-      withNetwork: true,
+      withNetwork: http
+        ? { type: "http", name: networkName, endpoint: "https://api.explorer.provable.com/v1" }
+        : true,
+      knownNetworks: [networkName],
       withMockCompile: true,
       prePopulateArtifacts: [
         {
@@ -121,7 +153,7 @@ describe("deploy --dry-run contract", () => {
       fixture.lre.artifacts,
     );
     (fixture.lre as unknown as Record<string, unknown>)["deployments"] = manager;
-    return { lre: fixture.lre, fakeNetwork: fixture.fakeNetwork! };
+    return { lre: fixture.lre, fakeNetwork: fixture.fakeNetwork!, networkName };
   }
 
   it("the SDK backend cannot build without broadcasting on HTTP", () => {
@@ -134,14 +166,20 @@ describe("deploy --dry-run contract", () => {
   /**
    * The Leo backend's capability is unconditional, because `--save` without
    * `--broadcast` is exactly a dry run and nothing on its path is atomic. That
-   * is why HTTP has to be refused in `assertDeployBackendCompatible` rather
-   * than left to this gate: the gate would admit `--deploy-backend leo
-   * --dryRun` against HTTP, which PR-ordering-wise is not ready.
+   * is what makes `--deploy-backend leo --dryRun` work against a real network,
+   * where the SDK's atomic build-and-broadcast cannot — exercised end to end in
+   * `leo-deploy-orchestration.contract.test.ts`.
    */
   it("the Leo backend can always build without broadcasting", () => {
     expect(createLeoDeployBackend().capabilities.buildWithoutBroadcast).toBe(true);
   });
 
+  /**
+   * The rejection has to name the backend that cannot do it, and the one that
+   * can. "Dry-run is not supported for HTTP networks" was true only while the
+   * Leo backend was devnode-only; said today it would send a user looking for a
+   * limit that no longer exists.
+   */
   it("rejects when the backend cannot build without broadcasting", async () => {
     const { lre, fakeNetwork } = createFixture();
     const backend = stubBackend({ buildWithoutBroadcast: false });
@@ -149,10 +187,57 @@ describe("deploy --dry-run contract", () => {
 
     await expect(
       deployAction({ program: "hello", noCompile: true, dryRun: true }, lre),
-    ).rejects.toThrow(/Dry-run is not supported/);
+    ).rejects.toThrow(/The sdk deploy backend cannot dry-run against network "devnode"/);
 
     expect(backend.buildDeploy).not.toHaveBeenCalled();
     expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+  });
+
+  it("points at the backend that can dry-run, not only at --preflight", async () => {
+    const { lre } = createFixture();
+    mockResolveDeployBackend.mockReturnValue(stubBackend({ buildWithoutBroadcast: false }));
+
+    let message = "";
+    try {
+      await deployAction({ program: "hello", noCompile: true, dryRun: true }, lre);
+      expect.unreachable();
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("--deploy-backend leo");
+    expect(message).toContain("--preflight");
+    // The old wording named a connection type. The capability is what decides.
+    expect(message).not.toMatch(/HTTP networks in v1/);
+  });
+
+  /**
+   * SDK + HTTP + `--dryRun`, with nothing simulated between config and the
+   * gate: a real HTTP network entry, a real HTTP connection, the real resolver
+   * picking the backend, and the real `SdkDeployBackend` reporting that it
+   * cannot build without broadcasting.
+   *
+   * Injecting `createSdkDeployBackend("http")` through the stub instead would
+   * assert only that a backend saying `false` is refused — which the test above
+   * already covers — while the project underneath stayed on devnode. Broken
+   * HTTP selection or context wiring would sail straight past it.
+   */
+  it("rejects the real SDK backend on a real HTTP network", async () => {
+    const { lre, fakeNetwork, networkName } = createFixture({ http: true });
+    mockResolveDeployBackend.mockImplementation(realResolveDeployBackend.current!);
+
+    await expect(
+      deployAction({ program: "hello", network: networkName, noCompile: true, dryRun: true }, lre),
+    ).rejects.toThrow(/The sdk deploy backend cannot dry-run against network "testnet"/);
+
+    // The connection really was HTTP — otherwise the SDK backend would have
+    // advertised `buildWithoutBroadcast` and this would never have thrown.
+    expect(fakeNetwork.type).toBe("http");
+    expect(fakeNetwork.getCallsTo("broadcastTransaction")).toHaveLength(0);
+    expect(fakeNetwork.getCallsTo("waitForConfirmation")).toHaveLength(0);
+
+    const manager = lre.deployments as DeploymentManagerImpl;
+    expect(manager.getCached("hello.aleo", networkName)).toBeNull();
   });
 
   it("returns an unbroadcast transaction and touches no deployment state", async () => {
