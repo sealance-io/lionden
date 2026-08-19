@@ -150,10 +150,17 @@ function buildDotEnv(config: LionDenResolvedConfig, network?: string): string {
   // Every resolved network config carries a `network` field — use it directly.
   lines.push(`NETWORK=${networkConfig?.network ?? "testnet"}`);
 
-  if (networkConfig?.type === "http" && networkConfig.privateKey) {
-    lines.push(`PRIVATE_KEY=${networkConfig.privateKey}`);
-  } else {
-    // Default devnode private key (recommended by Leo CLI for local devnets)
+  // Deliberately no `PRIVATE_KEY` for HTTP networks. A real network's key is a
+  // live credential, and writing it into `<artifacts>/.build/<id>/.env` puts it
+  // on disk — inside the build output, which is routinely archived, copied into
+  // containers and shared. Nothing needs it there: `leo build` signs nothing,
+  // and the Leo deploy backend passes the key through the child environment
+  // instead (`buildLeoEnv`), which keeps it out of both argv and the filesystem.
+  //
+  // The devnode placeholder stays. It is the well-known key Leo itself
+  // recommends for local devnets, published in `leo deploy --help`, so it is
+  // documentation rather than a secret.
+  if (networkConfig?.type !== "http") {
     lines.push("PRIVATE_KEY=APrivateKey1zkp8CZNn3yeCseEtxuVPbDCwSyhGW6yZKUYKfgXmcpoGPWH");
   }
 

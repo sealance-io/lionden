@@ -58,6 +58,11 @@ describe("buildLeoEnv", () => {
      * An inherited key would silently sign with an identity lionden did not
      * choose — worse than failing, because the deployment would succeed under
      * the wrong account.
+     *
+     * Removing it is necessary but not sufficient: Leo then falls back to a
+     * `.env` on disk. That remaining hole is closed a level up, in
+     * `assertSigningKeyPresent`, which refuses to spawn Leo without a key — so
+     * this branch is unreachable through the backend.
      */
     it("is removed, not inherited, when there is no key to use", () => {
       process.env["PRIVATE_KEY"] = "APrivateKey1zkpAMBIENT";
@@ -81,16 +86,15 @@ describe("buildLeoEnv", () => {
     });
 
     /**
-     * The §9.3 scenario, and the reason deleting the variable is not enough:
-     * `buildDotEnv` writes `DEVNET=true` into the materialized package's `.env`
-     * for devnode networks, and Leo loads that file from the package directory.
-     * A package materialized against a devnode and later deployed to HTTP with
-     * `--noCompile` is never re-materialized, so an unset shell variable simply
-     * lets the stale file value win — and the run would go out in devnet mode
-     * against a real network. `--devnet` is valueless, so an explicit
-     * `DEVNET=false` is the only way to force it off.
+     * The reason deleting the variable is not enough: Leo reads `DEVNET` from a
+     * `.env` file in its working directory and every parent of it, and the
+     * runner's cwd is the project root. A project whose `.env` carries
+     * `DEVNET=true` from local devnode work would, on an unset shell variable,
+     * send a real-network deployment out in devnet mode. `--devnet` is
+     * valueless with no negative form, so an explicit `DEVNET=false` is the
+     * only way to force it off.
      */
-    it("is the literal false on http, overriding a stale package .env", () => {
+    it("is the literal false on http, overriding a DEVNET=true left on disk", () => {
       const env = buildLeoEnv({
         networkId: "testnet",
         endpoint: "https://api.explorer.provable.com/v1",

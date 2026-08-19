@@ -19,7 +19,12 @@ import {
   logSuccess,
   readProgramArtifactProvenance,
 } from "@lionden/core";
-import type { ProgramABI } from "@lionden/leo-compiler";
+import {
+  type DiscoveredProgram,
+  discoverUnits,
+  type ProgramABI,
+  resolveDependencies,
+} from "@lionden/leo-compiler";
 import type { NetworkManager } from "@lionden/network";
 import {
   buildBackendContext,
@@ -29,6 +34,7 @@ import {
 import { resolveDeployBackendOption } from "./deploy-backend/select.js";
 import type { DeployBackendRequest } from "./deploy-backend/types.js";
 import { resolveDeployerAddress } from "./deployer-address.js";
+import { collectLocalDeploymentClosure } from "./deployment-closure.js";
 import type { DeploymentManager } from "./deployment-manager.js";
 import type {
   CompleteDeploymentRecord,
@@ -112,7 +118,7 @@ export async function upgradeAction(
   const networkName = options.network ?? config.defaultNetwork;
   const backendPreflightCtx = buildPreflightContext(config, networkName);
   const backendProvider = resolveDeployBackendOption(args, lre, networkName);
-  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx, "upgrade");
+  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx);
   await backend.preflight(backendPreflightCtx);
 
   // 1. Connect to network
@@ -197,6 +203,13 @@ export async function upgradeAction(
   if (options.network) compileArgs["network"] = options.network;
   await lre.tasks.run("compile", compileArgs);
 
+  // 4b. Resolve the local dependency closure. `leo upgrade` upgrades a package's
+  // entire local closure by default, so a backend that drives it must name every
+  // dependency in `--skip` to narrow the run to one program — lionden owns
+  // ordering, pending markers and records per program. The SDK backend ignores
+  // this field; it upgrades exactly the source it is handed.
+  const localDependencyIds = collectUpgradeDependencyIds(config.paths.programs, sourceProgramId);
+
   // Read the newly-compiled ABI — recorded so `export` has it.
   const newAbi = lre.artifacts.getAbi(programId) as ProgramABI | undefined;
   if (!newAbi) {
@@ -274,6 +287,7 @@ export async function upgradeAction(
       programId,
       ...(rename ? { sourceProgramId } : {}),
       aleoSource,
+      localDependencyIds,
       fee,
       privateFee: config.deploy.privateFee,
       ...(adminSignerKey !== undefined ? { signerPrivateKey: adminSignerKey } : {}),
@@ -373,6 +387,8 @@ interface BuildUpgradeRequestOptions {
   /** Canonical local source id when the upgrade target was renamed. */
   sourceProgramId?: string;
   aleoSource: string;
+  /** Local dependency ids, already excluding the source program id. */
+  localDependencyIds: readonly string[];
   fee: number;
   privateFee: boolean;
   /** Override signing key. When set, overrides `ctx.privateKey`. */
@@ -381,21 +397,13 @@ interface BuildUpgradeRequestOptions {
   prove?: boolean;
 }
 
-/**
- * Assemble a backend request for an upgrade.
- *
- * `localDependencyIds` is deliberately empty: `upgradeAction` retains no
- * dependency graph, and the SDK backend ignores the field entirely (it upgrades
- * exactly the source it is handed). A backend that operates on a Leo package
- * needs the real closure — rooted at `sourceProgramId`, not the effective id —
- * and must not be reachable from upgrade until this is populated.
- */
+/** Assemble a backend request for an upgrade. */
 function buildUpgradeRequest(opts: BuildUpgradeRequestOptions): DeployBackendRequest {
   return {
     programId: opts.programId,
     ...(opts.sourceProgramId !== undefined ? { sourceProgramId: opts.sourceProgramId } : {}),
     aleoSource: opts.aleoSource,
-    localDependencyIds: [],
+    localDependencyIds: opts.localDependencyIds,
     priorityFee: opts.fee,
     privateFee: opts.privateFee,
     ...(opts.signerPrivateKey !== undefined ? { signerPrivateKey: opts.signerPrivateKey } : {}),
@@ -406,6 +414,33 @@ function buildUpgradeRequest(opts: BuildUpgradeRequestOptions): DeployBackendReq
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Local dependency ids in the upgrade target's closure, excluding the target.
+ *
+ * `upgradeAction` keeps no dependency graph — it upgrades one already-deployed
+ * program — so the graph is rebuilt here from the same source tree the compile
+ * step just consumed, rather than threading a second traversal through the task.
+ *
+ * **`rootId` is the source program id, and it is also what gets subtracted.**
+ * That is what makes rename safe. The closure is traversed over the source
+ * graph, where the post-rename id is not a node, so it never appears in the
+ * result; subtracting the post-rename id instead would be a no-op and leave the
+ * source id in the skip list. Leo matches `--skip` by substring, so
+ * `--skip hello.aleo` also suppresses `renamed_hello.aleo` — the very program
+ * being upgraded — and the run would exit 0 having built nothing.
+ */
+function collectUpgradeDependencyIds(programsDir: string, rootId: string): string[] {
+  const discovered = discoverUnits(programsDir);
+  const programMap = new Map(
+    discovered
+      .filter((u): u is DiscoveredProgram => u.kind === "program")
+      .map((p) => [p.programId, p]),
+  );
+  const graph = resolveDependencies(discovered);
+
+  return collectLocalDeploymentClosure(rootId, graph, programMap).filter((id) => id !== rootId);
+}
 
 function resolveUpgradeSourceProgramId(
   artifactsDir: string,

@@ -207,15 +207,17 @@ describe("assertNoSkipCollision", () => {
    * having built nothing, surfacing only as a confusing no-file error later.
    */
   it("rejects a dependency whose id is a substring of the target", () => {
-    expect(() => assertNoSkipCollision("zspike_a.aleo", ["spike_a.aleo"])).toThrow(DeployError);
-    expect(() => assertNoSkipCollision("zspike_a.aleo", ["spike_a.aleo"])).toThrow(
+    expect(() => assertNoSkipCollision("deploy", "zspike_a.aleo", ["spike_a.aleo"])).toThrow(
+      DeployError,
+    );
+    expect(() => assertNoSkipCollision("deploy", "zspike_a.aleo", ["spike_a.aleo"])).toThrow(
       /would also suppress the program itself/,
     );
   });
 
   it("names both ids and offers the SDK backend", () => {
     try {
-      assertNoSkipCollision("zspike_a.aleo", ["spike_a.aleo"]);
+      assertNoSkipCollision("deploy", "zspike_a.aleo", ["spike_a.aleo"]);
       expect.unreachable();
     } catch (error) {
       const message = (error as Error).message;
@@ -226,7 +228,9 @@ describe("assertNoSkipCollision", () => {
   });
 
   it("accepts unrelated dependency ids", () => {
-    expect(() => assertNoSkipCollision("main.aleo", ["a_dep.aleo", "b_dep.aleo"])).not.toThrow();
+    expect(() =>
+      assertNoSkipCollision("deploy", "main.aleo", ["a_dep.aleo", "b_dep.aleo"]),
+    ).not.toThrow();
   });
 
   it("is enforced by buildLeoArgv, not merely available beside it", () => {
@@ -243,13 +247,25 @@ describe("assertNoSkipCollision", () => {
    * only the genuine dependency remains and no collision exists.
    */
   it("passes for a rename whose effective id contains its source id", () => {
-    expect(() => assertNoSkipCollision("renamed_hello.aleo", ["util.aleo"])).not.toThrow();
+    expect(() =>
+      assertNoSkipCollision("deploy", "renamed_hello.aleo", ["util.aleo"]),
+    ).not.toThrow();
   });
 
   it("catches the rename case when the root was subtracted incorrectly", () => {
     // What a wrong subtraction would produce: the source id still in the skips.
-    expect(() => assertNoSkipCollision("renamed_hello.aleo", ["util.aleo", "hello.aleo"])).toThrow(
-      /would also suppress/,
+    expect(() =>
+      assertNoSkipCollision("deploy", "renamed_hello.aleo", ["util.aleo", "hello.aleo"]),
+    ).toThrow(/would also suppress/);
+  });
+
+  /** The message names the command the user actually ran. */
+  it("says upgrade when upgrading", () => {
+    expect(() => assertNoSkipCollision("upgrade", "zspike_a.aleo", ["spike_a.aleo"])).toThrow(
+      /Cannot upgrade "zspike_a\.aleo"/,
+    );
+    expect(() => assertNoSkipCollision("deploy", "zspike_a.aleo", ["spike_a.aleo"])).toThrow(
+      /Cannot deploy "zspike_a\.aleo"/,
     );
   });
 });
