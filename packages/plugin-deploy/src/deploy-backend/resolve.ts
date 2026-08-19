@@ -12,10 +12,12 @@ import { logWarning } from "@lionden/core";
 import type { NetworkConnection } from "@lionden/network";
 import { DeployError } from "../errors.js";
 import { LEO_DEPLOY_BACKEND_LINE, supportsLeoDeployBackend } from "../leo-version.js";
+import { createLeoDeployBackend, type LeoDeployBackendOptions } from "./leo-backend.js";
 import { createSdkDeployBackend } from "./sdk-backend.js";
 import type {
   DeployBackend,
   DeployBackendContext,
+  DeployBackendOperation,
   DeployBackendPreflightContext,
   DeployBackendWarning,
 } from "./types.js";
@@ -110,10 +112,25 @@ export function buildBackendContext(
 export function assertDeployBackendCompatible(
   provider: DeployProvider,
   ctx: DeployBackendPreflightContext,
+  operation: DeployBackendOperation,
 ): DeployBackendWarning[] {
   if (provider !== "leo") return [];
 
   const warnings: DeployBackendWarning[] = [];
+
+  // TEMPORARY — removed in the PR that implements `buildUpgrade`.
+  //
+  // `LeoDeployBackend.buildUpgrade` throws as well, but throwing only there is
+  // far too late: by then `upgradeAction` has connected, recovered pending
+  // deployments, compiled, and written a pending upgrade marker, which on a
+  // non-ephemeral network survives the failure as a false record of an upgrade
+  // that never started. Rejecting here happens at step 0, before any of that.
+  if (operation === "upgrade") {
+    throw new DeployError(
+      `The Leo deploy backend cannot run \`upgrade\` yet in this version of lionden — it builds ` +
+        `deployments only. ${USE_SDK_HINT}`,
+    );
+  }
 
   // lionden routes every SDK network call through `makeNetworkTransport`
   // specifically so `sdk.egress` can be enforced at the socket. Leo issues its
@@ -136,6 +153,24 @@ export function assertDeployBackendCompatible(
       `The Leo deploy backend cannot send the \`networks.${ctx.networkName}.apiKey\` credential: ` +
         `Leo ${LEO_DEPLOY_BACKEND_LINE} \`deploy\`/\`upgrade\` expose no API-key or header option, ` +
         `so its queries would be sent unauthenticated. Remove the apiKey, or ${USE_SDK_HINT}`,
+    );
+  }
+
+  // TEMPORARY — removed in the PR that adds HTTP support, which also forces
+  // `DEVNET=false` in the child environment and stops `buildDotEnv` writing a
+  // real private key into the materialized package for HTTP networks. Both are
+  // prerequisites: any HTTP Leo invocation would otherwise run `leo deploy`
+  // inside a package whose `.env` carries a live key and possibly `DEVNET=true`.
+  //
+  // It lives here rather than in the dry-run gate because
+  // `capabilities.buildWithoutBroadcast` is unconditionally true for this
+  // backend, so `--deploy-backend leo --dryRun` against an HTTP network would
+  // otherwise be admitted. Here it covers deploy, upgrade and dry-run at once,
+  // fails at step 0 before any compile, and is a single block to delete.
+  if (ctx.connectionType === "http") {
+    throw new DeployError(
+      `The Leo deploy backend does not support HTTP networks yet — ` +
+        `"${ctx.networkName}" is an HTTP network. Target a devnode network, or ${USE_SDK_HINT}`,
     );
   }
 
@@ -168,23 +203,22 @@ export function assertDeployBackendCompatible(
  * `ctx.connectionType` is load-bearing beyond mere reporting: it decides
  * `capabilities.buildWithoutBroadcast`, which is what gates `--dry-run`.
  */
+export interface ResolveDeployBackendOptions {
+  /** Test seams for the Leo backend (spawn runner, version probe). */
+  readonly leo?: LeoDeployBackendOptions;
+}
+
 export function resolveDeployBackend(
   provider: DeployProvider,
   ctx: DeployBackendPreflightContext,
+  operation: DeployBackendOperation,
+  options: ResolveDeployBackendOptions = {},
 ): DeployBackend {
-  for (const warning of assertDeployBackendCompatible(provider, ctx)) {
+  for (const warning of assertDeployBackendCompatible(provider, ctx, operation)) {
     console.warn(`${logWarning("Warning")} ${warning.message}`);
   }
 
-  if (provider === "leo") {
-    // Selection, config resolution, and compatibility validation are all live;
-    // only the backend itself is missing. Reached after the checks above so a
-    // user who is also misconfigured hears about that first.
-    throw new DeployError(
-      `The Leo deploy backend is not implemented yet in this version of lionden. ` +
-        `${USE_SDK_HINT}`,
-    );
-  }
+  if (provider === "leo") return createLeoDeployBackend(options.leo);
 
   return createSdkDeployBackend(ctx.connectionType);
 }
