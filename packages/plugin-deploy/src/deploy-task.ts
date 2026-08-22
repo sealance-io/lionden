@@ -147,7 +147,7 @@ export async function deployAction(
   }
   const backendPreflightCtx = buildPreflightContext(config, networkName);
   const backendProvider = resolveDeployBackendOption(args, lre, networkName);
-  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx);
+  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx, "deploy");
   await backend.preflight(backendPreflightCtx);
 
   // 1. Compile first (unless --noCompile or --preflight). Forward the effective

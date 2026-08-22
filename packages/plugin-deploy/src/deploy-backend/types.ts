@@ -29,6 +29,16 @@ import type { SdkEgressPolicy } from "@lionden/network";
 // ---------------------------------------------------------------------------
 
 /**
+ * Which task is resolving a backend.
+ *
+ * Carried through resolution because support is not uniform across operations:
+ * a backend can build deployments and not yet build upgrades. Knowing this at
+ * step 0 is what lets `upgradeAction` reject before it connects, compiles, or
+ * writes a pending marker.
+ */
+export type DeployBackendOperation = "deploy" | "upgrade";
+
+/**
  * Everything derivable from config alone, with NO live connection.
  *
  * This is what step 0 of `deployAction` / `upgradeAction` can build, and all

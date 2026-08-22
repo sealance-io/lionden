@@ -15,6 +15,7 @@ import { type ContractLreResult, createContractLre } from "@lionden/test-interna
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type DeployTaskResult, deployAction } from "../deploy-task.js";
 import { DeploymentManagerImpl } from "../deployment-manager.js";
+import { createLeoDeployBackend } from "./leo-backend.js";
 import { createSdkDeployBackend } from "./sdk-backend.js";
 import type { DeployBackend, DeployBackendResult } from "./types.js";
 
@@ -128,6 +129,17 @@ describe("deploy --dry-run contract", () => {
     // is the fact that keeps SDK+HTTP dry-run rejected.
     expect(createSdkDeployBackend("http").capabilities.buildWithoutBroadcast).toBe(false);
     expect(createSdkDeployBackend("devnode").capabilities.buildWithoutBroadcast).toBe(true);
+  });
+
+  /**
+   * The Leo backend's capability is unconditional, because `--save` without
+   * `--broadcast` is exactly a dry run and nothing on its path is atomic. That
+   * is why HTTP has to be refused in `assertDeployBackendCompatible` rather
+   * than left to this gate: the gate would admit `--deploy-backend leo
+   * --dryRun` against HTTP, which PR-ordering-wise is not ready.
+   */
+  it("the Leo backend can always build without broadcasting", () => {
+    expect(createLeoDeployBackend().capabilities.buildWithoutBroadcast).toBe(true);
   });
 
   it("rejects when the backend cannot build without broadcasting", async () => {

@@ -112,7 +112,7 @@ export async function upgradeAction(
   const networkName = options.network ?? config.defaultNetwork;
   const backendPreflightCtx = buildPreflightContext(config, networkName);
   const backendProvider = resolveDeployBackendOption(args, lre, networkName);
-  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx);
+  const backend = resolveDeployBackend(backendProvider, backendPreflightCtx, "upgrade");
   await backend.preflight(backendPreflightCtx);
 
   // 1. Connect to network
