@@ -19,7 +19,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DeployError } from "../errors.js";
-import { buildLeoArgv } from "./leo/argv.js";
+import { buildLeoArgv, type LeoOperation } from "./leo/argv.js";
 import { buildLeoEnv } from "./leo/env.js";
 import { LeoDeployError } from "./leo/errors.js";
 import { type LeoRunArtifacts, readLeoOutcome, savedTransactionFileName } from "./leo/outcome.js";
@@ -79,20 +79,21 @@ class LeoDeployBackend implements DeployBackend {
   }
 
   /**
-   * Unreachable through `upgradeAction`, which rejects this combination at step
-   * 0 in `assertDeployBackendCompatible` — before connecting, compiling, or
-   * writing a pending marker. Kept as the backstop for any other caller holding
-   * a `DeployBackend` directly, so "not supported" can never mean "silently
-   * builds something else".
+   * `leo upgrade` takes the same flag surface as `leo deploy` — including
+   * `--skip`, whose help text differs only in the verb — so the one invocation
+   * path serves both. Leo derives the new edition itself; there is no
+   * `--edition` flag, and lionden's `previousEdition` bookkeeping is unchanged.
+   *
+   * The rename case is already handled upstream: `materializePackage` rewrote
+   * the declaration into `.build/<effective-id>/`, so `--path` finds the
+   * post-rename program and `--rename` must never be passed. What must root at
+   * the *source* id is the dependency closure, which `upgradeAction` computes.
    */
   async buildUpgrade(
-    _req: DeployBackendRequest,
-    _ctx: DeployBackendContext,
+    req: DeployBackendRequest,
+    ctx: DeployBackendContext,
   ): Promise<DeployBackendResult> {
-    throw new DeployError(
-      `The Leo deploy backend does not support \`upgrade\` yet in this version of lionden. ` +
-        `Use \`--deploy-backend sdk\` (or set \`deploy.backend: "sdk"\`) to upgrade.`,
-    );
+    return this.run("upgrade", req, ctx);
   }
 
   async estimateDeploymentFee(
@@ -123,6 +124,11 @@ class LeoDeployBackend implements DeployBackend {
     req: DeployBackendRequest,
     ctx: DeployBackendContext,
   ): Promise<DeployBackendResult> {
+    // Named-role overrides (`deployer`, `admin`) arrive on the request and must
+    // win over the network's default key.
+    const effectiveKey = req.signerPrivateKey ?? ctx.privateKey;
+    assertSigningKeyPresent(effectiveKey, operation, ctx.networkName);
+
     const pkg = resolveLeoPackage(ctx.artifactsDir, req.programId);
 
     // Signed transactions are not build artifacts, so this never lives under
@@ -149,10 +155,6 @@ class LeoDeployBackend implements DeployBackend {
         ...(ctx.logLevel !== undefined ? { logLevel: ctx.logLevel } : {}),
       });
 
-      // Named-role overrides (`deployer`, `admin`) arrive on the request and
-      // must win over the network's default key.
-      const effectiveKey = req.signerPrivateKey ?? ctx.privateKey;
-
       const result = await this.runner({
         binary: ctx.leoBinary,
         argv,
@@ -160,12 +162,12 @@ class LeoDeployBackend implements DeployBackend {
           networkId: ctx.networkId,
           endpoint: ctx.endpoint,
           connectionType: ctx.connectionType,
-          ...(effectiveKey !== undefined ? { privateKey: effectiveKey } : {}),
+          privateKey: effectiveKey,
         }),
         cwd: ctx.projectRoot,
         timeoutMs: ctx.leo.timeout,
         logMode: ctx.leo.logMode,
-        secrets: effectiveKey !== undefined ? [effectiveKey] : [],
+        secrets: [effectiveKey],
       });
 
       if (result.timedOut) {
@@ -199,6 +201,39 @@ class LeoDeployBackend implements DeployBackend {
       fs.rmSync(saveDir, { recursive: true, force: true });
     }
   }
+}
+
+/**
+ * Refuse to spawn Leo without a key lionden chose.
+ *
+ * Leo resolves `PRIVATE_KEY` from a `.env` file in its working directory and
+ * every parent of it, and the runner sets `cwd` to the project root — so an
+ * unset variable is not "no key", it is "whatever key happens to be on disk".
+ * Verified against Leo 4.3.2: with the variable absent from the child
+ * environment, a `.env` at the project root is picked up and the run proceeds;
+ * the materialized package's own `.env` is *not* consulted for it.
+ *
+ * That is worse than failing. lionden owns identity selection — through
+ * `networks.<n>.privateKey` and the `deployer`/`admin` named accounts — and a
+ * deployment signed by an identity it never selected succeeds under the wrong
+ * account, on a real network, irreversibly. `buildLeoEnv` deletes an inherited
+ * `PRIVATE_KEY` for the same reason; this closes the remaining path.
+ */
+function assertSigningKeyPresent(
+  key: string | undefined,
+  operation: LeoOperation,
+  networkName: string,
+): asserts key is string {
+  if (key !== undefined) return;
+
+  const role = operation === "upgrade" ? "admin" : "deployer";
+  throw new DeployError(
+    `The Leo deploy backend has no signing key for network "${networkName}", and will not let ` +
+      `the Leo CLI choose one. Leo reads \`PRIVATE_KEY\` from a \`.env\` file in the working ` +
+      `directory and its parents, so running without one would sign this ${operation} with ` +
+      `whatever key is on disk — an identity lionden did not select. Set ` +
+      `\`networks.${networkName}.privateKey\`, or configure a "${role}" named account.`,
+  );
 }
 
 /**

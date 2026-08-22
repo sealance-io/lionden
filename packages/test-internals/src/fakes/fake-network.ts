@@ -37,10 +37,18 @@ export interface FakeNetworkOptions {
   privateKey?: string;
   initialBalance?: bigint;
   initialBlockHeight?: number;
+  /**
+   * Connection type reported to callers. Defaults to `"devnode"`.
+   *
+   * Load-bearing for anything that branches on it — the deploy backends read it
+   * to decide `--devnet`, `--skip-deploy-certificate` and `DEVNET`, and the SDK
+   * backend's `buildWithoutBroadcast` capability turns on it.
+   */
+  type?: "devnode" | "http";
 }
 
 export class FakeNetworkConnection implements NetworkConnection {
-  readonly type = "devnode" as const;
+  readonly type: "devnode" | "http";
   readonly name: string;
   readonly endpoint: string;
   readonly networkId: AleoNetwork;
@@ -73,6 +81,7 @@ export class FakeNetworkConnection implements NetworkConnection {
   private confirmedTransitionByTxId = new Map<string, ConfirmedTransitionRecord>();
 
   constructor(options: FakeNetworkOptions = {}) {
+    this.type = options.type ?? "devnode";
     this.name = options.name ?? "devnode";
     this.endpoint = options.endpoint ?? "http://127.0.0.1:3030";
     this.networkId = options.networkId ?? "testnet";

@@ -140,7 +140,8 @@ const deployTask = task("deploy", "Deploy Aleo programs to a network")
   })
   .addFlag({
     name: "dryRun",
-    description: "Build transaction but do not broadcast (devnode only)",
+    description:
+      "Build transaction but do not broadcast (any network with --deploy-backend leo; devnode only with the sdk backend)",
   })
   .addFlag({
     name: "noSkipDeployed",

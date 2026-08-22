@@ -34,18 +34,20 @@ export interface LeoArgvOptions {
 }
 
 /**
- * Reject a `--skip` value that would also suppress the program being deployed.
+ * Reject a `--skip` value that would also suppress the target program.
  *
  * Leo matches skips by **substring**, not by exact id: its own help says it
- * "skips deployment of any program that contains one of the given substrings",
- * and this was confirmed empirically — `--skip spike_a.aleo` also dropped
- * `zspike_a.aleo`. A collision here is silent and severe: Leo exits 0 having
- * built nothing, which without this check surfaces only as the outcome
- * parser's no-file error, far from the cause.
+ * "skips deployment of any program that contains one of the given substrings"
+ * (and the same, with the verb changed, for `upgrade`). This was confirmed
+ * empirically — `--skip spike_a.aleo` also dropped `zspike_a.aleo`. A collision
+ * here is silent and severe: Leo exits 0 having built nothing, which without
+ * this check surfaces only as the outcome parser's no-file error, far from the
+ * cause.
  *
  * Exported for direct testing; `buildLeoArgv` always calls it.
  */
 export function assertNoSkipCollision(
+  operation: LeoOperation,
   programId: string,
   localDependencyIds: readonly string[],
 ): void {
@@ -53,7 +55,7 @@ export function assertNoSkipCollision(
   if (colliding.length === 0) return;
 
   throw new DeployError(
-    `Cannot deploy "${programId}" with the Leo backend: its dependency ` +
+    `Cannot ${operation} "${programId}" with the Leo backend: its dependency ` +
       `${colliding.map((d) => `"${d}"`).join(", ")} would also suppress the program itself. ` +
       `Leo's \`--skip\` matches substrings, not exact program ids, and ` +
       `"${programId}" contains "${colliding[0]}". Rename one of the programs so neither id is a ` +
@@ -88,7 +90,7 @@ export function assertNoSkipCollision(
  *   wanted here.
  */
 export function buildLeoArgv(options: LeoArgvOptions): string[] {
-  assertNoSkipCollision(options.programId, options.localDependencyIds);
+  assertNoSkipCollision(options.operation, options.programId, options.localDependencyIds);
 
   const argv: string[] = [
     "--disable-update-check",
