@@ -1,6 +1,6 @@
 # Deployment
 
-When to read this: use this file for `deploy`, `upgrade`, `export`, deployment state, deployment preflight, and deployment hooks. For network connection, devnode, SDK, and script execution behavior, use [`network.md`](network.md).
+When to read this: use this file for `deploy`, `upgrade`, `export`, deployment state, deployment preflight, and deployment hooks. For network connection, devnode, SDK, and script execution behavior, use [`network.md`](network.md). For choosing between the SDK and Leo CLI transaction backends, use [`deploy-backends.md`](deploy-backends.md).
 
 ## Current Deployment Model
 
@@ -15,10 +15,25 @@ It also injects `DeploymentManagerImpl` into `lre.deployments`.
 
 The deploy subsystem owns transaction building, broadcast, and persisted deployment state. The `upgrade` task is thin: it compiles the updated program, builds and broadcasts the upgrade transaction, and records a minimal updated record. LionDen does not validate ABI compatibility, constructor immutability, or edition continuity — Leo's built-in tooling owns upgrade correctness.
 
+### Transaction Backends
+
+Building the deploy/upgrade transaction itself goes through a swappable backend (`DeployBackend`, `packages/plugin-deploy/src/deploy-backend/types.ts`):
+
+- **`sdk`** (default) — `@provablehq/sdk` `ProgramManager`, in-process WASM.
+- **`leo`** — `leo deploy` / `leo upgrade` in a child process, for programs whose key synthesis exceeds WASM's memory ceiling.
+
+Everything else in this document is backend-agnostic and does not change with the selection: dependency ordering, pending markers, confirmation polling, deployment records, preflight, export, and hooks. Program **execution** is not part of the seam and always uses the SDK.
+
+Broadcast is the exception. A backend returns either a built transaction for LionDen to submit, or a transaction id it already submitted. Only one path does the latter: the SDK backend deploying to an HTTP network, where `ProgramManager.deploy` builds and broadcasts atomically. The Leo backend always returns a built transaction, as does the SDK backend on devnode and for every upgrade.
+
+Select with `deploy.backend`, `networks.<name>.deployBackend`, `LIONDEN_DEPLOY_BACKEND`, or `--deploy-backend`. See [`deploy-backends.md`](deploy-backends.md) for the precedence ladder, the Leo flag mapping, limitations, and security properties.
+
 ## Config
 
 `packages/config/src/types.ts` defines `deploy` config:
 
+- `backend`: which backend builds deploy/upgrade transactions, `"sdk"` (default) or `"leo"`
+- `leo`: Leo-backend tuning (`timeout`, `logMode`); ignored when the effective backend is `"sdk"`
 - `defaultPriorityFee`: default priority fee in microcredits, default `0`
 - `privateFee`: pay fees from private records, default `false`
 - `confirmTransactions`: wait for transaction confirmation, default `true`
@@ -29,7 +44,7 @@ The deploy subsystem owns transaction building, broadcast, and persisted deploym
 - `autoExport`: write an export bundle after confirming each deploy or upgrade, default `false`
 - `ephemeral`: global ephemeral override — when `true`, all networks skip deployment-state disk reads/writes except export bundles; when `false`, forces disk-backed deployment state even on devnode (overridden by per-network setting)
 
-Per-network config also accepts `ephemeral?: boolean` to override the type-based default for that network.
+Per-network config also accepts `ephemeral?: boolean` to override the type-based default for that network, and `deployBackend?: "sdk" | "leo"` to override `deploy.backend` for that network.
 
 Resolved paths include `config.paths.deployments`, the absolute path for deployment state.
 
@@ -72,7 +87,7 @@ Current deploy options:
 
 `--preflight` runs validation only and does not compile, broadcast, or write deployment state.
 
-`--dry-run` builds deployment transactions without broadcasting. It is currently devnode-only and does not mutate deployment state.
+`--dry-run` builds deployment transactions without broadcasting, and does not mutate deployment state. Availability depends on the deploy backend: the Leo backend supports it on any network, while the SDK backend supports it on devnode only, because its HTTP path builds and broadcasts atomically. See [`deploy-backends.md`](deploy-backends.md#capabilities-and-limitations).
 
 `--no-skip-deployed` makes already-deployed programs a hard preflight error instead of skipping them.
 
@@ -80,7 +95,9 @@ Current deploy options:
 
 ### Deploy Rename
 
-`deploy --program <source> --rename <name>` deploys one local source program under a different on-chain program id. The source identity remains the local program selected from `programs/`; the runtime identity is the normalized rename target (`<name>.aleo` when the suffix is omitted). LionDen compiles the selected source through its normal SDK-backed deploy path and does not shell out to `leo deploy`.
+`deploy --program <source> --rename <name>` deploys one local source program under a different on-chain program id. The source identity remains the local program selected from `programs/`; the runtime identity is the normalized rename target (`<name>.aleo` when the suffix is omitted).
+
+The rename is realized by the **materialized package**, never by `leo deploy --rename`. The compiler rewrites the program declaration into `<artifacts>/.build/<target>.aleo/`, so the rename is already baked into the bytecode before any backend sees it. This holds for both deploy backends: the SDK backend deploys that source directly, and the Leo backend points `--path` at that package and never passes `--rename`, which would rename a second time.
 
 Rename is supported only when `leoVersion` is `4.3.0` or newer. The deploy task validates rename before compilation, network connection, pending markers, or deployment writes for the checks it owns at that stage: `leoVersion`, `compiler.buildTests`, the requirement that `--rename` is paired with `--program`, and local name collisions. Only the primary deploy target is renamed; imports keep their source-authored ids. For example, if `hello.aleo` imports `token.aleo`, deploying `hello` as `renamed_hello.aleo` still imports `token.aleo`.
 
@@ -125,6 +142,12 @@ Deploy preflight checks include:
 - deployer balance sufficiency on HTTP networks
 
 Preflight can return `deploy` or `skip` outcomes per program. A skipped program may already be tracked in local state or may be discovered on-chain without local provenance.
+
+Separately from this module, `deploy` and `upgrade` await the effective backend's own `preflight()` as their step 0 — before compilation and before connecting — so an unusable backend fails fast rather than after a full compile.
+
+Fee estimation is delegated to the backend, so it is a capability rather than a fixed behavior: the Leo backend returns a `FEE_ESTIMATION_UNAVAILABLE` warning instead of an estimate, since Leo prints its cost breakdown only as the deployment runs.
+
+Preflight does **not** currently check signing-key availability for the Leo backend; a missing key is caught later, when the backend refuses to spawn.
 
 ## Deployment State
 

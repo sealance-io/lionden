@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
+import { assertLeoDeployBackendSupported, parseArgs, USAGE } from "./lib/smoke-lane.mjs";
 
 const CORE_EXAMPLES = [
   "hello-world",
@@ -18,46 +19,20 @@ const PROVE_TEST_TIMEOUT_MS = 900_000;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 
-const { listOnly, typecheck, prove, coverage, groups } = parseArgs(process.argv.slice(2));
+let parsed;
+try {
+  parsed = parseArgs(process.argv.slice(2));
+} catch (error) {
+  console.error(USAGE);
+  console.error(error.message);
+  process.exit(1);
+}
+
+const { listOnly, typecheck, prove, coverage, deployBackend, groups } = parsed;
 const requestedGroups = groups.length > 0 ? groups : ["core"];
 
 function usage() {
-  console.error(
-    "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--coverage] [core] [aleo-ports] [all]",
-  );
-}
-
-function parseArgs(args) {
-  const parsed = {
-    listOnly: false,
-    typecheck: true,
-    prove: false,
-    coverage: false,
-    groups: [],
-  };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case "--list":
-        parsed.listOnly = true;
-        break;
-      case "--no-typecheck":
-        parsed.typecheck = false;
-        break;
-      case "--prove":
-        parsed.prove = true;
-        break;
-      case "--coverage":
-        parsed.coverage = true;
-        break;
-      default:
-        parsed.groups.push(arg);
-        break;
-    }
-  }
-
-  return parsed;
+  console.error(USAGE);
 }
 
 function coreConfigs() {
@@ -117,6 +92,8 @@ if (listOnly) {
   process.exit(0);
 }
 
+if (deployBackend === "leo") assertLeoDeployBackendSupported();
+
 const coverageContext = coverage ? createCoverageContext(requestedGroups) : undefined;
 const runStartedAt = performance.now();
 
@@ -149,7 +126,7 @@ for (const config of configs) {
       ...(coverage ? ["--coverage"] : []),
       ...(prove ? ["--prove", "--timeout", String(PROVE_TEST_TIMEOUT_MS)] : []),
     ],
-    coverageContext ? coverageEnv(coverageContext, config) : undefined,
+    testEnv(config),
   );
 }
 
@@ -188,6 +165,27 @@ function coverageLane(groups) {
   return groups[0] ?? "core";
 }
 
+/**
+ * Environment for the `test` run: coverage plumbing plus the deploy-backend
+ * selection.
+ *
+ * The backend travels as `LIONDEN_DEPLOY_BACKEND` rather than as
+ * `--deploy-backend`, because the deploys under test happen inside Vitest
+ * worker processes spawned by the `test` task. A global CLI option is scoped to
+ * the LRE in the parent process; the environment variable is process-global and
+ * inherited by the workers, which is the selection layer built for exactly this.
+ *
+ * Only `test` gets it — `compile` and `tsc` deploy nothing.
+ */
+function testEnv(config) {
+  const env = {
+    ...(coverageContext ? coverageEnv(coverageContext, config) : {}),
+    ...(deployBackend ? { LIONDEN_DEPLOY_BACKEND: deployBackend } : {}),
+  };
+
+  return Object.keys(env).length > 0 ? env : undefined;
+}
+
 function coverageEnv(context, config) {
   const id = coverageExampleId(config);
   const reportsDirectory = join(context.runsDir, id);
@@ -218,6 +216,7 @@ function printRunHeader(context) {
     }`,
   );
   console.log(`Coverage: ${formatEnabled(coverage)}${context ? ` (lane ${context.lane})` : ""}`);
+  console.log(`Deploy backend: ${deployBackend ?? "from config (default sdk)"}`);
   console.log(`Configs (${configs.length}):`);
   for (const config of configs) {
     console.log(`  - ${config}`);

@@ -12,6 +12,11 @@ build/
 **/deployments/devnode/
 **/deployments/_exports/devnode.json
 
+# Per-backend deployment state written by scripts/verify-deploy-backends.mjs.
+# The driver owns and wipes these directories; they are run output, not fixtures.
+**/deployments-sdk/
+**/deployments-leo/
+
 # TypeScript
 *.tsbuildinfo
 

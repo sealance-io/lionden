@@ -7,6 +7,9 @@ const contractTests = ["packages/*/src/**/*.contract.test.ts"];
 // the submodule is absent). The slow real-`leo build` suites — the 0f proof and
 // compile-codegen — run via test/fixtures/leo-samples/vitest.config.ts instead.
 const leoSamplesAdapterTests = ["test/fixtures/leo-samples/adapter/adapt.test.ts"];
+// Smoke-runner lane helpers. Pure argv/version parsing, so they belong in the
+// unit lane even though they live outside `packages/`.
+const scriptLibTests = ["scripts/lib/**/*.test.mjs"];
 const coverageOnlyExcludes = [
   "packages/test-internals/src/**/*.ts",
   "packages/*/src/**/__goldens__/**",
@@ -32,7 +35,7 @@ export default defineConfig({
       {
         test: {
           name: "unit",
-          include: [...unitTests, ...leoSamplesAdapterTests],
+          include: [...unitTests, ...leoSamplesAdapterTests, ...scriptLibTests],
           exclude: contractTests,
         },
       },
