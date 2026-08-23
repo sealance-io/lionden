@@ -122,12 +122,18 @@ export function assertLeoDeployBackendSupported(probe = defaultLeoVersionProbe) 
     );
   }
 
-  const version = /\b(\d+)\.(\d+)\.(\d+)\b/.exec(`${result.stdout ?? ""}\n${result.stderr ?? ""}`);
+  // The trailing lookahead (rather than `\b`) rejects pre-release and build
+  // suffixes such as `4.3.2-rc1` or `4.3.2+build` — `\b` matches before `-`/`+`
+  // and would pass a binary the backend's own gate (`parseLeoVersionOutput`)
+  // rejects, failing the lane only after every example has compiled.
+  const version = /\b(\d+)\.(\d+)\.(\d+)(?![-+.\w])/.exec(
+    `${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+  );
 
   if (!version) {
     throw new Error(
-      `--deploy-backend leo supports Leo ${LEO_DEPLOY_BACKEND_LINE}.x only, but no version could ` +
-        `be parsed from \`leo --version\`. ` +
+      `--deploy-backend leo supports Leo ${LEO_DEPLOY_BACKEND_LINE}.x only, but no stable version ` +
+        `could be parsed from \`leo --version\`. ` +
         `Install Leo ${LEO_DEPLOY_BACKEND_LINE}.x, or drop the flag to use the default SDK backend.`,
     );
   }

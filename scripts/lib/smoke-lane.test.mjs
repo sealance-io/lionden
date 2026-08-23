@@ -128,7 +128,21 @@ describe("assertLeoDeployBackendSupported", () => {
 
   it("rejects output with no parseable version", () => {
     expect(() => assertLeoDeployBackendSupported(probe(ok("leo (dev build)")))).toThrow(
-      /no version could be parsed/,
+      /no stable version could be parsed/,
+    );
+  });
+
+  /**
+   * The backend's own gate (`parseLeoVersionOutput`) rejects non-stable
+   * versions; `\b` would let them through here and fail the lane only after
+   * compiling every example.
+   */
+  it.each([
+    ["a pre-release", "leo 4.3.2-rc1"],
+    ["a build suffix", "leo 4.3.2+build"],
+  ])("rejects %s on the supported line", (_label, output) => {
+    expect(() => assertLeoDeployBackendSupported(probe(ok(output)))).toThrow(
+      /no stable version could be parsed/,
     );
   });
 
