@@ -959,3 +959,32 @@ describe("getCachedAbi() normalization", () => {
     expect((cached as any)["functions"]).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// preflight() — backend resolution and backend preflight
+// ---------------------------------------------------------------------------
+
+describe("preflight() backend gating", () => {
+  it("fails when the Leo backend's binary probe fails, without connecting", async () => {
+    const config = makeConfig();
+    (config as any).leoVersion = "4.3.2";
+    (config as any).leoBinary = path.join(tmpDir, "leo-missing");
+    (config.deploy as any).backend = "leo";
+    const networkManager = makeNetworkManager();
+    const dm = new DeploymentManagerImpl(config, () => networkManager, makeArtifactStore());
+
+    await expect(dm.preflight(["hello.aleo"])).rejects.toThrow(/Could not run/);
+    expect(networkManager.connect).not.toHaveBeenCalled();
+  });
+
+  it("rejects an incompatible backend selection before connecting", async () => {
+    // Default mock leoVersion is 4.0.0 — outside the Leo backend's supported line.
+    const config = makeConfig();
+    (config.deploy as any).backend = "leo";
+    const networkManager = makeNetworkManager();
+    const dm = new DeploymentManagerImpl(config, () => networkManager, makeArtifactStore());
+
+    await expect(dm.preflight(["hello.aleo"])).rejects.toThrow(/supports Leo 4\.3\.x only/);
+    expect(networkManager.connect).not.toHaveBeenCalled();
+  });
+});

@@ -11,7 +11,11 @@ import type { ArtifactStore } from "@lionden/core";
 import type { DependencyGraph, ProgramABI } from "@lionden/leo-compiler";
 import { discoverUnits, parseAbi, resolveDependencies } from "@lionden/leo-compiler";
 import type { NetworkConnection, NetworkManager } from "@lionden/network";
-import { buildBackendContext, resolveDeployBackend } from "./deploy-backend/resolve.js";
+import {
+  buildBackendContext,
+  buildPreflightContext,
+  resolveDeployBackend,
+} from "./deploy-backend/resolve.js";
 import { resolveDeployBackendFromEnvAndConfig } from "./deploy-backend/select.js";
 import {
   appendHistory,
@@ -625,6 +629,18 @@ export class DeploymentManagerImpl implements DeploymentManager {
       throw new Error("Network manager not available. Ensure @lionden/plugin-network is loaded.");
     }
 
+    // Resolve the backend and prove it can run before connecting — mirrors
+    // step 0 of `deployAction`. A backend that cannot run (missing binary,
+    // unsupported line) must fail here rather than pass preflight and fail
+    // later in the actual deploy.
+    const backendPreflightCtx = buildPreflightContext(this.config, network);
+    const backend = resolveDeployBackend(
+      resolveDeployBackendFromEnvAndConfig(this.config, network),
+      backendPreflightCtx,
+      "deploy",
+    );
+    await backend.preflight(backendPreflightCtx);
+
     const connection = await manager.connect(network);
 
     // Normalize program IDs
@@ -686,11 +702,6 @@ export class DeploymentManagerImpl implements DeploymentManager {
     }
 
     const backendCtx = buildBackendContext(this.config, connection, network);
-    const backend = resolveDeployBackend(
-      resolveDeployBackendFromEnvAndConfig(this.config, network),
-      backendCtx,
-      "deploy",
-    );
 
     return runDeployPreflight({
       programs,
