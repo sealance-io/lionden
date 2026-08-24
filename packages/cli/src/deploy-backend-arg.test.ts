@@ -41,13 +41,12 @@ describe("sawDeployBackendFlag", () => {
     expect(sawDeployBackendFlag(argv)).toBe(true);
   });
 
-  it.each([
-    "--deploy-backend=leo",
-    "--deployBackend=leo",
-    "--deploy-backend=",
-  ])("matches the inline form %s", (arg) => {
-    expect(sawDeployBackendFlag([arg])).toBe(true);
-  });
+  it.each(["--deploy-backend=leo", "--deployBackend=leo", "--deploy-backend="])(
+    "matches the inline form %s",
+    (arg) => {
+      expect(sawDeployBackendFlag([arg])).toBe(true);
+    },
+  );
 
   it("does not match an unrelated flag with a shared prefix", () => {
     expect(sawDeployBackendFlag(["--deploy-backend-extra", "x"])).toBe(false);

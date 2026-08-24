@@ -81,23 +81,19 @@ describe("collectGlobalOptions", () => {
     expect(result.get("trace")!.pluginId).toBe("a");
   });
 
-  it.each([
-    "verbose",
-    "network",
-    "prove",
-    "config",
-    "help",
-    "version",
-  ])("rejects built-in global option name %s", (name) => {
-    const a = plugin("a", {
-      globalOptions: [{ name, description: "", type: ArgumentType.STRING }],
-    });
-    expect(() => collectGlobalOptions([a])).toThrow(
-      new RegExp(
-        `Global option "--${name}" registered by "a" conflicts with built-in global option "--${name}"`,
-      ),
-    );
-  });
+  it.each(["verbose", "network", "prove", "config", "help", "version"])(
+    "rejects built-in global option name %s",
+    (name) => {
+      const a = plugin("a", {
+        globalOptions: [{ name, description: "", type: ArgumentType.STRING }],
+      });
+      expect(() => collectGlobalOptions([a])).toThrow(
+        new RegExp(
+          `Global option "--${name}" registered by "a" conflicts with built-in global option "--${name}"`,
+        ),
+      );
+    },
+  );
 
   it.each(["h", "v"])("rejects built-in global option alias %s", (name) => {
     const a = plugin("a", {

@@ -2,31 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { parseBooleanEnv } from "./env.js";
 
 describe("parseBooleanEnv", () => {
-  it.each([
-    "true",
-    "t",
-    "yes",
-    "y",
-    "1",
-    "on",
-    "enabled",
-  ])("treats %s as true (case/space insensitive)", (token) => {
-    expect(parseBooleanEnv(token)).toBe(true);
-    expect(parseBooleanEnv(`  ${token.toUpperCase()}  `)).toBe(true);
-  });
+  it.each(["true", "t", "yes", "y", "1", "on", "enabled"])(
+    "treats %s as true (case/space insensitive)",
+    (token) => {
+      expect(parseBooleanEnv(token)).toBe(true);
+      expect(parseBooleanEnv(`  ${token.toUpperCase()}  `)).toBe(true);
+    },
+  );
 
-  it.each([
-    "false",
-    "f",
-    "no",
-    "n",
-    "0",
-    "off",
-    "disabled",
-  ])("treats %s as false (case/space insensitive)", (token) => {
-    expect(parseBooleanEnv(token, true)).toBe(false);
-    expect(parseBooleanEnv(`  ${token.toUpperCase()}  `, true)).toBe(false);
-  });
+  it.each(["false", "f", "no", "n", "0", "off", "disabled"])(
+    "treats %s as false (case/space insensitive)",
+    (token) => {
+      expect(parseBooleanEnv(token, true)).toBe(false);
+      expect(parseBooleanEnv(`  ${token.toUpperCase()}  `, true)).toBe(false);
+    },
+  );
 
   it("returns the default for undefined and empty string", () => {
     expect(parseBooleanEnv(undefined)).toBe(false);

@@ -558,22 +558,22 @@ describe("LeoDeployBackend against an HTTP network", () => {
   const httpCtx = () =>
     ctx({ connectionType: "http", endpoint: "https://api.explorer.provable.com/v1" });
 
-  it.each([
-    "deploy",
-    "upgrade",
-  ] as const)("omits --devnet and --skip-deploy-certificate on %s, even unproven", async (operation) => {
-    const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
-    const backend = backendWith(fake);
-    const build = operation === "deploy" ? backend.buildDeploy : backend.buildUpgrade;
+  it.each(["deploy", "upgrade"] as const)(
+    "omits --devnet and --skip-deploy-certificate on %s, even unproven",
+    async (operation) => {
+      const fake = new FakeLeoCli({ savedTransactions: { [PROGRAM]: TX } });
+      const backend = backendWith(fake);
+      const build = operation === "deploy" ? backend.buildDeploy : backend.buildUpgrade;
 
-    await build.call(backend, req({ prove: false }), httpCtx());
+      await build.call(backend, req({ prove: false }), httpCtx());
 
-    expect(fake.onlyCall.argv).not.toContain("--devnet");
-    expect(fake.onlyCall.argv).not.toContain("--skip-deploy-certificate");
-    expect(fake.onlyCall.argv[fake.onlyCall.argv.indexOf("--endpoint") + 1]).toBe(
-      "https://api.explorer.provable.com/v1",
-    );
-  });
+      expect(fake.onlyCall.argv).not.toContain("--devnet");
+      expect(fake.onlyCall.argv).not.toContain("--skip-deploy-certificate");
+      expect(fake.onlyCall.argv[fake.onlyCall.argv.indexOf("--endpoint") + 1]).toBe(
+        "https://api.explorer.provable.com/v1",
+      );
+    },
+  );
 
   /**
    * The failure this closes: Leo reads `DEVNET` from a `.env` file in its
