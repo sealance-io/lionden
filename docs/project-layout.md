@@ -103,6 +103,9 @@ The scaffolded output includes:
 - `test/...`
 
 The template registry lives in `packages/create-lionden/src/templates.ts`.
+Generated `@lionden/*` dependency ranges come from `create-lionden`'s own package version, not
+literal per-package versions. All public packages share one Changesets fixed release group, so
+the scaffolder and generated toolchain stay on the same pre-1.0 compatibility line.
 
 ## Documentation Usage
 

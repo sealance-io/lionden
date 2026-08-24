@@ -3,6 +3,18 @@
  * Each template defines the files to generate for a new LionDen project.
  */
 
+import { readFileSync } from "node:fs";
+
+const packageManifest = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { version?: unknown };
+
+if (typeof packageManifest.version !== "string") {
+  throw new Error("create-lionden package.json is missing its version");
+}
+
+export const LIONDEN_VERSION_RANGE = `^${packageManifest.version}`;
+
 export interface TemplateFile {
   /** Relative path from project root */
   readonly path: string;
@@ -41,15 +53,15 @@ export function sharedFiles(projectName: string): TemplateFile[] {
               node: "^20.19.0 || >=22.12.0",
             },
             devDependencies: {
-              "@lionden/cli": "^0.1.0",
-              "@lionden/config": "^0.1.0",
-              "@lionden/core": "^0.1.0",
-              "@lionden/network": "^0.1.0",
-              "@lionden/plugin-deploy": "^0.1.0",
-              "@lionden/plugin-leo": "^0.1.0",
-              "@lionden/plugin-network": "^0.1.0",
-              "@lionden/plugin-test": "^0.1.0",
-              "@lionden/testing": "^0.1.0",
+              "@lionden/cli": LIONDEN_VERSION_RANGE,
+              "@lionden/config": LIONDEN_VERSION_RANGE,
+              "@lionden/core": LIONDEN_VERSION_RANGE,
+              "@lionden/network": LIONDEN_VERSION_RANGE,
+              "@lionden/plugin-deploy": LIONDEN_VERSION_RANGE,
+              "@lionden/plugin-leo": LIONDEN_VERSION_RANGE,
+              "@lionden/plugin-network": LIONDEN_VERSION_RANGE,
+              "@lionden/plugin-test": LIONDEN_VERSION_RANGE,
+              "@lionden/testing": LIONDEN_VERSION_RANGE,
               tsx: "^4.0.0",
               typescript: "^5.7.0",
               vitest: "^4.0.0",

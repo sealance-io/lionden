@@ -11,11 +11,11 @@ Workflows are version-controlled; these settings are not, so they live here.
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `ci.yml` | PRs to `main` | dependency-review (gated), lockfile validation (registry-only + integrity, via `npm run lint:lockfile`), build, unit+contract tests, lint/format (Biome `check:ci`), smoke (Leo devnode, core examples). Rollup: **CI Status**. |
+| `ci.yml` | PRs to `main` | dependency-review (gated), lockfile validation (registry-only, integrity, and workspace-manifest synchronization), release-script regression tests, build, unit+contract tests, lint/format (Biome `check:ci`), smoke (Leo devnode, core examples). Rollup: **CI Status**. |
 | `security-audit.yml` | PR/push/weekly | zizmor workflow audit. Rollup: **Security Audit Status**. |
 | `pinact-verify.yml` | PR/push | Action SHA-pin + cooldown verification. Rollup: **pinact Status**. |
 | `release-version.yml` | push to `main` | Opens/updates the "Version Packages" PR (changesets + GitHub App token). |
-| `release-publish.yml` | push to `main` | Publishes bumped packages to npm via OIDC; tags + GitHub Releases. |
+| `release-publish.yml` | push to `main` + manual | Publishes bumped packages to npm via OIDC; reconciles all published tags from npm `gitHead`; creates/verifies GitHub Releases. |
 | `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.3.2 CLI so the `smoke` lane hits a warm cache. |
 
 > **`sealance-io/setup-leo-action` pin + intentional Leo-version split.** All four call sites
@@ -76,6 +76,11 @@ Reuse the existing Sealance org App (the same one `compliant-transfer-aleo` uses
 
 Both `release-version.yml` and `release-publish.yml` mint a short-lived installation token
 scoped to `lionden` via `actions/create-github-app-token`.
+
+The publish workflow's manual dispatch is also the recovery path for a release that reached npm
+without tags or GitHub Releases. It is safe to approve on `main`: existing npm versions are
+skipped, historical and current missing tags are recreated only at npm's recorded `gitHead`,
+remote targets are verified, and existing Releases are left unchanged.
 
 ## npm publishing (OIDC trusted publishing)
 

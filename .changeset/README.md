@@ -11,13 +11,19 @@ We have a quick list of common questions to get you started engaging with this p
 
 ## How releases work in this repo
 
-1. **Add a changeset** with your PR: `npm run changeset`. Pick the affected `@lionden/*`
-   packages and a bump level (patch/minor/major), and describe the change. Commit the
-   generated `.changeset/*.md` file.
+1. **Add a changeset** with your PR: `npm run changeset`. Pick the packages whose user-facing
+   changes need changelog entries and a bump level (patch/minor/major). All 11 public packages
+   are one fixed release group, so the highest requested bump applies to the whole group.
+   Commit the generated `.changeset/*.md` file.
 2. On merge to `main`, the **`release-version`** workflow opens (or updates) a
-   `Version Packages` PR that consumes the changesets, bumps versions, and writes CHANGELOGs.
+   `Version Packages` PR that consumes the changesets, aligns every public package, refreshes
+   `package-lock.json`, and writes CHANGELOGs.
 3. Merging that PR triggers the **`release-publish`** workflow, which publishes every bumped
-   package to npm via OIDC trusted publishing (no tokens) and tags the release.
+   package to npm via OIDC trusted publishing (no tokens), reconciles each tag against npm's
+   `gitHead`, and creates or verifies the matching GitHub Releases across the published history.
+
+Never hand-edit package versions or rerun npm publishing to repair tags. A manual
+`release-publish.yml` dispatch from `main` is idempotent and repairs missing tags/releases.
 
 See `docs/ci-cd/RELEASING.md` for the full flow and `docs/ci-cd/REPOSITORY-SETUP.md` for the
 one-time bootstrap and trusted-publisher configuration.

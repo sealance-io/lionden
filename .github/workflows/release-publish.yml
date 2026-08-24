@@ -90,44 +90,46 @@ jobs:
           registry-url: "https://registry.npmjs.org" # OIDC; no NODE_AUTH_TOKEN
           package-manager-cache: false # never cache in privileged release builds
       - run: npm run lint:lockfile
+      - run: npm run test:release-scripts
       - run: npm ci --ignore-scripts --no-audit --no-fund --allow-git=none
       - run: npm run build
-      - name: Snapshot tags before publish
-        run: git tag | sort > "$RUNNER_TEMP/tags-before.txt"
       - name: Publish (all bumped packages, idempotent)
         run: npx changeset publish
         env:
           # Provenance only when the source repo is public (npm can't attest a private repo);
           # auto-flips on going OSS, off while internal so publish doesn't fail.
           NPM_CONFIG_PROVENANCE: ${{ github.event.repository.visibility == 'public' }}
-      - name: Determine newly created tags
-        id: tags
-        run: |
-          git tag | sort > "$RUNNER_TEMP/tags-after.txt"
-          comm -13 "$RUNNER_TEMP/tags-before.txt" "$RUNNER_TEMP/tags-after.txt" > "$RUNNER_TEMP/new-tags.txt"
-          echo "New tags:"; cat "$RUNNER_TEMP/new-tags.txt"
-      - name: Push tags created by changeset publish
-        # `changeset publish` creates lightweight tags, which `git push --follow-tags`
-        # ignores (it only pushes annotated tags). Push the diffed new tags explicitly.
-        run: |
-          while IFS= read -r tag; do
-            if [ -n "$tag" ]; then git push origin "refs/tags/$tag"; fi
-          done < "$RUNNER_TEMP/new-tags.txt"
-      - name: Create per-package GitHub Releases
+      - name: Reconcile and verify release tags
+        # Enumerate every published version of the fixed public package group. Missing tags are
+        # recreated at npm's immutable gitHead, so a rerun repairs both the current release and
+        # historical versions whose npm publish succeeded without metadata reaching GitHub.
+        run: >-
+          node scripts/reconcile-release-tags.mjs
+          --push
+          --output "$RUNNER_TEMP/release-tags.txt"
+      - name: Create or verify per-package GitHub Releases
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          NEW_TAGS_FILE: ${{ runner.temp }}/new-tags.txt
+          RELEASE_TAGS_FILE: ${{ runner.temp }}/release-tags.txt
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const fs = require('fs');
             const tags = fs
-              .readFileSync(process.env.NEW_TAGS_FILE, 'utf8')
+              .readFileSync(process.env.RELEASE_TAGS_FILE, 'utf8')
               .split('\n')
               .map((s) => s.trim())
               .filter(Boolean);
             for (const tag of tags) {
               try {
+                await github.rest.repos.getReleaseByTag({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  tag_name: tag,
+                });
+                core.info(`Release ${tag} already exists — verified`);
+              } catch (e) {
+                if (e.status !== 404) throw e;
                 await github.rest.repos.createRelease({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
@@ -136,12 +138,6 @@ jobs:
                   generate_release_notes: true,
                 });
                 core.info(`Created release ${tag}`);
-              } catch (e) {
-                if (e.status === 422) {
-                  core.info(`Release ${tag} already exists — skipping`);
-                } else {
-                  throw e;
-                }
               }
             }
 
