@@ -77,6 +77,53 @@ try {
 
   await reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl });
 
+  let replicationAttempts = 0;
+  const retryDelays = [];
+  const laggingFetch = async () => {
+    replicationAttempts++;
+    if (replicationAttempts > 1) return fetchImpl();
+    return new Response(
+      JSON.stringify({
+        name: "@scope/public-package",
+        versions: {
+          "0.9.0": { name: "@scope/public-package", version: "0.9.0", gitHead },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+  await reconcileReleaseTags({
+    rootDir: repo,
+    push: false,
+    fetchImpl: laggingFetch,
+    registryAttempts: 2,
+    registryRetryDelayMs: 10,
+    sleepImpl: async (delayMs) => retryDelays.push(delayMs),
+  });
+  assert.equal(replicationAttempts, 2);
+  assert.deepEqual(retryDelays, [10]);
+
+  const staleFetch = async () =>
+    new Response(
+      JSON.stringify({
+        name: "@scope/public-package",
+        versions: {
+          "0.9.0": { name: "@scope/public-package", version: "0.9.0", gitHead },
+        },
+      }),
+      { status: 200 },
+    );
+  await assert.rejects(
+    reconcileReleaseTags({
+      rootDir: repo,
+      push: false,
+      fetchImpl: staleFetch,
+      registryAttempts: 1,
+      registryRetryDelayMs: 0,
+    }),
+    /npm metadata for @scope\/public-package@1\.0\.0 was not ready after 1 registry attempt/,
+  );
+
   writeFileSync(join(repo, "README.md"), "later commit\n");
   git(repo, ["add", "README.md"]);
   git(repo, ["commit", "-m", "later"]);
