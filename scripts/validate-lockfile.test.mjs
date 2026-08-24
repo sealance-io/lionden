@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(__dirname, "validate-lockfile.mjs");
 
-function run(lockfileContent) {
+function run(lockfileContent, files = {}) {
   // Each test gets an isolated temp directory so the real lockfile is never
   // modified, even if the process exits unexpectedly.
   const dir = mkdtempSync(join(tmpdir(), "validate-lockfile-"));
@@ -25,6 +25,14 @@ function run(lockfileContent) {
 
   try {
     writeFileSync(path, JSON.stringify(lockfileContent, null, 2));
+    for (const [relativePath, content] of Object.entries(files)) {
+      const filePath = join(dir, relativePath);
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(
+        filePath,
+        typeof content === "string" ? content : JSON.stringify(content, null, 2),
+      );
+    }
     const output = execFileSync("node", [SCRIPT], {
       cwd: dir,
       encoding: "utf8",
@@ -233,6 +241,71 @@ const result13 = run({
 });
 assert.equal(result13.exitCode, 1);
 assert.match(result13.stderr, /non-registry source/);
+console.log("  PASS");
+
+// ─── Test 14: Rejects stale workspace versions and dependency ranges ────────
+console.log("Test 14: Rejects stale workspace lockfile metadata...");
+const result14 = run(
+  {
+    lockfileVersion: 3,
+    packages: {
+      "": { name: "test-root" },
+      "packages/app": {
+        name: "app",
+        version: "1.0.0",
+        dependencies: { dependency: "^1.0.0" },
+      },
+    },
+  },
+  {
+    "package.json": {
+      name: "test-root",
+      private: true,
+      version: "1.0.0",
+      workspaces: ["packages/*"],
+    },
+    "packages/app/package.json": {
+      name: "app",
+      version: "1.1.0",
+      dependencies: { dependency: "^2.0.0" },
+    },
+  },
+);
+assert.equal(result14.exitCode, 1);
+assert.match(result14.stderr, /lockfile version 1\.0\.0 does not match package\.json 1\.1\.0/);
+assert.match(result14.stderr, /lockfile dependencies does not match package\.json/);
+console.log("  PASS");
+
+// ─── Test 15: Accepts synchronized workspace metadata ───────────────────────
+console.log("Test 15: Accepts synchronized workspace lockfile metadata...");
+const result15 = run(
+  {
+    lockfileVersion: 3,
+    packages: {
+      "": { name: "test-root" },
+      "packages/app": {
+        name: "app",
+        version: "1.1.0",
+        dependencies: { dependency: "^2.0.0" },
+      },
+    },
+  },
+  {
+    "package.json": {
+      name: "test-root",
+      private: true,
+      version: "1.0.0",
+      workspaces: ["packages/*"],
+    },
+    "packages/app/package.json": {
+      name: "app",
+      version: "1.1.0",
+      dependencies: { dependency: "^2.0.0" },
+    },
+  },
+);
+assert.equal(result15.exitCode, 0);
+assert.match(result15.stdout, /Lockfile OK/);
 console.log("  PASS");
 
 console.log("\nAll tests passed.");

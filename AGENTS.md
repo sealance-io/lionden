@@ -53,6 +53,7 @@ Open the smallest relevant doc first:
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) |
 | What features are shipped / missing for V1 / deferred; doko-js parity reference | [`docs/feature-status.md`](docs/feature-status.md) |
 | Agent-driven disposable bug-hunt probes | [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md) |
+| Changesets, coordinated package versions, npm publishing, tags, GitHub Releases | [`docs/ci-cd/RELEASING.md`](docs/ci-cd/RELEASING.md) |
 
 ## Ground Truth Order
 
@@ -77,3 +78,12 @@ When sources disagree, use this order:
   - broad overview in `README.md`
   - subsystem depth in `docs/*.md`
   - agent routing and doc loading policy in `AGENTS.md`
+- Treat the 11 public packages as one fixed release train. Do not remove a package from the
+  `.changeset/config.json` fixed group or introduce independent public versions without an
+  explicit product decision. `@lionden/test-internals` stays private and outside the group.
+- `create-lionden` derives every generated `@lionden/*` range from its own package version; do
+  not replace that with literal per-package ranges. A Version Packages PR is ready only when all
+  11 public manifests share one version and `package-lock.json` matches them.
+- Do not rerun or manually overwrite npm versions to repair release metadata. Use the manual
+  `release-publish.yml` path, which reconciles tags to npm `gitHead`, verifies the remote refs,
+  and creates or verifies every published per-package GitHub Release.

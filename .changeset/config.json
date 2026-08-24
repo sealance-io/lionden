@@ -2,7 +2,21 @@
   "$schema": "https://unpkg.com/@changesets/config@3.0.0/schema.json",
   "changelog": ["@changesets/changelog-github", { "repo": "sealance-io/lionden" }],
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@lionden/cli",
+      "@lionden/config",
+      "@lionden/core",
+      "@lionden/leo-compiler",
+      "@lionden/network",
+      "@lionden/plugin-deploy",
+      "@lionden/plugin-leo",
+      "@lionden/plugin-network",
+      "@lionden/plugin-test",
+      "@lionden/testing",
+      "create-lionden"
+    ]
+  ],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

@@ -44,8 +44,10 @@
     "check:ci": "biome ci .",
     "lint:lockfile": "node scripts/validate-lockfile.mjs",
     "test:lockfile": "node scripts/validate-lockfile.test.mjs",
+    "test:release-scripts": "npm run test:lockfile && node scripts/release-policy.test.mjs && node scripts/reconcile-release-tags.test.mjs",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "node scripts/version-packages.mjs",
+    "reconcile-release-tags": "node scripts/reconcile-release-tags.mjs",
     "release": "changeset publish"
   },
   "devDependencies": {

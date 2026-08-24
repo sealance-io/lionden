@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getTemplate, getTemplateIds, sharedFiles, TEMPLATES } from "./templates.js";
+import {
+  getTemplate,
+  getTemplateIds,
+  LIONDEN_VERSION_RANGE,
+  sharedFiles,
+  TEMPLATES,
+} from "./templates.js";
 
 describe("templates", () => {
   it("has at least two templates", () => {
@@ -119,18 +125,23 @@ describe("templates", () => {
       expect(gitignore!.content).toContain(".aleo/");
     });
 
-    it("package.json has @lionden dependencies including plugins", () => {
+    it("package.json pins every LionDen dependency to the scaffolder release line", () => {
       const files = sharedFiles("test");
       const pkg = files.find((f) => f.path === "package.json");
-      expect(pkg!.content).toContain("@lionden/cli");
-      expect(pkg!.content).toContain("@lionden/config");
-      expect(pkg!.content).toContain("@lionden/core");
-      expect(pkg!.content).toContain("@lionden/testing");
-      expect(pkg!.content).toContain("@lionden/plugin-leo");
-      expect(pkg!.content).toContain("@lionden/plugin-network");
-      expect(pkg!.content).toContain("@lionden/plugin-deploy");
-      expect(pkg!.content).toContain("@lionden/plugin-test");
-      expect(pkg!.content).toContain("tsx");
+      if (!pkg) throw new Error("shared files are missing package.json");
+      const manifest = JSON.parse(pkg.content);
+
+      expect(manifest.devDependencies).toMatchObject({
+        "@lionden/cli": LIONDEN_VERSION_RANGE,
+        "@lionden/config": LIONDEN_VERSION_RANGE,
+        "@lionden/core": LIONDEN_VERSION_RANGE,
+        "@lionden/network": LIONDEN_VERSION_RANGE,
+        "@lionden/plugin-deploy": LIONDEN_VERSION_RANGE,
+        "@lionden/plugin-leo": LIONDEN_VERSION_RANGE,
+        "@lionden/plugin-network": LIONDEN_VERSION_RANGE,
+        "@lionden/plugin-test": LIONDEN_VERSION_RANGE,
+        "@lionden/testing": LIONDEN_VERSION_RANGE,
+      });
     });
   });
 });
