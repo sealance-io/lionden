@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   # Gate: only publish when this push is the merge of the changesets "Version Packages" PR
-  # (branch changeset-release/main), or on a manual dispatch from main. `changeset publish`
-  # is idempotent, so a spurious trigger is harmless.
+  # (branch changeset-release/main). A manual dispatch from main is metadata-only: it must never
+  # publish whatever package versions happen to be checked out before a Version Packages PR.
   check-release:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -25,21 +25,24 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      should_publish: ${{ steps.check.outputs.should_publish }}
+      should_run: ${{ steps.check.outputs.should_run }}
+      should_publish_npm: ${{ steps.check.outputs.should_publish_npm }}
     steps:
-      - name: Determine whether to publish
+      - name: Determine release mode
         id: check
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             if (context.eventName === 'workflow_dispatch') {
               if (context.ref !== 'refs/heads/main') {
-                core.warning(`Manual dispatch on ${context.ref} — refusing to publish from a non-main ref`);
-                core.setOutput('should_publish', 'false');
+                core.warning(`Manual dispatch on ${context.ref} — refusing to run from a non-main ref`);
+                core.setOutput('should_run', 'false');
+                core.setOutput('should_publish_npm', 'false');
                 return;
               }
-              core.info('Manual dispatch from main — publishing');
-              core.setOutput('should_publish', 'true');
+              core.info('Manual dispatch from main — reconciling tags and Releases without publishing');
+              core.setOutput('should_run', 'true');
+              core.setOutput('should_publish_npm', 'false');
               return;
             }
             const { data: prs } =
@@ -54,14 +57,15 @@ jobs:
             core.info(
               releasePr
                 ? `Release PR #${releasePr.number} merged — publishing`
-                : 'Not a release-PR merge — skipping publish',
+                : 'Not a release-PR merge — skipping release work',
             );
-            core.setOutput('should_publish', releasePr ? 'true' : 'false');
+            core.setOutput('should_run', releasePr ? 'true' : 'false');
+            core.setOutput('should_publish_npm', releasePr ? 'true' : 'false');
 
   publish-npm:
     needs: check-release
-    # Defense-in-depth: never publish from anything but main, regardless of the gate.
-    if: needs.check-release.outputs.should_publish == 'true' && github.ref == 'refs/heads/main'
+    # Defense-in-depth: never perform release work from anything but main, regardless of the gate.
+    if: needs.check-release.outputs.should_run == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: npm-publish # protected: required reviewers, main-only
@@ -91,9 +95,12 @@ jobs:
           package-manager-cache: false # never cache in privileged release builds
       - run: npm run lint:lockfile
       - run: npm run test:release-scripts
-      - run: npm ci --ignore-scripts --no-audit --no-fund --allow-git=none
-      - run: npm run build
+      - if: needs.check-release.outputs.should_publish_npm == 'true'
+        run: npm ci --ignore-scripts --no-audit --no-fund --allow-git=none
+      - if: needs.check-release.outputs.should_publish_npm == 'true'
+        run: npm run build
       - name: Publish (all bumped packages, idempotent)
+        if: needs.check-release.outputs.should_publish_npm == 'true'
         run: npx changeset publish
         env:
           # Provenance only when the source repo is public (npm can't attest a private repo);
@@ -156,19 +163,25 @@ jobs:
       - name: Check results
         run: |
           echo "::group::Job results"
-          echo "should_publish: $SHOULD_PUBLISH"
-          echo "publish result: $PUBLISH_RESULT"
+          echo "should_run: $SHOULD_RUN"
+          echo "should_publish_npm: $SHOULD_PUBLISH_NPM"
+          echo "release job result: $RELEASE_RESULT"
           echo "::endgroup::"
 
-          if [[ "$SHOULD_PUBLISH" != "true" ]]; then
-            echo "::notice::Not a release — publish skipped"
+          if [[ "$SHOULD_RUN" != "true" ]]; then
+            echo "::notice::Not a release — release work skipped"
             exit 0
           fi
-          if [[ "$PUBLISH_RESULT" != "success" ]]; then
-            echo "::error::Publish failed or was cancelled"
+          if [[ "$RELEASE_RESULT" != "success" ]]; then
+            echo "::error::Release work failed or was cancelled"
             exit 1
           fi
-          echo "::notice::Release published"
+          if [[ "$SHOULD_PUBLISH_NPM" == "true" ]]; then
+            echo "::notice::Release published and metadata reconciled"
+          else
+            echo "::notice::Release metadata reconciled without npm publication"
+          fi
         env:
-          SHOULD_PUBLISH: ${{ needs.check-release.outputs.should_publish }}
-          PUBLISH_RESULT: ${{ needs.publish-npm.result }}
+          SHOULD_RUN: ${{ needs.check-release.outputs.should_run }}
+          SHOULD_PUBLISH_NPM: ${{ needs.check-release.outputs.should_publish_npm }}
+          RELEASE_RESULT: ${{ needs.publish-npm.result }}

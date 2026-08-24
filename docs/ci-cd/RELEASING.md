@@ -64,9 +64,10 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
    approve) builds, then runs `changeset publish` to publish every bumped package to npm via
    **OIDC trusted publishing** (no tokens). Publishing is idempotent: already-published versions
    are skipped.
-3. The workflow enumerates every npm-published version of all 11 packages, reads each immutable
-   `gitHead`, creates any missing local tag at that exact commit, pushes it, and verifies the
-   remote ref. This includes historical versions, so a late rerun still repairs older omissions.
+3. The workflow waits for each checked-out package version to appear in npm's packument, then
+   enumerates every npm-published version of all 11 packages, reads each immutable `gitHead`,
+   creates any missing local tag at that exact commit, pushes it, and verifies the remote ref.
+   This includes historical versions, so a late rerun still repairs older omissions.
 4. A GitHub Release is created or verified for every reconciled tag.
 
 ## Prerequisites & gotchas
@@ -79,11 +80,14 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 - **Provenance** is active (the repo is public): every release since 0.1.1 ships SLSA
   provenance attestations, verifiable with `npm audit signatures`.
 - **Approval required.** Every publish waits on the `npm-publish` environment reviewers.
-- **Re-runs repair metadata.** npm versions are immutable, so `changeset publish` skips versions
-  that already exist. The following reconciliation does not depend on Changesets recreating a
-  local tag: it recovers the source commit from npm `gitHead`, pushes a missing tag, verifies it,
-  and creates a missing GitHub Release. Use a manual `release-publish.yml` dispatch from `main`
-  for tag/Release backfills; do not increment or republish packages just to repair metadata.
+- **Manual dispatches repair metadata without publishing.** A manual `release-publish.yml`
+  dispatch from `main` skips dependency installation, build, and `changeset publish` entirely.
+  It recovers source commits from npm `gitHead`, pushes missing tags, verifies them, and creates
+  missing GitHub Releases. This is safe even before a pending Version Packages PR merges because
+  the checked-out manifests can never be published by that path.
+- **Registry replication is retried.** After an automatic publish, reconciliation waits with
+  bounded exponential backoff until each checked-out package version is visible in its npm
+  packument. Persistent registry failures still fail the protected release job.
 - **A successful npm step is not enough.** The publish job fails unless every published package
   tag resolves remotely to the same commit npm records and every matching GitHub Release exists.
 

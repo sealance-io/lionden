@@ -85,5 +85,6 @@ When sources disagree, use this order:
   not replace that with literal per-package ranges. A Version Packages PR is ready only when all
   11 public manifests share one version and `package-lock.json` matches them.
 - Do not rerun or manually overwrite npm versions to repair release metadata. Use the manual
-  `release-publish.yml` path, which reconciles tags to npm `gitHead`, verifies the remote refs,
-  and creates or verifies every published per-package GitHub Release.
+  `release-publish.yml` path, which never executes `changeset publish`: it reconciles tags to npm
+  `gitHead`, verifies the remote refs, and creates or verifies every published per-package GitHub
+  Release.

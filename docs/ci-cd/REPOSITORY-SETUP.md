@@ -15,7 +15,7 @@ Workflows are version-controlled; these settings are not, so they live here.
 | `security-audit.yml` | PR/push/weekly | zizmor workflow audit. Rollup: **Security Audit Status**. |
 | `pinact-verify.yml` | PR/push | Action SHA-pin + cooldown verification. Rollup: **pinact Status**. |
 | `release-version.yml` | push to `main` | Opens/updates the "Version Packages" PR (changesets + GitHub App token). |
-| `release-publish.yml` | push to `main` + manual | Publishes bumped packages to npm via OIDC; reconciles all published tags from npm `gitHead`; creates/verifies GitHub Releases. |
+| `release-publish.yml` | push to `main` + manual | A Version Packages PR merge publishes bumped packages via OIDC; a manual run is metadata-only. Both reconcile all published tags from npm `gitHead` and create/verify GitHub Releases. |
 | `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.3.2 CLI so the `smoke` lane hits a warm cache. |
 
 > **`sealance-io/setup-leo-action` pin + intentional Leo-version split.** All four call sites
@@ -78,9 +78,12 @@ Both `release-version.yml` and `release-publish.yml` mint a short-lived installa
 scoped to `lionden` via `actions/create-github-app-token`.
 
 The publish workflow's manual dispatch is also the recovery path for a release that reached npm
-without tags or GitHub Releases. It is safe to approve on `main`: existing npm versions are
-skipped, historical and current missing tags are recreated only at npm's recorded `gitHead`,
-remote targets are verified, and existing Releases are left unchanged.
+without tags or GitHub Releases. It is safe to approve on `main` even while a Version Packages PR
+is pending: the manual path skips dependency installation, build, and `changeset publish`, so it
+cannot publish the checked-out manifests. Historical and current missing tags are recreated only
+at npm's recorded `gitHead`, remote targets are verified, and existing Releases are left
+unchanged. Automatic runs retry npm packument reads after publishing so ordinary registry
+replication lag does not immediately fail metadata reconciliation.
 
 ## npm publishing (OIDC trusted publishing)
 

@@ -6,6 +6,11 @@ import { pathToFileURL } from "node:url";
 import { assertFixedReleaseGroup, loadPublicPackages } from "./release-policy.mjs";
 
 const COMMIT_REGEXP = /^[0-9a-f]{40}$/;
+const DEFAULT_REGISTRY_ATTEMPTS = 7;
+const DEFAULT_REGISTRY_RETRY_DELAY_MS = 2_000;
+const MAX_REGISTRY_RETRY_DELAY_MS = 15_000;
+
+class RetryableRegistryError extends Error {}
 
 function runGit(rootDir, args, { allowFailure = false } = {}) {
   try {
@@ -47,14 +52,31 @@ export function parseRemoteTagTarget(output, tag) {
   return peeled ?? direct;
 }
 
-async function publishedReleases(name, registryUrl, fetchImpl) {
+async function fetchPublishedReleases(name, registryUrl, fetchImpl) {
   const packageUrl = `${registryUrl.replace(/\/$/, "")}/${encodeURIComponent(name)}`;
-  const response = await fetchImpl(packageUrl, { headers: { accept: "application/json" } });
+  let response;
+  try {
+    response = await fetchImpl(packageUrl, { headers: { accept: "application/json" } });
+  } catch (error) {
+    throw new RetryableRegistryError(`npm metadata request failed for ${name}`, { cause: error });
+  }
   if (!response.ok) {
-    throw new Error(`npm metadata lookup failed for ${name}: ${response.status}`);
+    const message = `npm metadata lookup failed for ${name}: ${response.status}`;
+    if (response.status === 404 || response.status === 408 || response.status === 429) {
+      throw new RetryableRegistryError(message);
+    }
+    if (response.status >= 500) throw new RetryableRegistryError(message);
+    throw new Error(message);
   }
 
-  const metadata = await response.json();
+  let metadata;
+  try {
+    metadata = await response.json();
+  } catch (error) {
+    throw new RetryableRegistryError(`npm returned unreadable metadata for ${name}`, {
+      cause: error,
+    });
+  }
   if (metadata.name !== name || !metadata.versions || typeof metadata.versions !== "object") {
     throw new Error(`npm returned unexpected metadata for ${name}`);
   }
@@ -70,6 +92,54 @@ async function publishedReleases(name, registryUrl, fetchImpl) {
       return { name, version, gitHead: release.gitHead };
     })
     .sort((left, right) => left.version.localeCompare(right.version, undefined, { numeric: true }));
+}
+
+function wait(delayMs) {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+async function publishedReleases(
+  name,
+  expectedVersion,
+  registryUrl,
+  fetchImpl,
+  { attempts, retryDelayMs, sleepImpl },
+) {
+  if (!Number.isInteger(attempts) || attempts < 1) {
+    throw new Error("registryAttempts must be a positive integer");
+  }
+  if (!Number.isFinite(retryDelayMs) || retryDelayMs < 0) {
+    throw new Error("registryRetryDelayMs must be a non-negative number");
+  }
+
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      const releases = await fetchPublishedReleases(name, registryUrl, fetchImpl);
+      if (!releases.some(({ version }) => version === expectedVersion)) {
+        throw new RetryableRegistryError(
+          `${name}@${expectedVersion} is not visible in the npm packument yet`,
+        );
+      }
+      return releases;
+    } catch (error) {
+      if (!(error instanceof RetryableRegistryError)) throw error;
+      lastError = error;
+      if (attempt === attempts) break;
+
+      const delayMs = Math.min(retryDelayMs * 2 ** (attempt - 1), MAX_REGISTRY_RETRY_DELAY_MS);
+      console.warn(
+        `${error.message}; retrying npm metadata (${attempt + 1}/${attempts}) in ${delayMs}ms`,
+      );
+      await sleepImpl(delayMs);
+    }
+  }
+
+  const attemptLabel = `${attempts} registry attempt${attempts === 1 ? "" : "s"}`;
+  throw new Error(
+    `npm metadata for ${name}@${expectedVersion} was not ready after ${attemptLabel}: ${lastError.message}`,
+    { cause: lastError },
+  );
 }
 
 function argumentValue(args, index, flag) {
@@ -102,6 +172,9 @@ export async function reconcileReleaseTags({
   outputPath,
   push = false,
   fetchImpl = globalThis.fetch,
+  registryAttempts = DEFAULT_REGISTRY_ATTEMPTS,
+  registryRetryDelayMs = DEFAULT_REGISTRY_RETRY_DELAY_MS,
+  sleepImpl = wait,
 } = {}) {
   const config = JSON.parse(await readFile(join(rootDir, ".changeset", "config.json"), "utf8"));
   const packages = loadPublicPackages(rootDir);
@@ -109,10 +182,17 @@ export async function reconcileReleaseTags({
 
   const tags = [];
   for (const { manifest } of packages) {
-    const releases = await publishedReleases(manifest.name, registryUrl, fetchImpl);
-    if (!releases.some(({ version }) => version === manifest.version)) {
-      throw new Error(`${manifest.name}@${manifest.version} is not published on npm`);
-    }
+    const releases = await publishedReleases(
+      manifest.name,
+      manifest.version,
+      registryUrl,
+      fetchImpl,
+      {
+        attempts: registryAttempts,
+        retryDelayMs: registryRetryDelayMs,
+        sleepImpl,
+      },
+    );
 
     for (const pkg of releases) {
       const tag = releaseTag(pkg);
