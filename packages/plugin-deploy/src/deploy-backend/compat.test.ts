@@ -125,19 +125,15 @@ describe("assertDeployBackendCompatible", () => {
       );
     });
 
-    it.each([
-      "3.5.0",
-      "4.0.0",
-      "4.1.0",
-      "4.2.0",
-      "4.4.0",
-      "5.0.0",
-    ])("rejects leoVersion %s as outside the verified 4.3 line", (leoVersion) => {
-      const config = createMockConfig({ leoVersion });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(
-        /supports Leo 4\.3\.x only/,
-      );
-    });
+    it.each(["3.5.0", "4.0.0", "4.1.0", "4.2.0", "4.4.0", "5.0.0"])(
+      "rejects leoVersion %s as outside the verified 4.3 line",
+      (leoVersion) => {
+        const config = createMockConfig({ leoVersion });
+        expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(
+          /supports Leo 4\.3\.x only/,
+        );
+      },
+    );
 
     it.each(["4.3.0", "4.3.2", "4.3.11"])("accepts leoVersion %s", (leoVersion) => {
       const config = createMockConfig({ leoVersion });
