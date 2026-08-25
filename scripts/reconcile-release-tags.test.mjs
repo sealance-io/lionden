@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   parseRemoteTagTarget,
+  parseRemoteTagTargets,
   reconcileReleaseTags,
   releaseTag,
 } from "./reconcile-release-tags.mjs";
@@ -41,6 +42,7 @@ try {
     join(repo, ".changeset", "config.json"),
     JSON.stringify({ fixed: [["@scope/public-package"]] }),
   );
+  writeFileSync(join(repo, ".changeset", "release-tag-exceptions.json"), "{}\n");
 
   git(repo, ["init"]);
   git(repo, ["config", "user.email", "release-test@example.com"]);
@@ -124,10 +126,93 @@ try {
     /npm metadata for @scope\/public-package@1\.0\.0 was not ready after 1 registry attempt/,
   );
 
+  writeFileSync(
+    join(repo, ".changeset", "release-tag-exceptions.json"),
+    `${JSON.stringify({
+      "@scope/public-package@0.7.0": "legacy publish omitted gitHead",
+      "@scope/public-package@0.8.0": "legacy source commit is unavailable",
+    })}\n`,
+  );
+  const invalidHistoricalFetch = async () =>
+    new Response(
+      JSON.stringify({
+        name: "@scope/public-package",
+        versions: {
+          "0.7.0": { name: "@scope/public-package", version: "0.7.0" },
+          "0.8.0": {
+            name: "@scope/public-package",
+            version: "0.8.0",
+            gitHead: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          },
+          "0.9.0": { name: "@scope/public-package", version: "0.9.0", gitHead },
+          "1.0.0": { name: "@scope/public-package", version: "1.0.0", gitHead },
+        },
+      }),
+      { status: 200 },
+    );
+  assert.deepEqual(
+    await reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl: invalidHistoricalFetch }),
+    ["@scope/public-package@0.9.0", "@scope/public-package@1.0.0"],
+  );
+
+  writeFileSync(
+    join(repo, ".changeset", "release-tag-exceptions.json"),
+    `${JSON.stringify({ "@scope/public-package@1.0.0": "current releases cannot be skipped" })}\n`,
+  );
+  const invalidCurrentFetch = async () =>
+    new Response(
+      JSON.stringify({
+        name: "@scope/public-package",
+        versions: {
+          "1.0.0": { name: "@scope/public-package", version: "1.0.0" },
+        },
+      }),
+      { status: 200 },
+    );
+  await assert.rejects(
+    reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl: invalidCurrentFetch }),
+    /npm metadata for @scope\/public-package@1\.0\.0 has no valid gitHead/,
+  );
+
+  writeFileSync(
+    join(repo, ".changeset", "release-tag-exceptions.json"),
+    `${JSON.stringify({ "@scope/public-package@0.9.0": "stale exception" })}\n`,
+  );
+  await assert.rejects(
+    reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl }),
+    /Unused release-tag exceptions: @scope\/public-package@0\.9\.0/,
+  );
+  writeFileSync(join(repo, ".changeset", "release-tag-exceptions.json"), "{}\n");
+
   writeFileSync(join(repo, "README.md"), "later commit\n");
   git(repo, ["add", "README.md"]);
   git(repo, ["commit", "-m", "later"]);
   const laterGitHead = git(repo, ["rev-parse", "HEAD"]);
+  writeFileSync(
+    join(repo, ".changeset", "release-tag-exceptions.json"),
+    `${JSON.stringify({ "@scope/public-package@0.9.0": "mismatches cannot be skipped" })}\n`,
+  );
+  const historicalMismatchFetch = async () =>
+    new Response(
+      JSON.stringify({
+        name: "@scope/public-package",
+        versions: {
+          "0.9.0": {
+            name: "@scope/public-package",
+            version: "0.9.0",
+            gitHead: laterGitHead,
+          },
+          "1.0.0": { name: "@scope/public-package", version: "1.0.0", gitHead },
+        },
+      }),
+      { status: 200 },
+    );
+  await assert.rejects(
+    reconcileReleaseTags({ rootDir: repo, push: true, fetchImpl: historicalMismatchFetch }),
+    /Remote tag .* but npm records/,
+  );
+  writeFileSync(join(repo, ".changeset", "release-tag-exceptions.json"), "{}\n");
+
   const laterFetch = async () =>
     new Response(
       JSON.stringify({
@@ -156,6 +241,19 @@ try {
       "pkg@1.0.0",
     ),
     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  );
+  assert.deepEqual(
+    [
+      ...parseRemoteTagTargets(
+        `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\trefs/tags/pkg@1.0.0\n` +
+          `bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\trefs/tags/pkg@1.0.0^{}\n` +
+          `cccccccccccccccccccccccccccccccccccccccc\trefs/tags/pkg@2.0.0`,
+      ),
+    ],
+    [
+      ["pkg@1.0.0", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+      ["pkg@2.0.0", "cccccccccccccccccccccccccccccccccccccccc"],
+    ],
   );
 
   console.log("Release tag reconciliation tests passed.");

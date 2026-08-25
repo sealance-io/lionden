@@ -24,7 +24,8 @@ We have a quick list of common questions to get you started engaging with this p
 
 Never hand-edit package versions or rerun npm publishing to repair tags. A manual
 `release-publish.yml` dispatch from `main` skips `changeset publish` entirely and only repairs
-missing tags/releases.
+missing tags/releases. Exceptional unusable historical npm metadata must be documented by exact
+tag in `release-tag-exceptions.json`; current releases and remote-tag mismatches cannot be skipped.
 
 See `docs/ci-cd/RELEASING.md` for the full flow and `docs/ci-cd/REPOSITORY-SETUP.md` for the
 one-time bootstrap and trusted-publisher configuration.

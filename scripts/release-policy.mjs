@@ -1,6 +1,20 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
+export const COORDINATED_0_2_BOOTSTRAP_VERSIONS = Object.freeze({
+  "@lionden/cli": "0.1.2",
+  "@lionden/config": "0.2.0",
+  "@lionden/core": "0.2.0",
+  "@lionden/leo-compiler": "0.2.0",
+  "@lionden/network": "0.2.0",
+  "@lionden/plugin-deploy": "0.2.0",
+  "@lionden/plugin-leo": "0.1.2",
+  "@lionden/plugin-network": "0.1.2",
+  "@lionden/plugin-test": "0.1.2",
+  "@lionden/testing": "0.1.2",
+  "create-lionden": "0.1.1",
+});
+
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
@@ -41,13 +55,12 @@ export function loadWorkspacePackages(rootDir = process.cwd()) {
       if (!existsSync(manifestPath)) continue;
 
       const manifest = readJson(manifestPath);
-      if (typeof manifest.name !== "string" || typeof manifest.version !== "string") {
-        throw new Error(`${normalizePath(relative(rootDir, manifestPath))} needs name and version`);
+      if (typeof manifest.name === "string") {
+        if (names.has(manifest.name)) {
+          throw new Error(`Duplicate workspace package name: ${manifest.name}`);
+        }
+        names.add(manifest.name);
       }
-      if (names.has(manifest.name)) {
-        throw new Error(`Duplicate workspace package name: ${manifest.name}`);
-      }
-      names.add(manifest.name);
 
       packages.push({
         dir: workspaceDir,
@@ -58,11 +71,19 @@ export function loadWorkspacePackages(rootDir = process.cwd()) {
     }
   }
 
-  return packages.sort((left, right) => left.manifest.name.localeCompare(right.manifest.name));
+  return packages.sort((left, right) => left.relativeDir.localeCompare(right.relativeDir));
 }
 
 export function loadPublicPackages(rootDir = process.cwd()) {
-  return loadWorkspacePackages(rootDir).filter(({ manifest }) => manifest.private !== true);
+  const packages = loadWorkspacePackages(rootDir).filter(
+    ({ manifest }) => manifest.private !== true,
+  );
+  for (const { manifest, relativeDir } of packages) {
+    if (typeof manifest.name !== "string" || typeof manifest.version !== "string") {
+      throw new Error(`${relativeDir}/package.json needs name and version to be published`);
+    }
+  }
+  return packages.sort((left, right) => left.manifest.name.localeCompare(right.manifest.name));
 }
 
 export function assertFixedReleaseGroup(config, publicPackages) {
@@ -84,4 +105,20 @@ export function assertFixedReleaseGroup(config, publicPackages) {
 
 export function describeVersions(packages) {
   return packages.map(({ manifest }) => `${manifest.name}@${manifest.version}`).join(", ");
+}
+
+export function assertCoordinatedBootstrapState(packages) {
+  const actual = Object.fromEntries(
+    packages
+      .map(({ manifest }) => [manifest.name, manifest.version])
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+  const expected = Object.fromEntries(
+    Object.entries(COORDINATED_0_2_BOOTSTRAP_VERSIONS).sort(([a], [b]) => a.localeCompare(b)),
+  );
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Refusing to bootstrap an unexpected public-package skew\nexpected: ${JSON.stringify(expected)}\nactual: ${JSON.stringify(actual)}`,
+    );
+  }
 }

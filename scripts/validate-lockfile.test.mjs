@@ -308,4 +308,27 @@ assert.equal(result15.exitCode, 0);
 assert.match(result15.stdout, /Lockfile OK/);
 console.log("  PASS");
 
+// ─── Test 16: Accepts private workspaces without publish metadata ───────────
+console.log("Test 16: Accepts private workspace without name or version...");
+const result16 = run(
+  {
+    lockfileVersion: 3,
+    packages: {
+      "": { name: "test-root" },
+      "examples/private": {},
+    },
+  },
+  {
+    "package.json": {
+      name: "test-root",
+      private: true,
+      workspaces: ["examples/*"],
+    },
+    "examples/private/package.json": { private: true },
+  },
+);
+assert.equal(result16.exitCode, 0);
+assert.match(result16.stdout, /Lockfile OK/);
+console.log("  PASS");
+
 console.log("\nAll tests passed.");

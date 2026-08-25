@@ -50,10 +50,11 @@ updates) a **"Version Packages"** PR that:
 Review this PR like any other — it is the human checkpoint for what's about to ship. Do not merge
 it unless all 11 public manifests have the same version and the lockfile contains that version.
 
-The coordinated 0.2 release starts from a one-time historical skew. `scripts/version-packages.mjs`
-temporarily applies the pending six-package alignment changeset without the fixed constraint,
-requires all 11 packages to converge at 0.2.0, then restores the committed fixed policy. Once
-aligned, every later run applies the fixed group normally; a future skew makes versioning fail.
+The coordinated 0.2 release starts from one exact, hard-coded historical version map.
+`scripts/version-packages.mjs` validates that map, creates an in-memory Changesets configuration
+without the fixed constraint, and rejects the release plan before writing files unless all 11
+packages converge at 0.2.0. The committed `.changeset/config.json` is never modified. Once
+aligned, every later run applies the fixed group normally; any other skew makes versioning fail.
 
 ## 3. Publishing (automatic, gated)
 
@@ -65,10 +66,12 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
    **OIDC trusted publishing** (no tokens). Publishing is idempotent: already-published versions
    are skipped.
 3. The workflow waits for each checked-out package version to appear in npm's packument, then
-   enumerates every npm-published version of all 11 packages, reads each immutable `gitHead`,
-   creates any missing local tag at that exact commit, pushes it, and verifies the remote ref.
-   This includes historical versions, so a late rerun still repairs older omissions.
-4. A GitHub Release is created or verified for every reconciled tag.
+   enumerates every npm-published version of all 11 packages and reads each immutable `gitHead`.
+   One remote-tag snapshot validates existing refs; missing refs are pushed as one batch and a
+   second snapshot verifies that batch. This includes historical versions, so a late rerun still
+   repairs older omissions.
+4. Existing GitHub Releases are listed in pages. Missing Releases are created without generated
+   notes; release creation does not depend on a non-semver tag order or an inferred previous tag.
 
 ## Prerequisites & gotchas
 
@@ -88,6 +91,11 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 - **Registry replication is retried.** After an automatic publish, reconciliation waits with
   bounded exponential backoff until each checked-out package version is visible in its npm
   packument. Persistent registry failures still fail the protected release job.
+- **Historical metadata exceptions are explicit.** A historical npm version with an invalid
+  `gitHead`, or one with both a missing tag and a commit unavailable in the full checkout, fails
+  reconciliation unless its exact tag and a non-empty reason are committed to
+  `.changeset/release-tag-exceptions.json`. Exceptions cannot suppress the checked-out version,
+  cannot excuse a remote-tag mismatch, and fail when unused so stale entries are removed.
 - **A successful npm step is not enough.** The publish job fails unless every published package
   tag resolves remotely to the same commit npm records and every matching GitHub Release exists.
 
