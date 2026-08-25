@@ -83,7 +83,9 @@ is pending: the manual path skips dependency installation, build, and `changeset
 cannot publish the checked-out manifests. Historical and current missing tags are recreated only
 at npm's recorded `gitHead`, remote targets are verified, and existing Releases are left
 unchanged. Automatic runs retry npm packument reads after publishing so ordinary registry
-replication lag does not immediately fail metadata reconciliation.
+replication lag does not immediately fail metadata reconciliation. Remote tags are fetched once
+in the steady state, and GitHub Releases are listed in pages before only the missing ones are
+created.
 
 ## npm publishing (OIDC trusted publishing)
 

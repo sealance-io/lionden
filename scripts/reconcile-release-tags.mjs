@@ -39,17 +39,22 @@ export function releaseTag({ name, version }) {
 }
 
 export function parseRemoteTagTarget(output, tag) {
-  let direct;
-  let peeled;
+  return parseRemoteTagTargets(output).get(tag);
+}
+
+export function parseRemoteTagTargets(output) {
+  const direct = new Map();
+  const peeled = new Map();
 
   for (const line of output.split("\n")) {
     if (!line.trim()) continue;
     const [commit, ref] = line.split(/\s+/, 2);
-    if (ref === `refs/tags/${tag}`) direct = commit;
-    if (ref === `refs/tags/${tag}^{}`) peeled = commit;
+    if (!ref?.startsWith("refs/tags/")) continue;
+    if (ref.endsWith("^{}")) peeled.set(ref.slice("refs/tags/".length, -3), commit);
+    else direct.set(ref.slice("refs/tags/".length), commit);
   }
 
-  return peeled ?? direct;
+  return new Map([...direct, ...peeled]);
 }
 
 async function fetchPublishedReleases(name, registryUrl, fetchImpl) {
@@ -81,17 +86,52 @@ async function fetchPublishedReleases(name, registryUrl, fetchImpl) {
     throw new Error(`npm returned unexpected metadata for ${name}`);
   }
 
-  return Object.entries(metadata.versions)
-    .map(([version, release]) => {
+  return metadata;
+}
+
+function ignoreHistoricalFailure({
+  tag,
+  version,
+  expectedVersion,
+  error,
+  exceptions,
+  usedExceptions,
+}) {
+  const reason = exceptions.get(tag);
+  if (!reason || version === expectedVersion) return false;
+  usedExceptions.add(tag);
+  console.warn(`Skipping historical ${tag}: ${reason} (${error.message})`);
+  return true;
+}
+
+function validatePublishedReleases(name, expectedVersion, metadata, exceptions, usedExceptions) {
+  const releases = [];
+  for (const [version, release] of Object.entries(metadata.versions)) {
+    const tag = releaseTag({ name, version });
+    try {
       if (release.name !== name || release.version !== version) {
         throw new Error(`npm returned inconsistent release metadata for ${name}@${version}`);
       }
       if (typeof release.gitHead !== "string" || !COMMIT_REGEXP.test(release.gitHead)) {
         throw new Error(`npm metadata for ${name}@${version} has no valid gitHead`);
       }
-      return { name, version, gitHead: release.gitHead };
-    })
-    .sort((left, right) => left.version.localeCompare(right.version, undefined, { numeric: true }));
+      releases.push({ name, version, gitHead: release.gitHead });
+    } catch (error) {
+      if (
+        !ignoreHistoricalFailure({
+          tag,
+          version,
+          expectedVersion,
+          error,
+          exceptions,
+          usedExceptions,
+        })
+      ) {
+        throw error;
+      }
+    }
+  }
+  return releases;
 }
 
 function wait(delayMs) {
@@ -103,7 +143,7 @@ async function publishedReleases(
   expectedVersion,
   registryUrl,
   fetchImpl,
-  { attempts, retryDelayMs, sleepImpl },
+  { attempts, retryDelayMs, sleepImpl, exceptions, usedExceptions },
 ) {
   if (!Number.isInteger(attempts) || attempts < 1) {
     throw new Error("registryAttempts must be a positive integer");
@@ -115,13 +155,13 @@ async function publishedReleases(
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const releases = await fetchPublishedReleases(name, registryUrl, fetchImpl);
-      if (!releases.some(({ version }) => version === expectedVersion)) {
+      const metadata = await fetchPublishedReleases(name, registryUrl, fetchImpl);
+      if (!Object.hasOwn(metadata.versions, expectedVersion)) {
         throw new RetryableRegistryError(
           `${name}@${expectedVersion} is not visible in the npm packument yet`,
         );
       }
-      return releases;
+      return validatePublishedReleases(name, expectedVersion, metadata, exceptions, usedExceptions);
     } catch (error) {
       if (!(error instanceof RetryableRegistryError)) throw error;
       lastError = error;
@@ -150,19 +190,39 @@ function argumentValue(args, index, flag) {
   return value;
 }
 
-function remoteTagTarget(rootDir, remote, tag) {
-  const output = runGit(
-    rootDir,
-    ["ls-remote", "--tags", remote, `refs/tags/${tag}`, `refs/tags/${tag}^{}`],
-    { allowFailure: false },
+function remoteTagTargets(rootDir, remote) {
+  return parseRemoteTagTargets(
+    runGit(rootDir, ["ls-remote", "--tags", remote], { allowFailure: false }),
   );
-  return parseRemoteTagTarget(output, tag);
 }
 
 function localTagTarget(rootDir, tag) {
   return runGit(rootDir, ["rev-parse", "-q", "--verify", `refs/tags/${tag}^{commit}`], {
     allowFailure: true,
   });
+}
+
+async function loadReleaseExceptions(rootDir) {
+  const path = join(rootDir, ".changeset", "release-tag-exceptions.json");
+  let value;
+  try {
+    value = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return new Map();
+    throw new Error(`Could not read ${path}: ${error.message}`, { cause: error });
+  }
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    throw new Error(`${path} must contain an object mapping release tags to reasons`);
+  }
+
+  const exceptions = new Map();
+  for (const [tag, reason] of Object.entries(value)) {
+    if (typeof reason !== "string" || !reason.trim()) {
+      throw new Error(`${path} needs a non-empty reason for ${tag}`);
+    }
+    exceptions.set(tag, reason.trim());
+  }
+  return exceptions;
 }
 
 export async function reconcileReleaseTags({
@@ -180,7 +240,12 @@ export async function reconcileReleaseTags({
   const packages = loadPublicPackages(rootDir);
   assertFixedReleaseGroup(config, packages);
 
-  const tags = [];
+  const exceptions = await loadReleaseExceptions(rootDir);
+  const usedExceptions = new Set();
+  const expectedTags = [];
+  const missingTags = [];
+  let verifiedTargets = remoteTagTargets(rootDir, remote);
+
   for (const { manifest } of packages) {
     const releases = await publishedReleases(
       manifest.name,
@@ -191,48 +256,82 @@ export async function reconcileReleaseTags({
         attempts: registryAttempts,
         retryDelayMs: registryRetryDelayMs,
         sleepImpl,
+        exceptions,
+        usedExceptions,
       },
     );
 
     for (const pkg of releases) {
       const tag = releaseTag(pkg);
       const { gitHead } = pkg;
-      if (!gitSucceeds(rootDir, ["cat-file", "-e", `${gitHead}^{commit}`])) {
-        throw new Error(
-          `${tag} points to npm gitHead ${gitHead}, which is absent from this checkout`,
-        );
-      }
-
-      const remoteTarget = remoteTagTarget(rootDir, remote, tag);
+      const remoteTarget = verifiedTargets.get(tag);
       if (remoteTarget && remoteTarget !== gitHead) {
         throw new Error(`Remote tag ${tag} points to ${remoteTarget}, but npm records ${gitHead}`);
       }
-
-      if (!remoteTarget) {
-        if (!push) throw new Error(`Remote tag ${tag} is missing (rerun with --push to repair it)`);
-
-        const localTarget = localTagTarget(rootDir, tag);
-        if (localTarget && localTarget !== gitHead) {
-          throw new Error(`Local tag ${tag} points to ${localTarget}, but npm records ${gitHead}`);
-        }
-        if (!localTarget) runGit(rootDir, ["tag", tag, gitHead]);
-
-        console.log(`Pushing missing tag ${tag} at ${gitHead}`);
-        runGit(rootDir, ["push", remote, `refs/tags/${tag}:refs/tags/${tag}`]);
+      if (remoteTarget) {
+        expectedTags.push({ tag, gitHead });
+        continue;
       }
 
-      const verifiedTarget = remoteTagTarget(rootDir, remote, tag);
-      if (verifiedTarget !== gitHead) {
-        throw new Error(
-          `Remote verification failed for ${tag}: expected ${gitHead}, got ${verifiedTarget}`,
+      if (!gitSucceeds(rootDir, ["cat-file", "-e", `${gitHead}^{commit}`])) {
+        const error = new Error(
+          `${tag} points to npm gitHead ${gitHead}, which is absent from this checkout`,
         );
+        if (
+          ignoreHistoricalFailure({
+            tag,
+            version: pkg.version,
+            expectedVersion: manifest.version,
+            error,
+            exceptions,
+            usedExceptions,
+          })
+        ) {
+          continue;
+        }
+        throw error;
       }
 
-      console.log(`Verified ${tag} at ${gitHead}`);
-      tags.push(tag);
+      if (!push) throw new Error(`Remote tag ${tag} is missing (rerun with --push to repair it)`);
+
+      const localTarget = localTagTarget(rootDir, tag);
+      if (localTarget && localTarget !== gitHead) {
+        throw new Error(`Local tag ${tag} points to ${localTarget}, but npm records ${gitHead}`);
+      }
+      missingTags.push({ tag, gitHead, createLocal: !localTarget });
+      expectedTags.push({ tag, gitHead });
     }
   }
 
+  const unusedExceptions = [...exceptions.keys()].filter((tag) => !usedExceptions.has(tag));
+  if (unusedExceptions.length > 0) {
+    throw new Error(`Unused release-tag exceptions: ${unusedExceptions.join(", ")}`);
+  }
+
+  if (missingTags.length > 0) {
+    for (const { tag, gitHead, createLocal } of missingTags) {
+      if (createLocal) runGit(rootDir, ["tag", tag, gitHead]);
+      console.log(`Prepared missing tag ${tag} at ${gitHead}`);
+    }
+    runGit(rootDir, [
+      "push",
+      remote,
+      ...missingTags.map(({ tag }) => `refs/tags/${tag}:refs/tags/${tag}`),
+    ]);
+    verifiedTargets = remoteTagTargets(rootDir, remote);
+  }
+
+  for (const { tag, gitHead } of expectedTags) {
+    const verifiedTarget = verifiedTargets.get(tag);
+    if (verifiedTarget !== gitHead) {
+      throw new Error(
+        `Remote verification failed for ${tag}: expected ${gitHead}, got ${verifiedTarget}`,
+      );
+    }
+    console.log(`Verified ${tag} at ${gitHead}`);
+  }
+
+  const tags = expectedTags.map(({ tag }) => tag);
   if (outputPath) writeFileSync(outputPath, `${tags.join("\n")}\n`);
   return tags;
 }

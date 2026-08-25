@@ -84,7 +84,14 @@ When sources disagree, use this order:
 - `create-lionden` derives every generated `@lionden/*` range from its own package version; do
   not replace that with literal per-package ranges. A Version Packages PR is ready only when all
   11 public manifests share one version and `package-lock.json` matches them.
+- The special 0.2 bootstrap is valid only for the exact version map encoded in
+  `scripts/release-policy.mjs`. It uses an in-memory Changesets config and must never rewrite the
+  committed fixed group; any other future version skew is an error.
 - Do not rerun or manually overwrite npm versions to repair release metadata. Use the manual
   `release-publish.yml` path, which never executes `changeset publish`: it reconciles tags to npm
   `gitHead`, verifies the remote refs, and creates or verifies every published per-package GitHub
   Release.
+- If an immutable historical npm version has unusable `gitHead` metadata, or both its tag and
+  source commit are unavailable, add its exact tag and an explanation to
+  `.changeset/release-tag-exceptions.json`. Never except the checked-out version or a mismatched
+  remote tag; unused exceptions fail.
