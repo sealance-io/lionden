@@ -204,8 +204,10 @@ plaintext metadata. LionDen's generated concrete deserializer stores the exact
 decrypted plaintext under the non-enumerable `BaseContract.RECORD_RAW` symbol.
 Generated dynamic helpers now preserve that plaintext too, including `_version`
 even when it is absent from the ABI and configured schema. Manually constructed
-inputs still use schema encoding. Pass the original decrypted object: object
-spread, `structuredClone`, and JSON round-trips drop the non-enumerable cache.
+inputs still use schema encoding, but they can now carry `_version` when the
+helper schema declares `_version: "u8.public"`. Pass the original decrypted
+object: object spread, `structuredClone`, and JSON round-trips drop the
+non-enumerable cache.
 To persist a held record, store the plaintext string from `serialize<Record>`
 (or the ciphertext) and rehydrate it through `deserialize<Record>` or
 `decrypt<Record>`, which re-attach the cache. As with concrete serializers,

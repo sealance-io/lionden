@@ -22,6 +22,7 @@ export default defineConfig({
           amount: "u64.private",
           purity: "u64.private",
           _nonce: "group.public",
+          _version: "u8.public",
         },
       },
       asSilverToken: {
@@ -32,6 +33,7 @@ export default defineConfig({
           amount: "u64.private",
           grade: "u64.private",
           _nonce: "group.public",
+          _version: "u8.public",
         },
       },
     },
