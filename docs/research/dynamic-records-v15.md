@@ -141,12 +141,12 @@ concrete-record-typed `transfer` implementation in the same execution. A router
 that only reads `token.amount` and returns/mints from it without a static
 consume is not V15-valid as a root transaction.
 
-This satisfies the structural `ensure_records_exist` *verify* check, but it does
-not by itself make a *held* record spendable through the router — see [Held
-records and inclusion proofs](#held-records-and-inclusion-proofs-verify-vs-prove)
-below. A `route_transfer`-style function is provable only when the record it
-forwards is produced *inside the same execution* (mint-then-route), not when a
-record minted by a prior transaction is passed in as the root `dyn record`.
+This satisfies the structural `ensure_records_exist` check. Held records also
+need their original plaintext metadata preserved by the client to reconstruct
+the correct ledger commitment; see [Held records and inclusion
+proofs](#held-records-and-inclusion-proofs-verify-vs-prove). A root `dyn record`
+forwarded into a concrete consume can prove for a record minted by an earlier
+transaction as well as one produced inside the same execution.
 
 `balance_of` is a read, and the rule turns on whether its input is a *root*
 record. The natural shape is a pure read:
@@ -199,46 +199,42 @@ execute a spend. Spending a record additionally requires a *prove-time*
 present in the ledger's record tree (the SDK fetches it via
 `GET /statePaths?commitments=<cm>`).
 
-A record's on-chain commitment binds its **originating program and record name**
-(e.g. `silver_token.aleo/Token`, fixed when the record was minted). That
-commitment can only be reconstructed when the spent record enters with that
-program identity available to the proving circuit:
+A record's commitment depends on its original program, record name, and
+plaintext metadata. LionDen's generated concrete deserializer stores the exact
+decrypted plaintext under the non-enumerable `BaseContract.RECORD_RAW` symbol.
+Generated dynamic helpers now preserve that plaintext too, including `_version`
+even when it is absent from the ABI and configured schema. Manually constructed
+inputs still use schema encoding. Pass the original decrypted object: object
+spread, `structuredClone`, and JSON round-trips drop the non-enumerable cache.
+To persist a held record, store the plaintext string from `serialize<Record>`
+(or the ciphertext) and rehydrate it through `deserialize<Record>` or
+`decrypt<Record>`, which re-attach the cache. As with concrete serializers,
+cached plaintext takes precedence over object fields.
 
-- A **concrete static record input** whose declared type is
-  `silver_token.aleo/Token` — the root circuit knows the binding (direct
-  `transfer(token: Token, ...)`).
-- A record **produced inside the same execution** (a `mint`/`transfer` output)
-  that is consumed before crossing the root boundary (`demo_transfer`,
-  `read_balance`, `issue_receipt`).
-
-A record that enters as a `dyn record` **root** input on a *different* program
-(`token_router.aleo`, `external_token_demo.aleo`) does **not** carry that
-binding at the root, so the circuit cannot reconstruct its commitment. Proving
-fails because the ledger has no matching commitment:
+Before this fix, generated dynamic helpers rebuilt only schema fields and
+dropped `_version: 1u8.public`. The SDK interpreted the versionless literal as
+version 0, reconstructed a different commitment, and failed during proving:
 
 ```text
 GET /testnet/statePaths?commitments=<cm> -> 500
 Commitment '<cm>' does not exist
 ```
 
-This is the concrete, prove-time face of the Core Rule's statement that *"a
-dynamic value carried across transactions is only a view … it does not give the
-next transaction a serial number or ledger commitment to spend."* A held record
-(minted by a prior transaction) routed as a `dyn record` root is unspendable
-under real proving, even though it passes the structural verify check.
+An isolated two-program probe on Leo 4.3.2 and SDK/WASM 0.11.9 established the
+cause: the failing request exactly matched the commitment computed from the
+versionless helper literal, while the actual ledger commitment matched the
+original plaintext and had a retrievable state path. Passing the original
+plaintext through the same held-root router produced an accepted transaction
+with a nonempty proof. The earlier claim on this page that a different-program
+dynamic root inherently loses the originating program binding was incorrect.
 
-> ⚠️ The built-in devnode **fast path** (`buildDevnodeExecutionTransaction`,
-> used when the test runner is invoked **without** `--prove`) skips inclusion-
-> proof generation entirely, so these held-record-via-dyn-root flows *appear* to
-> succeed there. They do not represent a valid spend on a proving network. The
-> example encodes both contracts: `route_transfer` / `dispatch_and_receipt` are
-> asserted as fast-path successes without `--prove` and as rejections with
-> `--prove`. The top-level rejection is still a
-> `TransitionSubmissionError`, but the opaque `JS callback Promise rejected:`
-> WASM abort is now enriched by the network transport's SDK diagnostics: the
-> underlying `GET /statePaths -> 500 Commitment '<cm>' does not exist` state
-> query is surfaced in the error message and preserved on the cause chain
-> (`SdkExecutionError` at `.cause`, the original WASM error at `.cause.cause`).
+The devnode fast path skips inclusion-proof generation, so it did not detect
+this client serialization defect. Both `route_transfer` and
+`dispatch_and_receipt` now require success in both modes; their proving tests
+also inspect the confirmed execution receipt for a nonempty proof. A green
+no-proof test alone is still insufficient evidence of inclusion-proof support.
+Preserving metadata does not waive the structural concrete-consume obligation
+or make an id-only dynamic output into a spendable record.
 
 ## LionDen Example And Typechain Surface
 
@@ -259,16 +255,11 @@ In that example:
   check`) asserts the exact error.
 - `token_router.aleo` forwards `dyn record` values into the concrete
   `TokenStandard@(token_program)::transfer(...)` callee. `demo_transfer` mints
-  the token *inside* the execution and routes it, so it both passes the verify
-  check and proves cleanly. `route_transfer` takes the token as a root
-  `dyn record` parameter — it can only be called with a *held* record, which
-  passes the verify check but is **not provable** (see [Held records and
-  inclusion proofs](#held-records-and-inclusion-proofs-verify-vs-prove)); the
-  test asserts the fast-path success and the `--prove` rejection separately. Its
-  read functions (`read_balance`, `gold_beats_silver`, `has_more`) take no root
-  record input — they `mint` internally and then read via the pure `balance_of`.
-  `external_token_demo::dispatch_and_receipt` is the same held-record-via-dyn-root
-  shape and carries the same fast-path-vs-prove split.
+  internally; `route_transfer` accepts a held token from an earlier transaction.
+  Both are tested for acceptance. `external_token_demo::dispatch_and_receipt`
+  tests the held-root shape with a concrete receipt output. Read functions
+  (`read_balance`, `gold_beats_silver`, `has_more`) mint internally before
+  calling the pure `balance_of`.
 - Typechain helpers such as `asGoldToken(token)` and `asSilverToken(token)` turn
   a typed concrete token object into a `dyn record` input for router/external
   wrapper calls.
@@ -284,6 +275,31 @@ const transferred = await accepted.outputs
 is explicit sibling-record recovery. It selects the concrete `Token` emitted by
 the `gold_token.aleo/transfer` callee at output index `0`. It does not
 dereference the dynamic-record id, because the id has no ciphertext to decrypt.
+
+## Metadata-Fix Verification (2026-09-08)
+
+Verified on Leo 4.3.2 with SDK/WASM 0.11.9 (the version resolved by this
+repository's lockfile) and the fixed generator:
+
+- The codegen unit, runtime, golden, and typecheck suites pass. The two
+  version-preservation regression tests fail against the old generator and pass
+  with the fix.
+- The full `dynamic_records` example passes without proving (24 tests).
+- A focused proving run of `route_transfer` and `dispatch_and_receipt` with held
+  records passes (2 tests). Both check the confirmed receipt for a nonempty
+  execution proof. The remaining example tests were not rerun with proving.
+
+After rebuilding `@lionden/leo-compiler` and compiling the example, run from the
+example directory:
+
+```bash
+npm test -- --network devnode --no-compile --prove=false
+npm test -- --network devnode --no-compile --prove --grep 'with a held record' --timeout 1800000
+```
+
+This evidence is devnode acceptance with a nonempty proof. It was not confirmed
+against a public network, so treat it as verified for the stack above rather than
+as a general guarantee.
 
 ## Source Appendix
 
