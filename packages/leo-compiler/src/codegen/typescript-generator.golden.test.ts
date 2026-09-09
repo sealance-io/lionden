@@ -286,6 +286,39 @@ describe("codegen interface helpers", () => {
     const output = generateBindings(abi, [abi], { dynamicRecords: INTERFACE_HELPERS_HELPERS });
     expectGeneratedToTypecheck("interface-helpers", output);
   });
+
+  it("Leo.dynamicRecord accepts optional _version schema metadata at direct call sites", () => {
+    // Direct callers (not generated helpers) must be able to declare
+    // `_version` in an inline schema while the value omits it, and to pass a
+    // value that carries it. Anything other than `"u8.public"` is rejected.
+    const probe = [
+      'import { Leo } from "./BaseContract.js";',
+      'const base = { owner: Leo.address("aleo1abc"), amount: 100n, _nonce: 0n };',
+      "const schema = {",
+      '  owner: "address.private",',
+      '  amount: "u128.private",',
+      '  _nonce: "group.public",',
+      '  _version: "u8.public",',
+      "} as const;",
+      "const versionless = Leo.dynamicRecord(base, schema);",
+      "const versioned = Leo.dynamicRecord({ ...base, _version: 1 }, schema);",
+      "const inline = Leo.dynamicRecord(base, {",
+      '  owner: "address.private",',
+      '  amount: "u128.private",',
+      '  _nonce: "group.public",',
+      '  _version: "u8.public",',
+      "});",
+      "const rejected = Leo.dynamicRecord({ ...base, _version: 1 }, {",
+      '  owner: "address.private",',
+      '  amount: "u128.private",',
+      '  _nonce: "group.public",',
+      "  // @ts-expect-error _version must be a public u8",
+      '  _version: "u8.private",',
+      "});",
+      "void versionless; void versioned; void inline; void rejected;",
+    ].join("\n");
+    expectGeneratedToTypecheck("dynamic-record-version-probe", probe);
+  });
 });
 
 describe("composite input widening typechecks", () => {
