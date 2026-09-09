@@ -512,6 +512,13 @@ export type LeoFieldSchemaEntry = `${LeoPrimitiveType}.${LeoVisibility}`;
 
 export type DynamicRecordSchema<T> = {
   readonly [K in keyof T]: LeoFieldSchemaEntry;
+} & {
+  /**
+   * Optional record version metadata. May be declared even when the value
+   * type lacks \`_version\`; the value may then omit it (versionless literal,
+   * read as version 0). The on-chain version is always a public \`u8\`.
+   */
+  readonly _version?: "u8.public";
 };
 
 export type IdOnlyRecordResolutionReason =
