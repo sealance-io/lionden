@@ -238,7 +238,10 @@ The emitted helper lives alongside `decrypt<Name>` in the source program's gener
 
 ```ts
 // typechain/StableToken.ts (generated)
-function _asPoolTokenImpl(value: Token): LeoDynamicRecord {
+function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord {
+  BaseContract.assertObject(value);
+  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
+  if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);
   return Leo.dynamicRecord(value, {
     owner: "address.private" as const,
     amount: "u128.private" as const,
@@ -254,6 +257,8 @@ export const asPoolToken = Object.assign(_asPoolTokenImpl, {
   }),
 });
 ```
+
+The original plaintext of a decrypted record takes precedence over schema encoding, preserving runtime metadata such as `_version` even when absent from the ABI. Pass the original decrypted object; object spread, `structuredClone`, and JSON round-trips drop its non-enumerable `RECORD_RAW` cache. To persist a held record, store the plaintext string from `serialize<Name>` (or the ciphertext) and rehydrate it through `deserialize<Name>` or `decrypt<Name>`, which re-attach the cache. Manually constructed inputs still use the configured schema and its validation.
 
 Callers import `asPoolToken` directly for input conversion:
 

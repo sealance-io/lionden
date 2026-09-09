@@ -53,6 +53,9 @@ export async function decryptToken(ciphertext: string, key: RecordDecryptionKey)
 // ---------------------------------------------------------------------------
 
 function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord {
+  BaseContract.assertObject(value);
+  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
+  if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);
   return Leo.dynamicRecord(value, {
     owner: "address.private" as const,
     amount: "u128.private" as const,

@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { generateBaseContract } from "./typescript-generator.js";
+import { generateBaseContract, generateBindings } from "./typescript-generator.js";
 
 // The dynamically loaded BaseContract class
 let BaseContract: any;
@@ -26,6 +26,7 @@ let createRecordOutputMatcher: any;
 let bindDynamicRecordHelperProgram: any;
 let networkStub: any;
 let tmpDir: string;
+let tokenBindings: any;
 let originalNoColor: string | undefined;
 let originalVitest: string | undefined;
 
@@ -144,6 +145,46 @@ beforeAll(async () => {
   StorageValueNotFoundError = mod.StorageValueNotFoundError;
   createRecordOutputMatcher = mod.createRecordOutputMatcher;
   bindDynamicRecordHelperProgram = mod.bindDynamicRecordHelperProgram;
+
+  // Exercise the actual emitted deserializer and helper together. The ABI
+  // omits the runtime-owned _version field, just like Leo 4.3 token ABIs.
+  const tokenSource = generateBindings(
+    {
+      program: "token.aleo",
+      structs: [],
+      records: [
+        {
+          path: ["Token"],
+          fields: [
+            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+            { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" },
+          ],
+        },
+      ],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    },
+    [],
+    {
+      dynamicRecords: [
+        {
+          helperName: "asToken",
+          sourceRecord: "Token",
+          sourceProgram: "token.aleo",
+          schema: { owner: "address.private", amount: "u128.private", _nonce: "group.public" },
+        },
+      ],
+    },
+  );
+  const tokenJs = ts
+    .transpileModule(tokenSource, {
+      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext },
+    })
+    .outputText.replace('"./BaseContract.js"', '"./BaseContract.mjs"');
+  const tokenPath = join(tmpDir, "Token.mjs");
+  writeFileSync(tokenPath, tokenJs);
+  tokenBindings = await import(tokenPath);
 
   // Import the stub module separately so tests can swap the decryption
   // helper implementations via __setDecryptStubs (ESM live bindings).
@@ -3186,5 +3227,36 @@ describe("BaseContract runtime", () => {
       expect(opts.imports).toEqual(["voting_power.aleo"]);
       expect(opts.signer).toEqual({ privateKey: "k", address: "aleo1signer" });
     });
+  });
+});
+
+describe("generated dynamic helper record metadata", () => {
+  it.each([0, 1])("preserves version %i and the exact decrypted plaintext", (version) => {
+    const raw = `{ owner: aleo1abc.private, amount: 100019u128.private, _nonce: 0group.public, _version: ${version}u8.public }`;
+    const record = tokenBindings.deserializeToken(raw);
+    expect(Object.keys(record)).toEqual(["owner", "amount", "_nonce"]);
+    expect(Object.getOwnPropertyDescriptor(record, BaseContract.RECORD_RAW)?.enumerable).toBe(
+      false,
+    );
+    expect(tokenBindings.asToken(record)).toBe(raw);
+    expect(tokenBindings.asToken(record)).toBe(tokenBindings.serializeToken(record));
+    expect(tokenBindings.asToken.forProgram("renamed_token.aleo")(record)).toBe(raw);
+    expect(tokenBindings.asToken.output.program).toBe("token.aleo");
+  });
+
+  it("keeps schema encoding and validation for manually constructed inputs", () => {
+    const value = { owner: "aleo1abc", amount: 100019n, _nonce: 0n };
+    const raw = tokenBindings.asToken(value);
+    expect(raw).toBe(
+      "{ owner: aleo1abc.private, amount: 100019u128.private, _nonce: 0group.public }",
+    );
+    expect(() => tokenBindings.asToken({ ...value, extra: 1 })).toThrow(TransitionInputError);
+    expect(() => tokenBindings.asToken({ owner: value.owner, _nonce: 0n })).toThrow(
+      TransitionInputError,
+    );
+    expect(() => tokenBindings.asToken({ ...value, amount: -1n })).toThrow(TransitionInputError);
+    for (const invalid of [null, undefined, 1, "record", []]) {
+      expect(() => tokenBindings.asToken(invalid)).toThrow(TransitionInputError);
+    }
   });
 });

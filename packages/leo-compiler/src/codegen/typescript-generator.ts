@@ -1126,7 +1126,8 @@ function generateRecordDecryptor(record: RecordABI): string[] {
 
 /**
  * Emit a free function that converts a generated record value into a typed
- * `LeoDynamicRecord` literal using `Leo.dynamicRecord(value, schema)`. The
+ * `LeoDynamicRecord` literal, preserving cached record plaintext when present.
+ * Otherwise uses `Leo.dynamicRecord(value, schema)`. The
  * schema is fixed at codegen time from `helper.schema`; the generated
  * function takes only the record value.
  *
@@ -1198,6 +1199,15 @@ function generateDynamicRecordHelper(
   // pass raw field values; `.output` (below) stays the branded record type.
   const inputName = ctx.inputNameByKey.get(pathKey(record.path)) ?? `${helper.sourceRecord}Input`;
   lines.push(`function ${fnName}(value: ${inputName}): LeoDynamicRecord {`);
+  // Decrypted records carry the exact original literal, including runtime
+  // metadata (e.g. _version) absent from the ABI/schema. Rebuilding those
+  // fields changes the commitment and breaks held-record inclusion proofs.
+  // Match the concrete serializer's raw-record precedence.
+  lines.push("  BaseContract.assertObject(value);");
+  lines.push(
+    "  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];",
+  );
+  lines.push('  if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);');
   lines.push("  return Leo.dynamicRecord(value, {");
   for (const [key, entry] of Object.entries(helper.schema)) {
     lines.push(`    ${key}: ${JSON.stringify(entry)} as const,`);
