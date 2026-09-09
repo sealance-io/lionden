@@ -314,6 +314,12 @@ export interface DynamicRecordHelperConfig {
    * Per-field `<type>.<visibility>` schema. Keys must exactly match the
    * generated record shape (implicit `owner: address` + ABI fields +
    * implicit `_nonce: group`); visibility may differ per field.
+   *
+   * `_version: "u8.public"` may be included as optional metadata so manually
+   * constructed inputs can carry the on-chain record version; it is optional
+   * on the value and must be exactly `u8.public`. Key order in this object
+   * does not affect the emitted literal: the helper always emits `owner`,
+   * the ABI fields in ABI order, `_nonce`, then `_version`.
    */
   readonly schema: Record<string, string>;
 }

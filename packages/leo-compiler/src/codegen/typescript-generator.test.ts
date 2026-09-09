@@ -2012,10 +2012,7 @@ describe("interface conversion helper emission", () => {
     records: [
       {
         path: ["Token"],
-        fields: [
-          { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" },
-          { name: "_version", ty: { Primitive: { UInt: "U8" } }, mode: "Private" },
-        ],
+        fields: [{ name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" }],
       },
     ],
     mappings: [],
@@ -2043,7 +2040,11 @@ describe("interface conversion helper emission", () => {
     // does the actual `Leo.dynamicRecord(...)` conversion, then `Object.assign`
     // attaches `.output` (a RecordOutputMatcher) so callers can feed it to
     // `.match(matcher.from(...))` or `.match(matcher.at(...))`.
-    expect(output).toContain("function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord");
+    // `_version` is optional metadata on the schema, so the parameter type
+    // widens to accept it without requiring it (decrypted records lack it).
+    expect(output).toContain(
+      "function _asPoolTokenImpl(value: TokenInput & { readonly _version?: number }): LeoDynamicRecord",
+    );
     expect(output).toContain("export const asPoolToken = Object.assign(_asPoolTokenImpl, {");
     expect(output).toContain("output: createRecordOutputMatcher<Token>({");
     expect(output).toContain('program: "stable_token.aleo"');
@@ -2083,13 +2084,99 @@ describe("interface conversion helper emission", () => {
             sourceProgram: "stable_token.aleo",
             schema: {
               owner: "address.private",
-              amount: "u128.private",
               _nonce: "group.public",
             },
           },
         ],
       }),
-    ).toThrow(/schema keys do not match.+Missing: \[_version\]/);
+    ).toThrow(/schema keys do not match.+Missing: \[amount\]/);
+  });
+
+  function schemaLiteralOf(output: string): string {
+    const start = output.indexOf("Leo.dynamicRecord(value, {");
+    const end = output.indexOf("} as const);", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return output.slice(start, end);
+  }
+
+  it("accepts _version as optional metadata absent from the ABI and emits it last", () => {
+    const output = generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+      dynamicRecords: [
+        {
+          helperName: "asPoolToken",
+          sourceRecord: "Token",
+          sourceProgram: "stable_token.aleo",
+          schema: {
+            owner: "address.private",
+            amount: "u128.private",
+            _nonce: "group.public",
+            _version: "u8.public",
+          },
+        },
+      ],
+    });
+    const keys = [...schemaLiteralOf(output).matchAll(/^\s+(\w+): "/gm)].map((m) => m[1]);
+    expect(keys).toEqual(["owner", "amount", "_nonce", "_version"]);
+    expect(output).toContain('_version: "u8.public" as const');
+  });
+
+  it("does not widen the parameter type when the schema lacks _version", () => {
+    const output = generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+      dynamicRecords: [
+        {
+          helperName: "asPoolToken",
+          sourceRecord: "Token",
+          sourceProgram: "stable_token.aleo",
+          schema: { owner: "address.private", amount: "u128.private", _nonce: "group.public" },
+        },
+      ],
+    });
+    expect(output).toContain("function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord");
+    expect(output).not.toContain("_version");
+  });
+
+  it.each(["u8.private", "u16.public"])(
+    "throws CodegenError when _version is %s instead of u8.public",
+    (entry) => {
+      expect(() =>
+        generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+          dynamicRecords: [
+            {
+              helperName: "asPoolToken",
+              sourceRecord: "Token",
+              sourceProgram: "stable_token.aleo",
+              schema: {
+                owner: "address.private",
+                amount: "u128.private",
+                _nonce: "group.public",
+                _version: entry,
+              },
+            },
+          ],
+        }),
+      ).toThrow(/schema\._version must be "u8\.public"/);
+    },
+  );
+
+  it("emits the canonical key order regardless of config order", () => {
+    const output = generateBindings(TOKEN_ABI, [TOKEN_ABI], {
+      dynamicRecords: [
+        {
+          helperName: "asPoolToken",
+          sourceRecord: "Token",
+          sourceProgram: "stable_token.aleo",
+          schema: {
+            _nonce: "group.public",
+            _version: "u8.public",
+            amount: "u128.private",
+            owner: "address.private",
+          },
+        },
+      ],
+    });
+    const keys = [...schemaLiteralOf(output).matchAll(/^\s+(\w+): "/gm)].map((m) => m[1]);
+    expect(keys).toEqual(["owner", "amount", "_nonce", "_version"]);
   });
 
   it("throws CodegenError when schema has an extra field", () => {

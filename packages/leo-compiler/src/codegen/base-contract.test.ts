@@ -27,6 +27,7 @@ let bindDynamicRecordHelperProgram: any;
 let networkStub: any;
 let tmpDir: string;
 let tokenBindings: any;
+let versionlessTokenBindings: any;
 let originalNoColor: string | undefined;
 let originalVitest: string | undefined;
 
@@ -148,43 +149,56 @@ beforeAll(async () => {
 
   // Exercise the actual emitted deserializer and helper together. The ABI
   // omits the runtime-owned _version field, just like Leo 4.3 token ABIs.
-  const tokenSource = generateBindings(
-    {
-      program: "token.aleo",
-      structs: [],
-      records: [
-        {
-          path: ["Token"],
-          fields: [
-            { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
-            { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" },
-          ],
-        },
-      ],
-      mappings: [],
-      storage_variables: [],
-      transitions: [],
-    },
-    [],
-    {
-      dynamicRecords: [
-        {
-          helperName: "asToken",
-          sourceRecord: "Token",
-          sourceProgram: "token.aleo",
-          schema: { owner: "address.private", amount: "u128.private", _nonce: "group.public" },
-        },
-      ],
-    },
-  );
-  const tokenJs = ts
-    .transpileModule(tokenSource, {
-      compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext },
-    })
-    .outputText.replace('"./BaseContract.js"', '"./BaseContract.mjs"');
-  const tokenPath = join(tmpDir, "Token.mjs");
-  writeFileSync(tokenPath, tokenJs);
-  tokenBindings = await import(tokenPath);
+  // The primary bindings opt into `_version` metadata on the helper schema;
+  // the versionless bindings mirror a config that never declared it.
+  const loadTokenBindings = async (
+    fileName: string,
+    schema: Record<string, string>,
+  ): Promise<any> => {
+    const tokenSource = generateBindings(
+      {
+        program: "token.aleo",
+        structs: [],
+        records: [
+          {
+            path: ["Token"],
+            fields: [
+              { name: "owner", ty: { Primitive: "Address" }, mode: "Private" },
+              { name: "amount", ty: { Primitive: { UInt: "U128" } }, mode: "Private" },
+            ],
+          },
+        ],
+        mappings: [],
+        storage_variables: [],
+        transitions: [],
+      },
+      [],
+      {
+        dynamicRecords: [
+          { helperName: "asToken", sourceRecord: "Token", sourceProgram: "token.aleo", schema },
+        ],
+      },
+    );
+    const tokenJs = ts
+      .transpileModule(tokenSource, {
+        compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ESNext },
+      })
+      .outputText.replace('"./BaseContract.js"', '"./BaseContract.mjs"');
+    const tokenPath = join(tmpDir, fileName);
+    writeFileSync(tokenPath, tokenJs);
+    return import(tokenPath);
+  };
+  tokenBindings = await loadTokenBindings("Token.mjs", {
+    owner: "address.private",
+    amount: "u128.private",
+    _nonce: "group.public",
+    _version: "u8.public",
+  });
+  versionlessTokenBindings = await loadTokenBindings("VersionlessToken.mjs", {
+    owner: "address.private",
+    amount: "u128.private",
+    _nonce: "group.public",
+  });
 
   // Import the stub module separately so tests can swap the decryption
   // helper implementations via __setDecryptStubs (ESM live bindings).
@@ -2006,6 +2020,46 @@ describe("BaseContract runtime", () => {
       ).toThrow(/Extra in value: \[surprise\]/);
     });
 
+    it("emits a versionless literal when the schema declares _version but the value omits it", () => {
+      const schema = {
+        owner: "address.private",
+        amount: "u128.private",
+        _nonce: "group.public",
+        _version: "u8.public",
+      } as const;
+      const expected = `{ owner: ${ADDR}.private, amount: 100u128.private, _nonce: 0group.public }`;
+      expect(
+        Leo.dynamicRecord({ owner: Leo.address(ADDR), amount: 100n, _nonce: 0n }, schema),
+      ).toBe(expected);
+      // An own `_version: undefined` property counts as omitted.
+      expect(
+        Leo.dynamicRecord(
+          { owner: Leo.address(ADDR), amount: 100n, _nonce: 0n, _version: undefined },
+          schema,
+        ),
+      ).toBe(expected);
+    });
+
+    it("still requires every other schema key when _version is omitted", () => {
+      expect(() =>
+        Leo.dynamicRecord(
+          { owner: Leo.address(ADDR), _nonce: 0n },
+          {
+            owner: "address.private",
+            amount: "u128.private",
+            _nonce: "group.public",
+            _version: "u8.public",
+          },
+        ),
+      ).toThrow(/Missing in value: \[amount\]\. Extra in value: \[\]/);
+    });
+
+    it("rejects _version on the value when the schema does not declare it", () => {
+      expect(() =>
+        Leo.dynamicRecord({ owner: Leo.address(ADDR), _version: 1 }, { owner: "address.private" }),
+      ).toThrow(/Extra in value: \[_version\]/);
+    });
+
     it("throws on malformed schema entry (missing visibility)", () => {
       expect(() => Leo.dynamicRecord({ x: 1 }, { x: "u8" } as any)).toThrow(
         /must be "<type>\.<visibility>"/,
@@ -3258,5 +3312,50 @@ describe("generated dynamic helper record metadata", () => {
     for (const invalid of [null, undefined, 1, "record", []]) {
       expect(() => tokenBindings.asToken(invalid)).toThrow(TransitionInputError);
     }
+  });
+
+  it("encodes _version for manually constructed inputs when the schema declares it", () => {
+    const raw = tokenBindings.asToken({
+      owner: "aleo1abc",
+      amount: 100019n,
+      _nonce: 0n,
+      _version: 1,
+    });
+    expect(raw).toBe(
+      "{ owner: aleo1abc.private, amount: 100019u128.private, _nonce: 0group.public, _version: 1u8.public }",
+    );
+    // Same plaintext as the decrypted-record path, so the commitment matches.
+    const replayed = tokenBindings.deserializeToken(raw);
+    expect(tokenBindings.asToken(replayed)).toBe(raw);
+    expect(tokenBindings.serializeToken(replayed)).toBe(raw);
+  });
+
+  it("emits the canonical tail order even when _version precedes _nonce on the value", () => {
+    const raw = tokenBindings.asToken({ _version: 1, owner: "aleo1abc", _nonce: 0n, amount: 5n });
+    expect(raw).toBe(
+      "{ owner: aleo1abc.private, amount: 5u128.private, _nonce: 0group.public, _version: 1u8.public }",
+    );
+  });
+
+  it.each([256, -1, 1.5, "1"])("rejects out-of-range or non-u8 _version %j", (version) => {
+    expect(() =>
+      tokenBindings.asToken({ owner: "aleo1abc", amount: 100019n, _nonce: 0n, _version: version }),
+    ).toThrow(TransitionInputError);
+  });
+
+  it("rejects _version on manual inputs when the schema does not declare it", () => {
+    const value = { owner: "aleo1abc", amount: 100019n, _nonce: 0n };
+    expect(versionlessTokenBindings.asToken(value)).toBe(
+      "{ owner: aleo1abc.private, amount: 100019u128.private, _nonce: 0group.public }",
+    );
+    expect(() => versionlessTokenBindings.asToken({ ...value, _version: 1 })).toThrow(
+      /Extra in value: \[_version\]/,
+    );
+    // Decrypted records still replay their raw plaintext, version included.
+    const raw =
+      "{ owner: aleo1abc.private, amount: 100019u128.private, _nonce: 0group.public, _version: 1u8.public }";
+    expect(versionlessTokenBindings.asToken(versionlessTokenBindings.deserializeToken(raw))).toBe(
+      raw,
+    );
   });
 });

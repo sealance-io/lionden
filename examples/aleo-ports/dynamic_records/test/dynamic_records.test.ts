@@ -35,9 +35,13 @@
 
 import { clearFixtures, loadFixture, setup, type TestContext } from "@lionden/testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createRecordOutputMatcher, Leo } from "../typechain/BaseContract.js";
+import { BaseContract, createRecordOutputMatcher, Leo } from "../typechain/BaseContract.js";
 import { createExternalTokenDemo, GoldToken_Token } from "../typechain/ExternalTokenDemo.js";
-import { asGoldToken, createGoldToken } from "../typechain/GoldToken.js";
+import {
+  asGoldToken,
+  createGoldToken,
+  serializeToken as serializeGoldToken,
+} from "../typechain/GoldToken.js";
 import { asSilverToken, createSilverToken } from "../typechain/SilverToken.js";
 import { createTokenRouter } from "../typechain/TokenRouter.js";
 
@@ -266,6 +270,42 @@ describe("dynamic_records runtime dispatch", () => {
     expect(transferred.owner).toBe(bob().address);
     expect(transferred.amount).toBe(1200n);
     expect(transferred.grade).toBe(2n);
+  });
+
+  it("route_transfer with a held record rebuilt manually with _version matches the decrypted plaintext", async () => {
+    const minted = await gold.withSigner(alice()).mint_custom.accepted(alice(), 700n, 9n);
+    const decrypted = await minted.outputs.decrypt(alice());
+    const cached = serializeGoldToken(decrypted);
+    // Records minted under V15+ carry version 1; read it from the cached
+    // plaintext so the manual object reproduces exactly what the ledger holds.
+    const version = Number(/_version: (\d+)u8/.exec(cached)?.[1]);
+    expect(version).toBe(1);
+
+    // Spread copies only enumerable fields, dropping the non-enumerable
+    // RECORD_RAW cache: this is the JSON-rehydrated / hand-built input path.
+    const manual = { ...decrypted, _version: version };
+    expect((manual as { [k: symbol]: unknown })[BaseContract.RECORD_RAW]).toBeUndefined();
+
+    // `asGoldToken` declares `_version: "u8.public"` in lionden.config.ts, so
+    // schema encoding reproduces the same plaintext (and thus commitment).
+    const normalize = (literal: string) => literal.replace(/\s+/g, "");
+    expect(normalize(asGoldToken(manual))).toBe(normalize(cached));
+
+    const accepted = await router.route_transfer.accepted(
+      Leo.identifier("gold_token"),
+      asGoldToken(manual),
+      bob(),
+    );
+
+    await assertExecutionProof(accepted.txId);
+    expect(accepted.outputs.kind).toBe("idOnlyDynamicRecord");
+
+    const transferred = await accepted.outputs
+      .match(asGoldToken.output.from("transfer", 0))
+      .decrypt(bob());
+    expect(transferred.owner).toBe(bob().address);
+    expect(transferred.amount).toBe(700n);
+    expect(transferred.purity).toBe(9n);
   });
 
   it("gold_beats_silver mints both sides internally and compares balances", async () => {

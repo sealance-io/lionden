@@ -811,6 +811,9 @@ export const Leo = {
    * compile time via the \`\${LeoPrimitiveType}.\${LeoVisibility}\` template
    * union; values are validated and range-checked at runtime.
    *
+   * \`_version\` may be omitted from the value when the schema declares it;
+   * the literal is then versionless (read by the VM as version 0).
+   *
    * Example:
    *   const token = Leo.dynamicRecord({
    *     owner: Leo.address(addr),
@@ -2350,8 +2353,12 @@ export abstract class BaseContract {
         "Leo.dynamicRecord expected an object schema mapping field name to \"<type>.<visibility>\".",
       );
     }
-    const valueKeys = Object.keys(value);
-    const schemaKeys = Object.keys(schema);
+    // \`_version\` is optional record metadata: a schema may declare it so
+    // manual inputs can carry the on-chain version, but a value that omits it
+    // (or sets it to undefined) encodes as a versionless literal (version 0).
+    const omitVersion = Object.hasOwn(schema, "_version") && value["_version"] === undefined;
+    const valueKeys = Object.keys(value).filter((k) => !(omitVersion && k === "_version"));
+    const schemaKeys = Object.keys(schema).filter((k) => !(omitVersion && k === "_version"));
     const missing = schemaKeys.filter((k) => !valueKeys.includes(k));
     const extra = valueKeys.filter((k) => !schemaKeys.includes(k));
     if (missing.length > 0 || extra.length > 0) {

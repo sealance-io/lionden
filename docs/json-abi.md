@@ -258,7 +258,7 @@ export const asPoolToken = Object.assign(_asPoolTokenImpl, {
 });
 ```
 
-The original plaintext of a decrypted record takes precedence over schema encoding, preserving runtime metadata such as `_version` even when absent from the ABI. Pass the original decrypted object; object spread, `structuredClone`, and JSON round-trips drop its non-enumerable `RECORD_RAW` cache. To persist a held record, store the plaintext string from `serialize<Name>` (or the ciphertext) and rehydrate it through `deserialize<Name>` or `decrypt<Name>`, which re-attach the cache. Manually constructed inputs still use the configured schema and its validation.
+The original plaintext of a decrypted record takes precedence over schema encoding, preserving runtime metadata such as `_version` even when absent from the ABI. Pass the original decrypted object; object spread, `structuredClone`, and JSON round-trips drop its non-enumerable `RECORD_RAW` cache. To persist a held record, store the plaintext string from `serialize<Name>` (or the ciphertext) and rehydrate it through `deserialize<Name>` or `decrypt<Name>`, which re-attach the cache. Manually constructed inputs still use the configured schema and its validation. Declaring `_version: "u8.public"` in the schema lets them carry the record version (`_version: 1` on the value); omitting `_version` on the value yields a versionless literal, which the VM reads as version 0.
 
 Callers import `asPoolToken` directly for input conversion:
 
@@ -294,7 +294,8 @@ On targeted compile (`compile --program`), helpers with `sourceProgram` outside 
 
 **Schema rules**:
 
-- Schema keys must exactly match the **generated record shape**: implicit `owner: address`, every ABI field that isn't a re-declaration of `owner`, and implicit `_nonce: group`.
+- Schema keys must exactly match the **generated record shape**: implicit `owner: address`, every ABI field that isn't a re-declaration of `owner`, and implicit `_nonce: group`. The schema may additionally declare optional `_version: "u8.public"` metadata (it must be a public `u8`); the value may omit it.
+- The emitted literal always follows the canonical record layout (`owner`, ABI fields in ABI order, `_nonce`, then `_version`); the key order in the config is irrelevant.
 - Schema entry primitives must match each record field's declared type (visibility may differ — that's the point of the helper).
 - Supported primitives: `address`, `boolean`, `field`, `group`, `scalar`, `u8`-`u128`, `i8`-`i128`. `Identifier`, `Signature`, struct, array, and optional fields are rejected with `CodegenError` at compile time.
 

@@ -9,11 +9,6 @@
           "name": "amount",
           "ty": { "Primitive": { "UInt": "U128" } },
           "mode": "None"
-        },
-        {
-          "name": "_version",
-          "ty": { "Primitive": { "UInt": "U8" } },
-          "mode": "None"
         }
       ]
     }

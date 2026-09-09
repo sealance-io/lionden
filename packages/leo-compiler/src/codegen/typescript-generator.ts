@@ -66,6 +66,17 @@ const SUPPORTED_DYNAMIC_RECORD_PRIMITIVES = new Set<string>([
 ]);
 
 /**
+ * Schema keys a dynamic-record helper may declare beyond the record's ABI
+ * shape. `_version` is record metadata the VM appends to every record
+ * plaintext (`..., _nonce: Xgroup.public, _version: Nu8.public`) but Leo 4.3
+ * ABIs omit it. Declaring it lets manually constructed inputs carry the
+ * on-chain version; it is always emitted last and is optional on the value.
+ */
+const OPTIONAL_DYNAMIC_RECORD_METADATA: Readonly<Record<string, string>> = {
+  _version: "u8.public",
+};
+
+/**
  * Generate TypeScript bindings from a ProgramABI.
  * Produces a single .ts file with:
  * - Struct/record interfaces
@@ -1135,6 +1146,7 @@ function generateRecordDecryptor(record: RecordABI): string[] {
  * - implicit `owner: address` field
  * - each ABI record field (excluding any explicit `owner` re-declaration)
  * - implicit `_nonce: group` field
+ * - optional `_version: u8.public` metadata (never required; always emitted last)
  *
  * Mismatches and unsupported primitive types throw `CodegenError` so users
  * get a precise build-time failure instead of a runtime parser error.
@@ -1156,7 +1168,9 @@ function generateDynamicRecordHelper(
 
   const schemaKeys = Object.keys(helper.schema);
   const missing = [...expectedFields.keys()].filter((k) => !Object.hasOwn(helper.schema, k));
-  const extra = schemaKeys.filter((k) => !expectedFields.has(k));
+  const extra = schemaKeys.filter(
+    (k) => !expectedFields.has(k) && !Object.hasOwn(OPTIONAL_DYNAMIC_RECORD_METADATA, k),
+  );
   if (missing.length > 0 || extra.length > 0) {
     throw new CodegenError(
       `codegen.dynamicRecords.${helper.helperName}: schema keys do not match record '${helper.sourceRecord}'. Missing: [${missing.join(", ")}]; Extra: [${extra.join(", ")}].`,
@@ -1178,6 +1192,16 @@ function generateDynamicRecordHelper(
         { helperName: helper.helperName, field: fieldName, schemaEntry: entry },
       );
     }
+    if (Object.hasOwn(OPTIONAL_DYNAMIC_RECORD_METADATA, fieldName)) {
+      const required = OPTIONAL_DYNAMIC_RECORD_METADATA[fieldName]!;
+      if (entry !== required) {
+        throw new CodegenError(
+          `codegen.dynamicRecords.${helper.helperName}.schema.${fieldName} must be ${JSON.stringify(required)}: record version metadata is a public u8.`,
+          { helperName: helper.helperName, field: fieldName, expected: required, actual: entry },
+        );
+      }
+      continue;
+    }
     const schemaPrim = entry.slice(0, dot);
     const expectedPrim = expectedFields.get(fieldName)!;
     if (schemaPrim !== expectedPrim) {
@@ -1198,7 +1222,12 @@ function generateDynamicRecordHelper(
   // `value` is widened to the record's resolved input interface so callers may
   // pass raw field values; `.output` (below) stays the branded record type.
   const inputName = ctx.inputNameByKey.get(pathKey(record.path)) ?? `${helper.sourceRecord}Input`;
-  lines.push(`function ${fnName}(value: ${inputName}): LeoDynamicRecord {`);
+  // `_version` is optional on the value: decrypted records replay their raw
+  // plaintext (below) and callers without the version fall back to a
+  // versionless literal, which the VM reads as version 0.
+  const hasVersion = Object.hasOwn(helper.schema, "_version");
+  const valueType = hasVersion ? `${inputName} & { readonly _version?: number }` : inputName;
+  lines.push(`function ${fnName}(value: ${valueType}): LeoDynamicRecord {`);
   // Decrypted records carry the exact original literal, including runtime
   // metadata (e.g. _version) absent from the ABI/schema. Rebuilding those
   // fields changes the commitment and breaks held-record inclusion proofs.
@@ -1209,8 +1238,12 @@ function generateDynamicRecordHelper(
   );
   lines.push('  if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);');
   lines.push("  return Leo.dynamicRecord(value, {");
-  for (const [key, entry] of Object.entries(helper.schema)) {
-    lines.push(`    ${key}: ${JSON.stringify(entry)} as const,`);
+  // The VM checks record entry order against the record type, so the literal
+  // follows the canonical layout (owner, ABI fields, _nonce, _version)
+  // regardless of the key order in the user's config.
+  const emitKeys = [...expectedFields.keys(), ...(hasVersion ? ["_version"] : [])];
+  for (const key of emitKeys) {
+    lines.push(`    ${key}: ${JSON.stringify(helper.schema[key]!)} as const,`);
   }
   lines.push("  } as const);");
   lines.push("}");
@@ -1239,6 +1272,10 @@ function generateDynamicRecordHelper(
  *   1. implicit `owner: address`
  *   2. each ABI field that isn't a re-declaration of `owner`
  *   3. implicit `_nonce: group`
+ *
+ * `_version` is not part of this map: it is optional record metadata that
+ * `generateDynamicRecordHelper` validates and emits separately (see
+ * `OPTIONAL_DYNAMIC_RECORD_METADATA`).
  *
  * Rejects unsupported ABI primitives (Identifier, Signature) and non-primitive
  * fields (struct, array, optional). These cases cannot be encoded by

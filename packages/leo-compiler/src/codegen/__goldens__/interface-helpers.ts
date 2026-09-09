@@ -6,14 +6,12 @@ import { BaseContract, Leo, bindDynamicRecordHelperProgram, createRecordOutputMa
 export interface Token {
   readonly owner: LeoAddress;
   readonly amount: bigint;
-  readonly _version: number;
   readonly _nonce: LeoGroup;
 }
 
 export interface TokenInput {
   readonly owner: AddressInput;
   readonly amount: bigint;
-  readonly _version: number;
   readonly _nonce: GroupInput;
 }
 
@@ -27,7 +25,6 @@ export function serializeToken(value: TokenInput, context?: TransitionInputConte
   if (typeof _raw === "string") return _raw;
   const fields: string[] = [];
   fields.push("amount: " + BaseContract.serializeUInt(value.amount, 128, BaseContract.childInputContext(context, "amount")));
-  fields.push("_version: " + BaseContract.serializeUInt(value._version, 8, BaseContract.childInputContext(context, "_version")));
   fields.push("_nonce: " + BaseContract.serializeGroup(value._nonce, BaseContract.childInputContext(context, "_nonce")));
   return "{ " + fields.join(", ") + " }";
 }
@@ -37,7 +34,6 @@ export function deserializeToken(value: string): Token {
   const _record: Token = {
     owner: BaseContract.parseAddress(_fields["owner"]!),
     amount: BaseContract.parseBigInt(_fields["amount"]!),
-    _version: BaseContract.parseNumber(_fields["_version"]!),
     _nonce: BaseContract.parseGroup(_fields["_nonce"] ?? ""),
   };
   Object.defineProperty(_record, BaseContract.RECORD_RAW, { value, enumerable: false });
@@ -52,15 +48,15 @@ export async function decryptToken(ciphertext: string, key: RecordDecryptionKey)
 // Interface conversion helpers
 // ---------------------------------------------------------------------------
 
-function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord {
+function _asPoolTokenImpl(value: TokenInput & { readonly _version?: number }): LeoDynamicRecord {
   BaseContract.assertObject(value);
   const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
   if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);
   return Leo.dynamicRecord(value, {
     owner: "address.private" as const,
     amount: "u128.private" as const,
-    _version: "u8.public" as const,
     _nonce: "group.public" as const,
+    _version: "u8.public" as const,
   } as const);
 }
 export const asPoolToken = Object.assign(_asPoolTokenImpl, {
