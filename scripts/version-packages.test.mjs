@@ -90,6 +90,12 @@ function createFixture() {
     dependencies: { "@lionden/core": "^0.2.0" },
   });
   writeFileSync(join(dir, ".gitignore"), ".npm-cache/\n");
+  // Committed export-ignore attributes must not hide manifests or changesets from base-ref
+  // exports: every --base assertion below doubles as a regression test for that.
+  writeFileSync(
+    join(dir, ".gitattributes"),
+    "packages/*/package.json export-ignore\n.changeset/*.md export-ignore\n",
+  );
   const init = spawnSync("git", ["init", "--quiet", "--initial-branch=main"], {
     cwd: dir,
     encoding: "utf8",
@@ -345,7 +351,7 @@ try {
   assertValidationPasses(fixture, /matches the .* release plan/, ["--base", "HEAD^1"]);
   assertValidationPasses(fixture, /matches the .* release plan/, ["--base", recoveryBase]);
   // Squash merge: a single commit whose parent is the pre-push tip, identical to `versioned`.
-  assertValidationRejected(fixture, /git archive .* failed/, ["--base", "no-such-ref"]);
+  assertValidationRejected(fixture, /git read-tree no-such-ref failed/, ["--base", "no-such-ref"]);
 
   addChangeset(fixture, "later-patch", [["@lionden/leo-compiler", "patch"]], "Later patch.");
   assertValidationRejected(fixture, /Unreleased changesets remain: later-patch/);

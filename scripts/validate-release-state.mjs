@@ -8,12 +8,9 @@
  * not satisfy this. Manifest/lockfile agreement is covered separately by validate-lockfile.mjs.
  *
  * Performs no writes to the repository. The base tree is exported with `git archive` into a
- * temporary directory that is removed afterwards.
+ * temporary directory that is removed afterwards (see git-tree.mjs).
  */
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { withExportedTree } from "./git-tree.mjs";
 import { loadReleaseContext, planRelease } from "./release-plan.mjs";
 import { describeVersions } from "./release-policy.mjs";
 
@@ -32,31 +29,6 @@ for (let index = 0; index < args.length; index += 1) {
 
 const rootDir = process.cwd();
 
-function git(gitArgs) {
-  const result = spawnSync("git", gitArgs, { cwd: rootDir, encoding: "utf8" });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`git ${gitArgs.join(" ")} failed: ${result.stderr.trim()}`);
-  }
-  return result.stdout;
-}
-
-function exportTree(ref) {
-  const dir = mkdtempSync(join(tmpdir(), "release-base-"));
-  try {
-    const archive = join(dir, "base.tar");
-    git(["archive", "--format=tar", "--output", archive, ref]);
-    const tar = spawnSync("tar", ["-xf", archive, "-C", dir], { encoding: "utf8" });
-    if (tar.error) throw tar.error;
-    if (tar.status !== 0) throw new Error(`tar failed: ${tar.stderr.trim()}`);
-    rmSync(archive);
-    return dir;
-  } catch (error) {
-    rmSync(dir, { recursive: true, force: true });
-    throw error;
-  }
-}
-
 const context = await loadReleaseContext(rootDir);
 for (const warning of context.configWarnings) console.warn(`Changesets config: ${warning}`);
 
@@ -72,8 +44,7 @@ if (context.changesets.length > 0) {
 }
 
 if (baseRef !== undefined) {
-  const baseDir = exportTree(baseRef);
-  try {
+  await withExportedTree(rootDir, baseRef, async (baseDir) => {
     const baseContext = await loadReleaseContext(baseDir);
     if (baseContext.changesets.length === 0 && !baseContext.preState) {
       throw new Error(`${baseRef} has no unreleased changesets, so no release state is expected`);
@@ -84,9 +55,7 @@ if (baseRef !== undefined) {
         `Release state ${version} does not match the ${baseRef} release plan, which converges at ${plannedVersion}`,
       );
     }
-  } finally {
-    rmSync(baseDir, { recursive: true, force: true });
-  }
+  });
 }
 
 console.log(
