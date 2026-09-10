@@ -116,6 +116,7 @@ jobs:
       - run: npm run test:release-scripts # zero-dependency release-policy regressions
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
       - run: npm run test:version-packages
+      - run: npm run check:release-plan # real pending changesets must assemble into one converged public version
       - run: npm run check:ci -- --reporter=github --diagnostic-level=error # biome ci; inline annotations only for blocking diagnostics
 
   build:
