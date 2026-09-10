@@ -89,8 +89,14 @@ function createFixture() {
     version: "0.0.0",
     dependencies: { "@lionden/core": "^0.2.0" },
   });
-  const init = spawnSync("git", ["init", "--quiet"], { cwd: dir, encoding: "utf8" });
+  writeFileSync(join(dir, ".gitignore"), ".npm-cache/\n");
+  const init = spawnSync("git", ["init", "--quiet", "--initial-branch=main"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
   assert.equal(init.status, 0, init.stderr);
+  const add = spawnSync("git", ["add", "--all"], { cwd: dir, encoding: "utf8" });
+  assert.equal(add.status, 0, add.stderr);
   return dir;
 }
 
@@ -106,6 +112,54 @@ function runVersioning(dir, args = []) {
       npm_config_update_notifier: "false",
     },
   });
+}
+
+function runValidation(dir, args = []) {
+  return spawnSync(
+    process.execPath,
+    [join(rootDir, "scripts/validate-release-state.mjs"), ...args],
+    { cwd: dir, encoding: "utf8", timeout: 60_000 },
+  );
+}
+
+function assertValidationRejected(dir, message, args = []) {
+  const before = snapshot(dir);
+  const result = runValidation(dir, args);
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, message);
+  assert.deepEqual(snapshot(dir), before);
+}
+
+function assertValidationPasses(dir, message, args = []) {
+  const before = snapshot(dir);
+  const result = runValidation(dir, args);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, message);
+  assert.deepEqual(snapshot(dir), before);
+}
+
+function git(dir, args) {
+  const result = spawnSync(
+    "git",
+    [
+      "-c",
+      "user.name=test",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd: dir, encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, `git ${args.join(" ")}\n${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function commitAll(dir, message) {
+  git(dir, ["add", "--all"]);
+  git(dir, ["commit", "--quiet", "--allow-empty", "--message", message]);
+  return git(dir, ["rev-parse", "HEAD"]);
 }
 
 function snapshot(dir) {
@@ -222,6 +276,11 @@ try {
     fixture,
     /Release plan check passed: 3 changeset\(s\) converge 11 public packages at 0\.3\.0\./,
   );
+  // A skewed tree with pending changesets is not a release state.
+  assertValidationRejected(fixture, /Public packages are not aligned/);
+  assertValidationRejected(fixture, /Unknown arguments: --base/, ["--base"]);
+  assertValidationRejected(fixture, /Unknown arguments: --strict/, ["--strict"]);
+  const recoveryBase = commitAll(fixture, "pending recovery changesets");
   assertVersioned(fixture, "0.3.0");
   const compilerChangelog = readFileSync(
     join(fixture, "packages/leo-compiler/CHANGELOG.md"),
@@ -237,7 +296,59 @@ try {
   );
   assertRejectedWithoutWrites(fixture, /No unreleased changesets found/);
 
+  // Generated release state: aligned, nothing pending, and exactly what the base planned.
+  assertValidationPasses(
+    fixture,
+    /Release state OK: 11 public packages at 0\.3\.0, no unreleased changesets\./,
+  );
+  assertValidationPasses(
+    fixture,
+    /Release state OK: 11 public packages at 0\.3\.0, no unreleased changesets, matches the .* release plan\./,
+    ["--base", recoveryBase],
+  );
+  // Eleven hand-substituted versions satisfy alignment but not the base plan.
+  const publicManifests = loadPublicPackages(fixture).map(({ manifestPath }) => [
+    manifestPath,
+    readFileSync(manifestPath, "utf8"),
+  ]);
+  for (const [manifestPath, raw] of publicManifests) {
+    writeJson(manifestPath, { ...JSON.parse(raw), version: "0.3.1" });
+  }
+  assertValidationPasses(fixture, /Release state OK: 11 public packages at 0\.3\.1/);
+  assertValidationRejected(
+    fixture,
+    /Release state 0\.3\.1 does not match the .* release plan, which converges at 0\.3\.0/,
+    ["--base", recoveryBase],
+  );
+  for (const [manifestPath, raw] of publicManifests) writeFileSync(manifestPath, raw);
+  // Merge topologies. The publish workflow validates against main's tip before the push
+  // (github.event.before), which is `recoveryBase` for every merge method. A multi-commit
+  // rebase merge shows why HEAD^1 is not a substitute: its first parent is already versioned.
+  const versioned = commitAll(fixture, "chore(release): version packages");
+  const cliChangelog = join(fixture, "packages/cli/CHANGELOG.md");
+  writeFileSync(cliChangelog, `${readFileSync(cliChangelog, "utf8")}\nRelease note fix.\n`);
+  commitAll(fixture, "docs: release note fix");
+  assertValidationPasses(fixture, /matches the .* release plan/, ["--base", recoveryBase]);
+  assertValidationRejected(
+    fixture,
+    /has no unreleased changesets, so no release state is expected/,
+    ["--base", "HEAD^1"],
+  );
+  assertValidationRejected(
+    fixture,
+    /has no unreleased changesets, so no release state is expected/,
+    ["--base", versioned],
+  );
+  // Merge-commit topology: first parent is the pre-push tip, so both refs agree.
+  git(fixture, ["checkout", "--quiet", "-b", "main-before", recoveryBase]);
+  git(fixture, ["merge", "--quiet", "--no-ff", "--no-edit", "main"]);
+  assertValidationPasses(fixture, /matches the .* release plan/, ["--base", "HEAD^1"]);
+  assertValidationPasses(fixture, /matches the .* release plan/, ["--base", recoveryBase]);
+  // Squash merge: a single commit whose parent is the pre-push tip, identical to `versioned`.
+  assertValidationRejected(fixture, /git archive .* failed/, ["--base", "no-such-ref"]);
+
   addChangeset(fixture, "later-patch", [["@lionden/leo-compiler", "patch"]], "Later patch.");
+  assertValidationRejected(fixture, /Unreleased changesets remain: later-patch/);
   assertVersioned(fixture, "0.3.1");
   addChangeset(fixture, "later-minor", [["@lionden/leo-compiler", "minor"]], "Later feature.");
   assertVersioned(fixture, "0.4.0");
@@ -246,5 +357,5 @@ try {
 }
 
 console.log(
-  "Versioning tests passed: --check mode, target policy, guarded 0.3 recovery, changelogs, lockfiles, and later fixed releases.",
+  "Versioning tests passed: --check mode, target policy, release-state validation, guarded 0.3 recovery, changelogs, lockfiles, and later fixed releases.",
 );

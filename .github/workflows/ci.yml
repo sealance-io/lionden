@@ -117,6 +117,15 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
       - run: npm run test:version-packages
       - run: npm run check:release-plan # real pending changesets must assemble into one converged public version
+      - name: Validate the generated release state (Version Packages PR only)
+        # Aligned public versions, no changesets left, and exactly the version the base branch's
+        # pending changesets plan — hand-substituted versions cannot pass.
+        if: github.event_name == 'pull_request' && github.head_ref == 'changeset-release/main'
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          npm run validate:release-state -- --base "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
       - run: npm run check:ci -- --reporter=github --diagnostic-level=error # biome ci; inline annotations only for blocking diagnostics
 
   build:

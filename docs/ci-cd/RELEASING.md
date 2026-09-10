@@ -47,8 +47,13 @@ updates) a **"Version Packages"** PR that:
 - writes per-package `CHANGELOG.md` entries (via `@changesets/changelog-github`),
 - deletes the consumed changeset files.
 
-Review this PR like any other — it is the human checkpoint for what's about to ship. Do not merge
-it unless all 11 public manifests have the same version and the lockfile contains that version.
+Review this PR like any other — it is the human checkpoint for what's about to ship. CI enforces
+the mechanical part on this PR (`npm run validate:release-state -- --base origin/main`): all 11
+public manifests share one version, no unreleased changesets remain, and that version is exactly
+what `main`'s pending changesets plan, so hand-substituted versions cannot pass. The lockfile
+guard covers manifest/lockfile agreement. The same validation runs again in `release-publish.yml`
+immediately before `changeset publish`, against `main`'s tip before the merge push
+(`github.event.before`), which holds under merge-commit, squash, and multi-commit rebase merges.
 
 Recovery from the partial 0.2 publication starts from one exact, hard-coded historical version
 map. `scripts/version-packages.mjs` validates that map and keeps the fixed group active, so the
