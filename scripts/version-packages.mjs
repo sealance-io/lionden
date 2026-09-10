@@ -8,7 +8,7 @@ import { readPreState } from "@changesets/pre";
 import { readChangesets } from "@changesets/read";
 import { getPackages } from "@manypkg/get-packages";
 import {
-  assertCoordinatedBootstrapState,
+  assertCoordinatedRecoveryState,
   assertFixedReleaseGroup,
   describeVersions,
   loadPublicPackages,
@@ -38,7 +38,7 @@ function runNpm(args) {
 const before = loadPublicPackages(rootDir);
 assertFixedReleaseGroup(writtenConfig, before);
 
-const needsBootstrap = new Set(before.map(({ manifest }) => manifest.version)).size !== 1;
+const needsRecovery = new Set(before.map(({ manifest }) => manifest.version)).size !== 1;
 const packages = await getPackages(rootDir);
 const configResult = await readConfig(rootDir, packages);
 if (configResult.errors) {
@@ -48,9 +48,9 @@ for (const warning of configResult.warnings) console.warn(`Changesets config: ${
 
 const releaseConfig = configResult.config;
 
-if (needsBootstrap) {
-  assertCoordinatedBootstrapState(before);
-  console.log(`Bootstrapping the fixed release group from: ${describeVersions(before)}`);
+if (needsRecovery) {
+  assertCoordinatedRecoveryState(before);
+  console.log(`Recovering the fixed release group from: ${describeVersions(before)}`);
   // Keep the fixed group active so pending changesets bump every public package
   // from the group's highest current version, including the already-published 0.2.0s.
 }
@@ -72,8 +72,8 @@ if (plannedVersionSet.size !== 1) {
   );
 }
 const [plannedVersion] = plannedVersionSet;
-if (needsBootstrap && plannedVersion !== "0.3.0") {
-  throw new Error(`The coordinated bootstrap must converge at 0.3.0, not ${plannedVersion}`);
+if (needsRecovery && plannedVersion !== "0.3.0") {
+  throw new Error(`The coordinated recovery must converge at 0.3.0, not ${plannedVersion}`);
 }
 
 await applyReleasePlan(

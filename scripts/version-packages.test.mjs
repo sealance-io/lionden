@@ -13,11 +13,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { COORDINATED_0_2_BOOTSTRAP_VERSIONS, loadPublicPackages } from "./release-policy.mjs";
+import { COORDINATED_RECOVERY_START_VERSIONS, loadPublicPackages } from "./release-policy.mjs";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const config = JSON.parse(readFileSync(join(rootDir, ".changeset/config.json"), "utf8"));
-const historicalVersions = COORDINATED_0_2_BOOTSTRAP_VERSIONS;
+const historicalVersions = COORDINATED_RECOVERY_START_VERSIONS;
 const recoveryReleases = Object.entries(historicalVersions)
   .filter(([, version]) => version !== "0.2.0")
   .map(([name]) => [name, "minor"]);
@@ -172,7 +172,10 @@ try {
   const cliPath = join(fixture, "packages/cli/package.json");
   const cli = JSON.parse(readFileSync(cliPath, "utf8"));
   writeJson(cliPath, { ...cli, version: "0.1.3" });
-  assertRejectedWithoutWrites(fixture, /Refusing to bootstrap an unexpected public-package skew/);
+  assertRejectedWithoutWrites(
+    fixture,
+    /Refusing to recover from an unexpected public-package skew/,
+  );
   writeJson(cliPath, cli);
 
   addChangeset(

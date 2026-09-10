@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
-export const COORDINATED_0_2_BOOTSTRAP_VERSIONS = Object.freeze({
+export const COORDINATED_RECOVERY_START_VERSIONS = Object.freeze({
   "@lionden/cli": "0.1.2",
   "@lionden/config": "0.2.0",
   "@lionden/core": "0.2.0",
@@ -107,18 +107,18 @@ export function describeVersions(packages) {
   return packages.map(({ manifest }) => `${manifest.name}@${manifest.version}`).join(", ");
 }
 
-export function assertCoordinatedBootstrapState(packages) {
+export function assertCoordinatedRecoveryState(packages) {
   const actual = Object.fromEntries(
     packages
       .map(({ manifest }) => [manifest.name, manifest.version])
       .sort(([a], [b]) => a.localeCompare(b)),
   );
   const expected = Object.fromEntries(
-    Object.entries(COORDINATED_0_2_BOOTSTRAP_VERSIONS).sort(([a], [b]) => a.localeCompare(b)),
+    Object.entries(COORDINATED_RECOVERY_START_VERSIONS).sort(([a], [b]) => a.localeCompare(b)),
   );
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(
-      `Refusing to bootstrap an unexpected public-package skew\nexpected: ${JSON.stringify(expected)}\nactual: ${JSON.stringify(actual)}`,
+      `Refusing to recover from an unexpected public-package skew\nexpected: ${JSON.stringify(expected)}\nactual: ${JSON.stringify(actual)}`,
     );
   }
 }
