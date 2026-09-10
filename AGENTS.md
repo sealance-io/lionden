@@ -92,6 +92,8 @@ When sources disagree, use this order:
 - Never edit a public `package.json` `version` by hand. CI compares every PR's public manifest
   versions against its merge base and fails on any change; only the Version Packages PR from this
   repository (`changeset-release/main` into `main`) is exempt, and it is validated instead.
+- Never run `changeset pre`. A present `.changeset/pre.json`, tracked or not, is rejected by
+  every release planner entry point; prerelease mode requires an explicit policy change.
 - Changesets may only name the 11 public packages. `npm run check:release-plan` assembles the
   real pending changesets without writing files and CI runs it on every PR; run it locally after
   adding or editing a changeset, before committing.

@@ -286,6 +286,22 @@ try {
   assertValidationRejected(fixture, /Public packages are not aligned/);
   assertValidationRejected(fixture, /Unknown arguments: --base/, ["--base"]);
   assertValidationRejected(fixture, /Unknown arguments: --strict/, ["--strict"]);
+
+  // Prerelease mode is rejected with pending changesets, whatever pre.json contains.
+  const prePath = join(fixture, ".changeset/pre.json");
+  const preRejected = /Prerelease mode is not supported by the release policy/;
+  for (const contents of [
+    '{"mode":"exit","tag":"next","initialVersions":{},"changesets":[]}',
+    "{",
+    "null",
+  ]) {
+    writeFileSync(prePath, contents);
+    assertRejectedInBothModes(fixture, preRejected);
+    assertValidationRejected(fixture, preRejected);
+  }
+  // A base that carries pre state cannot supply an expected release plan.
+  const preBase = commitAll(fixture, "pending changesets with pre state");
+  rmSync(prePath);
   const recoveryBase = commitAll(fixture, "pending recovery changesets");
   assertVersioned(fixture, "0.3.0");
   const compilerChangelog = readFileSync(
@@ -301,6 +317,13 @@ try {
     /Release plan check passed: no unreleased changesets; public packages aligned at 0\.3\.0\./,
   );
   assertRejectedWithoutWrites(fixture, /No unreleased changesets found/);
+
+  // Prerelease mode is rejected when aligned with nothing pending, before any write.
+  writeFileSync(prePath, '{"mode":"pre","tag":"next","initialVersions":{},"changesets":[]}');
+  assertRejectedInBothModes(fixture, preRejected);
+  assertValidationRejected(fixture, preRejected);
+  rmSync(prePath);
+  assertValidationRejected(fixture, preRejected, ["--base", preBase]);
 
   // Generated release state: aligned, nothing pending, and exactly what the base planned.
   assertValidationPasses(
@@ -363,5 +386,5 @@ try {
 }
 
 console.log(
-  "Versioning tests passed: --check mode, target policy, release-state validation, guarded 0.3 recovery, changelogs, lockfiles, and later fixed releases.",
+  "Versioning tests passed: --check mode, target policy, prerelease rejection, release-state validation, guarded 0.3 recovery, changelogs, lockfiles, and later fixed releases.",
 );

@@ -75,6 +75,12 @@ exception is decided from the event, not the branch name alone: the head must be
 a regular PR. `release-publish.yml` applies the same identity checks before publishing and
 additionally requires the merged PR's merge commit to be the pushed commit.
 
+Prerelease mode is not part of the release policy. Every planner entry point (versioning,
+`--check`, release-state validation, and exported base plans) rejects a present
+`.changeset/pre.json`, tracked or not, regardless of its contents, including `mode: "exit"`. Adopting prerelease
+mode requires an explicit policy change to `scripts/release-plan.mjs`, not a `changeset pre`
+invocation.
+
 `npm run check:release-plan` (`scripts/version-packages.mjs --check`) runs the same planning and
 policy validation against the repository's real pending changesets and stops before writing any
 file. CI runs it on every PR, so a changeset that would not converge all 11 public packages, or
