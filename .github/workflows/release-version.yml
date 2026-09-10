@@ -36,8 +36,8 @@ jobs:
           permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
+          persist-credentials: false # changesets/action pushes through the GitHub API
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
@@ -48,8 +48,7 @@ jobs:
       - name: Create or update the Version Packages PR
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
-          version: npm run version-packages
-          title: "chore(release): version packages"
-          commit: "chore(release): version packages"
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          version-script: npm run version-packages
+          pr-title: "chore(release): version packages"
+          commit-message: "chore(release): version packages"
