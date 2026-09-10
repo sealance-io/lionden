@@ -94,8 +94,8 @@ function createFixture() {
   return dir;
 }
 
-function runVersioning(dir) {
-  return spawnSync(process.execPath, [join(rootDir, "scripts/version-packages.mjs")], {
+function runVersioning(dir, args = []) {
+  return spawnSync(process.execPath, [join(rootDir, "scripts/version-packages.mjs"), ...args], {
     cwd: dir,
     encoding: "utf8",
     timeout: 60_000,
@@ -119,12 +119,25 @@ function snapshot(dir) {
   );
 }
 
-function assertRejectedWithoutWrites(dir, message) {
+function assertRejectedWithoutWrites(dir, message, args = []) {
   const before = snapshot(dir);
-  const result = runVersioning(dir);
+  const result = runVersioning(dir, args);
   assert.equal(result.status, 1, result.stdout + result.stderr);
   assert.match(result.stderr, message);
   assert.deepEqual(snapshot(dir), before);
+}
+
+function assertCheckPassesWithoutWrites(dir, message) {
+  const before = snapshot(dir);
+  const result = runVersioning(dir, ["--check"]);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, message);
+  assert.deepEqual(snapshot(dir), before);
+}
+
+function assertRejectedInBothModes(dir, message) {
+  assertRejectedWithoutWrites(dir, message, ["--check"]);
+  assertRejectedWithoutWrites(dir, message);
 }
 
 function assertVersioned(dir, version) {
@@ -169,14 +182,27 @@ try {
     "Allow version metadata.",
   );
 
+  assertRejectedWithoutWrites(fixture, /Unknown arguments: --dry-run/, ["--dry-run"]);
+  assertRejectedWithoutWrites(fixture, /Unknown arguments: --dry-run/, ["--check", "--dry-run"]);
+
   const cliPath = join(fixture, "packages/cli/package.json");
   const cli = JSON.parse(readFileSync(cliPath, "utf8"));
   writeJson(cliPath, { ...cli, version: "0.1.3" });
-  assertRejectedWithoutWrites(
-    fixture,
-    /Refusing to recover from an unexpected public-package skew/,
-  );
+  assertRejectedInBothModes(fixture, /Refusing to recover from an unexpected public-package skew/);
   writeJson(cliPath, cli);
+
+  // Changesets naming a private or example workspace still assemble into a valid plan, so they
+  // are rejected explicitly in both modes. Unknown names already fail assembly; the guard reports
+  // them with the same message before assembly runs.
+  const strayPath = join(fixture, ".changeset/stray.md");
+  addChangeset(fixture, "stray", [["@lionden/test-internals", "patch"]], "Private target.");
+  assertRejectedInBothModes(
+    fixture,
+    /stray: @lionden\/test-internals is not a public fixed-group package/,
+  );
+  addChangeset(fixture, "stray", [["not-a-workspace", "patch"]], "Unknown target.");
+  assertRejectedInBothModes(fixture, /stray: not-a-workspace is not a public fixed-group package/);
+  rmSync(strayPath);
 
   addChangeset(
     fixture,
@@ -184,7 +210,7 @@ try {
     [["@lionden/leo-compiler", "major"]],
     "Breaking change.",
   );
-  assertRejectedWithoutWrites(fixture, /must converge at 0\.3\.0, not 1\.0\.0/);
+  assertRejectedInBothModes(fixture, /must converge at 0\.3\.0, not 1\.0\.0/);
   addChangeset(
     fixture,
     "compiler-feature",
@@ -192,6 +218,10 @@ try {
     "Allow version metadata.",
   );
 
+  assertCheckPassesWithoutWrites(
+    fixture,
+    /Release plan check passed: 3 changeset\(s\) converge 11 public packages at 0\.3\.0\./,
+  );
   assertVersioned(fixture, "0.3.0");
   const compilerChangelog = readFileSync(
     join(fixture, "packages/leo-compiler/CHANGELOG.md"),
@@ -199,6 +229,12 @@ try {
   );
   assert.ok(compilerChangelog.includes("Preserve metadata."));
   assert.ok(compilerChangelog.includes("Allow version metadata."));
+  // Aligned with nothing pending: ordinary PRs and the Version Packages PR must pass the check,
+  // while a real versioning run still has nothing to do.
+  assertCheckPassesWithoutWrites(
+    fixture,
+    /Release plan check passed: no unreleased changesets; public packages aligned at 0\.3\.0\./,
+  );
   assertRejectedWithoutWrites(fixture, /No unreleased changesets found/);
 
   addChangeset(fixture, "later-patch", [["@lionden/leo-compiler", "patch"]], "Later patch.");
@@ -210,5 +246,5 @@ try {
 }
 
 console.log(
-  "Versioning tests passed: guarded 0.3 recovery, changelogs, lockfiles, and later fixed releases.",
+  "Versioning tests passed: --check mode, target policy, guarded 0.3 recovery, changelogs, lockfiles, and later fixed releases.",
 );

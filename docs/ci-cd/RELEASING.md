@@ -62,6 +62,14 @@ every later run applies the fixed group normally; any other skew makes versionin
 lockfile regeneration in disposable local workspaces after dependency installation. CI runs it
 alongside the existing zero-dependency release-policy checks.
 
+`npm run check:release-plan` (`scripts/version-packages.mjs --check`) runs the same planning and
+policy validation against the repository's real pending changesets and stops before writing any
+file. CI runs it on every PR, so a changeset that would not converge all 11 public packages, or
+that targets a private or example workspace, fails before it reaches `main`. With no pending
+changesets and aligned manifests (ordinary PRs, the Version Packages PR) the check passes. It does
+not reject major bumps: from aligned `0.x` packages a `major` changeset legitimately plans `1.0.0`
+for the whole group, and that remains a review decision.
+
 ## 3. Publishing (automatic, gated)
 
 Merging the "Version Packages" PR triggers **`release-publish.yml`**:

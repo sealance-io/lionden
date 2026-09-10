@@ -103,6 +103,30 @@ export function assertFixedReleaseGroup(config, publicPackages) {
   return actual;
 }
 
+/**
+ * Every changeset release must target a public fixed-group package. Changesets naming a private
+ * or example workspace still assemble into a valid plan, so they must be rejected explicitly.
+ */
+export function assertChangesetTargets(changesets, publicNames) {
+  const allowed = new Set(publicNames);
+  const violations = [];
+  for (const changeset of changesets) {
+    if (changeset.releases.length === 0) {
+      violations.push(`${changeset.id}: no packages listed`);
+    }
+    for (const release of changeset.releases) {
+      if (!allowed.has(release.name)) {
+        violations.push(`${changeset.id}: ${release.name} is not a public fixed-group package`);
+      }
+    }
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `Changesets target packages outside the public group\n${violations.join("\n")}`,
+    );
+  }
+}
+
 export function describeVersions(packages) {
   return packages.map(({ manifest }) => `${manifest.name}@${manifest.version}`).join(", ");
 }

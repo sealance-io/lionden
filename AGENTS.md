@@ -87,6 +87,9 @@ When sources disagree, use this order:
 - Recovery from the partial 0.2 publication is valid only for the exact version map encoded in
   `scripts/release-policy.mjs`. Keep the fixed group active and require convergence at 0.3.0;
   never rewrite the committed fixed group. Any other future version skew is an error.
+- Changesets may only name the 11 public packages. `npm run check:release-plan` assembles the
+  real pending changesets without writing files and CI runs it on every PR; run it locally after
+  adding or editing a changeset, before committing.
 - Do not rerun or manually overwrite npm versions to repair release metadata. Use the manual
   `release-publish.yml` path, which never executes `changeset publish`: it reconciles tags to npm
   `gitHead`, verifies the remote refs, and creates or verifies every published per-package GitHub
