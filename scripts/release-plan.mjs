@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { assembleReleasePlan } from "@changesets/assemble-release-plan";
 import { readConfig } from "@changesets/config";
@@ -20,6 +20,14 @@ export const RECOVERY_TARGET_VERSION = "0.3.0";
  * config against the public fixed group. Performs no writes.
  */
 export async function loadReleaseContext(rootDir) {
+  // Prerelease mode is rejected outright, whatever the file contains: mode "exit" is still pre
+  // state, malformed JSON would make the Changesets reader throw, and a null body is normalized
+  // by the reader to "no pre state". Enabling it is an explicit policy change, not a file.
+  if (existsSync(join(rootDir, ".changeset", "pre.json"))) {
+    throw new Error(
+      "Prerelease mode is not supported by the release policy: remove .changeset/pre.json",
+    );
+  }
   const writtenConfig = JSON.parse(
     readFileSync(join(rootDir, ".changeset", "config.json"), "utf8"),
   );
