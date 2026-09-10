@@ -49,6 +49,7 @@
     "changeset": "changeset",
     "version-packages": "node scripts/version-packages.mjs",
     "check:release-plan": "node scripts/version-packages.mjs --check",
+    "validate:release-state": "node scripts/validate-release-state.mjs",
     "reconcile-release-tags": "node scripts/reconcile-release-tags.mjs",
     "release": "changeset publish"
   },

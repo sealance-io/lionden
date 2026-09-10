@@ -97,6 +97,16 @@ jobs:
       - run: npm run test:release-scripts
       - if: needs.check-release.outputs.should_publish_npm == 'true'
         run: npm ci --ignore-scripts --no-audit --no-fund --allow-git=none
+      - name: Validate the release state about to be published
+        # Publishing path only: the metadata-only dispatch must keep working while main carries
+        # historical skew or pending changesets. The base is main's tip before this push
+        # (github.event.before), which still holds the pending changesets under merge-commit,
+        # squash, and multi-commit rebase merges alike; HEAD^1 would already be versioned after
+        # a multi-commit rebase.
+        if: needs.check-release.outputs.should_publish_npm == 'true'
+        run: npm run validate:release-state -- --base "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.before }}
       - if: needs.check-release.outputs.should_publish_npm == 'true'
         run: npm run build
       - name: Publish (all bumped packages, idempotent)

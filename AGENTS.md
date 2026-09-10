@@ -82,8 +82,10 @@ When sources disagree, use this order:
   `.changeset/config.json` fixed group or introduce independent public versions without an
   explicit product decision. `@lionden/test-internals` stays private and outside the group.
 - `create-lionden` derives every generated `@lionden/*` range from its own package version; do
-  not replace that with literal per-package ranges. A Version Packages PR is ready only when all
-  11 public manifests share one version and `package-lock.json` matches them.
+  not replace that with literal per-package ranges. A Version Packages PR is ready only when
+  `npm run validate:release-state -- --base origin/main` and the lockfile guard pass: one version
+  across all 11 public manifests, no unreleased changesets, and exactly the version `main`'s
+  pending changesets plan.
 - Recovery from the partial 0.2 publication is valid only for the exact version map encoded in
   `scripts/release-policy.mjs`. Keep the fixed group active and require convergence at 0.3.0;
   never rewrite the committed fixed group. Any other future version skew is an error.
