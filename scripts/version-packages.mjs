@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { applyReleasePlan } from "@changesets/apply-release-plan";
 import { assembleReleasePlan } from "@changesets/assemble-release-plan";
-import { readConfig, validateConfig } from "@changesets/config";
+import { readConfig } from "@changesets/config";
 import { readPreState } from "@changesets/pre";
 import { readChangesets } from "@changesets/read";
 import { getPackages } from "@manypkg/get-packages";
@@ -46,19 +46,13 @@ if (configResult.errors) {
 }
 for (const warning of configResult.warnings) console.warn(`Changesets config: ${warning}`);
 
-let releaseConfig = configResult.config;
+const releaseConfig = configResult.config;
 
 if (needsBootstrap) {
   assertCoordinatedBootstrapState(before);
   console.log(`Bootstrapping the fixed release group from: ${describeVersions(before)}`);
-  const bootstrapResult = validateConfig({ ...writtenConfig, fixed: [] }, packages);
-  if (bootstrapResult.errors) {
-    throw new Error(`Invalid bootstrap Changesets config:\n${bootstrapResult.errors.join("\n")}`);
-  }
-  for (const warning of bootstrapResult.warnings) {
-    console.warn(`Bootstrap Changesets config: ${warning}`);
-  }
-  releaseConfig = bootstrapResult.config;
+  // Keep the fixed group active so pending changesets bump every public package
+  // from the group's highest current version, including the already-published 0.2.0s.
 }
 
 const [changesets, preState] = await Promise.all([readChangesets(rootDir), readPreState(rootDir)]);
@@ -78,8 +72,8 @@ if (plannedVersionSet.size !== 1) {
   );
 }
 const [plannedVersion] = plannedVersionSet;
-if (needsBootstrap && plannedVersion !== "0.2.0") {
-  throw new Error(`The coordinated bootstrap must converge at 0.2.0, not ${plannedVersion}`);
+if (needsBootstrap && plannedVersion !== "0.3.0") {
+  throw new Error(`The coordinated bootstrap must converge at 0.3.0, not ${plannedVersion}`);
 }
 
 await applyReleasePlan(

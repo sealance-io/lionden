@@ -50,11 +50,17 @@ updates) a **"Version Packages"** PR that:
 Review this PR like any other — it is the human checkpoint for what's about to ship. Do not merge
 it unless all 11 public manifests have the same version and the lockfile contains that version.
 
-The coordinated 0.2 release starts from one exact, hard-coded historical version map.
-`scripts/version-packages.mjs` validates that map, creates an in-memory Changesets configuration
-without the fixed constraint, and rejects the release plan before writing files unless all 11
-packages converge at 0.2.0. The committed `.changeset/config.json` is never modified. Once
-aligned, every later run applies the fixed group normally; any other skew makes versioning fail.
+Recovery from the partial 0.2 publication starts from one exact, hard-coded historical version
+map. `scripts/version-packages.mjs` validates that map and keeps the fixed group active, so the
+pending changesets bump every public package from the group's highest current version (0.2.0).
+The recovery must converge at 0.3.0 before any files are written. This includes the pending
+dynamic-record compiler changes and gives every package a new version without overwriting any
+published 0.2.0 package. The committed `.changeset/config.json` is never modified. Once aligned,
+every later run applies the fixed group normally; any other skew makes versioning fail.
+
+`npm run test:version-packages` exercises release-plan assembly, application, changelogs, and
+lockfile regeneration in disposable local workspaces after dependency installation. CI runs it
+alongside the existing zero-dependency release-policy checks.
 
 ## 3. Publishing (automatic, gated)
 
@@ -101,8 +107,9 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 
 ## Consuming lionden
 
-Consumers must depend on one coordinated registry line (e.g. `"@lionden/cli": "^0.2.0"`), never
-on `file:` paths into a lionden checkout — `file:` deps bypass the published artifacts and break
+After the recovery is published, consumers should use the coordinated `^0.3.0` registry line.
+Consumers must depend on registry versions, never on `file:` paths into a lionden checkout —
+`file:` deps bypass the published artifacts and break
 as soon as the checkout moves. `compliant-transfer-aleo` migrated to registry ranges with the
 0.1.0 release; migrating `amm-aleo` is a deferred follow-up.
 
