@@ -89,6 +89,9 @@ When sources disagree, use this order:
 - Recovery from the partial 0.2 publication is valid only for the exact version map encoded in
   `scripts/release-policy.mjs`. Keep the fixed group active and require convergence at 0.3.0;
   never rewrite the committed fixed group. Any other future version skew is an error.
+- Never edit a public `package.json` `version` by hand. CI compares every PR's public manifest
+  versions against its merge base and fails on any change; only the Version Packages PR from this
+  repository (`changeset-release/main` into `main`) is exempt, and it is validated instead.
 - Changesets may only name the 11 public packages. `npm run check:release-plan` assembles the
   real pending changesets without writing files and CI runs it on every PR; run it locally after
   adding or editing a changeset, before committing.

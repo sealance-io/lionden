@@ -67,6 +67,14 @@ every later run applies the fixed group normally; any other skew makes versionin
 lockfile regeneration in disposable local workspaces after dependency installation. CI runs it
 alongside the existing zero-dependency release-policy checks.
 
+Public package versions change only through this PR. On every other PR, CI runs
+`npm run check:version-edits -- --base <merge-base> --head <head>` (zero-dependency, before
+`npm ci`) and fails if any public manifest version differs from the PR's merge base. The
+exception is decided from the event, not the branch name alone: the head must be
+`changeset-release/main` in this repository, targeting `main`. A fork reusing the branch name is
+a regular PR. `release-publish.yml` applies the same identity checks before publishing and
+additionally requires the merged PR's merge commit to be the pushed commit.
+
 `npm run check:release-plan` (`scripts/version-packages.mjs --check`) runs the same planning and
 policy validation against the repository's real pending changesets and stops before writing any
 file. CI runs it on every PR, so a changeset that would not converge all 11 public packages, or
