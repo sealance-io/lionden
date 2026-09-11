@@ -34,7 +34,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.SEALANCE_PUBLIC_SIGNER_APP_ID }}
+          client-id: ${{ vars.SEALANCE_PUBLIC_SIGNER_APP_ID }}
           private-key: ${{ secrets.SEALANCE_PUBLIC_SIGNER_APP_PRIVATE_KEY }}
           repositories: lionden
           permission-contents: write
