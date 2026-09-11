@@ -136,7 +136,10 @@ Reuse the existing Sealance org App (the same one `compliant-transfer-aleo` uses
 
 1. Install the App on the `lionden` repository with **Contents: read & write** and
    **Pull requests: read & write** permissions.
-2. Set repository **variable** `SEALANCE_PUBLIC_SIGNER_APP_ID`.
+2. Set repository **variable** `SEALANCE_PUBLIC_SIGNER_APP_ID` to the App's client ID
+   (recommended for new configuration) or its existing numeric App ID. The variable keeps its
+   historical name; both workflows pass it through the action's `client-id` input. The pinned
+   action and GitHub accept either identifier, so existing settings need no migration.
 3. Set repository **secret** `SEALANCE_PUBLIC_SIGNER_APP_PRIVATE_KEY` (the App's PEM private key).
 
 Both `release-version.yml` and `release-publish.yml` mint a short-lived installation token
