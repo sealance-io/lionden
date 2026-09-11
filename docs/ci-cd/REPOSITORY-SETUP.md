@@ -116,7 +116,15 @@ Create two environments (Settings → Environments):
   so every npm publish is a deliberate, approved action. Restrict deployment branches to
   `main` only.
 - **`release-automation`** — used by `release-version.yml`. No reviewers needed; restrict
-  deployment branches to `main` only.
+  deployment branches to exactly `main` (selected branches, one entry, no wildcard). The
+  workflow's `version` job also carries a job-level `if: github.ref == 'refs/heads/main'`
+  guard, evaluated before the environment gate and before any App token is minted, so the two
+  layers are independent. Verify them separately: the environment's exact-`main` restriction is
+  confirmed in the environment's settings page, since a skipped job never reaches it. The
+  workflow guard is confirmed by dispatching `release-version.yml` from a non-`main` branch
+  that contains this guard (an older branch runs its older workflow) and checking that the
+  `version` job is skipped, then by a `main` run with pending changesets reaching the
+  versioning step.
 
 ## GitHub App (release automation)
 
