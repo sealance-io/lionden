@@ -51,8 +51,7 @@
     "check:release-plan": "node scripts/version-packages.mjs --check",
     "validate:release-state": "node scripts/validate-release-state.mjs",
     "check:version-edits": "node scripts/check-version-edits.mjs",
-    "reconcile-release-tags": "node scripts/reconcile-release-tags.mjs",
-    "release": "changeset publish"
+    "reconcile-release-tags": "node scripts/reconcile-release-tags.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",

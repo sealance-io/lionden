@@ -116,6 +116,11 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 - **Provenance** is active (the repo is public): every release since 0.1.1 ships SLSA
   provenance attestations, verifiable with `npm audit signatures`.
 - **Approval required.** Every publish waits on the `npm-publish` environment reviewers.
+- **The workflow is the only sanctioned publisher.** There is no root `release` script;
+  `release-publish.yml` runs `npx changeset publish` itself. Every package's npm publishing
+  access is set to require 2FA and disallow tokens, so a stored or leaked token cannot publish.
+  A maintainer can still publish interactively with 2FA; do not. See
+  [REPOSITORY-SETUP.md → Publishing access](./REPOSITORY-SETUP.md#publishing-access-per-package-11).
 - **Manual dispatches repair metadata without publishing.** A manual `release-publish.yml`
   dispatch from `main` skips dependency installation, build, and `changeset publish` entirely.
   It recovers source commits from npm `gitHead`, pushes missing tags, verifies them, and creates

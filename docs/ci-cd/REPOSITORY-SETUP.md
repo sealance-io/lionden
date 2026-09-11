@@ -140,6 +140,25 @@ Packages: `@lionden/config`, `@lionden/core`, `@lionden/leo-compiler`, `@lionden
 > `@lionden/test-internals` is `private: true` and is never published — it has no Trusted
 > Publisher and is excluded by `.changeset/config.json`.
 
+### Publishing access per package (×11)
+
+For each of the same 11 packages, under **Settings → Publishing access** on npmjs.com, select
+**Require two-factor authentication and disallow tokens**. OIDC trusted publishing keeps working
+under this setting, and it removes the traditional path where anyone holding an npm token could
+publish from a laptop, bypassing every gate in this repository.
+
+Verify, for each package, that the Trusted Publisher still points at exactly:
+
+- repository `sealance-io/lionden`
+- workflow filename `release-publish.yml`
+- environment `npm-publish`
+
+What this does **not** do: it does not make CI the only publisher. A maintainer with publish
+rights can still run `npm publish` interactively after completing 2FA. That residual access is a
+people-and-permissions matter (keep the npm org's maintainer list minimal), not something this
+repository can enforce. There is no root `npm run release` shortcut; `release-publish.yml` calls
+`npx changeset publish` directly, and nothing else in the repo publishes.
+
 ### Provenance
 
 `release-publish.yml` sets `NPM_CONFIG_PROVENANCE` from `repository.visibility`, so provenance
