@@ -19,6 +19,11 @@ jobs:
   # token so merging that PR can trigger release-publish.yml (the default GITHUB_TOKEN can't
   # trigger downstream workflows). No-op when there are no changesets.
   version:
+    # Explicit main-only guard, evaluated before the environment gate and before any App token
+    # is minted. The release-automation environment's deployment-branch policy (main only) is
+    # the second layer; this keeps a workflow_dispatch from another ref from opening a Version
+    # Packages PR even if that policy is ever loosened.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: release-automation
@@ -29,7 +34,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.SEALANCE_PUBLIC_SIGNER_APP_ID }}
+          client-id: ${{ vars.SEALANCE_PUBLIC_SIGNER_APP_ID }}
           private-key: ${{ secrets.SEALANCE_PUBLIC_SIGNER_APP_PRIVATE_KEY }}
           repositories: lionden
           permission-contents: write
@@ -45,6 +50,7 @@ jobs:
       - run: npm run lint:lockfile
       - run: npm run test:release-scripts
       - run: npm ci --ignore-scripts --no-audit --no-fund --allow-git=none
+      - run: npm run test:version-packages
       - name: Create or update the Version Packages PR
         uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:

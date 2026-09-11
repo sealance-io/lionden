@@ -51,6 +51,63 @@ Create a ruleset (Settings → Rules → Rulesets) targeting `main`:
 The check names above are the rollup jobs' `name:` values. If you rename a rollup job, update
 the ruleset to match.
 
+## Branch ruleset on `changeset-release/*`
+
+The Version Packages PR is the only PR allowed to change public package versions, and CI
+identifies it by head repository, branch, and base (see `docs/ci-cd/RELEASING.md`). That check
+establishes *which* PR it is, not *who* wrote its contents. A second ruleset makes the release
+App the only actor that can write the branch, so a human cannot push edits into an open Version
+Packages PR that would then ship on merge.
+
+Create a ruleset targeting the branch pattern `changeset-release/*`:
+
+- **Enforcement status: Active.** The creation form defaults to *Disabled*; a disabled ruleset
+  is saved but enforces nothing.
+- **Restrict creations** and **restrict updates**. Deletions are deliberately left open:
+  deleting cannot inject content (creation stays restricted); the worst case is a closed PR,
+  after which the action recreates the branch and opens a replacement PR on its next run while
+  changesets remain (interrupting review and requiring fresh approvals); and it lets GitHub's
+  automatic head-branch deletion and manual cleanup work without the App.
+- **Bypass list:** the release GitHub App (the one behind `SEALANCE_PUBLIC_SIGNER_APP_ID`),
+  mode **Always**. Add nothing else — not the repository admin role, not any team.
+- **Block force-pushes** and **require linear history** are not needed. The pinned
+  `changesets/action` updates the branch with a forced ref update on every run to refresh the
+  PR. Adding those rules to *this* ruleset would still work, because the App's **Always** bypass
+  covers every rule in the ruleset. Do not add them through a *separate* ruleset that also
+  matches `changeset-release/*` without the same bypass: rulesets layer, and the most
+  restrictive applicable rule wins.
+
+Merging the PR touches `main`, not this branch, so the `main` ruleset still governs the merge.
+
+What this costs: nobody can hand-fix an open Version Packages PR (fix the changeset on `main`
+instead and let the action regenerate it), and the PR's **Update branch** button is rejected (the
+action rebases the branch on every push to `main` anyway). The escape hatch for anything else is
+an admin setting the ruleset to *Disabled*, acting, and re-enabling it — an audited, deliberate
+step rather than a routine capability.
+
+**Verification.** The App path verifies itself: the next push to `main` with pending changesets
+runs `release-version.yml`, which must create or force-push `changeset-release/main`. If the
+bypass is wrong, that run fails visibly at the push with nothing lost; fix the ruleset and
+dispatch the workflow again. The ruleset's **Insights** view then shows the App as a bypass actor.
+
+Probing the human path is optional; the ruleset page showing *Active*, both restrictions, and only
+the App in the bypass list is the configuration evidence. To prove it end to end once, push a
+fast-forward built from the fetched release tip without touching `HEAD` or the index, so a
+rejection can only be the server's. Both pushes must fail with a ruleset violation (`GH013`);
+rulesets apply to admins unless the admin role is in the bypass list:
+
+```bash
+git fetch origin changeset-release/main
+tip=$(git rev-parse origin/changeset-release/main)
+probe=$(git commit-tree "$tip^{tree}" -p "$tip" -m probe)
+git push origin "$tip:refs/heads/changeset-release/probe"     # creation (name must not exist)
+git push origin "$probe:refs/heads/changeset-release/main"    # update
+```
+
+If a push unexpectedly succeeds, the ruleset is not enforcing: fix it, then delete
+`changeset-release/probe` (deletions are unrestricted). A successful update push adds one empty
+commit to the release PR that the action's next run replaces.
+
 ## Environments
 
 Create two environments (Settings → Environments):
@@ -59,7 +116,15 @@ Create two environments (Settings → Environments):
   so every npm publish is a deliberate, approved action. Restrict deployment branches to
   `main` only.
 - **`release-automation`** — used by `release-version.yml`. No reviewers needed; restrict
-  deployment branches to `main` only.
+  deployment branches to exactly `main` (selected branches, one entry, no wildcard). The
+  workflow's `version` job also carries a job-level `if: github.ref == 'refs/heads/main'`
+  guard, evaluated before the environment gate and before any App token is minted, so the two
+  layers are independent. Verify them separately: the environment's exact-`main` restriction is
+  confirmed in the environment's settings page, since a skipped job never reaches it. The
+  workflow guard is confirmed by dispatching `release-version.yml` from a non-`main` branch
+  that contains this guard (an older branch runs its older workflow) and checking that the
+  `version` job is skipped, then by a `main` run with pending changesets reaching the
+  versioning step.
 
 ## GitHub App (release automation)
 
@@ -71,7 +136,10 @@ Reuse the existing Sealance org App (the same one `compliant-transfer-aleo` uses
 
 1. Install the App on the `lionden` repository with **Contents: read & write** and
    **Pull requests: read & write** permissions.
-2. Set repository **variable** `SEALANCE_PUBLIC_SIGNER_APP_ID`.
+2. Set repository **variable** `SEALANCE_PUBLIC_SIGNER_APP_ID` to the App's client ID
+   (recommended for new configuration) or its existing numeric App ID. The variable keeps its
+   historical name; both workflows pass it through the action's `client-id` input. The pinned
+   action and GitHub accept either identifier, so existing settings need no migration.
 3. Set repository **secret** `SEALANCE_PUBLIC_SIGNER_APP_PRIVATE_KEY` (the App's PEM private key).
 
 Both `release-version.yml` and `release-publish.yml` mint a short-lived installation token
@@ -139,6 +207,25 @@ Packages: `@lionden/config`, `@lionden/core`, `@lionden/leo-compiler`, `@lionden
 
 > `@lionden/test-internals` is `private: true` and is never published — it has no Trusted
 > Publisher and is excluded by `.changeset/config.json`.
+
+### Publishing access per package (×11)
+
+For each of the same 11 packages, under **Settings → Publishing access** on npmjs.com, select
+**Require two-factor authentication and disallow tokens**. OIDC trusted publishing keeps working
+under this setting, and it removes the traditional path where anyone holding an npm token could
+publish from a laptop, bypassing every gate in this repository.
+
+Verify, for each package, that the Trusted Publisher still points at exactly:
+
+- repository `sealance-io/lionden`
+- workflow filename `release-publish.yml`
+- environment `npm-publish`
+
+What this does **not** do: it does not make CI the only publisher. A maintainer with publish
+rights can still run `npm publish` interactively after completing 2FA. That residual access is a
+people-and-permissions matter (keep the npm org's maintainer list minimal), not something this
+repository can enforce. There is no root `npm run release` shortcut; `release-publish.yml` calls
+`npx changeset publish` directly, and nothing else in the repo publishes.
 
 ### Provenance
 

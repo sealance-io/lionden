@@ -108,13 +108,56 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # merge-base computation for the version-edit guard needs real history
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Classify the pull request
+        # The only PR allowed to change public package versions is the Version Packages PR from
+        # this repository (a fork can reuse the branch name) targeting main.
+        id: pr
+        if: github.event_name == 'pull_request'
+        run: |
+          if [[ "$HEAD_REPO" == "$REPO" && "$HEAD_REF" == "changeset-release/main" && "$BASE_REF" == "main" ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Version Packages PR from this repository — release-state validation applies"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "Regular PR — public package versions must not change"
+          fi
+        env:
+          REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
       - run: npm run lint:lockfile # lockfile guard runs before any install (matches the build job)
       - run: npm run test:release-scripts # zero-dependency release-policy regressions
+      - name: Block hand-edited public package versions
+        # Compares the PR head against its merge base (not the base tip, so a release that landed
+        # on main after branching does not implicate the PR; not the merge ref, which would
+        # inherit main's versions). Zero-dependency, so it runs before npm ci.
+        if: github.event_name == 'pull_request' && steps.pr.outputs.release != 'true'
+        run: |
+          git fetch origin "$BASE_REF" "$HEAD_SHA"
+          MERGE_BASE=$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")
+          echo "merge base: $MERGE_BASE"
+          npm run check:version-edits -- --base "$MERGE_BASE" --head "$HEAD_SHA"
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       - run: npm ci --ignore-scripts --no-audit --no-fund --prefer-offline --allow-git=none
+      - run: npm run test:version-packages
+      - run: npm run check:release-plan # real pending changesets must assemble into one converged public version
+      - name: Validate the generated release state (Version Packages PR only)
+        # Aligned public versions, no changesets left, and exactly the version the base branch's
+        # pending changesets plan — hand-substituted versions cannot pass.
+        if: github.event_name == 'pull_request' && steps.pr.outputs.release == 'true'
+        run: |
+          git fetch origin "$BASE_REF"
+          npm run validate:release-state -- --base "origin/$BASE_REF"
+        env:
+          BASE_REF: ${{ github.base_ref }}
       - run: npm run check:ci -- --reporter=github --diagnostic-level=error # biome ci; inline annotations only for blocking diagnostics
 
   build:

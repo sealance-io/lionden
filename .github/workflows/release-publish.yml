@@ -51,13 +51,35 @@ jobs:
                 repo: context.repo.repo,
                 commit_sha: context.sha,
               });
-            const releasePr = prs.find(
-              (pr) => pr.head.ref === 'changeset-release/main' && pr.merged_at,
-            );
+            // The branch name alone is not proof: a fork can reuse it. Require a merged PR from
+            // this repository's changeset-release/main into this repository's main whose merge
+            // commit is exactly the pushed commit (merge_commit_sha is the merge commit, the
+            // squash commit, or the last rebased commit — the new tip in every case).
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const checks = (pr) => ({
+              merged: Boolean(pr.merged_at),
+              headRef: pr.head.ref === 'changeset-release/main',
+              headRepo: pr.head.repo?.full_name === repo,
+              baseRef: pr.base.ref === 'main',
+              baseRepo: pr.base.repo?.full_name === repo,
+              mergeCommit: pr.merge_commit_sha === context.sha,
+            });
+            let releasePr;
+            for (const pr of prs) {
+              const result = checks(pr);
+              const failed = Object.entries(result).filter(([, ok]) => !ok).map(([k]) => k);
+              if (failed.length === 0) {
+                releasePr = pr;
+                break;
+              }
+              if (result.headRef) {
+                core.warning(`PR #${pr.number} looks like a release PR but fails: ${failed.join(', ')}`);
+              }
+            }
             core.info(
               releasePr
-                ? `Release PR #${releasePr.number} merged — publishing`
-                : 'Not a release-PR merge — skipping release work',
+                ? `Release PR #${releasePr.number} merged as ${context.sha} — publishing`
+                : 'Not a verified release-PR merge — skipping release work',
             );
             core.setOutput('should_run', releasePr ? 'true' : 'false');
             core.setOutput('should_publish_npm', releasePr ? 'true' : 'false');
@@ -80,7 +102,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ vars.SEALANCE_PUBLIC_SIGNER_APP_ID }}
+          client-id: ${{ vars.SEALANCE_PUBLIC_SIGNER_APP_ID }}
           private-key: ${{ secrets.SEALANCE_PUBLIC_SIGNER_APP_PRIVATE_KEY }}
           repositories: lionden
           permission-contents: write
@@ -97,6 +119,16 @@ jobs:
       - run: npm run test:release-scripts
       - if: needs.check-release.outputs.should_publish_npm == 'true'
         run: npm ci --ignore-scripts --no-audit --no-fund --allow-git=none
+      - name: Validate the release state about to be published
+        # Publishing path only: the metadata-only dispatch must keep working while main carries
+        # historical skew or pending changesets. The base is main's tip before this push
+        # (github.event.before), which still holds the pending changesets under merge-commit,
+        # squash, and multi-commit rebase merges alike; HEAD^1 would already be versioned after
+        # a multi-commit rebase.
+        if: needs.check-release.outputs.should_publish_npm == 'true'
+        run: npm run validate:release-state -- --base "$BASE_SHA"
+        env:
+          BASE_SHA: ${{ github.event.before }}
       - if: needs.check-release.outputs.should_publish_npm == 'true'
         run: npm run build
       - name: Publish (all bumped packages, idempotent)

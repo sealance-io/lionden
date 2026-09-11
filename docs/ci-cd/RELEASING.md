@@ -47,14 +47,47 @@ updates) a **"Version Packages"** PR that:
 - writes per-package `CHANGELOG.md` entries (via `@changesets/changelog-github`),
 - deletes the consumed changeset files.
 
-Review this PR like any other — it is the human checkpoint for what's about to ship. Do not merge
-it unless all 11 public manifests have the same version and the lockfile contains that version.
+Review this PR like any other — it is the human checkpoint for what's about to ship. CI enforces
+the mechanical part on this PR (`npm run validate:release-state -- --base origin/main`): all 11
+public manifests share one version, no unreleased changesets remain, and that version is exactly
+what `main`'s pending changesets plan, so hand-substituted versions cannot pass. The lockfile
+guard covers manifest/lockfile agreement. The same validation runs again in `release-publish.yml`
+immediately before `changeset publish`, against `main`'s tip before the merge push
+(`github.event.before`), which holds under merge-commit, squash, and multi-commit rebase merges.
 
-The coordinated 0.2 release starts from one exact, hard-coded historical version map.
-`scripts/version-packages.mjs` validates that map, creates an in-memory Changesets configuration
-without the fixed constraint, and rejects the release plan before writing files unless all 11
-packages converge at 0.2.0. The committed `.changeset/config.json` is never modified. Once
-aligned, every later run applies the fixed group normally; any other skew makes versioning fail.
+Recovery from the partial 0.2 publication starts from one exact, hard-coded historical version
+map. `scripts/version-packages.mjs` validates that map and keeps the fixed group active, so the
+pending changesets bump every public package from the group's highest current version (0.2.0).
+The recovery must converge at 0.3.0 before any files are written. This includes the pending
+dynamic-record compiler changes and gives every package a new version without overwriting any
+published 0.2.0 package. The committed `.changeset/config.json` is never modified. Once aligned,
+every later run applies the fixed group normally; any other skew makes versioning fail.
+
+`npm run test:version-packages` exercises release-plan assembly, application, changelogs, and
+lockfile regeneration in disposable local workspaces after dependency installation. CI runs it
+alongside the existing zero-dependency release-policy checks.
+
+Public package versions change only through this PR. On every other PR, CI runs
+`npm run check:version-edits -- --base <merge-base> --head <head>` (zero-dependency, before
+`npm ci`) and fails if any public manifest version differs from the PR's merge base. The
+exception is decided from the event, not the branch name alone: the head must be
+`changeset-release/main` in this repository, targeting `main`. A fork reusing the branch name is
+a regular PR. `release-publish.yml` applies the same identity checks before publishing and
+additionally requires the merged PR's merge commit to be the pushed commit.
+
+Prerelease mode is not part of the release policy. Every planner entry point (versioning,
+`--check`, release-state validation, and exported base plans) rejects a present
+`.changeset/pre.json`, tracked or not, regardless of its contents, including `mode: "exit"`. Adopting prerelease
+mode requires an explicit policy change to `scripts/release-plan.mjs`, not a `changeset pre`
+invocation.
+
+`npm run check:release-plan` (`scripts/version-packages.mjs --check`) runs the same planning and
+policy validation against the repository's real pending changesets and stops before writing any
+file. CI runs it on every PR, so a changeset that would not converge all 11 public packages, or
+that targets a private or example workspace, fails before it reaches `main`. With no pending
+changesets and aligned manifests (ordinary PRs, the Version Packages PR) the check passes. It does
+not reject major bumps: from aligned `0.x` packages a `major` changeset legitimately plans `1.0.0`
+for the whole group, and that remains a review decision.
 
 ## 3. Publishing (automatic, gated)
 
@@ -83,11 +116,17 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 - **Provenance** is active (the repo is public): every release since 0.1.1 ships SLSA
   provenance attestations, verifiable with `npm audit signatures`.
 - **Approval required.** Every publish waits on the `npm-publish` environment reviewers.
+- **The workflow is the only sanctioned publisher.** There is no root `release` script;
+  `release-publish.yml` runs `npx changeset publish` itself. Every package's npm publishing
+  access is set to require 2FA and disallow tokens, so a stored or leaked token cannot publish.
+  A maintainer can still publish interactively with 2FA; do not. See
+  [REPOSITORY-SETUP.md → Publishing access](./REPOSITORY-SETUP.md#publishing-access-per-package-11).
 - **Manual dispatches repair metadata without publishing.** A manual `release-publish.yml`
   dispatch from `main` skips dependency installation, build, and `changeset publish` entirely.
   It recovers source commits from npm `gitHead`, pushes missing tags, verifies them, and creates
   missing GitHub Releases. This is safe even before a pending Version Packages PR merges because
   the checked-out manifests can never be published by that path.
+
 - **Registry replication is retried.** After an automatic publish, reconciliation waits with
   bounded exponential backoff until each checked-out package version is visible in its npm
   packument. Persistent registry failures still fail the protected release job.
@@ -99,10 +138,45 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 - **A successful npm step is not enough.** The publish job fails unless every published package
   tag resolves remotely to the same commit npm records and every matching GitHub Release exists.
 
+## Recovery
+
+Two failure shapes, two different actions. Decide by comparing npm with the release commit's
+manifests before doing anything.
+
+1. **Some package versions are missing from npm** (the publish job failed part-way, or the
+   registry rejected some packages), **and that release is still the intended one**: no newer
+   version has been published since, and its source needs no correction. **Re-run the failed
+   `publish-npm` job from the original release run** (Actions → that run → *Re-run failed jobs*).
+   The rerun keeps the original commit and event, so the release gate still recognises the merged
+   Version Packages PR; it remains subject to the `npm-publish` environment's current protection
+   rules, so approve the pending deployment if requested. `changeset publish` skips versions
+   already on npm and publishes the rest, then tag reconciliation runs as usual.
+   Never re-run a superseded release: `changeset publish` tags every package it publishes as
+   `latest`, so completing an old partial release after a newer one shipped would move those
+   packages' `latest` backwards. Leave the abandoned version incomplete.
+2. **Every package version is on npm, but tags or GitHub Releases are missing.** Use the
+   **metadata-only manual dispatch** described above. Do not re-run the publish job for this;
+   nothing is left to publish, and the rule against re-running publication exists precisely to
+   keep metadata repair from touching npm.
+
+What a rerun can and cannot pick up. A rerun retains the original SHA and event payload, so
+anything committed to the repository (workflow files, release scripts, manifests) is frozen at
+that commit: it does not see fixes merged later, and it cannot publish versions that were not in
+that commit's manifests. Re-running the 0.2 release run, for example, would not perform the 0.3
+recovery. Live configuration is different: GitHub rulesets, environment protection, the App's
+permissions, and npm publishing access are read at run time, so correcting one of those can let
+the original run succeed on rerun without another version bump. If the fix is in source (a broken
+workflow step, a validation the release commit cannot pass), land it on `main`, add the changesets
+the release needs, and go through a new Version Packages PR. That path publishes a new
+coordinated version and leaves the abandoned version incomplete on npm, which is acceptable. The
+release-state validation that runs immediately before publishing has the same property: a commit
+it rejects stays unpublished, and the way forward is a corrected commit, not a rerun.
+
 ## Consuming lionden
 
-Consumers must depend on one coordinated registry line (e.g. `"@lionden/cli": "^0.2.0"`), never
-on `file:` paths into a lionden checkout — `file:` deps bypass the published artifacts and break
+After the recovery is published, consumers should use the coordinated `^0.3.0` registry line.
+Consumers must depend on registry versions, never on `file:` paths into a lionden checkout —
+`file:` deps bypass the published artifacts and break
 as soon as the checkout moves. `compliant-transfer-aleo` migrated to registry ranges with the
 0.1.0 release; migrating `amm-aleo` is a deferred follow-up.
 

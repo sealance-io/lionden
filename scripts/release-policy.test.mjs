@@ -3,9 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  assertCoordinatedBootstrapState,
+  assertChangesetTargets,
+  assertCoordinatedRecoveryState,
   assertFixedReleaseGroup,
-  COORDINATED_0_2_BOOTSTRAP_VERSIONS,
+  COORDINATED_RECOVERY_START_VERSIONS,
   loadPublicPackages,
   loadWorkspacePackages,
 } from "./release-policy.mjs";
@@ -18,16 +19,36 @@ assert.equal(publicPackages.length, 11);
 assert.equal(fixedGroup.length, 11);
 assert.ok(!fixedGroup.includes("@lionden/test-internals"));
 
-const bootstrapPackages = Object.entries(COORDINATED_0_2_BOOTSTRAP_VERSIONS).map(
+const recoveryPackages = Object.entries(COORDINATED_RECOVERY_START_VERSIONS).map(
   ([name, version]) => ({ manifest: { name, version } }),
 );
-assert.doesNotThrow(() => assertCoordinatedBootstrapState(bootstrapPackages));
+assert.doesNotThrow(() => assertCoordinatedRecoveryState(recoveryPackages));
 
-const unexpectedSkew = structuredClone(bootstrapPackages);
+const unexpectedSkew = structuredClone(recoveryPackages);
 unexpectedSkew[0].manifest.version = "0.1.3";
 assert.throws(
-  () => assertCoordinatedBootstrapState(unexpectedSkew),
-  /Refusing to bootstrap an unexpected public-package skew/,
+  () => assertCoordinatedRecoveryState(unexpectedSkew),
+  /Refusing to recover from an unexpected public-package skew/,
+);
+
+const publicNames = publicPackages.map(({ manifest }) => manifest.name);
+assert.doesNotThrow(() =>
+  assertChangesetTargets(
+    [{ id: "ok", releases: [{ name: "@lionden/core", type: "minor" }] }],
+    publicNames,
+  ),
+);
+assert.throws(
+  () =>
+    assertChangesetTargets(
+      [
+        { id: "empty", releases: [] },
+        { id: "private", releases: [{ name: "@lionden/test-internals", type: "patch" }] },
+        { id: "example", releases: [{ name: "hello-world", type: "patch" }] },
+      ],
+      publicNames,
+    ),
+  /empty: no packages listed\nprivate: @lionden\/test-internals is not a public fixed-group package\nexample: hello-world is not a public fixed-group package/,
 );
 
 const fixture = mkdtempSync(join(tmpdir(), "release-policy-"));

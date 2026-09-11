@@ -82,15 +82,37 @@ When sources disagree, use this order:
   `.changeset/config.json` fixed group or introduce independent public versions without an
   explicit product decision. `@lionden/test-internals` stays private and outside the group.
 - `create-lionden` derives every generated `@lionden/*` range from its own package version; do
-  not replace that with literal per-package ranges. A Version Packages PR is ready only when all
-  11 public manifests share one version and `package-lock.json` matches them.
-- The special 0.2 bootstrap is valid only for the exact version map encoded in
-  `scripts/release-policy.mjs`. It uses an in-memory Changesets config and must never rewrite the
-  committed fixed group; any other future version skew is an error.
-- Do not rerun or manually overwrite npm versions to repair release metadata. Use the manual
-  `release-publish.yml` path, which never executes `changeset publish`: it reconciles tags to npm
-  `gitHead`, verifies the remote refs, and creates or verifies every published per-package GitHub
-  Release.
+  not replace that with literal per-package ranges. A Version Packages PR is ready only when
+  `npm run validate:release-state -- --base origin/main` and the lockfile guard pass: one version
+  across all 11 public manifests, no unreleased changesets, and exactly the version `main`'s
+  pending changesets plan.
+- Recovery from the partial 0.2 publication is valid only for the exact version map encoded in
+  `scripts/release-policy.mjs`. Keep the fixed group active and require convergence at 0.3.0;
+  never rewrite the committed fixed group. Any other future version skew is an error.
+- Never edit a public `package.json` `version` by hand. CI compares every PR's public manifest
+  versions against its merge base and fails on any change; only the Version Packages PR from this
+  repository (`changeset-release/main` into `main`) is exempt, and it is validated instead.
+- Never publish from a machine. There is no `npm run release`; `release-publish.yml` is the
+  only sanctioned publisher, and npm packages disallow token publishing.
+- Never run `changeset pre`. A present `.changeset/pre.json`, tracked or not, is rejected by
+  every release planner entry point; prerelease mode requires an explicit policy change.
+- Changesets may only name the 11 public packages. `npm run check:release-plan` assembles the
+  real pending changesets without writing files and CI runs it on every PR; run it locally after
+  adding or editing a changeset, before committing.
+- Two recovery cases, never mixed (see `docs/ci-cd/RELEASING.md` § Recovery). Package versions
+  missing from npm after a partial publish, and that release is still the intended one (nothing
+  newer published, no source correction needed): re-run the failed `publish-npm` job from the
+  original release run; `changeset publish` skips what is already published. Never re-run a
+  superseded release; it would move `latest` backwards. All versions on npm but tags or Releases
+  missing: use the manual `release-publish.yml` dispatch, which never executes
+  `changeset publish` and only reconciles tags to npm `gitHead` and creates or verifies GitHub
+  Releases. Do not re-run publication to repair metadata, and do not manually overwrite npm
+  versions.
+- A rerun keeps the original SHA and event: committed workflow and script fixes merged later are
+  not picked up, and versions absent from that commit cannot be published. Live configuration
+  (rulesets, environments, App permissions, npm access) is read at run time and can be fixed in
+  place. A source-side fix needs a corrected commit on `main` and a new Version Packages PR,
+  which publishes a new coordinated version and leaves the abandoned one incomplete.
 - If an immutable historical npm version has unusable `gitHead` metadata, or both its tag and
   source commit are unavailable, add its exact tag and an explanation to
   `.changeset/release-tag-exceptions.json`. Never except the checked-out version or a mismatched

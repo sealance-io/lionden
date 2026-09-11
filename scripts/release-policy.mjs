@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 
-export const COORDINATED_0_2_BOOTSTRAP_VERSIONS = Object.freeze({
+export const COORDINATED_RECOVERY_START_VERSIONS = Object.freeze({
   "@lionden/cli": "0.1.2",
   "@lionden/config": "0.2.0",
   "@lionden/core": "0.2.0",
@@ -103,22 +103,46 @@ export function assertFixedReleaseGroup(config, publicPackages) {
   return actual;
 }
 
+/**
+ * Every changeset release must target a public fixed-group package. Changesets naming a private
+ * or example workspace still assemble into a valid plan, so they must be rejected explicitly.
+ */
+export function assertChangesetTargets(changesets, publicNames) {
+  const allowed = new Set(publicNames);
+  const violations = [];
+  for (const changeset of changesets) {
+    if (changeset.releases.length === 0) {
+      violations.push(`${changeset.id}: no packages listed`);
+    }
+    for (const release of changeset.releases) {
+      if (!allowed.has(release.name)) {
+        violations.push(`${changeset.id}: ${release.name} is not a public fixed-group package`);
+      }
+    }
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `Changesets target packages outside the public group\n${violations.join("\n")}`,
+    );
+  }
+}
+
 export function describeVersions(packages) {
   return packages.map(({ manifest }) => `${manifest.name}@${manifest.version}`).join(", ");
 }
 
-export function assertCoordinatedBootstrapState(packages) {
+export function assertCoordinatedRecoveryState(packages) {
   const actual = Object.fromEntries(
     packages
       .map(({ manifest }) => [manifest.name, manifest.version])
       .sort(([a], [b]) => a.localeCompare(b)),
   );
   const expected = Object.fromEntries(
-    Object.entries(COORDINATED_0_2_BOOTSTRAP_VERSIONS).sort(([a], [b]) => a.localeCompare(b)),
+    Object.entries(COORDINATED_RECOVERY_START_VERSIONS).sort(([a], [b]) => a.localeCompare(b)),
   );
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(
-      `Refusing to bootstrap an unexpected public-package skew\nexpected: ${JSON.stringify(expected)}\nactual: ${JSON.stringify(actual)}`,
+      `Refusing to recover from an unexpected public-package skew\nexpected: ${JSON.stringify(expected)}\nactual: ${JSON.stringify(actual)}`,
     );
   }
 }
