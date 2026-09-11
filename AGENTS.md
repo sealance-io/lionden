@@ -99,10 +99,20 @@ When sources disagree, use this order:
 - Changesets may only name the 11 public packages. `npm run check:release-plan` assembles the
   real pending changesets without writing files and CI runs it on every PR; run it locally after
   adding or editing a changeset, before committing.
-- Do not rerun or manually overwrite npm versions to repair release metadata. Use the manual
-  `release-publish.yml` path, which never executes `changeset publish`: it reconciles tags to npm
-  `gitHead`, verifies the remote refs, and creates or verifies every published per-package GitHub
-  Release.
+- Two recovery cases, never mixed (see `docs/ci-cd/RELEASING.md` § Recovery). Package versions
+  missing from npm after a partial publish, and that release is still the intended one (nothing
+  newer published, no source correction needed): re-run the failed `publish-npm` job from the
+  original release run; `changeset publish` skips what is already published. Never re-run a
+  superseded release; it would move `latest` backwards. All versions on npm but tags or Releases
+  missing: use the manual `release-publish.yml` dispatch, which never executes
+  `changeset publish` and only reconciles tags to npm `gitHead` and creates or verifies GitHub
+  Releases. Do not re-run publication to repair metadata, and do not manually overwrite npm
+  versions.
+- A rerun keeps the original SHA and event: committed workflow and script fixes merged later are
+  not picked up, and versions absent from that commit cannot be published. Live configuration
+  (rulesets, environments, App permissions, npm access) is read at run time and can be fixed in
+  place. A source-side fix needs a corrected commit on `main` and a new Version Packages PR,
+  which publishes a new coordinated version and leaves the abandoned one incomplete.
 - If an immutable historical npm version has unusable `gitHead` metadata, or both its tag and
   source commit are unavailable, add its exact tag and an explanation to
   `.changeset/release-tag-exceptions.json`. Never except the checked-out version or a mismatched

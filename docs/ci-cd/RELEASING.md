@@ -126,6 +126,7 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
   It recovers source commits from npm `gitHead`, pushes missing tags, verifies them, and creates
   missing GitHub Releases. This is safe even before a pending Version Packages PR merges because
   the checked-out manifests can never be published by that path.
+
 - **Registry replication is retried.** After an automatic publish, reconciliation waits with
   bounded exponential backoff until each checked-out package version is visible in its npm
   packument. Persistent registry failures still fail the protected release job.
@@ -136,6 +137,40 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
   cannot excuse a remote-tag mismatch, and fail when unused so stale entries are removed.
 - **A successful npm step is not enough.** The publish job fails unless every published package
   tag resolves remotely to the same commit npm records and every matching GitHub Release exists.
+
+## Recovery
+
+Two failure shapes, two different actions. Decide by comparing npm with the release commit's
+manifests before doing anything.
+
+1. **Some package versions are missing from npm** (the publish job failed part-way, or the
+   registry rejected some packages), **and that release is still the intended one**: no newer
+   version has been published since, and its source needs no correction. **Re-run the failed
+   `publish-npm` job from the original release run** (Actions → that run → *Re-run failed jobs*).
+   The rerun keeps the original commit and event, so the release gate still recognises the merged
+   Version Packages PR; it remains subject to the `npm-publish` environment's current protection
+   rules, so approve the pending deployment if requested. `changeset publish` skips versions
+   already on npm and publishes the rest, then tag reconciliation runs as usual.
+   Never re-run a superseded release: `changeset publish` tags every package it publishes as
+   `latest`, so completing an old partial release after a newer one shipped would move those
+   packages' `latest` backwards. Leave the abandoned version incomplete.
+2. **Every package version is on npm, but tags or GitHub Releases are missing.** Use the
+   **metadata-only manual dispatch** described above. Do not re-run the publish job for this;
+   nothing is left to publish, and the rule against re-running publication exists precisely to
+   keep metadata repair from touching npm.
+
+What a rerun can and cannot pick up. A rerun retains the original SHA and event payload, so
+anything committed to the repository (workflow files, release scripts, manifests) is frozen at
+that commit: it does not see fixes merged later, and it cannot publish versions that were not in
+that commit's manifests. Re-running the 0.2 release run, for example, would not perform the 0.3
+recovery. Live configuration is different: GitHub rulesets, environment protection, the App's
+permissions, and npm publishing access are read at run time, so correcting one of those can let
+the original run succeed on rerun without another version bump. If the fix is in source (a broken
+workflow step, a validation the release commit cannot pass), land it on `main`, add the changesets
+the release needs, and go through a new Version Packages PR. That path publishes a new
+coordinated version and leaves the abandoned version incomplete on npm, which is acceptable. The
+release-state validation that runs immediately before publishing has the same property: a commit
+it rejects stays unpublished, and the way forward is a corrected commit, not a rerun.
 
 ## Consuming lionden
 
