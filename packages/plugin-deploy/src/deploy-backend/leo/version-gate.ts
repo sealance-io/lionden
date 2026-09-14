@@ -18,7 +18,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseLeoVersionOutput } from "@lionden/core";
-import { LEO_DEPLOY_BACKEND_LINE, supportsLeoDeployBackend } from "../../leo-version.js";
+import { LEO_DEPLOY_BACKEND_RANGE, supportsLeoDeployBackend } from "../../leo-version.js";
 import { LeoDeployError } from "./errors.js";
 
 const execFileAsync = promisify(execFile);
@@ -74,7 +74,7 @@ async function runGate(leoBinary: string, probe: LeoVersionProbe): Promise<void>
     throw new LeoDeployError(
       `Could not run \`${leoBinary} --version\` to verify the Leo CLI for the Leo deploy backend: ` +
         `${error instanceof Error ? error.message : String(error)}. ` +
-        `Install Leo ${LEO_DEPLOY_BACKEND_LINE}.x and ensure it is on PATH, or use ` +
+        `Install Leo ${LEO_DEPLOY_BACKEND_RANGE} and ensure it is on PATH, or use ` +
         `\`--deploy-backend sdk\`.`,
       { stage: "version-gate" },
     );
@@ -84,7 +84,7 @@ async function runGate(leoBinary: string, probe: LeoVersionProbe): Promise<void>
   if (!parsed) {
     throw new LeoDeployError(
       `Could not parse a version from \`${leoBinary} --version\`. The Leo deploy backend requires ` +
-        `Leo ${LEO_DEPLOY_BACKEND_LINE}.x. Use \`--deploy-backend sdk\` to proceed with the ` +
+        `Leo ${LEO_DEPLOY_BACKEND_RANGE}. Use \`--deploy-backend sdk\` to proceed with the ` +
         `Provable SDK backend instead.`,
       { stage: "version-gate" },
     );
@@ -92,12 +92,12 @@ async function runGate(leoBinary: string, probe: LeoVersionProbe): Promise<void>
 
   if (!supportsLeoDeployBackend(parsed.text)) {
     throw new LeoDeployError(
-      `The Leo deploy backend supports Leo ${LEO_DEPLOY_BACKEND_LINE}.x only, but ` +
+      `The Leo deploy backend supports Leo ${LEO_DEPLOY_BACKEND_RANGE} only, but ` +
         `\`${leoBinary}\` reports ${parsed.text}. Other lines differ in their ` +
         `\`deploy\`/\`upgrade\` flag surface and have not been verified for this path. ` +
         `Note that \`skipLeoVersionCheck\` does not relax this check: it covers patch-level ` +
         `drift when compiling, not an unsupported line when deploying. ` +
-        `Install Leo ${LEO_DEPLOY_BACKEND_LINE}.x, or use \`--deploy-backend sdk\`.`,
+        `Install Leo ${LEO_DEPLOY_BACKEND_RANGE}, or use \`--deploy-backend sdk\`.`,
       { stage: "version-gate" },
     );
   }

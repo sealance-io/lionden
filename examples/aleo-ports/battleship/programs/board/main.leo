@@ -12,19 +12,19 @@ program board.aleo {
         game_started: bool,
     }
 
-    // Upstream uses `self.caller` here. That works in `leo run` (single-
+    // Upstream used caller metadata here. That works in `leo run` (single-
     // program local runner) but breaks under real cross-program execution
-    // via the SDK: when battleship.aleo invokes board.aleo, self.caller
+    // via the SDK: when battleship.aleo invokes board.aleo, std::ctx::caller()
     // becomes battleship.aleo's program address, not the human signer —
     // so the resulting record can't be re-spent by the signer.
-    // Using self.signer keeps ownership tied to the original signer.
+    // Using std::ctx::signer() keeps ownership tied to the original signer.
     fn new_board_state(ships: u64, opponent: address) -> BoardState {
         return BoardState {
-            owner: self.signer,
+            owner: std::ctx::signer(),
             hits_and_misses: 0u64,
             played_tiles: 0u64,
             ships,
-            player_1: self.signer,
+            player_1: std::ctx::signer(),
             player_2: opponent,
             game_started: false,
         };

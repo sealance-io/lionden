@@ -60,7 +60,7 @@ describe("token program", () => {
       // Mint tokens to account-1 (default signer is account-0)
       await token.mint_public.accepted(account1, 5000n);
 
-      // transfer_public reads self.signer (token.aleo:24) to determine sender.
+      // transfer_public reads std::ctx::signer() to determine sender.
       // withSigner switches the signer to account-1; if signer switching is
       // broken, account-0 would be the sender and the finalize
       // assert(sender_balance >= amount) would fail or debit the wrong account.

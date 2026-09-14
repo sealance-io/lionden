@@ -29,6 +29,11 @@ const FIXTURE_PAIRS: [string, string][] = [
   // parser already canonicalizes absent/None and explicit `Private` record-field
   // modes to `Private`, so this normalizes byte-for-byte to `token-v42.normalized`.
   ["token-v43.abi.json", "token-v43.normalized.json"],
+  // Leo 4.4.2 wire fixtures (real `leo build` output): default-template-era
+  // std::ctx/std::prog syntax, positional inputs, record modes, dynamic records,
+  // imported structs, views, public/private inputs, async/finalize outputs.
+  ["dep-v44.abi.json", "dep-v44.normalized.json"],
+  ["edge-v44.abi.json", "edge-v44.normalized.json"],
 ];
 
 describe("parseAbi goldens", () => {

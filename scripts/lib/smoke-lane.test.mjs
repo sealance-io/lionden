@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertLeoDeployBackendSupported,
-  LEO_DEPLOY_BACKEND_LINE,
+  LEO_DEPLOY_BACKEND_RANGE,
   parseArgs,
 } from "./smoke-lane.mjs";
 
@@ -27,13 +27,21 @@ describe("parseArgs", () => {
   });
 
   it("collects groups and the existing boolean flags", () => {
-    const parsed = parseArgs(["--list", "--no-typecheck", "--prove", "--coverage", "core", "all"]);
+    const parsed = parseArgs([
+      "--list",
+      "--no-typecheck",
+      "--prove",
+      "--coverage",
+      "core",
+      "legacy-v43",
+      "all",
+    ]);
     expect(parsed).toMatchObject({
       listOnly: true,
       typecheck: false,
       prove: true,
       coverage: true,
-      groups: ["core", "all"],
+      groups: ["core", "legacy-v43", "all"],
     });
   });
 
@@ -93,14 +101,16 @@ describe("assertLeoDeployBackendSupported", () => {
   const probe = (result) => () => result;
   const ok = (stdout) => ({ error: undefined, status: 0, stdout, stderr: "" });
 
-  it("accepts the supported line", () => {
-    expect(() =>
-      assertLeoDeployBackendSupported(probe(ok("leo 4.3.2 (60bbdef HEAD) features=[noconfig]"))),
-    ).not.toThrow();
+  it.each([
+    ["4.3.2", "leo 4.3.2 (60bbdef HEAD) features=[noconfig]"],
+    ["4.4.2", "leo 4.4.2 (f3578da HEAD) features=[noconfig]"],
+  ])("accepts the supported %s line", (_label, output) => {
+    expect(() => assertLeoDeployBackendSupported(probe(ok(output)))).not.toThrow();
   });
 
-  it("accepts any patch on the supported line", () => {
+  it("accepts any patch on a supported line", () => {
     expect(() => assertLeoDeployBackendSupported(probe(ok("leo 4.3.0")))).not.toThrow();
+    expect(() => assertLeoDeployBackendSupported(probe(ok("leo 4.4.0")))).not.toThrow();
   });
 
   it("reads the version from stderr when stdout is empty", () => {
@@ -112,11 +122,11 @@ describe("assertLeoDeployBackendSupported", () => {
   it.each([
     ["an older minor", "leo 4.2.0"],
     ["an older major", "leo 3.5.0"],
-    ["a newer minor", "leo 4.4.0"],
+    ["a newer minor", "leo 4.5.0"],
     ["a newer major", "leo 5.0.0"],
   ])("rejects %s", (_label, output) => {
     expect(() => assertLeoDeployBackendSupported(probe(ok(output)))).toThrow(
-      new RegExp(`supports Leo ${LEO_DEPLOY_BACKEND_LINE}\\.x only`),
+      new RegExp(`supports Leo ${LEO_DEPLOY_BACKEND_RANGE.replaceAll(".", "\\.")} only`),
     );
   });
 
@@ -151,7 +161,7 @@ describe("assertLeoDeployBackendSupported", () => {
       assertLeoDeployBackendSupported(
         probe({ error: new Error("spawnSync leo ENOENT"), status: null }),
       ),
-    ).toThrow(/requires a Leo 4\.3\.x binary on PATH.*spawnSync leo ENOENT/s);
+    ).toThrow(/requires a Leo 4\.3\.x or 4\.4\.x binary on PATH.*spawnSync leo ENOENT/s);
   });
 
   it("rejects a non-zero exit even without an error object", () => {

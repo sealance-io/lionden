@@ -521,7 +521,7 @@ describe("Leo deploy backend orchestration contract", () => {
 
       await expect(
         deployAction({ program: "hello", deployBackend: "leo", noCompile: true }, lre),
-      ).rejects.toThrow(/supports Leo 4\.3\.x only/);
+      ).rejects.toThrow(/supports Leo 4\.3\.x or 4\.4\.x only/);
 
       // Step 0: nothing happened at all.
       expect(fake.calls).toHaveLength(0);

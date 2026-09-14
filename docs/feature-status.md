@@ -122,7 +122,7 @@ Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives li
 
 | Feature | Evidence |
 | --- | --- |
-| Leo v4.3.x default (4.3.2, consensus V16/V17); v4.2.x/v4.1.x/v4.0.x supported; single-program / per-unit build layouts normalized to LionDen artifacts | [`leo-version-compatibility.md`](leo-version-compatibility.md), `packages/leo-compiler/src/compiler.ts` |
+| Leo v4.4.x default (4.4.2); v4.3.x/v4.2.x/v4.1.x/v4.0.x and v3.5.x supported as explicit compatibility lines; single-program / per-unit build layouts normalized to LionDen artifacts | [`leo-version-compatibility.md`](leo-version-compatibility.md), `packages/leo-compiler/src/compiler.ts` |
 | Leo v4.0.x supported as an explicit compatibility line | [`leo-version-compatibility.md`](leo-version-compatibility.md) |
 | Leo v3.5.x supported for deployable `main.leo` programs (no libraries) | same |
 | `leoBinary` config (with `~/` expansion) to target a specific Leo install | `packages/config/src/types.ts` |
@@ -271,7 +271,7 @@ LionDen and **doko-js** ([github.com/venture23-aleo/doko-js](https://github.com/
 ### What LionDen has that doko-js does not (per inspected doko-js 1.1.0 checkout)
 
 - **First-class `upgrade` task** (compile v2 → build upgrade tx → broadcast → record; selects the admin signing key from `namedAccounts.admin`; correctness is owned by Leo's built-in tooling). Doko-js has no `upgrade` command at all — its `cli/src/scripts/deploy.ts` shells out to `leo deploy` and that's it; upgrades would be hand-rolled by the consumer.
-- **A swappable deploy-transaction backend.** LionDen can build deploy/upgrade transactions through the SDK (default) or by shelling out to `leo deploy` / `leo upgrade` — selectable per project, per network, per invocation. Doko-js only shells out. The difference is not whether a CLI is involved but what surrounds it: LionDen's backend seam keeps ordering, pending markers, records, confirmation, and hooks identical across both, gates the Leo path on a verified 4.3.x flag surface, and uses `--save` without `--broadcast` so it never has to parse a transaction id out of process output or reason about Leo's exit-0-on-rejection. See [`deploy-backends.md`](deploy-backends.md).
+- **A swappable deploy-transaction backend.** LionDen can build deploy/upgrade transactions through the SDK (default) or by shelling out to `leo deploy` / `leo upgrade` — selectable per project, per network, per invocation. Doko-js only shells out. The difference is not whether a CLI is involved but what surrounds it: LionDen's backend seam keeps ordering, pending markers, records, confirmation, and hooks identical across both, gates the Leo path on verified 4.3.x and 4.4.x flag surfaces, and uses `--save` without `--broadcast` so it never has to parse a transaction id out of process output or reason about Leo's exit-0-on-rejection. See [`deploy-backends.md`](deploy-backends.md).
 - **Deployment state with `complete` / `degraded` / `recovered` record statuses**, ABI snapshots, append-only history, pending markers, atomic temp+rename writes.
 - **Crash-recovery for pending deploys** via on-next-run reconciliation against on-chain state.
 - **`--preflight` and `--dry-run` deploy modes**.

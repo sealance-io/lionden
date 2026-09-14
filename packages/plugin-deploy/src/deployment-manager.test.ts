@@ -978,13 +978,15 @@ describe("preflight() backend gating", () => {
   });
 
   it("rejects an incompatible backend selection before connecting", async () => {
-    // Default mock leoVersion is 4.0.0 — outside the Leo backend's supported line.
+    // Default mock leoVersion is 4.0.0 — outside the Leo backend's supported lines.
     const config = makeConfig();
     (config.deploy as any).backend = "leo";
     const networkManager = makeNetworkManager();
     const dm = new DeploymentManagerImpl(config, () => networkManager, makeArtifactStore());
 
-    await expect(dm.preflight(["hello.aleo"])).rejects.toThrow(/supports Leo 4\.3\.x only/);
+    await expect(dm.preflight(["hello.aleo"])).rejects.toThrow(
+      /supports Leo 4\.3\.x or 4\.4\.x only/,
+    );
     expect(networkManager.connect).not.toHaveBeenCalled();
   });
 });

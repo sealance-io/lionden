@@ -1,14 +1,14 @@
 // @custom constructor implements a block-height timelock on upgrades.
 // edition 0 (initial deploy) is unrestricted; subsequent editions can
-// only land once block.height passes THRESHOLD.
+// only land once std::ctx::block_height() passes THRESHOLD.
 //
 // Upstream uses 1300; we use 30 to keep test runtime down —
 // advanceBlocks() is one HTTP POST per block (~1s each).
 program timelock_example.aleo {
     @custom
     constructor() {
-        if self.edition > 0u16 {
-            assert(block.height >= 30u32);
+        if std::ctx::edition() > 0u16 {
+            assert(std::ctx::block_height() >= 30u32);
         }
     }
 

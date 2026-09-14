@@ -25,14 +25,14 @@ program move.aleo {
         };
     }
 
-    // See note in board.aleo::new_board_state — `self.signer` instead of
-    // `self.caller` so the move stays attributable to the human signer
+    // See note in board.aleo::new_board_state — signer metadata instead of
+    // caller metadata so the move stays attributable to the human signer
     // when invoked through battleship.aleo.
     fn start_game(player_2: address) -> Move {
         return Move {
             owner: player_2,
             incoming_fire_coordinate: 0u64,
-            player_1: self.signer,
+            player_1: std::ctx::signer(),
             player_2: player_2,
             prev_hit_or_miss: 0u64,
         };

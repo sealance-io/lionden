@@ -44,7 +44,7 @@ That is the reason the Leo backend exists. For programs that deploy comfortably 
 | `--dry-run` | devnode only | any network |
 | `sdk.egress` enforced | Yes | No — rejected at selection |
 | `networks.<n>.apiKey` | Yes | No — rejected at selection |
-| Leo versions | 3.5 – 4.3 | **4.3.x only** |
+| Leo versions | 3.5 – 4.4 | **4.3.x and 4.4.x only** |
 | Broadcast | LionDen, except the atomic HTTP deploy path | LionDen, always |
 | Scope | deploy, upgrade | deploy, upgrade |
 
@@ -96,19 +96,19 @@ Compatibility is checked against the **effective** backend, not `deploy.backend`
 `assertDeployBackendCompatible` (`deploy-backend/resolve.ts`) runs as step 0 of `deploy` and `upgrade` — before compilation and before connecting — and rejects:
 
 - **`sdk.egress` set.** LionDen routes every SDK network call through `makeNetworkTransport` specifically so the egress policy can be enforced at the socket. Leo issues its own HTTP requests from a separate process, where that policy cannot reach. Silently dropping a configured egress control is worse than refusing.
-- **`networks.<n>.apiKey` set.** LionDen sends `Authorization: Bearer <apiKey>` on its own explorer calls. Leo 4.3 `deploy`/`upgrade` expose no header or API-key option, so its build-time queries would go out unauthenticated. This is a permanent backend limitation, not a temporary one.
-- **`leoVersion` outside `4.3.x`.** See below.
+- **`networks.<n>.apiKey` set.** LionDen sends `Authorization: Bearer <apiKey>` on its own explorer calls. Leo 4.3/4.4 `deploy`/`upgrade` expose no header or API-key option, so its build-time queries would go out unauthenticated. This is a permanent backend limitation, not a temporary one.
+- **`leoVersion` outside `4.3.x` or `4.4.x`.** See below.
 
 It warns, rather than failing, when `sdk.keyCache.storage` is `"filesystem"`: nothing breaks, the configured cache is simply never consulted, because Leo caches under `~/.aleo`. The setting still applies to program execution.
 
 ## Leo Version Support
 
-The Leo backend supports **Leo 4.3.x only** — narrower than LionDen's 3.5 – 4.3 compile and devnode support range. Other lines differ in their `deploy`/`upgrade` flag surface and have not been verified, and unlike a compile error a wrong flag here can produce a wrong *deployment*.
+The Leo backend supports **Leo 4.3.x and 4.4.x only** — narrower than LionDen's 3.5 – 4.4 compile/devnode range and still explicitly line-gated. Other lines differ in their `deploy`/`upgrade` flag surface and have not been verified, and unlike a compile error a wrong flag here can produce a wrong *deployment*. Future Leo minor lines require their own deploy/upgrade probes before admission.
 
 Two checks apply, and both must pass:
 
-1. **`leoVersion`** must be on the `4.3.x` line, checked in `assertDeployBackendCompatible`.
-2. **The binary itself** must report `4.3.x`, checked in `assertLeoBinaryVersion` by running `<leoBinary> --disable-update-check --version`. Memoized per binary path, so a multi-program deploy pays for it once.
+1. **`leoVersion`** must be on the `4.3.x` or `4.4.x` line, checked in `assertDeployBackendCompatible`.
+2. **The binary itself** must report `4.3.x` or `4.4.x`, checked in `assertLeoBinaryVersion` by running `<leoBinary> --disable-update-check --version`. Memoized per binary path, so a multi-program deploy pays for it once.
 
 The binary check exists because both mechanisms that normally tie `leoVersion` to the actual binary fail open on this path: `preflightLeo` returns before comparing versions when `skipLeoVersionCheck` is set, and it is only invoked from the compile task and `preflightDevnode` — so `lionden deploy --no-compile` runs no version check at all.
 
@@ -185,7 +185,7 @@ The transaction is broadcast as the exact bytes Leo saved. Re-serializing it wou
 
 **Fee estimation** returns a warning (`FEE_ESTIMATION_UNAVAILABLE`) rather than a number, so deploy preflight reports it without failing. Leo does compute costs and prints a full breakdown when the deployment runs; reading them back from `--json-output` is a follow-up. The SDK path is no better in the case that matters: `estimateDeploymentFee` synthesizes keys and hits the same memory wall as the deploy it is estimating.
 
-**Not supported at all:** `sdk.egress`, `networks.<n>.apiKey`, Leo lines other than 4.3.x, and execution of any kind.
+**Not supported at all:** `sdk.egress`, `networks.<n>.apiKey`, Leo lines other than 4.3.x/4.4.x, and execution of any kind.
 
 ## Security Properties
 
@@ -213,7 +213,7 @@ Two Leo-backend rejections are plain `DeployError` with no `stage`, because they
 
 | `stage` | Meaning |
 | --- | --- |
-| `version-gate` | `<leoBinary> --version` could not be run, parsed, or is not `4.3.x`. |
+| `version-gate` | `<leoBinary> --version` could not be run, parsed, or is not `4.3.x`/`4.4.x`. |
 | `package` | The materialized package is missing or stale pre-run, or its artifact changed post-run. |
 | `run` | Leo exited non-zero, or was killed by a signal. |
 | `timeout` | Exceeded `deploy.leo.timeout`. |
@@ -238,11 +238,12 @@ It is a **Leo-only** suite, not a cross-backend comparison. The SDK-backed contr
 At Tier 3, `scripts/run-smoke-examples.mjs` takes a `--deploy-backend <sdk|leo>` axis, so every example's real compile/deploy/execute workflow can be run end-to-end on either backend:
 
 ```bash
-npm run test:smoke:leo-backend           # core examples, Leo backend, no proving
+npm run test:smoke:leo-backend           # legacy 4.3 fixture, Leo backend, no proving
 npm run test:smoke:leo-backend:prove     # the same with real proof generation
+node scripts/run-smoke-examples.mjs --deploy-backend leo core
 ```
 
-The lane refuses to run on a binary outside `4.3.x` rather than skipping, because a silently-skipped opt-in lane is a green result that exercised nothing. The `leo-samples` lane does **not** take this axis: it is pinned to Leo 4.2.0 / consensus V15, which this backend does not support.
+The runner refuses to run on a binary outside `4.3.x`/`4.4.x` rather than skipping, because a silently-skipped opt-in lane is a green result that exercised nothing. Each config's normal Leo preflight still applies, so the legacy-v43 npm script needs a Leo 4.3.x binary while current core examples need Leo 4.4.x. The `leo-samples` lane does **not** take this axis: it is pinned to Leo 4.2.0 / consensus V15, which this backend does not support.
 
 Two Tier 4 lanes carry what nothing above them can:
 

@@ -1,0 +1,111 @@
+{
+  "program": "dep_v44.aleo",
+  "structs": [],
+  "records": [
+    {
+      "path": [
+        "Voucher"
+      ],
+      "fields": [
+        {
+          "name": "owner",
+          "ty": {
+            "Primitive": "Address"
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "amount",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "nonce",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          },
+          "mode": "Private"
+        }
+      ]
+    }
+  ],
+  "mappings": [],
+  "storage_variables": [],
+  "transitions": [
+    {
+      "name": "issue",
+      "is_async": false,
+      "inputs": [
+        {
+          "name": "arg0",
+          "ty": {
+            "Plaintext": {
+              "Primitive": "Address"
+            }
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "arg1",
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "Private"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Record": {
+              "path": [
+                "Voucher"
+              ],
+              "program": null
+            }
+          },
+          "mode": "Private"
+        }
+      ]
+    },
+    {
+      "name": "redeem",
+      "is_async": false,
+      "inputs": [
+        {
+          "name": "arg0",
+          "ty": {
+            "Record": {
+              "path": [
+                "Voucher"
+              ],
+              "program": null
+            }
+          },
+          "mode": "Private"
+        }
+      ],
+      "outputs": [
+        {
+          "ty": {
+            "Plaintext": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            }
+          },
+          "mode": "Private"
+        }
+      ]
+    }
+  ]
+}

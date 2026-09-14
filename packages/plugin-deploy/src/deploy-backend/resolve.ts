@@ -11,7 +11,7 @@ import type { DeployProvider, LionDenResolvedConfig } from "@lionden/config";
 import { logWarning } from "@lionden/core";
 import type { NetworkConnection } from "@lionden/network";
 import { DeployError } from "../errors.js";
-import { LEO_DEPLOY_BACKEND_LINE, supportsLeoDeployBackend } from "../leo-version.js";
+import { LEO_DEPLOY_BACKEND_RANGE, supportsLeoDeployBackend } from "../leo-version.js";
 import { createLeoDeployBackend, type LeoDeployBackendOptions } from "./leo-backend.js";
 import { createSdkDeployBackend } from "./sdk-backend.js";
 import type {
@@ -129,23 +129,23 @@ export function assertDeployBackendCompatible(
   }
 
   // lionden sends `Authorization: Bearer <apiKey>` on its own explorer calls.
-  // Leo 4.3 `deploy`/`upgrade` expose no header or API-key option, so its
+  // Leo 4.3/4.4 `deploy`/`upgrade` expose no header or API-key option, so its
   // build-time queries would go out unauthenticated — failing outright, or
   // worse, silently reaching an unauthenticated endpoint instead.
   if (ctx.apiKey !== undefined) {
     throw new DeployError(
       `The Leo deploy backend cannot send the \`networks.${ctx.networkName}.apiKey\` credential: ` +
-        `Leo ${LEO_DEPLOY_BACKEND_LINE} \`deploy\`/\`upgrade\` expose no API-key or header option, ` +
+        `Leo ${LEO_DEPLOY_BACKEND_RANGE} \`deploy\`/\`upgrade\` expose no API-key or header option, ` +
         `so its queries would be sent unauthenticated. Remove the apiKey, or ${USE_SDK_HINT}`,
     );
   }
 
   if (!supportsLeoDeployBackend(ctx.leoVersion)) {
     throw new DeployError(
-      `The Leo deploy backend supports Leo ${LEO_DEPLOY_BACKEND_LINE}.x only, but \`leoVersion\` ` +
+      `The Leo deploy backend supports Leo ${LEO_DEPLOY_BACKEND_RANGE} only, but \`leoVersion\` ` +
         `is "${ctx.leoVersion}". Other lines differ in their \`deploy\`/\`upgrade\` flag surface ` +
-        `and have not been verified for this path. Set \`leoVersion\` to a ${LEO_DEPLOY_BACKEND_LINE}.x ` +
-        `release, or ${USE_SDK_HINT}`,
+        `and have not been verified for this path. Set \`leoVersion\` to a ` +
+        `${LEO_DEPLOY_BACKEND_RANGE} release, or ${USE_SDK_HINT}`,
     );
   }
 

@@ -7,6 +7,7 @@ import {
 } from "./version-gate.js";
 
 const V43 = "leo 4.3.2 (60bbdef HEAD) features=[noconfig]";
+const V44 = "leo 4.4.2 (f3578da HEAD) features=[noconfig]";
 const V41 = "leo 4.1.0 (abc1234 HEAD)";
 
 function probeReturning(output: string): LeoVersionProbe {
@@ -18,8 +19,17 @@ afterEach(() => {
 });
 
 describe("assertLeoBinaryVersion", () => {
-  it("accepts a 4.3.x binary", async () => {
-    await expect(assertLeoBinaryVersion("/bin/leo", probeReturning(V43))).resolves.toBeUndefined();
+  it.each([
+    ["4.3.0", "leo 4.3.0"],
+    ["4.3.2", V43],
+    ["4.3.11", "leo 4.3.11"],
+    ["4.4.0", "leo 4.4.0"],
+    ["4.4.1", "leo 4.4.1"],
+    ["4.4.2", V44],
+  ])("accepts a %s binary", async (_label, output) => {
+    await expect(
+      assertLeoBinaryVersion("/bin/leo", probeReturning(output)),
+    ).resolves.toBeUndefined();
   });
 
   it("rejects an unsupported line and names what it found", async () => {
@@ -54,13 +64,24 @@ describe("assertLeoBinaryVersion", () => {
     for (const label of ["noCompile", "skipLeoVersionCheck"]) {
       clearLeoVersionGateMemoForTests();
       await expect(assertLeoBinaryVersion("/bin/leo", probeReturning(V41)), label).rejects.toThrow(
-        /supports Leo 4\.3\.x only/,
+        /supports Leo 4\.3\.x or 4\.4\.x only/,
       );
     }
   });
 
-  it("accepts a 4.3 binary on those same paths", async () => {
+  it("accepts a supported binary on those same paths", async () => {
     await expect(assertLeoBinaryVersion("/bin/leo", probeReturning(V43))).resolves.toBeUndefined();
+    clearLeoVersionGateMemoForTests();
+    await expect(assertLeoBinaryVersion("/bin/leo", probeReturning(V44))).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["older supported compile line", "leo 4.2.0"],
+    ["future minor", "leo 4.5.0"],
+    ["future major", "leo 5.0.0"],
+    ["prerelease", "leo 4.4.2-rc1"],
+  ])("rejects %s", async (_label, output) => {
+    await expect(assertLeoBinaryVersion("/bin/leo", probeReturning(output))).rejects.toThrow();
   });
 
   it("reports an unparseable version rather than assuming it is fine", async () => {

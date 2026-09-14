@@ -2,7 +2,7 @@
 /// These are proof-context helpers (regular fn, outside program block).
 
 /// Return the minimum of two values.
-fn min(a: u64, b: u64) -> u64 {
+export fn min(a: u64, b: u64) -> u64 {
     if a <= b {
         return a;
     }

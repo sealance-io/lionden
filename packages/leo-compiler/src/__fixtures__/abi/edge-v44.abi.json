@@ -1,0 +1,188 @@
+{
+  "program": "edge_v44.aleo",
+  "structs": [
+    {
+      "path": [
+        "LocalNote"
+      ],
+      "fields": [
+        {
+          "name": "account",
+          "ty": {
+            "Primitive": "Address"
+          }
+        },
+        {
+          "name": "imported",
+          "ty": {
+            "Struct": {
+              "path": [
+                "ExternalNote"
+              ],
+              "program": "dep_v44.aleo"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "records": [
+    {
+      "path": [
+        "Receipt"
+      ],
+      "fields": [
+        {
+          "name": "owner",
+          "ty": {
+            "Primitive": "Address"
+          },
+          "mode": "Private"
+        },
+        {
+          "name": "amount",
+          "ty": {
+            "Primitive": {
+              "UInt": "U64"
+            }
+          },
+          "mode": "Private"
+        }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "name": "totals",
+      "key": {
+        "Primitive": "Address"
+      },
+      "value": {
+        "Primitive": {
+          "UInt": "U64"
+        }
+      }
+    },
+    {
+      "name": "last_height",
+      "key": {
+        "Primitive": "Address"
+      },
+      "value": {
+        "Primitive": {
+          "UInt": "U32"
+        }
+      }
+    },
+    {
+      "name": "dep_editions",
+      "key": {
+        "Primitive": "Address"
+      },
+      "value": {
+        "Primitive": {
+          "UInt": "U16"
+        }
+      }
+    }
+  ],
+  "storage_variables": [],
+  "functions": [
+    {
+      "name": "deposit",
+      "inputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            },
+            "mode": "Public"
+          }
+        },
+        {
+          "Plaintext": {
+            "ty": {
+              "Struct": {
+                "path": [
+                  "ExternalNote"
+                ],
+                "program": "dep_v44.aleo"
+              }
+            },
+            "mode": "Private"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Struct": {
+                "path": [
+                  "LocalNote"
+                ],
+                "program": "edge_v44.aleo"
+              }
+            },
+            "mode": "Private"
+          }
+        },
+        {
+          "Record": {
+            "path": [
+              "Receipt"
+            ],
+            "program": "edge_v44.aleo"
+          }
+        },
+        "Final"
+      ]
+    },
+    {
+      "name": "route",
+      "inputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": "Identifier"
+            },
+            "mode": "Private"
+          }
+        },
+        "DynamicRecord"
+      ],
+      "outputs": [
+        "DynamicRecord"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "name": "get_total",
+      "inputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": "Address"
+            },
+            "mode": "Public"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "Plaintext": {
+            "ty": {
+              "Primitive": {
+                "UInt": "U64"
+              }
+            },
+            "mode": "Public"
+          }
+        }
+      ]
+    }
+  ]
+}

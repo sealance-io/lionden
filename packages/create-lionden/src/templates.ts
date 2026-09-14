@@ -132,7 +132,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.3.2",
+  leoVersion: "4.4.2",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -254,7 +254,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.3.2",
+  leoVersion: "4.4.2",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -297,7 +297,7 @@ program token.aleo {
 
     /// Transfer public tokens from signer to receiver.
     fn transfer_public(public receiver: address, public amount: u64) -> Final {
-        let sender: address = self.signer;
+        let sender: address = std::ctx::signer();
         return final {
             let sender_balance: u64 = balances.get(sender);
             assert(sender_balance >= amount);
@@ -370,7 +370,7 @@ describe("token program", () => {
     // Mint tokens to account-1 (default signer is account-0)
     await token.mint_public.accepted(account1, 5000n);
 
-    // transfer_public reads self.signer to determine the sender.
+    // transfer_public reads std::ctx::signer() to determine the sender.
     // withSigner switches the transaction signer to account-1.
     await token.withSigner(account1).transfer_public.accepted(receiver, 2000n);
 

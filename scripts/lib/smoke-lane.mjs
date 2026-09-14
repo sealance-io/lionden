@@ -13,14 +13,15 @@ import { spawnSync } from "node:child_process";
 export const DEPLOY_BACKENDS = ["sdk", "leo"];
 
 /**
- * The only Leo line the Leo deploy backend supports. Kept in sync with
- * `LEO_DEPLOY_BACKEND_LINE` in `packages/plugin-deploy/src/leo-version.ts`.
+ * The Leo lines the Leo deploy backend supports. Kept in sync with
+ * `LEO_DEPLOY_BACKEND_LINES` in `packages/plugin-deploy/src/leo-version.ts`.
  */
-export const LEO_DEPLOY_BACKEND_LINE = "4.3";
+export const LEO_DEPLOY_BACKEND_LINES = ["4.3", "4.4"];
+export const LEO_DEPLOY_BACKEND_RANGE = "4.3.x or 4.4.x";
 
 export const USAGE =
   "Usage: node scripts/run-smoke-examples.mjs [--list] [--no-typecheck] [--prove] [--coverage]" +
-  " [--deploy-backend <sdk|leo>] [core] [aleo-ports] [all]";
+  " [--deploy-backend <sdk|leo>] [core] [aleo-ports] [legacy-v43] [all]";
 
 /**
  * A token that is a flag rather than a value.
@@ -29,7 +30,7 @@ export const USAGE =
  * swallow `--prove` as the backend name.
  */
 function isFlag(token) {
-  return token !== undefined && token.startsWith("-");
+  return token?.startsWith("-");
 }
 
 function assertKnownBackend(value) {
@@ -117,7 +118,7 @@ export function assertLeoDeployBackendSupported(probe = defaultLeoVersionProbe) 
 
   if (result.error || result.status !== 0) {
     throw new Error(
-      `--deploy-backend leo requires a Leo ${LEO_DEPLOY_BACKEND_LINE}.x binary on PATH, but ` +
+      `--deploy-backend leo requires a Leo ${LEO_DEPLOY_BACKEND_RANGE} binary on PATH, but ` +
         `\`leo --version\` could not be run: ${result.error?.message ?? `exit ${result.status}`}.`,
     );
   }
@@ -132,17 +133,18 @@ export function assertLeoDeployBackendSupported(probe = defaultLeoVersionProbe) 
 
   if (!version) {
     throw new Error(
-      `--deploy-backend leo supports Leo ${LEO_DEPLOY_BACKEND_LINE}.x only, but no stable version ` +
+      `--deploy-backend leo supports Leo ${LEO_DEPLOY_BACKEND_RANGE} only, but no stable version ` +
         `could be parsed from \`leo --version\`. ` +
-        `Install Leo ${LEO_DEPLOY_BACKEND_LINE}.x, or drop the flag to use the default SDK backend.`,
+        `Install Leo ${LEO_DEPLOY_BACKEND_RANGE}, or drop the flag to use the default SDK backend.`,
     );
   }
 
-  if (`${version[1]}.${version[2]}` !== LEO_DEPLOY_BACKEND_LINE) {
+  const line = `${version[1]}.${version[2]}`;
+  if (!LEO_DEPLOY_BACKEND_LINES.includes(line)) {
     throw new Error(
-      `--deploy-backend leo supports Leo ${LEO_DEPLOY_BACKEND_LINE}.x only, but \`leo --version\` ` +
+      `--deploy-backend leo supports Leo ${LEO_DEPLOY_BACKEND_RANGE} only, but \`leo --version\` ` +
         `reports ${version[0]}. ` +
-        `Install Leo ${LEO_DEPLOY_BACKEND_LINE}.x, or drop the flag to use the default SDK backend.`,
+        `Install Leo ${LEO_DEPLOY_BACKEND_RANGE}, or drop the flag to use the default SDK backend.`,
     );
   }
 }

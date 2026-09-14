@@ -182,6 +182,15 @@ describe("validateResolvedConfig — standalone/storage rules", () => {
     expect(errors.some((e) => e.path === "networks.devnode.network")).toBe(true);
   });
 
+  it("rejects consensusHeights and non-testnet network on the leo provider with Leo 4.4", () => {
+    const errors = validate(
+      { provider: "leo", network: "canary", consensusHeights: "0,1,2" },
+      "4.4.2",
+    );
+    expect(errors.some((e) => e.path === "networks.devnode.consensusHeights")).toBe(true);
+    expect(errors.some((e) => e.path === "networks.devnode.network")).toBe(true);
+  });
+
   it("accepts consensusHeights on the leo provider with Leo < 4.3", () => {
     const errors = validate({ provider: "leo", network: "testnet", consensusHeights: "0,1,2" });
     expect(errors).toHaveLength(0);
@@ -189,6 +198,11 @@ describe("validateResolvedConfig — standalone/storage rules", () => {
 
   it("accepts a plain testnet leo devnode with Leo >= 4.3", () => {
     const errors = validate({ provider: "leo", network: "testnet" }, "4.3.2");
+    expect(errors).toHaveLength(0);
+  });
+
+  it("accepts a plain testnet leo devnode with Leo 4.4", () => {
+    const errors = validate({ provider: "leo", network: "testnet" }, "4.4.2");
     expect(errors).toHaveLength(0);
   });
 });

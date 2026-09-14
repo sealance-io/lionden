@@ -18,7 +18,7 @@ import {
 /**
  * Whether the Leo devnode for `leoVersion` no longer accepts the
  * `--consensus-heights` / `--network` flags (Leo >= 4.3). An unparseable/unset
- * version is treated as modern (>= 4.3) — the resolved default is 4.3.2 — so
+ * version is treated as modern (>= 4.3) — the resolved default is 4.4.2 — so
  * config that would be silently dropped is rejected rather than ignored. This
  * is the inverse of `DevnodeManager`'s `devnodeEmitsLegacyFlags` gate.
  */

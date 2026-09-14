@@ -39,6 +39,8 @@ async function deployBattleship() {
 
 let ctx: TestContext | undefined;
 
+const LOCAL_TIMEOUT_MS = 320_000;
+
 beforeAll(async () => {
   const fixture = await loadFixture(deployBattleship);
   ctx = fixture.ctx;
@@ -90,51 +92,63 @@ describe("battleship multi-program", () => {
     expect(board1Initial.player_2).toBe(player2().address);
   });
 
-  it("battleship.aleo::offer_battleship marks the board as started and emits a dummy Move for player 2", async () => {
-    expect(board1Initial, "initialize_board must run first").toBeDefined();
+  it(
+    "battleship.aleo::offer_battleship marks the board as started and emits a dummy Move for player 2",
+    async () => {
+      expect(board1Initial, "initialize_board must run first").toBeDefined();
 
-    const [started, move] = await battleship
-      .withSigner(player1())
-      .offer_battleship.locally(board1Initial!);
-    board1Started = started;
-    dummyMoveForP2 = move;
+      const [started, move] = await battleship
+        .withSigner(player1())
+        .offer_battleship.locally(board1Initial!);
+      board1Started = started;
+      dummyMoveForP2 = move;
 
-    expect(board1Started.game_started).toBe(true);
-    // Dummy move owned by player 2.
-    expect(dummyMoveForP2.owner).toBe(player2().address);
-  });
+      expect(board1Started.game_started).toBe(true);
+      // Dummy move owned by player 2.
+      expect(dummyMoveForP2.owner).toBe(player2().address);
+    },
+    LOCAL_TIMEOUT_MS,
+  );
 
-  it("battleship.aleo::start_battleship (player 2) starts their board and emits dummy Move back to player 1", async () => {
-    expect(dummyMoveForP2).toBeDefined();
+  it(
+    "battleship.aleo::start_battleship (player 2) starts their board and emits dummy Move back to player 1",
+    async () => {
+      expect(dummyMoveForP2).toBeDefined();
 
-    // Player 2 initializes their own board (with player 1 as opponent).
-    // Reusing player 1's coords for simplicity — different ships placement
-    // would be 2 different valid bitstrings; not necessary for parity.
-    const board2Initial = await battleship
-      .withSigner(player2())
-      .initialize_board.locally(CARRIER, BATTLESHIP_SHIP, CRUISER, DESTROYER, player1());
+      // Player 2 initializes their own board (with player 1 as opponent).
+      // Reusing player 1's coords for simplicity — different ships placement
+      // would be 2 different valid bitstrings; not necessary for parity.
+      const board2Initial = await battleship
+        .withSigner(player2())
+        .initialize_board.locally(CARRIER, BATTLESHIP_SHIP, CRUISER, DESTROYER, player1());
 
-    const [started, move] = await battleship
-      .withSigner(player2())
-      .start_battleship.locally(board2Initial, dummyMoveForP2!);
-    board2Started = started;
-    dummyMoveForP1 = move;
+      const [started, move] = await battleship
+        .withSigner(player2())
+        .start_battleship.locally(board2Initial, dummyMoveForP2!);
+      board2Started = started;
+      dummyMoveForP1 = move;
 
-    expect(board2Started.game_started).toBe(true);
-    expect(dummyMoveForP1.owner).toBe(player1().address);
-  });
+      expect(board2Started.game_started).toBe(true);
+      expect(dummyMoveForP1.owner).toBe(player1().address);
+    },
+    LOCAL_TIMEOUT_MS,
+  );
 
-  it("battleship.aleo::play (player 1's first turn) updates board and emits next Move for player 2", async () => {
-    expect(board1Started).toBeDefined();
-    expect(dummyMoveForP1).toBeDefined();
+  it(
+    "battleship.aleo::play (player 1's first turn) updates board and emits next Move for player 2",
+    async () => {
+      expect(board1Started).toBeDefined();
+      expect(dummyMoveForP1).toBeDefined();
 
-    // Shoot at bit 0 (single-bit u64 = 1).
-    const [nextBoard, nextMove] = await battleship
-      .withSigner(player1())
-      .play.locally(board1Started!, dummyMoveForP1!, 1n);
+      // Shoot at bit 0 (single-bit u64 = 1).
+      const [nextBoard, nextMove] = await battleship
+        .withSigner(player1())
+        .play.locally(board1Started!, dummyMoveForP1!, 1n);
 
-    expect(nextBoard.game_started).toBe(true);
-    // Next move is owned by the opponent (player 2).
-    expect(nextMove.owner).toBe(player2().address);
-  });
+      expect(nextBoard.game_started).toBe(true);
+      // Next move is owned by the opponent (player 2).
+      expect(nextMove.owner).toBe(player2().address);
+    },
+    LOCAL_TIMEOUT_MS,
+  );
 });

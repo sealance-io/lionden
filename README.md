@@ -58,7 +58,7 @@ For contributor workflows and realistic end-to-end runs, assume:
 
 - Node.js 20.19+ or 22.12+ (the root package declares `^20.19.0 || >=22.12.0`)
 - npm
-- Leo CLI v4.3.x available on `PATH` by default (default `leoVersion` is `"4.3.2"`). Leo v4.2.x, v4.1.x, and v4.0.x remain explicit compatibility lines, and Leo v3.5.x is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md)
+- Leo CLI v4.4.x available on `PATH` by default (default `leoVersion` is `"4.4.2"`). Leo v4.3.x, v4.2.x, v4.1.x, and v4.0.x remain explicit compatibility lines, and Leo v3.5.x is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md)
 
 
 Network functionality depends on `@provablehq/sdk@^0.11.3` via `packages/network`.
@@ -110,7 +110,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.3.2",
+  leoVersion: "4.4.2",
   // leoVersion declares a compatibility line; leoBinary controls the CLI that runs.
   defaultNetwork: "devnode",
   networks: {
@@ -120,7 +120,11 @@ export default defineConfig({
 });
 ```
 
-The repo examples under `examples/` follow this pattern.
+The maintained repo examples under `examples/` follow this Leo 4.4.2 pattern.
+Run `npm run test:smoke` from the repo root for the normal 4.4.2 smoke
+workflow over those examples. `npm run test:smoke:aleo-ports` runs the broader
+4.4.2 ported-example suite, and `npm run test:smoke:legacy-v43` is a separate
+compatibility fixture that requires a Leo 4.3.x binary on `PATH`.
 
 ## Current CLI Task Surface
 

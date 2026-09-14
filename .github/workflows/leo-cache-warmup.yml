@@ -40,7 +40,7 @@ jobs:
         id: setup-leo
         uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
         with:
-          version: "4.3.2" # semver-only; matches core examples' leoVersion
+          version: "4.3.2" # semver-only; matches the legacy compatibility fixture leoVersion
           rust-version: "1.96.0" # Leo v4.3.2 MSRV (== 4.2.0)
           enable-cache: true
           cache-save: always # Always save to ensure cache is refreshed

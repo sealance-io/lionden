@@ -27,9 +27,9 @@ program vote.aleo {
     /// Open a new proposal. The signer must match `info.proposer`. Initializes
     /// `tickets[id]` to 0.
     fn propose(public info: ProposalInfo) -> (Proposal, Final) {
-        assert_eq(self.caller, info.proposer);
+        assert_eq(std::ctx::caller(), info.proposer);
         let id: field = BHP256::hash_to_field(info.title);
-        return (Proposal { owner: self.caller, id, info }, final {
+        return (Proposal { owner: std::ctx::caller(), id, info }, final {
             Mapping::set(tickets, id, 0u64);
         });
     }
