@@ -21,7 +21,7 @@ program token.aleo {
 
     /// Transfer public tokens from signer to receiver.
     fn transfer_public(public receiver: address, public amount: u64) -> Final {
-        let sender: address = self.signer;
+        let sender: address = std::ctx::signer();
         return final {
             let sender_balance: u64 = balances.get(sender);
             assert(sender_balance >= amount);

@@ -15,10 +15,13 @@ async function deployTwoadicity() {
 
 let ctx: TestContext | undefined;
 
+const DEPLOY_TIMEOUT_MS = 420_000;
+const LOCAL_TIMEOUT_MS = 320_000;
+
 beforeAll(async () => {
   const fixture = await loadFixture(deployTwoadicity);
   ctx = fixture.ctx;
-});
+}, DEPLOY_TIMEOUT_MS);
 
 afterAll(async () => {
   if (ctx) {
@@ -39,15 +42,27 @@ describe("twoadicity.aleo", () => {
   // each call synthesizes a large circuit. We exercise a small representative
   // set of inputs (odd, low power-of-two, low non-power) rather than a
   // saturating sweep.
-  it("twoadicity(1) = 0 (odd)", async () => {
-    expect(await twoadicity.main.locally(1n)).toBe(0);
-  }, 180_000);
+  it(
+    "twoadicity(1) = 0 (odd)",
+    async () => {
+      expect(await twoadicity.main.locally(1n)).toBe(0);
+    },
+    LOCAL_TIMEOUT_MS,
+  );
 
-  it("twoadicity(8) = 3 (2^3)", async () => {
-    expect(await twoadicity.main.locally(8n)).toBe(3);
-  }, 180_000);
+  it(
+    "twoadicity(8) = 3 (2^3)",
+    async () => {
+      expect(await twoadicity.main.locally(8n)).toBe(3);
+    },
+    LOCAL_TIMEOUT_MS,
+  );
 
-  it("twoadicity(12) = 2 (4·3)", async () => {
-    expect(await twoadicity.main.locally(12n)).toBe(2);
-  }, 180_000);
+  it(
+    "twoadicity(12) = 2 (4·3)",
+    async () => {
+      expect(await twoadicity.main.locally(12n)).toBe(2);
+    },
+    LOCAL_TIMEOUT_MS,
+  );
 });

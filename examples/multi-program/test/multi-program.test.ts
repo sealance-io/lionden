@@ -93,7 +93,7 @@ describe("rewards program", () => {
     it("claims reward and deposits into treasury", async () => {
       // Signer has 125 points (>= 100 threshold), so claiming should succeed.
       // claim_reward calls treasury.aleo::deposit() cross-program.
-      // Both programs use self.signer, so the deposit is keyed by account-0.
+      // Both programs use std::ctx::signer(), so the deposit is keyed by account-0.
       await rewards.claim_reward.accepted(1000n);
 
       // Verify claimed flag is set

@@ -29,7 +29,7 @@ program token.aleo {
 
     /// Public-to-public transfer: decrement caller, increment receiver.
     fn transfer_public(public receiver: address, public amount: u64) -> Final {
-        let caller: address = self.caller;
+        let caller: address = std::ctx::caller();
         return final {
             let sender_amount: u64 = Mapping::get_or_use(account, caller, 0u64);
             Mapping::set(account, caller, sender_amount - amount);
@@ -59,7 +59,7 @@ program token.aleo {
     /// Public-to-private: emit a Token to receiver, decrement caller's account.
     fn transfer_public_to_private(public receiver: address, public amount: u64) -> (Token, Final) {
         let transferred: Token = Token { owner: receiver, amount: amount };
-        let caller: address = self.caller;
+        let caller: address = std::ctx::caller();
         return (transferred, final {
             let current: u64 = Mapping::get_or_use(account, caller, 0u64);
             Mapping::set(account, caller, current - amount);

@@ -432,7 +432,7 @@ describe("LeoDeployBackend.preflight", () => {
       runner: new FakeLeoCli().runner,
       versionProbe: async () => "leo 4.1.0",
     });
-    await expect(backend.preflight(ctx())).rejects.toThrow(/supports Leo 4\.3\.x only/);
+    await expect(backend.preflight(ctx())).rejects.toThrow(/supports Leo 4\.3\.x or 4\.4\.x only/);
   });
 });
 

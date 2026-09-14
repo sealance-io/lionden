@@ -17,7 +17,7 @@ LionDen is in active early development. This guide is anchored to **shipped beha
 
 - Node.js `^20.19.0 || >=22.12.0`.
 - npm (the workspace baseline; pnpm/yarn are not exercised).
-- **Leo CLI v4.3.x** available on `PATH` as `leo` by default (default `leoVersion` is `"4.3.2"`). Leo v4.2.x, v4.1.x, and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
+- **Leo CLI v4.4.x** available on `PATH` as `leo` by default (default `leoVersion` is `"4.4.2"`). Leo v4.3.x, v4.2.x, v4.1.x, and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
 - Optional: a v3.5 Leo binary installed side-by-side if you need v3.5 deployable-program compatibility. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
 LionDen also uses `@provablehq/sdk` (currently `^0.11.3`) under the hood through `@lionden/network` for transaction building and broadcasting.
@@ -70,7 +70,9 @@ npx lionden test
 
 Either clone it or copy one of the examples under `examples/` (`hello-world`, `token`, `multi-program`, `nft-registry`, `async-escrow`) into a fresh directory. For Leo compatibility patterns, also inspect the focused aleo-ports such as `examples/aleo-ports/dynamic_dispatch` and `examples/aleo-ports/dynamic_records`. Each example is a self-contained workspace with its own `lionden.config.ts`, `programs/`, `scripts/`, `test/`, and (sometimes) `recipes/`.
 
-The examples are the canonical reference for "how does a real LionDen project look?" Prefer reading them over inventing your own setup.
+The maintained examples are the canonical reference for "how does a real LionDen project look?" They target Leo 4.4.2. Prefer reading them over inventing your own setup.
+
+From the repo root, `npm run test:smoke` is the normal Leo 4.4.2 smoke workflow over maintained examples. `npm run test:smoke:aleo-ports` runs the broader Leo 4.4.2 ported-example suite. `npm run test:smoke:legacy-v43` is intentionally separate and requires a Leo 4.3.x binary on `PATH`.
 
 ## CLI Argument Shape
 
@@ -132,7 +134,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.3.2",
+  leoVersion: "4.4.2",
   defaultNetwork: "devnode",
   networks: {
     devnode: { type: "devnode", autoBlock: true },
@@ -147,7 +149,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 
 | Field | Purpose | Default |
 | --- | --- | --- |
-| `leoVersion` | Compatibility line — `4.3.x`, `4.2.x`, `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.3.2"` |
+| `leoVersion` | Compatibility line — `4.4.x`, `4.3.x`, `4.2.x`, `4.1.x`, `4.0.x`, or `3.5.x` ([details](leo-version-compatibility.md)) | `"4.4.2"` |
 | `leoBinary` | Path to the Leo CLI to invoke. Tilde-expanded. | `"leo"` from `PATH` |
 | `programsDir` / `artifactsDir` / `typechainDir` | Source/output layout | `programs` / `artifacts` / `typechain` |
 | `defaultNetwork` | Named `networks` entry selected by tasks when no global `--network <name>` is passed | `"devnode"` |
@@ -455,7 +457,7 @@ deploy: { backend: "leo" },
 networks: { testnet: { type: "http", endpoint: "…", deployBackend: "leo" } },
 ```
 
-The Leo backend requires a `4.3.x` Leo binary, cannot use `sdk.egress` or a network `apiKey`, and does not estimate fees before deploying. It also unlocks `--dry-run` against real networks, which the SDK backend cannot do. Full comparison and limits: [`deploy-backends.md`](deploy-backends.md).
+The Leo backend requires a verified `4.3.x` or `4.4.x` Leo binary, cannot use `sdk.egress` or a network `apiKey`, and does not estimate fees before deploying. The SDK backend remains the default; use the Leo backend when native key synthesis is needed for large deployments. Full comparison and limits: [`deploy-backends.md`](deploy-backends.md).
 
 ### Deployment recipes
 
@@ -779,7 +781,7 @@ If you run a non-default `socketAddr`/`--port`, substitute that port for `3030`.
 
 **Deploy says "skipping — already deployed".** — Default behavior under `skipDeployed: true`. Use `--no-skip-deployed` to make it a hard error, or `upgrade --program <name>` if you meant to ship an upgrade.
 
-**Deploy hangs or dies with an out-of-memory error during key synthesis.** — The SDK backend synthesizes every proving key inside one WASM call with a ~4 GiB ceiling and keeps nothing on failure, so retrying repeats the same work. Re-run with `--deploy-backend leo` (requires a `4.3.x` Leo binary): Leo runs out of process and caches keys under `~/.aleo`, so a failed run resumes cheaply. See [`deploy-backends.md`](deploy-backends.md).
+**Deploy hangs or dies with an out-of-memory error during key synthesis.** — The SDK backend synthesizes every proving key inside one WASM call with a ~4 GiB ceiling and keeps nothing on failure, so retrying repeats the same work. Re-run with `--deploy-backend leo` (requires a `4.3.x` or `4.4.x` Leo binary): Leo runs out of process and caches keys under `~/.aleo`, so a failed run resumes cheaply. See [`deploy-backends.md`](deploy-backends.md).
 
 **`lionden run script.ts` fails to import a `.ts` file.** — The CLI must be invoked through `tsx`. The packaged binary handles this; if running from source use `node --import tsx packages/cli/src/bin.ts run ...`.
 

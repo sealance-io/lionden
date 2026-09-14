@@ -125,20 +125,23 @@ describe("assertDeployBackendCompatible", () => {
       );
     });
 
-    it.each(["3.5.0", "4.0.0", "4.1.0", "4.2.0", "4.4.0", "5.0.0"])(
-      "rejects leoVersion %s as outside the verified 4.3 line",
+    it.each(["3.5.0", "4.0.0", "4.1.0", "4.2.0", "4.5.0", "5.0.0"])(
+      "rejects leoVersion %s as outside the verified Leo deploy backend lines",
       (leoVersion) => {
         const config = createMockConfig({ leoVersion });
         expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).toThrow(
-          /supports Leo 4\.3\.x only/,
+          /supports Leo 4\.3\.x or 4\.4\.x only/,
         );
       },
     );
 
-    it.each(["4.3.0", "4.3.2", "4.3.11"])("accepts leoVersion %s", (leoVersion) => {
-      const config = createMockConfig({ leoVersion });
-      expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).not.toThrow();
-    });
+    it.each(["4.3.0", "4.3.2", "4.3.11", "4.4.0", "4.4.1", "4.4.2"])(
+      "accepts leoVersion %s",
+      (leoVersion) => {
+        const config = createMockConfig({ leoVersion });
+        expect(() => assertDeployBackendCompatible("leo", ctxFor(config))).not.toThrow();
+      },
+    );
 
     it("rejects an unparseable leoVersion rather than assuming it is modern", () => {
       const config = createMockConfig({ leoVersion: "4.3.0-rc.1" });
@@ -211,7 +214,9 @@ describe("resolveDeployBackend", () => {
    */
   it("reports a compatibility failure instead of returning a backend", () => {
     const config = createMockConfig({ leoVersion: "4.1.0" });
-    expect(() => resolveDeployBackend("leo", ctxFor(config))).toThrow(/supports Leo 4\.3\.x only/);
+    expect(() => resolveDeployBackend("leo", ctxFor(config))).toThrow(
+      /supports Leo 4\.3\.x or 4\.4\.x only/,
+    );
   });
 
   it("emits compatibility warnings and still returns a usable backend", () => {

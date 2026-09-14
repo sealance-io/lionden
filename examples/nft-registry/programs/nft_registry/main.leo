@@ -21,7 +21,7 @@ program nft_registry.aleo {
 
     /// Create a new NFT collection. The signer becomes the admin.
     fn create_collection(public collection_id: u64) -> Final {
-        let admin: address = self.signer;
+        let admin: address = std::ctx::signer();
         return final {
             collection_admin.set(collection_id, admin);
             collection_supply.set(collection_id, 0u64);
@@ -43,7 +43,7 @@ program nft_registry.aleo {
                 uri_hash: uri_hash,
             },
         };
-        let minter: address = self.signer;
+        let minter: address = std::ctx::signer();
         return (nft, final {
             let admin: address = collection_admin.get(collection_id);
             assert_eq(admin, minter);

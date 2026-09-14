@@ -119,6 +119,12 @@ describe("preflightLeo", () => {
     await expect(preflightLeo(makeConfig({ leoVersion: "4.1.0" }))).resolves.toBeUndefined();
   });
 
+  it("accepts Leo 4.4 patch drift within the configured line", async () => {
+    mockExecFileSuccess("leo 4.4.11 (abcdef HEAD)");
+
+    await expect(preflightLeo(makeConfig({ leoVersion: "4.4.2" }))).resolves.toBeUndefined();
+  });
+
   it("rejects unparseable output when checking is enabled", async () => {
     mockExecFileSuccess("leo dev build");
 
@@ -138,6 +144,17 @@ describe("preflightLeo", () => {
       /requires 4\.0\.x/,
     );
   });
+
+  it.each(["4.3.2", "4.5.0"])(
+    "rejects Leo %s when configured for the 4.4 line",
+    async (actualVersion) => {
+      mockExecFileSuccess(`leo ${actualVersion}`);
+
+      await expect(preflightLeo(makeConfig({ leoVersion: "4.4.2" }))).rejects.toThrow(
+        /requires 4\.4\.x/,
+      );
+    },
+  );
 
   it("allows a different minor line when skipLeoVersionCheck is true", async () => {
     mockExecFileSuccess("leo 4.1.0");

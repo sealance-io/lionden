@@ -237,6 +237,22 @@ describe("DevnodeManager", () => {
     expect(args).not.toContain("--network");
   });
 
+  it("start omits --consensus-heights / --network on Leo 4.4", async () => {
+    const mockProc = createMockProcess();
+    vi.mocked(spawn).mockReturnValue(mockProc as any);
+    mockFetch.mockResolvedValue({ ok: true });
+
+    await manager.start({
+      leoVersion: "4.4.2",
+      consensusHeights: "0,1,2,3,4,5,6,7,8",
+      network: "canary",
+    });
+
+    const args = vi.mocked(spawn).mock.calls[0]![1] as string[];
+    expect(args).not.toContain("--consensus-heights");
+    expect(args).not.toContain("--network");
+  });
+
   it("start omits --consensus-heights / --network when leoVersion is unset (modern default)", async () => {
     const mockProc = createMockProcess();
     vi.mocked(spawn).mockReturnValue(mockProc as any);

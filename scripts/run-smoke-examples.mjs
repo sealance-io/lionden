@@ -14,6 +14,8 @@ const CORE_EXAMPLES = [
   "renamed_dynamic_records",
 ];
 
+const LEGACY_V43_FIXTURES = ["test/fixtures/leo-versions/v43-legacy-context"];
+
 const PROVE_TEST_TIMEOUT_MS = 900_000;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -50,6 +52,10 @@ function aleoPortConfigs() {
     .sort((a, b) => a.localeCompare(b));
 }
 
+function legacyV43Configs() {
+  return LEGACY_V43_FIXTURES.map((name) => configPath(name));
+}
+
 function configPath(examplePath) {
   return join(examplePath, "lionden.config.ts");
 }
@@ -60,6 +66,8 @@ function resolveConfigs(group) {
       return coreConfigs();
     case "aleo-ports":
       return aleoPortConfigs();
+    case "legacy-v43":
+      return legacyV43Configs();
     case "all":
       return [...coreConfigs(), ...aleoPortConfigs()];
     default:
@@ -146,6 +154,10 @@ function isAleoPortConfig(config) {
   return config.split(/[\\/]/).includes("aleo-ports");
 }
 
+function isLegacyV43Config(config) {
+  return config.split(/[\\/]/).includes("leo-versions");
+}
+
 function createCoverageContext(groups) {
   const lane = coverageLane(groups);
   const root = join(repoRoot, ".vitest", "smoke-coverage", lane);
@@ -203,6 +215,7 @@ function coverageEnv(context, config) {
 function coverageExampleId(config) {
   const exampleDir = dirname(config);
   if (isAleoPortConfig(config)) return `aleo-ports-${basename(exampleDir)}`;
+  if (isLegacyV43Config(config)) return `legacy-v43-${basename(exampleDir)}`;
   return basename(exampleDir);
 }
 
