@@ -1,5 +1,18 @@
 # @lionden/leo-compiler
 
+## 0.3.0
+
+### Minor Changes
+
+- [#102](https://github.com/sealance-io/lionden/pull/102) [`a0c8ec6`](https://github.com/sealance-io/lionden/commit/a0c8ec64709070d06d3254969bff2d0d3353a709) Thanks [@fullkomnun](https://github.com/fullkomnun)! - Allow `codegen.dynamicRecords.*.schema` to declare optional `_version: "u8.public"` metadata so manually constructed dynamic-record inputs (JSON-rehydrated, spread copies, hand-built objects) can carry the on-chain record version. `_version` is optional on the value: omitting it still emits a versionless literal (version 0). Decrypted records keep replaying their cached plaintext. Generated helpers now emit the schema literal in the canonical record order (`owner`, ABI fields, `_nonce`, `_version`) regardless of the key order in the config; configs whose order differed previously produced literals the VM rejected. Regenerate existing bindings to pick up the change.
+
+### Patch Changes
+
+- [#102](https://github.com/sealance-io/lionden/pull/102) [`a4d790e`](https://github.com/sealance-io/lionden/commit/a4d790ea81b59f28d4a3b3b0324ea0c92d9830f1) Thanks [@fullkomnun](https://github.com/fullkomnun)! - Preserve the original decrypted record plaintext in generated dynamic-record helpers, including runtime version metadata absent from the ABI. This prevents held-record routing from reconstructing the wrong ledger commitment during proving. Manually constructed inputs continue to use schema encoding and validation. Regenerate existing bindings to pick up the fix.
+- Updated dependencies []:
+  - @lionden/config@0.3.0
+  - @lionden/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

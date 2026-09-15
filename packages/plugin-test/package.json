@@ -1,6 +1,6 @@
 {
   "name": "@lionden/plugin-test",
-  "version": "0.1.2",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
@@ -28,9 +28,9 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@lionden/config": "^0.2.0",
-    "@lionden/core": "^0.2.0",
-    "@lionden/testing": "^0.1.2"
+    "@lionden/config": "^0.3.0",
+    "@lionden/core": "^0.3.0",
+    "@lionden/testing": "^0.3.0"
   },
   "devDependencies": {
     "@lionden/test-internals": "*"
