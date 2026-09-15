@@ -1,5 +1,20 @@
 # @lionden/testing
 
+## 0.3.0
+
+### Minor Changes
+
+- [#104](https://github.com/sealance-io/lionden/pull/104) [`5a3a427`](https://github.com/sealance-io/lionden/commit/5a3a42778226eb074d238ad20e38ff2135d81a9b) Thanks [@fullkomnun](https://github.com/fullkomnun)! - Recover from the partial LionDen 0.2 publication with a coordinated 0.3.0 release of all 11 public
+  packages.
+
+### Patch Changes
+
+- Updated dependencies [[`a0c8ec6`](https://github.com/sealance-io/lionden/commit/a0c8ec64709070d06d3254969bff2d0d3353a709), [`a4d790e`](https://github.com/sealance-io/lionden/commit/a4d790ea81b59f28d4a3b3b0324ea0c92d9830f1)]:
+  - @lionden/leo-compiler@0.3.0
+  - @lionden/config@0.3.0
+  - @lionden/core@0.3.0
+  - @lionden/network@0.3.0
+
 ## 0.1.2
 
 ### Patch Changes

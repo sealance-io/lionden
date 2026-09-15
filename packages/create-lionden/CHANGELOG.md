@@ -1,5 +1,12 @@
 # create-lionden
 
+## 0.3.0
+
+### Minor Changes
+
+- [#104](https://github.com/sealance-io/lionden/pull/104) [`5a3a427`](https://github.com/sealance-io/lionden/commit/5a3a42778226eb074d238ad20e38ff2135d81a9b) Thanks [@fullkomnun](https://github.com/fullkomnun)! - Recover from the partial LionDen 0.2 publication with a coordinated 0.3.0 release of all 11 public
+  packages.
+
 ## 0.1.1
 
 ### Patch Changes
