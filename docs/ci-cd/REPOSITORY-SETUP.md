@@ -148,12 +148,13 @@ scoped to `lionden` via `actions/create-github-app-token`.
 The publish workflow's manual dispatch is also the recovery path for a release that reached npm
 without tags or GitHub Releases. It is safe to approve on `main` even while a Version Packages PR
 is pending: the manual path skips dependency installation, build, and `changeset publish`, so it
-cannot publish the checked-out manifests. Historical and current missing tags are recreated only
-at npm's recorded `gitHead`, remote targets are verified, and existing Releases are left
-unchanged. Automatic runs retry npm packument reads after publishing so ordinary registry
-replication lag does not immediately fail metadata reconciliation. Remote tags are fetched once
-in the steady state, and GitHub Releases are listed in pages before only the missing ones are
-created.
+cannot publish the checked-out manifests. Current missing tags are recreated only at npm's
+recorded `gitHead`, remote targets are verified, and existing Releases are left unchanged.
+Automatic runs check all current package versions concurrently, allowing up to five minutes for
+npm packument replication and limiting each request to 15 seconds. Historical tag backfill is not
+part of the release path, so the App does not need permission to write workflow files. Remote tags
+are fetched once in the steady state, and GitHub Releases are listed in pages before only the
+missing ones are created.
 
 ## npm publishing (OIDC trusted publishing)
 

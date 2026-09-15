@@ -89,7 +89,8 @@ jobs:
     # Defense-in-depth: never perform release work from anything but main, regardless of the gate.
     if: needs.check-release.outputs.should_run == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Includes up to five minutes for npm metadata propagation after an irreversible publish.
+    timeout-minutes: 30
     environment: npm-publish # protected: required reviewers, main-only
     permissions:
       contents: write # push tags + create GitHub Releases
@@ -139,9 +140,8 @@ jobs:
           # auto-flips on going OSS, off while internal so publish doesn't fail.
           NPM_CONFIG_PROVENANCE: ${{ github.event.repository.visibility == 'public' }}
       - name: Reconcile and verify release tags
-        # Enumerate every published version of the fixed public package group. Missing tags are
-        # recreated at npm's immutable gitHead, so a rerun repairs both the current release and
-        # historical versions whose npm publish succeeded without metadata reaching GitHub.
+        # Verify only the versions in the checked-out manifests. Historical backfill does not
+        # belong on the critical release path and can require broader GitHub App permissions.
         run: >-
           node scripts/reconcile-release-tags.mjs
           --push

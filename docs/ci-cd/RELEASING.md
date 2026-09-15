@@ -98,11 +98,11 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
    approve) builds, then runs `changeset publish` to publish every bumped package to npm via
    **OIDC trusted publishing** (no tokens). Publishing is idempotent: already-published versions
    are skipped.
-3. The workflow waits for each checked-out package version to appear in npm's packument, then
-   enumerates every npm-published version of all 11 packages and reads each immutable `gitHead`.
-   One remote-tag snapshot validates existing refs; missing refs are pushed as one batch and a
-   second snapshot verifies that batch. This includes historical versions, so a late rerun still
-   repairs older omissions.
+3. The workflow checks all 11 current package versions concurrently, allowing up to five minutes
+   for them to appear in npm's packuments. Each request has its own timeout. It reads only those
+   current versions' immutable `gitHead` values, validates existing refs from one remote-tag
+   snapshot, pushes missing refs as one batch, and verifies the batch with a second snapshot.
+   Historical npm versions are deliberately outside the critical release path.
 4. Existing GitHub Releases are listed in pages. Missing Releases are created without generated
    notes; release creation does not depend on a non-semver tag order or an inferred previous tag.
 
@@ -123,20 +123,20 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
   [REPOSITORY-SETUP.md → Publishing access](./REPOSITORY-SETUP.md#publishing-access-per-package-11).
 - **Manual dispatches repair metadata without publishing.** A manual `release-publish.yml`
   dispatch from `main` skips dependency installation, build, and `changeset publish` entirely.
-  It recovers source commits from npm `gitHead`, pushes missing tags, verifies them, and creates
-  missing GitHub Releases. This is safe even before a pending Version Packages PR merges because
-  the checked-out manifests can never be published by that path.
+  It recovers the checked-out versions' source commits from npm `gitHead`, pushes missing tags,
+  verifies them, and creates missing GitHub Releases. This is safe even before a pending Version
+  Packages PR merges because the checked-out manifests can never be published by that path.
 
-- **Registry replication is retried.** After an automatic publish, reconciliation waits with
-  bounded exponential backoff until each checked-out package version is visible in its npm
-  packument. Persistent registry failures still fail the protected release job.
-- **Historical metadata exceptions are explicit.** A historical npm version with an invalid
-  `gitHead`, or one with both a missing tag and a commit unavailable in the full checkout, fails
-  reconciliation unless its exact tag and a non-empty reason are committed to
-  `.changeset/release-tag-exceptions.json`. Exceptions cannot suppress the checked-out version,
-  cannot excuse a remote-tag mismatch, and fail when unused so stale entries are removed.
+- **Registry replication is retried within one deadline.** After an automatic publish, all
+  checked-out package versions are checked concurrently with bounded exponential backoff, a
+  five-minute shared deadline, and a 15-second timeout on each registry request. Persistent
+  registry failures still fail the protected release job.
+- **Historical metadata is not an automatic release gate.** Normal and metadata-only runs ignore
+  older npm versions. This avoids granting the release App permission to write workflow files
+  merely to create a tag at a historical commit whose workflow tree differs from `main`.
 - **A successful npm step is not enough.** The publish job fails unless every published package
-  tag resolves remotely to the same commit npm records and every matching GitHub Release exists.
+  version checked out by the run has a tag that resolves remotely to the same commit npm records
+  and a matching GitHub Release.
 
 ## Recovery
 

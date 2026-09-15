@@ -113,7 +113,5 @@ When sources disagree, use this order:
   (rulesets, environments, App permissions, npm access) is read at run time and can be fixed in
   place. A source-side fix needs a corrected commit on `main` and a new Version Packages PR,
   which publishes a new coordinated version and leaves the abandoned one incomplete.
-- If an immutable historical npm version has unusable `gitHead` metadata, or both its tag and
-  source commit are unavailable, add its exact tag and an explanation to
-  `.changeset/release-tag-exceptions.json`. Never except the checked-out version or a mismatched
-  remote tag; unused exceptions fail.
+- Tag reconciliation covers only the versions in the checked-out public manifests. Historical
+  npm metadata and missing historical tags are not part of the automatic release path.

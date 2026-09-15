@@ -42,7 +42,6 @@ try {
     join(repo, ".changeset", "config.json"),
     JSON.stringify({ fixed: [["@scope/public-package"]] }),
   );
-  writeFileSync(join(repo, ".changeset", "release-tag-exceptions.json"), "{}\n");
 
   git(repo, ["init"]);
   git(repo, ["config", "user.email", "release-test@example.com"]);
@@ -53,37 +52,40 @@ try {
   git(repo, ["remote", "add", "origin", remote]);
 
   const gitHead = git(repo, ["rev-parse", "HEAD"]);
-  const fetchImpl = async () =>
-    new Response(
+  const requestSignals = [];
+  const fetchImpl = async (_url, options) => {
+    requestSignals.push(options.signal);
+    return new Response(
       JSON.stringify({
         name: "@scope/public-package",
         versions: {
-          "0.9.0": { name: "@scope/public-package", version: "0.9.0", gitHead },
+          // Historical metadata is intentionally irrelevant to current-release reconciliation.
+          "0.9.0": { name: "@scope/public-package", version: "0.9.0" },
           "1.0.0": { name: "@scope/public-package", version: "1.0.0", gitHead },
         },
       }),
       { status: 200 },
     );
+  };
   const outputPath = join(dir, "release-tags.txt");
 
   const tags = await reconcileReleaseTags({ rootDir: repo, outputPath, push: true, fetchImpl });
-  assert.deepEqual(tags, ["@scope/public-package@0.9.0", "@scope/public-package@1.0.0"]);
-  assert.equal(
-    readFileSync(outputPath, "utf8"),
-    "@scope/public-package@0.9.0\n@scope/public-package@1.0.0\n",
-  );
+  assert.deepEqual(tags, ["@scope/public-package@1.0.0"]);
+  assert.equal(readFileSync(outputPath, "utf8"), "@scope/public-package@1.0.0\n");
   assert.equal(
     git(repo, ["ls-remote", "--tags", "origin", "refs/tags/@scope/public-package@1.0.0"]),
     `${gitHead}\trefs/tags/@scope/public-package@1.0.0`,
   );
+  assert.ok(requestSignals.every((signal) => signal instanceof AbortSignal));
 
   await reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl });
 
+  let nowMs = 0;
   let replicationAttempts = 0;
   const retryDelays = [];
-  const laggingFetch = async () => {
+  const laggingFetch = async (...args) => {
     replicationAttempts++;
-    if (replicationAttempts > 1) return fetchImpl();
+    if (replicationAttempts > 1) return fetchImpl(...args);
     return new Response(
       JSON.stringify({
         name: "@scope/public-package",
@@ -98,13 +100,20 @@ try {
     rootDir: repo,
     push: false,
     fetchImpl: laggingFetch,
-    registryAttempts: 2,
+    registryTimeoutMs: 100,
+    registryRequestTimeoutMs: 20,
     registryRetryDelayMs: 10,
-    sleepImpl: async (delayMs) => retryDelays.push(delayMs),
+    sleepImpl: async (delayMs) => {
+      retryDelays.push(delayMs);
+      nowMs += delayMs;
+    },
+    nowImpl: () => nowMs,
   });
   assert.equal(replicationAttempts, 2);
   assert.deepEqual(retryDelays, [10]);
 
+  nowMs = 0;
+  const timeoutDelays = [];
   const staleFetch = async () =>
     new Response(
       JSON.stringify({
@@ -120,45 +129,19 @@ try {
       rootDir: repo,
       push: false,
       fetchImpl: staleFetch,
-      registryAttempts: 1,
-      registryRetryDelayMs: 0,
+      registryTimeoutMs: 25,
+      registryRequestTimeoutMs: 20,
+      registryRetryDelayMs: 10,
+      sleepImpl: async (delayMs) => {
+        timeoutDelays.push(delayMs);
+        nowMs += delayMs;
+      },
+      nowImpl: () => nowMs,
     }),
-    /npm metadata for @scope\/public-package@1\.0\.0 was not ready after 1 registry attempt/,
+    /npm metadata for @scope\/public-package@1\.0\.0 was not ready before the shared registry deadline after 2 attempts/,
   );
+  assert.deepEqual(timeoutDelays, [10, 15]);
 
-  writeFileSync(
-    join(repo, ".changeset", "release-tag-exceptions.json"),
-    `${JSON.stringify({
-      "@scope/public-package@0.7.0": "legacy publish omitted gitHead",
-      "@scope/public-package@0.8.0": "legacy source commit is unavailable",
-    })}\n`,
-  );
-  const invalidHistoricalFetch = async () =>
-    new Response(
-      JSON.stringify({
-        name: "@scope/public-package",
-        versions: {
-          "0.7.0": { name: "@scope/public-package", version: "0.7.0" },
-          "0.8.0": {
-            name: "@scope/public-package",
-            version: "0.8.0",
-            gitHead: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          },
-          "0.9.0": { name: "@scope/public-package", version: "0.9.0", gitHead },
-          "1.0.0": { name: "@scope/public-package", version: "1.0.0", gitHead },
-        },
-      }),
-      { status: 200 },
-    );
-  assert.deepEqual(
-    await reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl: invalidHistoricalFetch }),
-    ["@scope/public-package@0.9.0", "@scope/public-package@1.0.0"],
-  );
-
-  writeFileSync(
-    join(repo, ".changeset", "release-tag-exceptions.json"),
-    `${JSON.stringify({ "@scope/public-package@1.0.0": "current releases cannot be skipped" })}\n`,
-  );
   const invalidCurrentFetch = async () =>
     new Response(
       JSON.stringify({
@@ -174,51 +157,24 @@ try {
     /npm metadata for @scope\/public-package@1\.0\.0 has no valid gitHead/,
   );
 
-  writeFileSync(
-    join(repo, ".changeset", "release-tag-exceptions.json"),
-    `${JSON.stringify({ "@scope/public-package@0.9.0": "stale exception" })}\n`,
+  await assert.rejects(
+    reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl, registryTimeoutMs: 0 }),
+    /registryTimeoutMs must be a positive number/,
   );
   await assert.rejects(
-    reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl }),
-    /Unused release-tag exceptions: @scope\/public-package@0\.9\.0/,
+    reconcileReleaseTags({ rootDir: repo, push: false, fetchImpl, registryRequestTimeoutMs: 0 }),
+    /registryRequestTimeoutMs must be a positive number/,
   );
-  writeFileSync(join(repo, ".changeset", "release-tag-exceptions.json"), "{}\n");
 
   writeFileSync(join(repo, "README.md"), "later commit\n");
   git(repo, ["add", "README.md"]);
   git(repo, ["commit", "-m", "later"]);
   const laterGitHead = git(repo, ["rev-parse", "HEAD"]);
-  writeFileSync(
-    join(repo, ".changeset", "release-tag-exceptions.json"),
-    `${JSON.stringify({ "@scope/public-package@0.9.0": "mismatches cannot be skipped" })}\n`,
-  );
-  const historicalMismatchFetch = async () =>
+  const mismatchedCurrentFetch = async () =>
     new Response(
       JSON.stringify({
         name: "@scope/public-package",
         versions: {
-          "0.9.0": {
-            name: "@scope/public-package",
-            version: "0.9.0",
-            gitHead: laterGitHead,
-          },
-          "1.0.0": { name: "@scope/public-package", version: "1.0.0", gitHead },
-        },
-      }),
-      { status: 200 },
-    );
-  await assert.rejects(
-    reconcileReleaseTags({ rootDir: repo, push: true, fetchImpl: historicalMismatchFetch }),
-    /Remote tag .* but npm records/,
-  );
-  writeFileSync(join(repo, ".changeset", "release-tag-exceptions.json"), "{}\n");
-
-  const laterFetch = async () =>
-    new Response(
-      JSON.stringify({
-        name: "@scope/public-package",
-        versions: {
-          "0.9.0": { name: "@scope/public-package", version: "0.9.0", gitHead },
           "1.0.0": {
             name: "@scope/public-package",
             version: "1.0.0",
@@ -229,9 +185,49 @@ try {
       { status: 200 },
     );
   await assert.rejects(
-    reconcileReleaseTags({ rootDir: repo, push: true, fetchImpl: laterFetch }),
+    reconcileReleaseTags({ rootDir: repo, push: true, fetchImpl: mismatchedCurrentFetch }),
     /Remote tag .* but npm records/,
   );
+
+  mkdirSync(join(repo, "packages", "second-package"));
+  writeFileSync(
+    join(repo, "packages", "second-package", "package.json"),
+    JSON.stringify({ name: "@scope/second-package", version: "1.0.0" }),
+  );
+  writeFileSync(
+    join(repo, ".changeset", "config.json"),
+    JSON.stringify({ fixed: [["@scope/public-package", "@scope/second-package"]] }),
+  );
+  git(repo, ["add", "."]);
+  git(repo, ["commit", "-m", "add second package"]);
+  const secondGitHead = git(repo, ["rev-parse", "HEAD"]);
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const concurrentFetch = async (url) => {
+    const name = decodeURIComponent(new URL(url).pathname.slice(1));
+    inFlight++;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await Promise.resolve();
+    inFlight--;
+    return new Response(
+      JSON.stringify({
+        name,
+        versions: {
+          "1.0.0": {
+            name,
+            version: "1.0.0",
+            gitHead: name === "@scope/public-package" ? gitHead : secondGitHead,
+          },
+        },
+      }),
+      { status: 200 },
+    );
+  };
+  assert.deepEqual(
+    await reconcileReleaseTags({ rootDir: repo, push: true, fetchImpl: concurrentFetch }),
+    ["@scope/public-package@1.0.0", "@scope/second-package@1.0.0"],
+  );
+  assert.equal(maxInFlight, 2);
 
   assert.equal(releaseTag({ name: "@scope/pkg", version: "2.3.4" }), "@scope/pkg@2.3.4");
   assert.equal(
