@@ -20,15 +20,15 @@ We have a quick list of common questions to get you started engaging with this p
    `package-lock.json`, and writes CHANGELOGs.
 3. Merging that PR triggers the **`release-publish`** workflow, which publishes every bumped
    package to npm via OIDC trusted publishing (no tokens), reconciles each tag against npm's
-   `gitHead`, and creates or verifies the matching GitHub Releases across the published history.
+   `gitHead`, and creates or verifies the matching GitHub Releases for the checked-out versions.
 
 Never hand-edit package versions or rerun npm publishing to repair tags. A manual
 `release-publish.yml` dispatch from `main` skips `changeset publish` entirely and only repairs
 missing tags/releases. If package versions are missing from npm after a partial publish and that
 release is still the intended one (nothing newer published, no source fix needed), re-run the
 failed publish job from the original release run instead; `changeset publish` skips versions
-already published. Never re-run a superseded release. Exceptional unusable historical npm metadata must be documented by exact
-tag in `release-tag-exceptions.json`; current releases and remote-tag mismatches cannot be skipped.
+already published. Never re-run a superseded release. Historical npm versions are outside the
+automatic reconciliation path.
 
 See `docs/ci-cd/RELEASING.md` for the full flow and `docs/ci-cd/REPOSITORY-SETUP.md` for the
 one-time bootstrap and trusted-publisher configuration.
