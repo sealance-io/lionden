@@ -1,5 +1,19 @@
 # @lionden/plugin-deploy
 
+## 0.4.0
+
+### Minor Changes
+
+- [#106](https://github.com/sealance-io/lionden/pull/106) [`be7b450`](https://github.com/sealance-io/lionden/commit/be7b4507697e52456aec370846beba4eb489854e) Thanks [@NadavPeled1998](https://github.com/NadavPeled1998)! - Add Leo 4.4.2 support and make it the default compatibility line. Generated projects and maintained examples now use the 4.4 metadata APIs, while the Leo deploy backend accepts verified 4.4.x binaries alongside 4.3.x. Existing projects can remain on supported earlier Leo lines by setting `leoVersion` (and, where needed, `leoBinary`) explicitly.
+
+### Patch Changes
+
+- Updated dependencies [[`be7b450`](https://github.com/sealance-io/lionden/commit/be7b4507697e52456aec370846beba4eb489854e)]:
+  - @lionden/config@0.4.0
+  - @lionden/leo-compiler@0.4.0
+  - @lionden/core@0.4.0
+  - @lionden/network@0.4.0
+
 ## 0.3.0
 
 ### Patch Changes

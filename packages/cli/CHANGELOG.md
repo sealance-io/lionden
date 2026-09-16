@@ -1,5 +1,13 @@
 # @lionden/cli
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`be7b450`](https://github.com/sealance-io/lionden/commit/be7b4507697e52456aec370846beba4eb489854e)]:
+  - @lionden/config@0.4.0
+  - @lionden/core@0.4.0
+
 ## 0.3.0
 
 ### Minor Changes
