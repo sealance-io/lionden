@@ -240,10 +240,10 @@ At Tier 3, `scripts/run-smoke-examples.mjs` takes a `--deploy-backend <sdk|leo>`
 ```bash
 npm run test:smoke:leo-backend           # legacy 4.3 fixture, Leo backend, no proving
 npm run test:smoke:leo-backend:prove     # the same with real proof generation
-node scripts/run-smoke-examples.mjs --deploy-backend leo core
+npm run test:smoke:all:leo-backend:prove # core examples plus Aleo ports, Leo 4.4.x backend, with proving
 ```
 
-The runner refuses to run on a binary outside `4.3.x`/`4.4.x` rather than skipping, because a silently-skipped opt-in lane is a green result that exercised nothing. Each config's normal Leo preflight still applies, so the legacy-v43 npm script needs a Leo 4.3.x binary while current core examples need Leo 4.4.x. The `leo-samples` lane does **not** take this axis: it is pinned to Leo 4.2.0 / consensus V15, which this backend does not support.
+The runner refuses to run on a binary outside `4.3.x`/`4.4.x` rather than skipping, because a silently-skipped opt-in lane is a green result that exercised nothing. Each config's normal Leo preflight still applies: the legacy-v43 scripts require a Leo 4.3.x binary, while `test:smoke:all:leo-backend:prove` covers the current core and Aleo-port suites with Leo 4.4.x. The legacy fixture stays separate because it needs its own CLI line. The `leo-samples` lane does **not** take this axis: it is pinned to Leo 4.2.0 / consensus V15, which this backend does not support.
 
 Two Tier 4 lanes carry what nothing above them can:
 
