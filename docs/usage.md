@@ -227,9 +227,9 @@ What `compile` does ([full pipeline](compiler.md#current-compile-pipeline)):
 6. Copies `abi.json`, `main.aleo`, prover, and verifier into `artifacts/<programId>/`.
 7. Generates `typechain/<Name>.ts` and `typechain/BaseContract.ts` (unless `--no-typechain`).
 
-Caching is content-hash based and stored under `artifacts/.cache`. Use `--force` if a network dependency changed or you want a clean rebuild.
+Caching is content-hash based and stored under `artifacts/.cache`. Use `--force` if a network dependency changed or you want a clean rebuild. Changing `leoVersion` invalidates the cache automatically. If you replace the actual `leoBinary` while retaining the same configured `leoVersion`, run `lionden compile --force` before using the resulting artifacts: the cache tracks the declared compatibility version, not the binary's patch identity.
 
-`lionden clean` removes `artifacts/` and `typechain/` (deployment state under `deployments/` is preserved).
+`lionden clean` removes `artifacts/` and `typechain/` (deployment state under `deployments/` is preserved). It is the alternative after replacing a Leo binary without changing its configured version: run `lionden clean && lionden compile` to remove both cached hashes and preserved materialized builds before regenerating artifacts and bindings. Do not delete only a public `artifacts/<programId>/` output directory; the cache and preserved builds live elsewhere under `artifacts/`.
 
 `compile` logs immediately when compilation starts, then prints a compact completion summary that names a single compiled program when there is one, otherwise summarizes the compiled program/library count and whether typechain bindings were generated or skipped.
 

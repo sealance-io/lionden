@@ -287,6 +287,15 @@ describe("computeUnitHash with network deps", () => {
 
     expect(hashWithout).not.toBe(hashWith);
   });
+
+  it("changes hash when the configured Leo version changes", () => {
+    const { unit, pkgDir } = makeUnit("app");
+
+    const v43Hash = computeUnitHash(unit, pkgDir, [], new Map(), [], "4.3.2");
+    const v44Hash = computeUnitHash(unit, pkgDir, [], new Map(), [], "4.4.2");
+
+    expect(v43Hash).not.toBe(v44Hash);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -550,24 +559,25 @@ describe("compilePipeline network dep handling", () => {
     };
 
     try {
-      // Leo 4.1 still exposes both flags → they are forwarded. `force` bypasses
-      // the compile cache (which keys on source only, not leoVersion) so leo is
-      // actually invoked and re-logs its argv on each run.
-      await compilePipeline(makeConfig({ leoVersion: "4.1.0", compiler: compilerOverride }), {
-        noTypechain: true,
-        force: true,
-      });
+      // Leo 4.1 still exposes both flags → they are forwarded.
+      const v41 = await compilePipeline(
+        makeConfig({ leoVersion: "4.1.0", compiler: compilerOverride }),
+        { noTypechain: true },
+      );
+      expect(v41.results[0]?.cached).toBe(false);
       const v41Args = readLogLines(argsLog);
       expect(v41Args).toContain("--enable-dce");
       expect(v41Args).toContain("--conditional-block-max-depth");
 
       // Leo 4.2 removed both flags → they must be omitted (else the build hard-fails
-      // with "unexpected argument").
+      // with "unexpected argument"). The Leo-version cache key must rebuild the
+      // unchanged source instead of reusing the preserved 4.1 build output.
       fs.rmSync(argsLog, { force: true });
-      await compilePipeline(makeConfig({ leoVersion: "4.2.0", compiler: compilerOverride }), {
-        noTypechain: true,
-        force: true,
-      });
+      const v42 = await compilePipeline(
+        makeConfig({ leoVersion: "4.2.0", compiler: compilerOverride }),
+        { noTypechain: true },
+      );
+      expect(v42.results[0]?.cached).toBe(false);
       const v42Args = readLogLines(argsLog);
       expect(v42Args).not.toContain("--enable-dce");
       expect(v42Args).not.toContain("--conditional-block-max-depth");
