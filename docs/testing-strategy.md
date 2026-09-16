@@ -577,7 +577,7 @@ If runtime becomes too high, split the core smoke lane further and use changed-p
 ### Nightly Or Release Lane
 
 - `npm run test:smoke:all:prove`
-- `npm run test:smoke:all:leo-backend:prove` — the Leo deploy backend compatibility fixture with real proof generation
+- `npm run test:smoke:all:leo-backend:prove` — core examples plus Aleo ports on the Leo 4.4.x deploy backend, with real proof generation
 - `npm run test:deploy-backend-parity` — SDK vs Leo record parity against a real chain
 - `npm run test:deploy-backend-scale` — the memory-wall acceptance harness
 - optional SDK compatibility lane against the supported toolchain matrix
@@ -590,6 +590,7 @@ The last three are devnode-backed and bind a fixed TCP port, so they must run on
 
 - `npm run test:smoke:leo-backend` — the legacy 4.3 fixture on the Leo CLI backend
 - `npm run test:smoke:leo-backend:prove` — the same with real proof generation
+- `npm run test:smoke:all:leo-backend:prove` — all current 4.4.x core and Aleo-port examples on the Leo CLI backend, with real proof generation
 
 The axis travels as `LIONDEN_DEPLOY_BACKEND` rather than the `--deploy-backend` CLI flag, because the deploys under test happen inside Vitest worker processes spawned by the `test` task; a global CLI option is scoped to the parent process's LRE, while the environment variable is process-global and inherited.
 
@@ -647,7 +648,7 @@ The current root scripts are:
     "test:smoke:all:prove:coverage": "node scripts/run-smoke-examples.mjs --prove --coverage all",
     "test:smoke:leo-backend": "node scripts/run-smoke-examples.mjs --deploy-backend leo legacy-v43",
     "test:smoke:leo-backend:prove": "node scripts/run-smoke-examples.mjs --prove --deploy-backend leo legacy-v43",
-    "test:smoke:all:leo-backend:prove": "node scripts/run-smoke-examples.mjs --prove --deploy-backend leo legacy-v43",
+    "test:smoke:all:leo-backend:prove": "node scripts/run-smoke-examples.mjs --prove --deploy-backend leo all",
     "test:deploy-backend-parity": "node scripts/verify-deploy-backends.mjs",
     "test:deploy-backend-scale": "node scripts/verify-deploy-scale.mjs",
     "test:smoke:leo-samples": "node scripts/run-leo-samples.mjs",

@@ -31,7 +31,7 @@
     "test:smoke:all:prove:coverage": "node scripts/run-smoke-examples.mjs --prove --coverage all",
     "test:smoke:leo-backend": "node scripts/run-smoke-examples.mjs --deploy-backend leo legacy-v43",
     "test:smoke:leo-backend:prove": "node scripts/run-smoke-examples.mjs --prove --deploy-backend leo legacy-v43",
-    "test:smoke:all:leo-backend:prove": "node scripts/run-smoke-examples.mjs --prove --deploy-backend leo legacy-v43",
+    "test:smoke:all:leo-backend:prove": "node scripts/run-smoke-examples.mjs --prove --deploy-backend leo all",
     "test:deploy-backend-parity": "node scripts/verify-deploy-backends.mjs",
     "test:deploy-backend-scale": "node scripts/verify-deploy-scale.mjs",
     "test:smoke:leo-samples": "node scripts/run-leo-samples.mjs",
