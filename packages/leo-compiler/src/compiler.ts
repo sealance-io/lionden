@@ -266,7 +266,14 @@ export async function compilePipeline(
     }
 
     // Compute hash and check cache
-    const hash = computeUnitHash(unit, pkgDir, localDepIds, depHashes, networkDepIds);
+    const hash = computeUnitHash(
+      unit,
+      pkgDir,
+      localDepIds,
+      depHashes,
+      networkDepIds,
+      config.leoVersion,
+    );
     depHashes.set(id, hash);
 
     const hashMatches = !options.force && isCached(cacheDir, cacheId, hash);

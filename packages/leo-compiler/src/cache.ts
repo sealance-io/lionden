@@ -18,6 +18,8 @@ import type { DiscoveredUnit } from "./types.js";
  * @param depHashes - map of already-computed hashes (populated as units compile in topo order)
  * @param networkDepIds - the names of this unit's direct network dependencies
  *   (e.g. "credits.aleo"). Their linked source in imports/ is hashed.
+ * @param compilerVersion - the configured Leo compatibility version. Compiler
+ *   output is not safely reusable across declared Leo versions.
  */
 export function computeUnitHash(
   unit: DiscoveredUnit,
@@ -25,6 +27,7 @@ export function computeUnitHash(
   localDepIds: string[],
   depHashes: Map<string, string>,
   networkDepIds?: string[],
+  compilerVersion?: string,
 ): string {
   const hasher = crypto.createHash("sha256");
 
@@ -42,6 +45,14 @@ export function computeUnitHash(
   if (fs.existsSync(programJsonPath)) {
     hasher.update("program.json\n");
     hasher.update(fs.readFileSync(programJsonPath));
+  }
+
+  // The materialized package describes source and dependencies, not the Leo
+  // compiler that produces its build output. Keep the configured compiler
+  // version in the LionDen cache key so changing `leoVersion` rebuilds
+  // preserved packages.
+  if (compilerVersion !== undefined) {
+    hasher.update(`compiler-version:${compilerVersion}\n`);
   }
 
   // Include only this unit's direct local dependency hashes
