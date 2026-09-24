@@ -33,7 +33,7 @@
   "dependencies": {
     "@lionden/config": "^0.4.0",
     "@lionden/core": "^0.4.0",
-    "tsx": "^4.23.13"
+    "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@lionden/test-internals": "*"
