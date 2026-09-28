@@ -10,21 +10,6 @@ This file is the navigation layer for agents working in the LionDen repo. Load t
 
 Do not load every doc up front. Most tasks only need one focused doc plus a few source files.
 
-## Repo Snapshot
-
-- `packages/config`: config types and helpers
-- `packages/core`: plugin lifecycle, hooks, tasks, LRE
-- `packages/cli`: CLI discovery, parsing, help, dispatch
-- `packages/leo-compiler`: Leo source discovery, dependency resolution, materialization, compile pipeline, codegen
-- `packages/network`: network manager, Aleo connection, devnode helpers, SDK adapter
-- `packages/testing`: test LRE setup, devnode lifecycle, fixtures, assertions
-- `packages/plugin-*`: default task plugins
-- `packages/create-lionden`: project scaffolding
-- `packages/test-internals`: repo-private test fakes, builders, and shared mocks
-- `examples/`: concrete user-facing projects
-- `examples/aleo-ports/`: ported compatibility examples and smoke-test configs
-- `docs/`: focused deep dives for lazy loading
-
 ## Selective Disclosure Rules
 
 - Prefer `README.md` plus one subsystem doc over broad doc loading.
@@ -103,19 +88,7 @@ When sources disagree, use this order:
 - Changesets may only name the 11 public packages. `npm run check:release-plan` assembles the
   real pending changesets without writing files and CI runs it on every PR; run it locally after
   adding or editing a changeset, before committing.
-- Two recovery cases, never mixed (see `docs/ci-cd/RELEASING.md` § Recovery). Package versions
-  missing from npm after a partial publish, and that release is still the intended one (nothing
-  newer published, no source correction needed): re-run the failed `publish-npm` job from the
-  original release run; `changeset publish` skips what is already published. Never re-run a
-  superseded release; it would move `latest` backwards. All versions on npm but tags or Releases
-  missing: use the manual `release-publish.yml` dispatch, which never executes
-  `changeset publish` and only reconciles tags to npm `gitHead` and creates or verifies GitHub
-  Releases. Do not re-run publication to repair metadata, and do not manually overwrite npm
-  versions.
-- A rerun keeps the original SHA and event: committed workflow and script fixes merged later are
-  not picked up, and versions absent from that commit cannot be published. Live configuration
-  (rulesets, environments, App permissions, npm access) is read at run time and can be fixed in
-  place. A source-side fix needs a corrected commit on `main` and a new Version Packages PR,
-  which publishes a new coordinated version and leaves the abandoned one incomplete.
-- Tag reconciliation covers only the versions in the checked-out public manifests. Historical
-  npm metadata and missing historical tags are not part of the automatic release path.
+- Release recovery: read `docs/ci-cd/RELEASING.md` § Recovery before any rerun or manual
+  dispatch. Never re-run a superseded release, never re-run publication to repair tags or
+  Releases, and never manually overwrite npm versions. A rerun keeps the original SHA, so a
+  source-side fix needs a new Version Packages PR.
