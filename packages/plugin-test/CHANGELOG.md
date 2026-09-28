@@ -1,5 +1,14 @@
 # @lionden/plugin-test
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @lionden/testing@0.5.0
+  - @lionden/config@0.5.0
+  - @lionden/core@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes

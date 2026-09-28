@@ -1,5 +1,14 @@
 # @lionden/cli
 
+## 0.5.0
+
+### Patch Changes
+
+- [#118](https://github.com/sealance-io/lionden/pull/118) [`c9fd046`](https://github.com/sealance-io/lionden/commit/c9fd046e6c9e8fb03d88ca53260e56c7f5b73020) Thanks [@fullkomnun](https://github.com/fullkomnun)! - `lionden --version` now reports the installed `@lionden/cli` package version instead of a hardcoded `0.1.0`.
+- Updated dependencies []:
+  - @lionden/config@0.5.0
+  - @lionden/core@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes
