@@ -30,6 +30,7 @@ Do not load every doc up front. Most tasks only need one focused doc plus a few 
 - Prefer `README.md` plus one subsystem doc over broad doc loading.
 - Prefer current code over plan docs when documenting or changing shipped behavior.
 - Treat [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) as design-direction context, not as proof that an interface is already implemented.
+- Treat design specs and implementation plans under `_docs/` as roadmap context, not as source of truth for shipped behavior.
 - Check the relevant package entrypoint and tests before making repo-wide claims.
 - Check `examples/` when describing end-user workflows or config shape.
 
@@ -54,6 +55,7 @@ Open the smallest relevant doc first:
 | What features are shipped / missing for V1 / deferred; doko-js parity reference | [`docs/feature-status.md`](docs/feature-status.md) |
 | Agent-driven disposable bug-hunt probes | [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md) |
 | Changesets, coordinated package versions, npm publishing, tags, GitHub Releases | [`docs/ci-cd/RELEASING.md`](docs/ci-cd/RELEASING.md) |
+| CI/CD repository settings, rulesets, environments, GitHub App, npm OIDC | [`docs/ci-cd/REPOSITORY-SETUP.md`](docs/ci-cd/REPOSITORY-SETUP.md) |
 
 ## Ground Truth Order
 
@@ -69,6 +71,8 @@ When sources disagree, use this order:
 - Distinguish clearly between current implementation and planned architecture.
 - Cite concrete package paths before summarizing a subsystem.
 - Avoid claiming that a workflow is stable unless you verified it in code or tests.
+- Use `.js` extensions for relative imports in TypeScript package source (ESM NodeNext resolution), e.g. `import { foo } from "./bar.js"` for `bar.ts`.
+- Run `npm run build` before running the CLI from source with `node --import tsx packages/cli/src/bin.ts ...`.
 - When running Vitest in agent workflows, prefer `npm run test:agent` for the full suite or `npx vitest run --reporter=agent ...` for targeted runs. Vitest's `agent` reporter minimizes passing-test noise and token usage. Use `npm run test:unit` or `npm run test:contract` to run specific lanes.
 - Avoid adding a fixed `reporters` setting to shared Vitest config unless you intentionally want to override agent-aware reporter auto-detection or explicitly preserve `agent`.
 - Use `--ignore-scripts` for dependency installs, including `npm install --ignore-scripts` and `npm ci --ignore-scripts`.
