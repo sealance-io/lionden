@@ -356,6 +356,13 @@ export interface NetworkConnection {
   /** Get account balance in microcredits. Uses configured default account if none specified. */
   getBalance(address?: string): Promise<bigint>;
 
+  /** Evaluate a read-only Leo view function and return its raw Aleo outputs. */
+  queryView(
+    programId: string,
+    viewName: string,
+    args: readonly string[],
+  ): Promise<readonly string[]>;
+
   /** Query a mapping value. Returns null if the key has no entry. */
   getMappingValue(programId: string, mappingName: string, key: string): Promise<string | null>;
 
@@ -483,6 +490,13 @@ export interface NetworkManager {
     args: string[],
     options?: ExecuteOptions,
   ): Promise<TransitionCallResult>;
+
+  /** Evaluate a read-only view function on the active connection. */
+  queryView(
+    programId: string,
+    viewName: string,
+    args: readonly string[],
+  ): Promise<readonly string[]>;
 
   /**
    * Query a mapping value on the active connection.

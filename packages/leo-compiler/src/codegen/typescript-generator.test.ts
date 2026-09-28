@@ -287,7 +287,7 @@ describe("Leo 4.1 ABI extensions", () => {
     expect(() => generateBindings(abi)).toThrow(/const_parameters/);
   });
 
-  it("does not generate view query wrappers yet", () => {
+  it("generates a readonly views namespace with serialized inputs and all return arities", () => {
     const abi: ProgramABI = {
       program: "view_demo.aleo",
       structs: [],
@@ -297,19 +297,126 @@ describe("Leo 4.1 ABI extensions", () => {
       transitions: [],
       views: [
         {
-          name: "balance",
-          inputs: [],
+          name: "get_total",
+          inputs: [
+            { name: "owner", ty: { Plaintext: { Primitive: "Address" } }, mode: "Public" },
+            { name: "amount", ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Public" },
+          ],
           outputs: [{ ty: { Plaintext: { Primitive: { UInt: "U64" } } }, mode: "Public" }],
+        },
+        { name: "refresh", inputs: [], outputs: [] },
+        {
+          name: "get_state",
+          inputs: [],
+          outputs: [
+            { ty: { Plaintext: { Primitive: "Boolean" } }, mode: "Public" },
+            { ty: { Plaintext: { Primitive: { UInt: "U32" } } }, mode: "Public" },
+          ],
         },
       ],
     };
 
     const output = generateBindings(abi);
-    expect(output).not.toContain("readonly balance");
+    expect(output).toContain("readonly views = {");
+    expect(output).toContain(
+      "getTotal: async (owner: AddressInput, amount: number): Promise<bigint>",
+    );
+    expect(output).toContain(
+      'BaseContract.serializeAddress(owner, this.inputContext("get_total", "owner"))',
+    );
+    expect(output).toContain(
+      'BaseContract.serializeUInt(amount, 32, this.inputContext("get_total", "amount"))',
+    );
+    expect(output).toContain('this.queryViewRaw("get_total", _args, 1)');
+    expect(output).toContain("return BaseContract.parseBigInt(_result[0]!);");
+    expect(output).toContain("refresh: async (): Promise<void>");
+    expect(output).toContain('this.queryViewRaw("refresh", _args, 0)');
+    expect(output).toContain("getState: async (): Promise<[boolean, number]>");
+    expect(output).toContain(
+      "return [BaseContract.parseBoolean(_result[0]!), BaseContract.parseNumber(_result[1]!)];",
+    );
+    expect(output).not.toContain("getTotal: {\n      locally");
+    expectGeneratedToTypecheck("ViewDemo", output);
+  });
+
+  it("uses collision-safe view property names while preserving Leo request names", () => {
+    const abi: ProgramABI = {
+      program: "view_collision.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+      views: [
+        { name: "get_total", inputs: [], outputs: [] },
+        { name: "get__total", inputs: [], outputs: [] },
+      ],
+    };
+    const output = generateBindings(abi);
+    expect(output).toContain('"get_total": async ()');
+    expect(output).toContain('"get__total": async ()');
+    expect(output).toContain('queryViewRaw("get_total"');
+    expect(output).toContain('queryViewRaw("get__total"');
+  });
+
+  it("rejects views with const_parameters", () => {
+    const abi: ProgramABI = {
+      program: "const_view.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+      views: [
+        { name: "sized", inputs: [], outputs: [], const_parameters: [{ name: "N", type: "u8" }] },
+      ],
+    };
+    expect(() => generateBindings(abi)).toThrow(/view functions with const_parameters/);
+  });
+
+  it("omits the views property for old ABIs without views", () => {
+    const abi: ProgramABI = {
+      program: "old.aleo",
+      structs: [],
+      records: [],
+      mappings: [],
+      storage_variables: [],
+      transitions: [],
+    };
+    expect(generateBindings(abi)).not.toContain("readonly views");
   });
 });
 
 describe("unsupported primitive validation", () => {
+  it("rejects Signature in view inputs and outputs", () => {
+    const base = baseUnsupportedPrimitiveAbi();
+    expectUnsupportedPrimitive(
+      {
+        ...base,
+        views: [
+          {
+            name: "bad",
+            inputs: [{ name: "x", ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "Public" }],
+            outputs: [],
+          },
+        ],
+      },
+      "views[0].inputs[0].ty.Plaintext.Primitive",
+    );
+    expectUnsupportedPrimitive(
+      {
+        ...base,
+        views: [
+          {
+            name: "bad",
+            inputs: [],
+            outputs: [{ ty: { Plaintext: SIGNATURE_PLAINTEXT }, mode: "Public" }],
+          },
+        ],
+      },
+      "views[0].outputs[0].ty.Plaintext.Primitive",
+    );
+  });
   it("rejects Signature in transition inputs", () => {
     const base = baseUnsupportedPrimitiveAbi();
     const abi: ProgramABI = {

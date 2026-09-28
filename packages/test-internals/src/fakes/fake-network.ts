@@ -180,6 +180,19 @@ export class FakeNetworkConnection implements NetworkConnection {
     return this.balances.get(addr) ?? this.defaultBalance;
   }
 
+  async queryView(
+    programId: string,
+    viewName: string,
+    args: readonly string[],
+  ): Promise<readonly string[]> {
+    this.calls.push({
+      method: "queryView",
+      args: [programId, viewName, args],
+      timestamp: Date.now(),
+    });
+    return [];
+  }
+
   async getMappingValue(
     programId: string,
     mappingName: string,
@@ -428,6 +441,14 @@ export class FakeNetworkManager implements NetworkManager {
     options?: ExecuteOptions,
   ): Promise<TransitionCallResult> {
     return this.requireConnection().execute(programId, transitionName, args, options);
+  }
+
+  async queryView(
+    programId: string,
+    viewName: string,
+    args: readonly string[],
+  ): Promise<readonly string[]> {
+    return this.requireConnection().queryView(programId, viewName, args);
   }
 
   async getMappingValue(

@@ -1360,6 +1360,69 @@ describe("AleoConnection", () => {
   });
 
   // -------------------------------------------------------------------------
+  // queryView()
+  // -------------------------------------------------------------------------
+
+  describe("queryView()", () => {
+    it("posts the program, view, and serialized arguments to the Leo devnode endpoint", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(["8u32", "9u64"]), { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const connection = createDevnodeConnection();
+
+      await expect(
+        connection.queryView("math.aleo", "get_state", ["3u32", "aleo1abc"]),
+      ).resolves.toEqual(["8u32", "9u64"]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "http://127.0.0.1:3030/testnet/program/math.aleo/view/get_state",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(["3u32", "aleo1abc"]),
+        },
+      );
+    });
+
+    it("adds program and view context to transport errors", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("connection refused")));
+      const connection = createDevnodeConnection();
+      await expect(connection.queryView("math.aleo", "sum", [])).rejects.toThrow(
+        "Failed to query view math.aleo/sum: connection refused",
+      );
+    });
+
+    it("adds context to non-success REST responses", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response("unknown view", { status: 400 })),
+      );
+      const connection = createDevnodeConnection();
+      await expect(connection.queryView("math.aleo", "missing", [])).rejects.toThrow(
+        "Failed to query view math.aleo/missing: HTTP 400",
+      );
+    });
+
+    it("rejects malformed successful output payloads", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(new Response('{"data":[]}', { status: 200 })),
+      );
+      const connection = createDevnodeConnection();
+      await expect(connection.queryView("math.aleo", "sum", [])).rejects.toThrow(
+        "response body is not an array of Aleo value strings",
+      );
+    });
+
+    it("explicitly rejects generic HTTP connections", async () => {
+      const connection = createHttpConnection();
+      await expect(connection.queryView("math.aleo", "sum", [])).rejects.toThrow(
+        "LionDen currently supports the Leo devnode view REST API only",
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
   // getMappingValue()
   // -------------------------------------------------------------------------
 

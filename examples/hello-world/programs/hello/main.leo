@@ -11,4 +11,9 @@ program hello.aleo {
     fn multiply(a: u32, b: u32) -> u32 {
         return a * b;
     }
+
+    /// Read-only addition through the devnode view endpoint.
+    view fn sum(a: u32, b: u32) -> u32 {
+        return a + b;
+    }
 }

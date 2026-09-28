@@ -13,6 +13,7 @@ import type {
   StructABI,
   StructRef,
   TransitionABI,
+  ViewABI,
 } from "../abi-types.js";
 import { CodegenError } from "./codegen-error.js";
 import { CONTRACT_WRAPPER_TEMPLATE } from "./contract-wrapper.js";
@@ -203,6 +204,15 @@ function assertNoExecutableConstParameters(abi: ProgramABI): void {
       );
     }
   }
+  for (const view of abi.views ?? []) {
+    if (view.const_parameters && view.const_parameters.length > 0) {
+      throw new CodegenError(
+        `Code generation for ${abi.program}/${view.name} is unsupported: ` +
+          "view functions with const_parameters are not yet supported.",
+        { programId: abi.program, phase: "generate" },
+      );
+    }
+  }
 }
 
 function assertCodegenSupportedTypes(abi: ProgramABI): void {
@@ -321,6 +331,14 @@ function assertCodegenSupportedTypes(abi: ProgramABI): void {
     });
     transition.outputs.forEach((output, outputIndex) => {
       visitAleo(output.ty, `transitions[${transitionIndex}].outputs[${outputIndex}].ty`);
+    });
+  });
+  (abi.views ?? []).forEach((view, viewIndex) => {
+    view.inputs.forEach((input, inputIndex) => {
+      visitAleo(input.ty, `views[${viewIndex}].inputs[${inputIndex}].ty`);
+    });
+    view.outputs.forEach((output, outputIndex) => {
+      visitAleo(output.ty, `views[${viewIndex}].outputs[${outputIndex}].ty`);
     });
   });
 }
@@ -506,6 +524,7 @@ const RESERVED_CONTRACT_INSTANCE_MEMBERS: readonly string[] = [
   "formatSignerSuffix",
   "outputAt",
   "executeRaw",
+  "queryViewRaw",
   "buildEffectiveOptions",
   "queryMapping",
   "mappingContains",
@@ -558,6 +577,7 @@ function assertNoReservedContractMembers(abi: ProgramABI): void {
   const reserved = new Set<string>(RESERVED_CONTRACT_INSTANCE_MEMBERS);
   if (abi.mappings.length > 0) reserved.add("mappings");
   if (abi.storage_variables.length > 0) reserved.add("storage");
+  if ((abi.views?.length ?? 0) > 0) reserved.add("views");
   for (const transition of abi.transitions) {
     if (reserved.has(transition.name)) {
       throw new CodegenError(
@@ -967,6 +987,11 @@ function collectExternalRefs(
   for (const transition of abi.transitions) {
     for (const input of transition.inputs) visitAleo(input.ty);
     for (const output of transition.outputs) visitAleo(output.ty);
+  }
+
+  for (const view of abi.views ?? []) {
+    for (const input of view.inputs) visitAleo(input.ty);
+    for (const output of view.outputs) visitAleo(output.ty);
   }
 }
 
@@ -1392,6 +1417,16 @@ function generateContractClass(
     lines.push(...indentLines(generateTransitionMethod(transition, ctx), "  "));
   }
 
+  if ((abi.views?.length ?? 0) > 0) {
+    const propKeys = buildViewPropKeys(abi.views!);
+    lines.push("");
+    lines.push("  readonly views = {");
+    for (const view of abi.views!) {
+      lines.push(...indentLines(generateViewAccessor(view, propKeys, ctx), "    "));
+    }
+    lines.push("  } as const;");
+  }
+
   if (abi.mappings.length > 0) {
     const propKeys = buildMappingPropKeys(abi.mappings);
     lines.push("");
@@ -1512,8 +1547,38 @@ function generateTransitionMethod(transition: TransitionABI, ctx: GenerationCont
   return lines;
 }
 
+function generateViewAccessor(
+  view: ViewABI,
+  propKeys: Map<string, string>,
+  ctx: GenerationContext,
+): string[] {
+  const safeNames = buildSafeParamNames(view.inputs);
+  const propKey = propKeys.get(view.name) ?? JSON.stringify(view.name);
+  const params = view.inputs
+    .map((input) => `${safeNames.get(input.name)!}: ${aleoTypeToInputBindingTs(input.ty, ctx)}`)
+    .join(", ");
+  const returnType = formatReturnType(view.outputs, ctx);
+  const lines = [`${propKey}: async (${params}): Promise<${returnType}> => {`];
+  lines.push(...generateSerializedArgsLines(view, ctx, safeNames, "  "));
+  lines.push(
+    `  const _result = await this.queryViewRaw("${view.name}", _args, ${view.outputs.length});`,
+  );
+  if (view.outputs.length === 1) {
+    lines.push(`  return ${deserializeOutputExpr("_result[0]!", view.outputs[0]!.ty, ctx)};`);
+  } else if (view.outputs.length > 1) {
+    const elems = view.outputs.map((output, index) =>
+      deserializeOutputExpr(`_result[${index}]!`, output.ty, ctx),
+    );
+    lines.push(`  return [${elems.join(", ")}];`);
+  } else {
+    lines.push("  return;");
+  }
+  lines.push("},");
+  return lines;
+}
+
 function generateSerializedArgsLines(
-  transition: TransitionABI,
+  transition: Pick<TransitionABI, "name" | "inputs">,
   ctx: GenerationContext,
   safeNames: ReadonlyMap<string, string>,
   indent: string,
@@ -2569,6 +2634,10 @@ function buildStoragePropKeys(
   storageVariables: readonly StorageVariableABI[],
 ): Map<string, string> {
   return buildStatePropKeys(storageVariables);
+}
+
+function buildViewPropKeys(views: readonly ViewABI[]): Map<string, string> {
+  return buildStatePropKeys(views);
 }
 
 function indentLines(lines: readonly string[], indent: string): string[] {

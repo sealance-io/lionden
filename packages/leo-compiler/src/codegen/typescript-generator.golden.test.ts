@@ -169,6 +169,7 @@ const FIXTURE_PAIRS: [string, string][] = [
   // Leo 4.2 wire shape: positional inputs (synthesized `arg0`/`arg1` params)
   // and a struct ref carrying an explicit `program: "<self>.aleo"` self-ref.
   ["edge-v42-positional.abi.json", "v42-positional.ts"],
+  ["edge-v44.abi.json", "edge-v44.ts"],
 ];
 
 describe("codegen goldens", () => {

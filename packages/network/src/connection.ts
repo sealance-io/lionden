@@ -293,6 +293,41 @@ export class AleoConnection implements NetworkConnection {
     return BigInt(value.replace(/u\d+$/i, ""));
   }
 
+  async queryView(
+    programId: string,
+    viewName: string,
+    args: readonly string[],
+  ): Promise<readonly string[]> {
+    this.assertOpen();
+    if (this.type !== "devnode") {
+      throw new Error(
+        `View queries are not supported by the ${this.type} connection for ${programId}/${viewName}. ` +
+          "LionDen currently supports the Leo devnode view REST API only.",
+      );
+    }
+
+    const url = `${this.endpoint}/${this.networkId}/program/${encodeURIComponent(programId)}/view/${encodeURIComponent(viewName)}`;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args),
+      });
+      const body = await response.text();
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}: ${body}`);
+      }
+      const value: unknown = body.length === 0 ? [] : JSON.parse(body);
+      if (!Array.isArray(value) || value.some((output) => typeof output !== "string")) {
+        throw new Error("response body is not an array of Aleo value strings");
+      }
+      return value;
+    } catch (cause: unknown) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`Failed to query view ${programId}/${viewName}: ${message}`, { cause });
+    }
+  }
+
   /**
    * Shared query body for mapping/storage reads. Resolves the SDK network
    * client, calls `getProgramMappingValue`, coerces undefined/null to `null`,

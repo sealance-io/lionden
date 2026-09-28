@@ -113,7 +113,23 @@ For program units, the compiler reads either legacy `build/abi.json` or Leo 4.1 
 
 The ABI is the contract between Leo compilation and TypeScript code generation. That avoids regex-based parsing of generated Aleo source and keeps wrapper generation aligned with the compiler's structured output.
 
-Leo 4.1 ABI extensions are parsed conservatively: `views` and `implements` are preserved for compatibility checks and ABI hashes when present, but generated wrappers do not expose view-query methods yet. Executable functions with non-empty `const_parameters` fail codegen with an explicit unsupported-feature error.
+Leo 4.1 ABI extensions are parsed conservatively: `views` and `implements` are preserved for compatibility checks and ABI hashes when present. Generated wrappers expose ABI views under `contract.views.<name>(...args)`. Executable functions or views with non-empty `const_parameters` fail codegen with an explicit unsupported-feature error.
+
+### View functions
+
+When an ABI contains views, its generated contract has a dedicated `readonly views` namespace:
+
+```ts
+const total = await contract.views.getTotal(owner);
+const [balance, nonce] = await contract.views.getState(owner);
+await contract.views.refresh();
+```
+
+View calls are read-only network queries. They do not require a signer, create or submit a transaction, accept transaction options, or expose transition helpers such as `locally`, `submitted`, `accepted`, or `settled`. Inputs use the same widened TypeScript types and Leo serialization as transition inputs; outputs use the same generated deserializers as other reads.
+
+The return shape follows ABI output arity: zero outputs returns `Promise<void>`, one output returns `Promise<T>`, and multiple outputs return `Promise<[T1, T2, ...]>`.
+
+LionDen currently transports view calls through the Leo devnode REST endpoint `POST /{network}/program/{programId}/view/{viewName}`, whose JSON request and response are arrays of Leo-encoded strings. The pinned Provable SDK does not expose this operation, and generic `http` connections are rejected explicitly because their configured snarkOS or hosted endpoint is not guaranteed to implement the Leo devnode route.
 
 Generated bindings are the preferred user-facing API when the ABI is known. They encode ABI shape, Leo value serialization, visibility, encrypted output handles, and record helpers in TypeScript. Raw string execution remains available as an escape hatch for dynamic ABI situations, post-upgrade calls, or cases where the generated wrapper cannot yet model the call.
 

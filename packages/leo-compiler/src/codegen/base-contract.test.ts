@@ -272,6 +272,9 @@ function createTestContract(
     async testQueryMapping(...args: any[]) {
       return this.queryMapping(...args);
     }
+    async testQueryViewRaw(...args: any[]) {
+      return this.queryViewRaw(...args);
+    }
     async testMappingContains(...args: any[]) {
       return this.mappingContains(...args);
     }
@@ -1147,6 +1150,37 @@ describe("BaseContract runtime", () => {
 
       await expect(contract.testQueryMapping("balances", "aleo1abc")).rejects.toThrow(
         "Network is not available for test.aleo",
+      );
+    });
+  });
+
+  describe("queryViewRaw()", () => {
+    it("forwards program, view, and arguments", async () => {
+      const queryView = vi.fn().mockResolvedValue(["8u32"]);
+      const contract = createTestContract("math.aleo");
+      contract.connect(mockLre({ queryView }));
+
+      await expect(contract.testQueryViewRaw("sum", ["3u32", "5u32"], 1)).resolves.toEqual([
+        "8u32",
+      ]);
+      expect(queryView).toHaveBeenCalledWith("math.aleo", "sum", ["3u32", "5u32"]);
+    });
+
+    it("rejects an output count that does not match the ABI", async () => {
+      const contract = createTestContract("math.aleo");
+      contract.connect(mockLre({ queryView: async () => ["8u32"] }));
+
+      await expect(contract.testQueryViewRaw("state", [], 2)).rejects.toThrow(
+        "View math.aleo/state returned 1 output(s); ABI expects 2",
+      );
+    });
+
+    it("rejects malformed output payloads with view context", async () => {
+      const contract = createTestContract("math.aleo");
+      contract.connect(mockLre({ queryView: async () => [8] }));
+
+      await expect(contract.testQueryViewRaw("sum", [], 1)).rejects.toThrow(
+        "View math.aleo/sum returned a non-string output payload",
       );
     });
   });

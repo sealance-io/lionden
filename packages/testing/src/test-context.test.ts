@@ -70,6 +70,7 @@ function mockLre(
     getAccounts: vi.fn().mockReturnValue([]),
     getNamedAccounts: vi.fn().mockReturnValue({}),
     execute: vi.fn(),
+    queryView: vi.fn(),
     getMappingValue: vi.fn(),
     getStorageValue: vi.fn(),
     getStorageVectorLength: vi.fn().mockResolvedValue(0),
