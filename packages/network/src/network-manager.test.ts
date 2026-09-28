@@ -210,18 +210,21 @@ describe("NetworkManagerImpl", () => {
     );
   });
 
-  it("queryView delegates to the active connection", async () => {
-    const conn = (await manager.connect("devnode")) as NetworkConnection & {
-      queryView: ReturnType<typeof vi.fn>;
-    };
-    const queryView = vi.fn().mockResolvedValue(["8u32"]);
-    conn.queryView = queryView;
+  it.each(["devnode", "testnet"])(
+    "queryView delegates to the active %s connection",
+    async (networkName) => {
+      const conn = (await manager.connect(networkName)) as NetworkConnection & {
+        queryView: ReturnType<typeof vi.fn>;
+      };
+      const queryView = vi.fn().mockResolvedValue(["8u32"]);
+      conn.queryView = queryView;
 
-    await expect(manager.queryView("test.aleo", "sum", ["3u32", "5u32"])).resolves.toEqual([
-      "8u32",
-    ]);
-    expect(queryView).toHaveBeenCalledWith("test.aleo", "sum", ["3u32", "5u32"]);
-  });
+      await expect(manager.queryView("test.aleo", "sum", ["3u32", "5u32"])).resolves.toEqual([
+        "8u32",
+      ]);
+      expect(queryView).toHaveBeenCalledWith("test.aleo", "sum", ["3u32", "5u32"]);
+    },
+  );
 
   it("getStorageValue throws when not connected", async () => {
     await expect(manager.getStorageValue("test.aleo", "admin")).rejects.toThrow(

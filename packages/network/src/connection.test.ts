@@ -1399,7 +1399,7 @@ describe("AleoConnection", () => {
       );
       const connection = createDevnodeConnection();
       await expect(connection.queryView("math.aleo", "missing", [])).rejects.toThrow(
-        "Failed to query view math.aleo/missing: HTTP 400",
+        "Failed to query view math.aleo/missing: HTTP 400: unknown view",
       );
     });
 
@@ -1414,10 +1414,23 @@ describe("AleoConnection", () => {
       );
     });
 
-    it("explicitly rejects generic HTTP connections", async () => {
+    it("posts serialized arguments through a configured HTTP connection", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(["8u32"]), { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
       const connection = createHttpConnection();
-      await expect(connection.queryView("math.aleo", "sum", [])).rejects.toThrow(
-        "LionDen currently supports the Leo devnode view REST API only",
+
+      await expect(connection.queryView("math.aleo", "sum", ["3u32", "5u32"])).resolves.toEqual([
+        "8u32",
+      ]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.explorer.provable.com/v1/testnet/program/math.aleo/view/sum",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(["3u32", "5u32"]),
+        },
       );
     });
   });

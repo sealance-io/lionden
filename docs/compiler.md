@@ -129,7 +129,7 @@ View calls are read-only network queries. They do not require a signer, create o
 
 The return shape follows ABI output arity: zero outputs returns `Promise<void>`, one output returns `Promise<T>`, and multiple outputs return `Promise<[T1, T2, ...]>`.
 
-LionDen currently transports view calls through the Leo devnode REST endpoint `POST /{network}/program/{programId}/view/{viewName}`, whose JSON request and response are arrays of Leo-encoded strings. The pinned Provable SDK does not expose this operation, and generic `http` connections are rejected explicitly because their configured snarkOS or hosted endpoint is not guaranteed to implement the Leo devnode route.
+LionDen sends view calls through the configured network connection using `POST /{network}/program/{programId}/view/{viewName}`, whose JSON request and response are arrays of Leo-encoded strings. This request is attempted for both devnode and HTTP connections. If the configured provider does not implement the endpoint, LionDen surfaces the provider's response as an actionable HTTP error with the program ID and view name.
 
 Generated bindings are the preferred user-facing API when the ABI is known. They encode ABI shape, Leo value serialization, visibility, encrypted output handles, and record helpers in TypeScript. Raw string execution remains available as an escape hatch for dynamic ABI situations, post-upgrade calls, or cases where the generated wrapper cannot yet model the call.
 

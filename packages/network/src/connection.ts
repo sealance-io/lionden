@@ -299,13 +299,6 @@ export class AleoConnection implements NetworkConnection {
     args: readonly string[],
   ): Promise<readonly string[]> {
     this.assertOpen();
-    if (this.type !== "devnode") {
-      throw new Error(
-        `View queries are not supported by the ${this.type} connection for ${programId}/${viewName}. ` +
-          "LionDen currently supports the Leo devnode view REST API only.",
-      );
-    }
-
     const url = `${this.endpoint}/${this.networkId}/program/${encodeURIComponent(programId)}/view/${encodeURIComponent(viewName)}`;
     try {
       const response = await fetch(url, {
@@ -315,7 +308,10 @@ export class AleoConnection implements NetworkConnection {
       });
       const body = await response.text();
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}: ${body}`);
+        const status = response.statusText
+          ? `HTTP ${response.status} ${response.statusText}`
+          : `HTTP ${response.status}`;
+        throw new Error(`${status}: ${body}`);
       }
       const value: unknown = body.length === 0 ? [] : JSON.parse(body);
       if (!Array.isArray(value) || value.some((output) => typeof output !== "string")) {
