@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import * as path from "node:path";
 import type { LionDenUserConfig } from "@lionden/config";
 import {
@@ -19,7 +20,12 @@ import {
   validateTaskGlobalOptionCollisions,
 } from "./task-dispatch.js";
 
-const VERSION = "0.1.0";
+// Resolves to packages/cli/package.json from both src/ and dist/.
+const VERSION: string = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+    version: string;
+  }
+).version;
 
 export async function main(): Promise<void> {
   const argv = process.argv.slice(2);
