@@ -15,8 +15,9 @@ Workflows are version-controlled; these settings are not, so they live here.
 | `security-audit.yml` | PR/push/weekly | zizmor workflow audit. Rollup: **Security Audit Status**. |
 | `pinact-verify.yml` | PR/push | Action SHA-pin + cooldown verification. Rollup: **pinact Status**. |
 | `release-version.yml` | push to `main` | Opens/updates the "Version Packages" PR (changesets + GitHub App token). |
-| `release-publish.yml` | push to `main` + manual | A Version Packages PR merge publishes bumped packages via OIDC; a manual run is metadata-only. Both reconcile all published tags from npm `gitHead` and create/verify GitHub Releases. |
+| `release-publish.yml` | push to `main` + manual | A Version Packages PR merge publishes bumped packages via OIDC; a manual run is metadata-only. Both reconcile tags for the checked-out (current) package versions from npm `gitHead` and create/verify their GitHub Releases; historical versions are not backfilled. |
 | `leo-cache-warmup.yml` | weekly (Sat 23:00 UTC) + manual | Pre-builds & caches the Leo 4.3.2 CLI for the legacy compatibility lane. |
+| `leo-samples-nightly.yml` | daily (06:00 UTC) + manual | leo-samples lane with real proving (too slow for PR CI), Leo 4.2.0 / consensus V15. |
 
 > **`sealance-io/setup-leo-action` pin + intentional Leo-version split.** The configured call sites
 > pin the released **v1.1.3** (`3fb8fc821388716961eee9146b414fcfc093b32d`), which builds Leo
@@ -168,15 +169,19 @@ token is stored in GitHub.
 
 ### One-time bootstrap (required before OIDC works)
 
-> **Status: completed 2026-07-22.** All 11 packages were published manually at 0.1.0, Trusted
-> Publishers were configured per the steps below (verified with `npm trust list`), and the
-> 0.1.1 release ran tokenless through `release-publish.yml` with provenance attestations on
-> every package. The steps are kept for reference (e.g. adding a brand-new package later, which
-> repeats this bootstrap for that package).
+> **Status: completed 2026-07-22. Historical record, not an authorized procedure.** All 11
+> packages were published manually at 0.1.0, Trusted Publishers were configured per the steps
+> below (verified with `npm trust list`), and the 0.1.1 release ran tokenless through
+> `release-publish.yml` with provenance attestations on every package. The steps below record
+> what was done then; they do not authorize publishing from a machine now, and every package's
+> publishing access now disallows tokens (see
+> [Publishing access](#publishing-access-per-package-11)). Adding a public package requires an
+> explicit release-policy decision (see
+> [RELEASING.md → Prerequisites & gotchas](./RELEASING.md#prerequisites--gotchas)).
 
-npm Trusted Publishers can only be attached to packages that **already exist** on the registry,
-and OIDC cannot create a brand-new package. So the **first** publish of each package must be a
-manual, token-authenticated step:
+At the time, npm Trusted Publishers could only be attached to packages that **already existed**
+on the registry, and OIDC could not create a brand-new package. So the **first** publish of each
+package was a manual, token-authenticated step:
 
 1. **Create/own the `@lionden` scope** on npmjs.com and reserve the unscoped `create-lionden`
    name.

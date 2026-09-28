@@ -25,8 +25,12 @@ The root object is a `Program`:
 | `mappings` | `Mapping[]` | On-chain key-value storage declarations |
 | `storage_variables` | `StorageVariable[]` | Storage variable declarations |
 | `functions` | `Function[]` | Public entry points (compiled to Aleo transitions) |
+| `views` | `View[]` | Optional, may be absent (Leo 4.1+). Read-only view functions with the same `name` / `inputs` / `outputs` shape as `functions`; unmoded view plaintext maps to `Public` (see [Mode](#mode)). Drives generated `contract.views` wrappers (see [`compiler.md` § View functions](compiler.md#view-functions)). |
+| `implements` | array | Leo 4.1 only: interfaces the program implements. Removed in Leo 4.2 (see [Leo 4.2 Wire Shape](#leo-42-wire-shape)). |
 
-All array fields are present even when empty.
+The five core array fields (`structs`, `records`, `mappings`, `storage_variables`, `functions`) are present even when empty; `views` and `implements` are optional.
+
+This table describes the compiler's wire fields. LionDen's parsed `ProgramABI` (`packages/leo-compiler/src/abi-types.ts`) differs: it renames `functions` to `transitions` and sets `views` / `implements` only when they are non-empty. See [LionDen Normalization](#lionden-normalization).
 
 Minimal example:
 
@@ -234,19 +238,19 @@ export default defineConfig({
 });
 ```
 
-The emitted helper lives alongside `decrypt<Name>` in the source program's generated module, using a callable+namespace pattern (`Object.assign`) so the helper is both a function and a namespace carrying the output-side `.output` matcher:
+The emitted helper lives alongside `decrypt<Name>` in the source program's generated module, using a callable+namespace pattern (`Object.assign`) so the helper is both a function and a namespace carrying the output-side `.output` matcher and a `.forProgram(...)` rebinding method:
 
 ```ts
 // typechain/StableToken.ts (generated)
-function _asPoolTokenImpl(value: TokenInput): LeoDynamicRecord {
+function _asPoolTokenImpl(value: TokenInput & { readonly _version?: number }): LeoDynamicRecord {
   BaseContract.assertObject(value);
   const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
   if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);
   return Leo.dynamicRecord(value, {
     owner: "address.private" as const,
     amount: "u128.private" as const,
-    _version: "u8.public" as const,
     _nonce: "group.public" as const,
+    _version: "u8.public" as const,
   } as const);
 }
 export const asPoolToken = Object.assign(_asPoolTokenImpl, {
@@ -255,8 +259,13 @@ export const asPoolToken = Object.assign(_asPoolTokenImpl, {
     recordName: "Token",
     deserialize: deserializeToken,
   }),
+  forProgram(programId: string) {
+    return bindDynamicRecordHelperProgram(_asPoolTokenImpl, asPoolToken.output, programId);
+  },
 });
 ```
+
+The value type gains `& { readonly _version?: number }` only when the schema declares `_version`. The codegen golden [`interface-helpers.ts`](../packages/leo-compiler/src/codegen/__goldens__/interface-helpers.ts) is the authoritative current output for this configuration.
 
 The original plaintext of a decrypted record takes precedence over schema encoding, preserving runtime metadata such as `_version` even when absent from the ABI. Pass the original decrypted object; object spread, `structuredClone`, and JSON round-trips drop its non-enumerable `RECORD_RAW` cache. To persist a held record, store the plaintext string from `serialize<Name>` (or the ciphertext) and rehydrate it through `deserialize<Name>` or `decrypt<Name>`, which re-attach the cache. Manually constructed inputs still use the configured schema and its validation. Declaring `_version: "u8.public"` in the schema lets them carry the record version (`_version: 1` on the value); omitting `_version` on the value yields a versionless literal, which the VM reads as version 0.
 
@@ -283,6 +292,18 @@ const recovered = await accepted.outputs
 - `EncryptedRecord<T>.match(matcher).decrypt(key)` — re-routes decryption through the matcher's deserializer, with an identity guard requiring `matcher.program` / `matcher.recordName` to equal the ciphertext's metadata.
 
 Prefer named `.from(...)` in application code because the matcher's `program` is inherited as the source `programId`; use `.from(..., { match: n })` when the same transition appears multiple times. `.at(...)` is the positional escape hatch for awkward callgraphs and tests. `.match` is a pure builder; all resolution + identity checks + decryption are deferred to `.decrypt(key)`. See [`network.md` § Id-only record outputs](network.md#id-only-record-outputs-dyn-record-and-external-record) for the client-side flow and [`research/dynamic-records-v15.md`](research/dynamic-records-v15.md) for the V15 record-existence materialization model that makes sibling concrete outputs available in compliant programs.
+
+**`.forProgram(programId)`** returns a new helper, leaving the original unchanged, whose `.output` matcher is bound to a runtime program id, so `.from(...)` and the identity guards use that id. Use it when the source program is deployed under another id, for example with `deploy --rename`; input conversion is unchanged:
+
+```ts
+const asTenantPoolToken = asPoolToken.forProgram("tenant_stable_token.aleo");
+
+const recovered = await accepted.outputs
+  .match(asTenantPoolToken.output.from("transfer", 0))
+  .decrypt(to);
+```
+
+See [`examples/renamed_dynamic_records`](../examples/renamed_dynamic_records/test/renamed_dynamic_records.test.ts) for an end-to-end renamed deployment.
 
 **Cross-program external records** also emit a sibling `<ExternalRecord>.output` value binding alongside the imported type. For example, an `external_token_demo.aleo` typechain that imports `gold_token.aleo::Token` produces both the type alias `GoldToken_Token` and a value `GoldToken_Token.output: RecordOutputMatcher<GoldToken_Token>` — no `codegen.dynamicRecords` entry required for cross-program record decryption.
 
@@ -622,7 +643,7 @@ path: vec!["utils".into(), "Vector3".into()]
 
 The Leo CLI provides two ways to produce the JSON ABI:
 
-**During build** — `leo build` compiles Leo source and writes `build/abi.json` alongside the compiled Aleo program. This is the primary path used by LionDen's compile pipeline.
+**During build** — `leo build` compiles Leo source and writes `abi.json` under `build/` alongside the compiled Aleo program: `build/<program>/abi.json` in the Leo 4.2+ single-program layout, `build/<unit>/abi.json` in Leo 4.1 per-unit layouts, or `build/abi.json` in the legacy layout. This is the primary path used by LionDen's compile pipeline.
 
 **Standalone extraction** — `leo abi <program.aleo>` reads a compiled `.aleo` file and outputs the ABI:
 
@@ -632,7 +653,7 @@ leo abi program.aleo --output program_abi.json    # write to file
 leo abi program.aleo --network mainnet            # specify network context
 ```
 
-LionDen reads the ABI from `build/abi.json` in `readProgramAbi()` (`packages/leo-compiler/src/compiler.ts`), parses it with `parseAbi()` (`packages/leo-compiler/src/abi-parser.ts`), and stores it in the LRE artifact store.
+LionDen locates the ABI through `resolveBuildArtifacts()` in `readProgramAbi()` (`packages/leo-compiler/src/compiler.ts`), parses it with `parseAbi()` (`packages/leo-compiler/src/abi-parser.ts`), and stores it in the LRE artifact store.
 
 ## LionDen Normalization
 

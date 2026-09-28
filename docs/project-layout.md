@@ -14,7 +14,7 @@ LionDen is a workspace monorepo with code grouped by responsibility:
 - `packages/testing`: test LRE creation, managed devnode lifecycle, fixtures, assertions, account helpers
 - `packages/plugin-leo`: `compile` and `clean`
 - `packages/plugin-network`: `node`, `run`, and LRE network injection
-- `packages/plugin-deploy`: `deploy`, `upgrade`, `export`, and deployment state
+- `packages/plugin-deploy`: `deploy`, `upgrade`, `export`, `recipe`, and deployment state
 - `packages/plugin-test`: `test` and Vitest integration
 - `packages/create-lionden`: interactive scaffolding
 - `packages/test-internals`: private repo-owned test fakes, temp-project builders, contract LRE helpers, and shared mocks
@@ -40,7 +40,8 @@ Useful starting points for common repo tasks:
 - task execution: `packages/core/src/task-runner.ts`
 - compile orchestration: `packages/leo-compiler/src/compiler.ts`
 - network service injection: `packages/plugin-network/src/index.ts`
-- deployment state and task registration: `packages/plugin-deploy/src/index.ts`
+- plugin-deploy task registration and `lre.deployments` injection: `packages/plugin-deploy/src/index.ts`
+- deployment state: `packages/plugin-deploy/src/deployment-state.ts`, `packages/plugin-deploy/src/deployment-manager.ts`
 - test context: `packages/testing/src/test-context.ts`
 - private test fakes and builders: `packages/test-internals/src/index.ts`
 
@@ -99,6 +100,7 @@ The scaffolded output includes:
 - `.gitignore`
 - `lionden.config.ts`
 - `programs/...`
+- `recipes/setup.ts` (token template only)
 - `scripts/deploy.ts`
 - `test/...`
 

@@ -17,10 +17,10 @@ LionDen is in active early development. This guide is anchored to **shipped beha
 
 - Node.js `^20.19.0 || >=22.12.0`.
 - npm (the workspace baseline; pnpm/yarn are not exercised).
-- **Leo CLI v4.4.x** available on `PATH` as `leo` by default (default `leoVersion` is `"4.4.2"`). Leo v4.3.x, v4.2.x, v4.1.x, and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` and `leo devnode start` directly.
+- **Leo CLI v4.4.x** available on `PATH` as `leo` by default (default `leoVersion` is `"4.4.2"`). Leo v4.3.x, v4.2.x, v4.1.x, and v4.0.x remain supported when `leoVersion` is set to that line. LionDen invokes `leo build` directly. For a managed devnode it uses the standalone `aleo-devnode` binary when one is found on `PATH`, and otherwise falls back to `leo devnode start`; pin either with the devnode network's `provider` field (see [`network.md` § Backend selection](network.md#backend-selection)).
 - Optional: a v3.5 Leo binary installed side-by-side if you need v3.5 deployable-program compatibility. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
-LionDen also uses `@provablehq/sdk` (currently `^0.11.3`) under the hood through `@lionden/network` for transaction building and broadcasting.
+LionDen also uses `@provablehq/sdk` under the hood through `@lionden/network` for transaction building and broadcasting. The supported version range is declared in [`packages/network/package.json`](../packages/network/package.json).
 
 > **npm security**: always install with `--ignore-scripts`. Every install snippet in this guide uses it.
 
@@ -28,7 +28,7 @@ LionDen also uses `@provablehq/sdk` (currently `^0.11.3`) under the hood through
 
 ### Scaffold a new project
 
-Once `create-lionden` is published, the typical entry point is:
+The typical entry point is:
 
 ```bash
 npm create lionden my-app -- --template hello-world
@@ -53,6 +53,7 @@ my-app/
   .gitignore
   lionden.config.ts
   programs/<name>/main.leo
+  recipes/setup.ts       # token template only
   scripts/deploy.ts
   test/<name>.test.ts
 ```
@@ -155,7 +156,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 | `defaultNetwork` | Named `networks` entry selected by tasks when no global `--network <name>` is passed | `"devnode"` |
 | `networks` | Map of named network configs (`devnode` or `http`) | implicit `devnode` |
 | `namedAccounts` | Per-role account values, optionally per network ([details](deployment.md#named-accounts)) | `{}` |
-| `compiler` | `leo build` knobs: `enableDce`, `conditionalBlockMaxDepth`, `buildTests`, `extraFlags` | sensible defaults |
+| `compiler` | `leo build` knobs: `enableDce`, `conditionalBlockMaxDepth`, `buildTests`, `extraFlags` (`enableDce`/`conditionalBlockMaxDepth` apply only to the 4.1/4.0/3.5 lines; Leo 4.2+ removed those flags — [details](leo-version-compatibility.md#implementation-notes)) | sensible defaults |
 | `codegen.enabled` | Generate `typechain/` on each compile | `true` |
 | `codegen.dynamicRecords` | Emit `Leo.dynamicRecord(...)` helpers ([details](json-abi.md#interface-conversion-helpers-codegendynamicrecords)) | — |
 | `execution.imports` | Runtime imports for dynamic-dispatch targets ([details](network.md#runtime-imports-for-dynamic-dispatch)) | `{}` |
@@ -223,7 +224,7 @@ What `compile` does ([full pipeline](compiler.md#current-compile-pipeline)):
 2. Resolves the dependency graph (local + network).
 3. Materializes temporary Leo CLI packages under `artifacts/.build/`.
 4. Runs `leo build` per unit in topological order.
-5. Parses `build/abi.json` per program.
+5. Parses each program's `abi.json` from the Leo build output (`build/<program>/abi.json` on Leo 4.2+; see [`json-abi.md`](json-abi.md) for other layouts).
 6. Copies `abi.json`, `main.aleo`, prover, and verifier into `artifacts/<programId>/`.
 7. Generates `typechain/<Name>.ts` and `typechain/BaseContract.ts` (unless `--no-typechain`).
 
@@ -235,7 +236,7 @@ Caching is content-hash based and stored under `artifacts/.cache`. Use `--force`
 
 ### Working With Generated Bindings
 
-For each compiled program, codegen emits a typed wrapper that exposes every transition and mapping. Import the factory directly from `typechain/<Name>.ts`:
+For each compiled program, codegen emits a typed wrapper that exposes every transition and mapping, plus a `views` namespace for view functions and a `storage` namespace for storage variables when the program declares them (see [`compiler.md` § View functions](compiler.md#view-functions) and [§ Storage accessors](compiler.md#storage-accessors)). Import the factory directly from `typechain/<Name>.ts`:
 
 ```ts
 import { createTokenContract } from "../typechain/Token.js";
@@ -246,7 +247,7 @@ token.programId;                              // "token.aleo"
 token.address();                              // deterministic program address
 
 // Local execution — no transaction, no broadcast. Returns decoded outputs.
-const sum = await hello.main.locally(3, 5);
+const minted = await token.mint_private.locally(receiver, 100n); // decoded Token record
 
 // On-chain — build + broadcast, then assert acceptance.
 await token.mint_public.accepted(receiver, 100n);
@@ -361,10 +362,15 @@ For ad-hoc development outside of tests, run a managed devnode:
 ```bash
 lionden node                  # http://127.0.0.1:3030, auto-block on
 lionden node --port 4040
-lionden node --manual-blocks  # block production driven by `leo devnode advance`
+lionden node --manual-blocks  # advance with `aleo-devnode advance` or `leo devnode advance`, per backend
+lionden node --quiet          # suppress devnode log output
+lionden node --persist ./devnode-ledger                  # persist the ledger (standalone aleo-devnode only)
+lionden node --persist ./devnode-ledger --clear-storage  # clear the persist dir first
 ```
 
-The process stays alive until `Ctrl-C`. Auto-block produces blocks automatically (the default); `--manual-blocks` requires you to advance manually with the Leo CLI.
+The process stays alive until `Ctrl-C`. Auto-block produces blocks automatically (the default); `--manual-blocks` requires you to advance manually with the running backend's CLI — `aleo-devnode advance` for the standalone backend, `leo devnode advance` for the Leo backend. The task prints the matching command at startup.
+
+`--persist <dir>` requires the standalone `aleo-devnode` backend: it forces that backend and fails if the binary is unavailable. `--clear-storage` requires `--persist`. See [`network.md` § Devnode Lifecycle](network.md#devnode-lifecycle) for backend selection, persistence, and snapshots.
 
 If you're targeting v3.5 constructor programs on a Leo **< 4.3** devnode, add `consensusHeights` to the devnode network config so V9 activates at the expected block. On Leo **4.3+** the flag was removed — the devnode auto-activates the latest consensus version (incl. V16/V17) and LionDen rejects `consensusHeights`. See [`leo-version-compatibility.md`](leo-version-compatibility.md#devnode-consensus-heights).
 
@@ -734,7 +740,7 @@ Use `sourceProgram` when more than one compiled program declares the same record
 
 ### Upgradeable program with admin
 
-- Annotate the constructor `@admin(address="aleo1...")` — this Leo v4 decorator is required to make the program upgradeable on-chain.
+- Annotate the constructor with `@admin(address="aleo1...")`, the admin-key upgrade policy. Leo v4 also offers `@checksum` and `@custom` upgrade policies, while `@noupgrade` forbids upgrades.
 - Configure `namedAccounts.admin` (or rely on `connection.privateKey`) so the upgrade transaction is signed by the admin key.
 - Iterate on `main.leo`, then `lionden upgrade --program counter`. LionDen does not validate ABI compat or admin identity — Leo's tooling enforces upgrade correctness on-chain.
 

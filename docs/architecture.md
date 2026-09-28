@@ -14,17 +14,23 @@ The core public pieces live in:
 
 ## Config Model
 
-Users define config with `defineConfig()` from `@lionden/config`. The user config shape includes:
+Users define config with `defineConfig()` from `@lionden/config`. Representative top-level keys include:
 
 - `plugins`
 - `tasks`
 - `networks`
 - `defaultNetwork`
 - `namedAccounts`
+- Leo toolchain selection (`leoVersion`, `leoBinary`)
+- project layout directories (`programsDir`, `artifactsDir`, `typechainDir`)
 - `compiler`
 - `codegen`
 - `testing`
 - `deploy`
+- `sdk`
+- `execution`
+
+This list is a summary, not a spec. The canonical shape is `LionDenUserConfig` in `packages/config/src/types.ts`; the user-facing field reference is [`usage.md`](usage.md#common-fields).
 
 Resolved config fills defaults and converts paths into absolute paths. Current defaults include:
 
@@ -110,7 +116,7 @@ The current LRE includes:
 - `namedAccounts` getter — returns resolved named accounts for the active network (populated by `@lionden/plugin-network` after `connect()`, empty before)
 - task runner
 - hook dispatcher
-- in-memory artifact store
+- artifact store (in-memory, with lazy fallback to `<artifactsDir>/<programId>/abi.json` and `main.aleo` on disk, so fresh LREs in test workers and CLI subprocesses can see an earlier compile)
 - resolved plugins
 - collected global option values
 
@@ -123,7 +129,7 @@ The current LRE includes:
 `packages/cli/src/index.ts` currently performs this flow:
 
 1. parse global CLI args
-2. support early `--help` and `--version`
+2. exit early for `--version`, and render generic `--help` early only when no config file is found (with a config, help renders at step 9)
 3. discover and load `lionden.config.{ts,js,mjs}`
 4. resolve plugin order from `config.plugins`
 5. collect plugin global options and parse again with that option set
@@ -133,10 +139,11 @@ The current LRE includes:
 9. render help (if requested) **before** validating option values, so an invocation like `--network ghostnet --help` still documents recovery instead of failing on the bad value
 10. validate the final parse against the resolved task registry, rejecting unknown tasks, unknown named task/global arguments, bare arguments before the resolved task, and after-task bare arguments that the resolved task's positional schema cannot consume
 11. apply the global `--network` override from that task-aware parse to `config.defaultNetwork` (validated against `config.networks`) **and** seed it into `globalOptions["network"]` so the `test` task can bridge it to Vitest workers via `LIONDEN_NETWORK` (other tasks keep reading `config.defaultNetwork`)
-12. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`; unlike `--network`, this does **not** mutate config
-13. seed plugin global option values from the task-aware parse
-14. validate task named arguments do not overlap with built-in or plugin global options
-15. dispatch the selected task
+12. reject an explicitly typed `--deploy-backend` (plugin-deploy's global) that has no value or is not in `DEPLOY_PROVIDERS`, failing before any compile or connect; the flag's presence is detected in raw argv so a value-less flag the parser drops is still caught (`packages/cli/src/deploy-backend-arg.ts`)
+13. seed the built-in `--prove` preference into `globalOptions` — a presence test preserves an explicit `--prove=false`; unlike `--network`, this does **not** mutate config
+14. seed plugin global option values from the task-aware parse
+15. validate task named arguments do not overlap with built-in or plugin global options
+16. dispatch the selected task
 
 The built-in globals are `--config`, `--network`, `--prove`, `--verbose`, `--help`/`-h`, and `--version`/`-v` (see `BUILT_IN_GLOBAL_ARGUMENT_NAMES` in `packages/core/src/arg-names.ts`). These names are reserved: a plugin global or task argument that shadows one is rejected at load/build time. `--prove` is consumed by deploy/upgrade/recipe/test via `resolveProveOption()` / `lre.globalOptions["prove"]`; it is not owned by any single plugin.
 

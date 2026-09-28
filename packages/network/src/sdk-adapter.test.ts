@@ -13,6 +13,7 @@ import * as path from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 import {
   applySdkLogLevel,
+  checkDevnodeSdkSupport,
   createSdkObjects,
   createSignerSdkObjects,
   decryptRecordCiphertext,
@@ -79,6 +80,29 @@ describe("applySdkLogLevel()", () => {
 
   it("ignores older SDK imports without setLogLevel", () => {
     expect(() => applySdkLogLevel({} as any, "silent")).not.toThrow();
+  });
+});
+
+describe("checkDevnodeSdkSupport()", () => {
+  it("reports a missing devnode builder by name, without the generic verification wrapper", async () => {
+    const { loadNetwork } = await import("@provablehq/sdk/dynamic.js" as string);
+    const sdk = await loadNetwork("testnet");
+    const proto = sdk.ProgramManager.prototype as Record<string, unknown>;
+    const method = "buildDevnodeUpgradeTransaction";
+    const ownDescriptor = Object.getOwnPropertyDescriptor(proto, method);
+    Object.defineProperty(proto, method, { value: undefined, configurable: true, writable: true });
+    try {
+      const err = await checkDevnodeSdkSupport().then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toContain(method);
+      expect((err as Error).message).not.toContain("Failed to verify SDK devnode support");
+    } finally {
+      if (ownDescriptor) Object.defineProperty(proto, method, ownDescriptor);
+      else delete proto[method];
+    }
   });
 });
 

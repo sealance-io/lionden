@@ -49,7 +49,7 @@ The major decisions preserved from the original planning material are:
 Several platform facts are important when working on LionDen:
 
 - Leo v4 changed core language and tooling assumptions, including unified `fn` syntax and library support via `lib.leo`.
-- `leo devnode` is the primary lightweight local-development target.
+- A local devnode is the primary lightweight local-development target. With no pinned `provider`, LionDen auto-detects Provable's standalone `aleo-devnode` on `PATH` and otherwise falls back to `leo devnode`; an explicit `provider` (or a standalone-only option) overrides auto-detection. See [`network.md`](network.md#backend-selection).
 - Users who need a multi-validator network can run snarkOS externally and connect via `http`.
 - `leo build` produces structured JSON ABI output that LionDen treats as the source of truth for wrapper generation.
 - Upgradability depends on constructor behavior and compatibility constraints, but those rules are owned by Leo's built-in tooling. LionDen deliberately does not re-validate them: its `upgrade` task recompiles the new version, builds and broadcasts the upgrade transaction, and records the result against persisted deploy state.
@@ -76,7 +76,7 @@ The most important engineering constraints preserved from the original design wo
 - SDK compatibility matters. The network layer expects a modern `@provablehq/sdk` surface with devnode-aware functionality.
 - SDK initialization is nontrivial and should stay isolated in adapter code.
 - Proof generation is slow enough that long test timeouts are normal.
-- Test isolation relies on fresh devnode lifecycle and fixture patterns rather than snapshot/revert semantics.
+- Test isolation defaults to a fresh devnode lifecycle. `loadFixture()` is a separate mechanism: it caches expensive setup (such as deployments) for reuse and does not reset chain state. `setup({ snapshotReset: true })` only enables snapshot/restore on the standalone `aleo-devnode` backend; restore is explicit (there is no automatic per-test reset), so fast per-test isolation requires calling `ctx.snapshot()` / `ctx.restore()` in the suite. See [`testing.md`](testing.md#snapshot-based-fast-reset).
 - Network dependency fetching depends on reachable endpoints and local caching.
 - Package materialization must preserve nested source layout, or Leo imports break.
 - Leo libraries and deployable programs must be treated differently in compile, codegen, and deploy flows.

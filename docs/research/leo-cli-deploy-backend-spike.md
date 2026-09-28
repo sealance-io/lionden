@@ -3,8 +3,9 @@
 When to read this: use this file before writing or reviewing the Leo deploy
 backend. It records what `leo deploy` and `leo upgrade` actually do, measured
 rather than inferred, and lists the places where the design assumptions turned
-out to be wrong. For the resulting user-facing behaviour, use
-[`../deployment.md`](../deployment.md).
+out to be wrong. For the resulting user-facing backend behaviour, use
+[`../deploy-backends.md`](../deploy-backends.md); for the surrounding deploy
+task, see [`../deployment.md`](../deployment.md).
 
 Every claim here is backed by a capture committed at
 `packages/test-internals/src/__fixtures__/leo-cli/`, and each finding names the

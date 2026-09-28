@@ -77,6 +77,7 @@ export default defineConfig({
     testnet: {
       type: "http",
       endpoint: "https://api.explorer.provable.com/v1",
+      network: "testnet",
       deployBackend: "sdk",      // this network overrides the project default
     },
   },

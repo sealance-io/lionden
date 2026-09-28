@@ -23,7 +23,7 @@ The current pipeline is:
 The compiler and generated bindings assume a specific Leo-era baseline:
 
 - Leo 4.4.x is the default line, specifically 4.4.2; Leo 4.3.x, 4.2.x, 4.1.x, 4.0.x, and 3.5.x remain supported compatibility lines with limitations (see [`leo-version-compatibility.md`](leo-version-compatibility.md))
-- ABI-driven code generation from `build/abi.json`
+- ABI-driven code generation from the compiler's `abi.json`
 - source-first project layout under `programs/`
 - Leo libraries via `lib.leo` as compile-time dependencies rather than deployable programs
 
@@ -85,7 +85,7 @@ When the default network is:
 - `http`: LionDen uses the configured endpoint
 - `devnode`: LionDen derives `http://<socketAddr>`
 
-The network segment in the URL is driven by the `networkHint` on the dependency (typically `"testnet"`). When no hint is configured, `defaultFetchNetworkDep()` tries `testnet`, `mainnet`, and `canary` in order and uses the first successful response.
+The network segment in the URL comes from the effective network config's `network` field (devnode networks default to `testnet`; `http` networks must set it), passed to the fetcher as `networkHint`. [`defaultFetchNetworkDep()`](../packages/leo-compiler/src/compiler.ts) falls back across `testnet`, `mainnet`, and `canary`, using the first successful response, only when no hint is available, such as a direct programmatic call that omits it; configured networks always supply one.
 
 ### Effective-network override
 
@@ -109,7 +109,7 @@ runtime artifact lookup.
 
 ## ABI and Generated Bindings
 
-For program units, the compiler reads either legacy `build/abi.json` or Leo 4.1 per-unit `build/<unit>/abi.json`, parses it, and stores the ABI in the LRE artifact store. Compiled outputs are normalized back to `artifacts/<programId>/abi.json` and `artifacts/<programId>/main.aleo` for downstream deploy, upgrade, dependency linking, and key-cache identity.
+For program units, the compiler locates `abi.json` through `resolveBuildArtifacts()` — legacy `build/abi.json`, Leo 4.1 per-unit `build/<unit>/abi.json`, or the Leo 4.2+ single-program `build/<program>/abi.json` — parses it, and stores the ABI in the LRE artifact store. Compiled outputs are normalized back to `artifacts/<programId>/abi.json` and `artifacts/<programId>/main.aleo` for downstream deploy, upgrade, dependency linking, and key-cache identity.
 
 The ABI is the contract between Leo compilation and TypeScript code generation. That avoids regex-based parsing of generated Aleo source and keeps wrapper generation aligned with the compiler's structured output.
 
@@ -327,6 +327,7 @@ Current program artifact output is copied into `artifacts/<programId>/` and incl
 - `main.aleo`
 - generated prover files when present
 - generated verifier files when present
+- `interfaces/` (per-interface JSON such as `TokenStandard.json`) when Leo emits interface definitions for the program
 - `lionden-key-artifacts.json`
 
 The compiler treats `artifacts/<programId>/` as compiler-owned output and recreates it on each successful compile of that program. Deployment state and caches live outside that directory.

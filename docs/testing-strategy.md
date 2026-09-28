@@ -15,7 +15,7 @@ The current repo already reflects this tension:
 - root Vitest coverage is package-oriented
 - `@lionden/plugin-test` runs project-local suites under `test/`
 - `@lionden/testing` creates an LRE, optionally starts a devnode, and exposes deploy/execute helpers
-- fixture reuse exists, but isolation still relies on fresh devnode lifecycle rather than snapshot/revert semantics
+- default isolation is a fresh managed devnode per `setup()` context (normally one per test file); `loadFixture()` caches setup results such as deployments but does not restore chain state, and `setup({ snapshotReset: true })` only enables `ctx.snapshot()` / `ctx.restore()` on the standalone `aleo-devnode` backend — restore is explicit, with no automatic per-test reset (see [`testing.md` § Snapshot-based fast reset](testing.md#snapshot-based-fast-reset))
 - each workspace package has at least some package-level coverage, and the root Vitest config already splits unit and contract projects
 
 This strategy proposes a testing model that accepts those constraints and organizes the suite accordingly.
@@ -46,7 +46,7 @@ The proposal below is based on the current implementation:
 
 - achieving a single coverage number that mixes cheap and expensive tests into one target
 - making every behavior run through a real devnode in CI
-- pretending current devnode isolation is equivalent to snapshot/revert semantics
+- pretending the default per-file devnode isolation is equivalent to snapshot/revert semantics; snapshot/restore is an explicit opt-in, not an automatic reset
 - replacing Vitest with a custom LionDen-specific test runner
 
 ## Testing Principles
@@ -161,9 +161,9 @@ The current structure should stay mostly intact. The proposal is to clarify inte
 - `packages/*/src/**/*.test.ts` for fast deterministic tests
 - `examples/*/test/**/*.test.ts` for project workflow smoke tests
 
-### Add
+### Contract-test naming
 
-- `*.contract.test.ts` naming convention for contract tests that cross package boundaries, colocated in the package that owns the integration surface (e.g., `packages/core/src/task-dispatch.contract.test.ts`)
+- `*.contract.test.ts` naming convention for contract tests that cross package boundaries, colocated in the package that owns the integration surface (e.g., `packages/cli/src/cli-dispatch.contract.test.ts`)
 - Vitest named projects select contract tests by filename pattern rather than directory, avoiding a new top-level `tests/` tree with its own `tsconfig.json` and import-path complexity
 
 ### Keep `packages/test-internals/` (Private)
@@ -409,7 +409,7 @@ Recommended policy:
 - local execution for semantic assertions whenever possible
 - explicit proof suites for slow paths
 
-This aligns with the current documented constraint that test isolation relies on fresh devnode lifecycle and fixture patterns rather than snapshots.
+This aligns with the current default: test isolation comes from a fresh managed devnode lifecycle plus fixture reuse. `setup({ snapshotReset: true })` is an opt-in that exposes `ctx.snapshot()` / `ctx.restore()` on the standalone `aleo-devnode` backend; it does not reset state between tests by itself, so a suite that wants per-test isolation calls `ctx.restore()` explicitly, typically in `beforeEach`.
 
 ## Fixture Strategy
 
@@ -493,9 +493,6 @@ Role:
 Keep:
 - one fast happy-path suite
 
-Add:
-- one local-mode semantic suite if wrapper generation or compile output grows more complex
-
 ### `examples/token`
 
 Role:
@@ -506,7 +503,6 @@ Keep:
 
 Change:
 - move most semantic transition checks into local-mode tests
-- use deployment fixtures instead of raw `beforeAll` setup for every file
 
 ### `examples/multi-program`
 
@@ -551,38 +547,39 @@ Only add a new example when it represents a new workflow contract not covered by
 
 ## CI Lanes
 
-The repo should expose explicit scripts for each lane.
+The repo exposes explicit scripts for each lane. [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) is the source of truth for which lanes run on pull requests and which changed paths select them; [`ci-cd/REPOSITORY-SETUP.md` § Workflows at a glance](ci-cd/REPOSITORY-SETUP.md#workflows-at-a-glance) lists every workflow.
 
-### Required On Every PR
+### Required On Every Code PR
 
-- `npm run test:unit`
-- `npm run test:contract`
+- `npm test` — the `unit` and `contract` Vitest projects (`test:unit` + `test:contract`) in one run
 
-These two lanes form the PR quality gate. They must be fast and reliable enough to block on every pull request.
+This is the PR quality gate. CI runs it on every pull request that changes a non-Markdown file (docs-only PRs skip it), so it must stay fast and reliable enough to block on.
 
-### Required On Most PRs
+### Required When Build Or Example Inputs Change
 
-- `npm run test:smoke`
+When a pull request touches package source, examples, scripts, the Leo fixture trees the smoke lanes consume, or build and dependency configuration (the exact path filter is the `detect-changes` job in `ci.yml`), CI also runs four smoke jobs. The **CI Status** rollup fails if any of them fails:
 
-This lane uses Leo 4.4.2 and covers the maintained core examples. It should stay small enough to run on normal pull requests. The larger 4.4.2 ported-example lane is available separately as:
-
-- `npm run test:smoke:aleo-ports`
-
-Legacy compiler coverage is explicit:
-
+- `npm run test:smoke` — the maintained core examples on Leo 4.4.2
+- `npm run test:smoke:aleo-ports` — the larger 4.4.2 ported-example lane
 - `npm run test:smoke:legacy-v43` — one intentionally Leo 4.3-only fixture using legacy `self.*` metadata syntax
+- `npm run test:smoke:leo-samples` — the adapted `leo-samples` lane, on its own pinned Leo line (see [Current Script Surface](#current-script-surface))
 
-If runtime becomes too high, split the core smoke lane further and use changed-path filtering in CI.
+None of the PR smoke jobs passes `--prove`. The core lane should stay small enough to run on normal pull requests; if its runtime becomes too high, split it further.
 
-### Nightly Or Release Lane
+### Scheduled Lane
+
+- `npm run test:smoke:leo-samples:prove` — runs daily, and on manual dispatch, from [`.github/workflows/leo-samples-nightly.yml`](../.github/workflows/leo-samples-nightly.yml)
+
+### Local On-Demand Lanes
+
+These scripts are not wired into any workflow (a manual dispatch of `ci.yml` runs only the PR lanes above); run them locally when a change needs them:
 
 - `npm run test:smoke:all:prove`
 - `npm run test:smoke:all:leo-backend:prove` — core examples plus Aleo ports on the Leo 4.4.x deploy backend, with real proof generation
 - `npm run test:deploy-backend-parity` — SDK vs Leo record parity against a real chain
 - `npm run test:deploy-backend-scale` — the memory-wall acceptance harness
-- optional SDK compatibility lane against the supported toolchain matrix
 
-The last three are devnode-backed and bind a fixed TCP port, so they must run one at a time and never alongside another devnode lane.
+All four are devnode-backed and bind a fixed TCP port, so they must run one at a time and never alongside another devnode lane. An SDK compatibility lane against the supported toolchain matrix remains optional future work.
 
 ### Deploy Backend Lanes
 
@@ -592,7 +589,7 @@ The last three are devnode-backed and bind a fixed TCP port, so they must run on
 - `npm run test:smoke:leo-backend:prove` — the same with real proof generation
 - `npm run test:smoke:all:leo-backend:prove` — all current 4.4.x core and Aleo-port examples on the Leo CLI backend, with real proof generation
 
-The axis travels as `LIONDEN_DEPLOY_BACKEND` rather than the `--deploy-backend` CLI flag, because the deploys under test happen inside Vitest worker processes spawned by the `test` task; a global CLI option is scoped to the parent process's LRE, while the environment variable is process-global and inherited.
+The smoke runner sets the axis as `LIONDEN_DEPLOY_BACKEND` in the environment of the `lionden test` child it spawns (compile and typecheck deploy nothing). The deploys under test happen inside the Vitest worker processes the `test` task spawns, and the `test` task bridges an explicit `--deploy-backend` to those workers through the same variable, so for deploys inside Vitest workers `lionden test --deploy-backend <b>` is equivalent. The two are not interchangeable in general: in the parent process the flag is precedence layer 2 and the variable layer 3 (see [`deploy-backends.md` § Selecting A Backend](deploy-backends.md#selecting-a-backend)).
 
 `--deploy-backend leo` **fails** rather than skipping when the `leo` on `PATH` is outside the `4.3.x`/`4.4.x` lines the backend supports. The lane is opt-in, so a silent skip would report green for a lane that exercised nothing. The check runs before any example compiles. Fixtures pinned to an older line, such as `legacy-v43`, still require a matching compiler line in their own `lionden.config.ts`.
 
@@ -670,9 +667,9 @@ Smoke lanes intentionally typecheck generated `typechain/**/*.ts` alongside exam
 
 The root Vitest config already uses named projects.
 
-Current projects:
+Current projects ([`vitest.config.ts`](../vitest.config.ts) holds the exact globs):
 
-- `unit` — selects `packages/*/src/**/*.test.ts` excluding `*.contract.test.ts`
+- `unit` — selects `packages/*/src/**/*.test.ts` excluding `*.contract.test.ts`, plus two Leo-free groups outside `packages/`: the `leo-samples` adapter test and the smoke-runner helper tests under `scripts/lib/`
 - `contract` — selects `packages/*/src/**/*.contract.test.ts`
 
 Do not force smoke tests into the root Vitest project if they naturally belong to project-local `lionden test` runs.
@@ -734,8 +731,7 @@ Status: mostly complete.
 
 Status: ongoing.
 
-- convert example suites to use `mode: "local"` for semantic transition checks
-- adopt `loadFixture()` for deploy setup in example tests
+- convert the `token` and `multi-program` example suites to use `mode: "local"` for semantic transition checks
 - reduce unnecessary devnode work in example projects
 - this phase requires no new infrastructure and delivers immediate CI time savings
 
@@ -766,9 +762,9 @@ Status: ongoing.
 
 ### Phase 5: Proof Lane And Diagnostics
 
-Status: not started.
+Status: partially started.
 
-- isolate proof-generation coverage into a dedicated CI lane
+- a dedicated scheduled proof lane exists only for `leo-samples` (`test:smoke:leo-samples:prove`, nightly); extend scheduled `--prove` coverage to the core examples
 - preserve useful failure artifacts automatically
 - establish runtime and flake budgets
 
@@ -776,11 +772,11 @@ Status: not started.
 
 Keep the next backlog small and high leverage.
 
-1. Continue converting example tests to use `mode: "local"` for semantic transition checks and `loadFixture()` for deploy setup.
+1. Continue converting the `token` and `multi-program` example tests to use `mode: "local"` for semantic transition checks.
 2. Expand contract tests only at high-value boundaries that are still mostly covered through smoke tests.
 3. Keep moving duplicated mocks into `packages/test-internals/` when nearby tests change.
 4. Add more stable fixture ABIs and edge cases under `packages/leo-compiler/src/__fixtures__/` as codegen/parser coverage expands.
-5. Add one nightly `--prove` smoke path.
+5. Add a scheduled `--prove` smoke path for the core examples (today only the `leo-samples` lane has a nightly proof run).
 6. Add failure-artifact capture for smoke and future proof lanes.
 
 ## Success Criteria
