@@ -300,10 +300,14 @@ export class AleoConnection implements NetworkConnection {
   ): Promise<readonly string[]> {
     this.assertOpen();
     const url = `${this.endpoint}/${this.networkId}/program/${encodeURIComponent(programId)}/view/${encodeURIComponent(viewName)}`;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.apiKey) {
+      headers["Authorization"] = `Bearer ${this.apiKey}`;
+    }
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify(args),
       });
       const body = await response.text();
