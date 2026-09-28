@@ -1,7 +1,7 @@
 /**
  * SDK adapter — isolates the @provablehq/sdk initialization ceremony.
  *
- * The Provable SDK v0.11.3 baseline requires:
+ * The Provable SDK requires:
  * 1. initThreadPool() for multi-threaded WASM
  * 2. Network-specific loading via @provablehq/sdk/dynamic.js
  * 3. getOrInitConsensusVersionTestHeights() for devnode connections
@@ -114,8 +114,6 @@ export async function computeProgramChecksum(
 // SDK initialization
 // ---------------------------------------------------------------------------
 
-const SDK_VERSION = "^0.11.3";
-
 let sdkInitPromise: Promise<void> | undefined;
 const sdkModuleCache = new Map<AleoNetwork, Promise<SdkModule>>();
 const requireFromHere = createRequire(import.meta.url);
@@ -171,7 +169,7 @@ export async function initSdk(): Promise<void> {
     sdkInitPromise = undefined;
     throw new Error(
       `Failed to initialize @provablehq/sdk. ` +
-        `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
+        `Ensure the @provablehq/sdk dependency required by @lionden/network is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -599,7 +597,7 @@ export async function createSdkObjects(opts: CreateSdkObjectsOptions): Promise<S
   } catch (err: unknown) {
     throw new Error(
       `Failed to create SDK objects for network "${opts.network}" at ${opts.endpoint}. ` +
-        `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
+        `Ensure the @provablehq/sdk dependency required by @lionden/network is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
@@ -1135,9 +1133,8 @@ export async function checkDevnodeSdkSupport(): Promise<void> {
     for (const method of requiredMethods) {
       if (typeof programManagerPrototype[method] !== "function") {
         throw new Error(
-          `ProgramManager is missing method "${method}". ` +
-            `This method requires @provablehq/sdk@${SDK_VERSION}. ` +
-            `Your installed version may be too old.`,
+          `ProgramManager is missing method "${method}" required for LionDen devnode support. ` +
+            `Ensure installed dependencies satisfy @lionden/network's declared @provablehq/sdk requirement.`,
         );
       }
     }
@@ -1147,7 +1144,7 @@ export async function checkDevnodeSdkSupport(): Promise<void> {
     }
     throw new Error(
       `Failed to verify SDK devnode support. ` +
-        `Ensure @provablehq/sdk@${SDK_VERSION} is installed.\n` +
+        `Ensure the @provablehq/sdk dependency required by @lionden/network is installed.\n` +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }

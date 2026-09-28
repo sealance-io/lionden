@@ -75,9 +75,10 @@ When sources disagree, use this order:
   `npm run validate:release-state -- --base origin/main` and the lockfile guard pass: one version
   across all 11 public manifests, no unreleased changesets, and exactly the version `main`'s
   pending changesets plan.
-- Recovery from the partial 0.2 publication is valid only for the exact version map encoded in
-  `scripts/release-policy.mjs`. Keep the fixed group active and require convergence at 0.3.0;
-  never rewrite the committed fixed group. Any other future version skew is an error.
+- Keep the public packages in the fixed release group aligned; treat any new public-package
+  version skew as an error. Do not alter or repurpose the frozen historical recovery map/target
+  in `scripts/release-policy.mjs` and `scripts/release-plan.mjs`. Never rewrite the committed
+  fixed group. Historical recovery details are in `docs/ci-cd/RELEASING.md`.
 - Never edit a public `package.json` `version` by hand. CI compares every PR's public manifest
   versions against its merge base and fails on any change; only the Version Packages PR from this
   repository (`changeset-release/main` into `main`) is exempt, and it is validated instead.

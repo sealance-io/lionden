@@ -54,6 +54,9 @@ Resolved paths include `config.paths.deployments`, the absolute path for deploym
 - deploy confirmation timeout must be positive
 - deploy inter-deployment delay cannot be negative
 - deployments directory cannot be empty
+- `deploy.backend` and `networks.<name>.deployBackend` must be `"sdk"` or `"leo"`; `deploy.leo.timeout` cannot be negative; `deploy.leo.logMode` must be `"forward"` or `"quiet-buffered"`
+
+These are config-shape checks only. Whether the effective backend is compatible with the rest of the config is checked later, when `deploy` or `upgrade` runs; see [`deploy-backends.md`](deploy-backends.md#where-selection-is-validated).
 
 ## Deploy Task
 
@@ -266,7 +269,7 @@ Current options:
 
 - `--out`
 
-Without `--out`, export writes to `deployments/_exports/<network>.json`. With `--out`, export writes to the requested path.
+Export always writes `<deploymentsDir>/_exports/<network>.json` (`deployments/_exports/<network>.json` with the default `deploymentsDir`). `--out <path>` additionally writes a copy to `<path>`, resolved against the current working directory; it does not replace the default export file.
 
 Export bundles include network metadata and one entry per known program (`ExportedProgram`) with its program ID, ABI when available, transaction ID when complete, and record status.
 

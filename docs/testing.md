@@ -54,7 +54,7 @@ Generated typechain wrappers are preferred when the ABI is known. Use `ctx.raw.e
 
 `ctx.raw.execute(...)` accepts the same `options.imports?: readonly string[]` surface as the typed wrappers — useful when an escape-hatch call needs to load dynamic-dispatch targets (program ids or local `.aleo` paths) that the dispatching program doesn't `import` statically. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
 
-`ctx.execute(...)` and `ctx.raw.execute(...)` await on-chain confirmation by default and return the matching transition's parsed `outputs` (plus a faithful `rawOutputs` snapshot when the chain carries id-only dynamic-record entries). Pass `{ awaitConfirmation: false }` to recover fire-and-forget semantics — useful when broadcasting many transitions in parallel, or as the escape hatch for reentrant / recursive flows (see § `rawOutputs` Transition Identity).
+`ctx.execute(...)` and `ctx.raw.execute(...)` await on-chain confirmation by default and return the matching transition's parsed `outputs` (plus `rawOutputs`, the faithful on-chain output shape including any `idOnly` dynamic-record entries, whenever the call awaited confirmation). Pass `{ awaitConfirmation: false }` to recover fire-and-forget semantics — useful when broadcasting many transitions in parallel, or as the escape hatch for reentrant / recursive flows (see § `rawOutputs` Transition Identity).
 
 `deploy()` accepts a bare program name, a `.aleo` program id, or a generated wrapper with a `programId` property. It checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same session and returns the cached complete `{ programId, txId }` when available. If the deploy task skips all targets, `deploy()` checks the cache again and returns only complete records with a `txId`; degraded or recovered records still throw because they cannot identify the original deployment transaction. Pass `{ noSkipDeployed: true }` when a fixture must fail instead of reusing or skipping an existing deployment. `teardown()` invalidates the deployment cache for the connected network so the next test context revalidates state against the active network. The `network` property on `TestContext` exposes the connected network name. `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so deployment recipes can be called directly from test fixtures without any explicit type casting.
 
@@ -124,6 +124,8 @@ Current task options:
 - `--no-compile`
 - `--parallel`
 - `--coverage`
+
+The task also forwards the `--prove` and `--network` framework built-in globals and `@lionden/plugin-deploy`'s `--deploy-backend` global option to Vitest workers, alongside an explicit `--config` path (see [Vitest Integration](#vitest-integration)).
 
 `--prove` is a framework **built-in global** (not a `test` task flag) — `lionden --prove test` and `lionden test --prove` both force proof generation. The `test` task also honours an ambient truthy `LIONDEN_PROVE` (consistent with `deploy`/`upgrade`), parsed permissively (`1`/`yes`/`on`/…); when the env — not a flag — is the source, the run prints `Proving enabled via LIONDEN_PROVE`. An explicit `--prove=false` reliably disables proving even when `LIONDEN_PROVE` is set. The resolved value is canonicalized into `LIONDEN_PROVE="true"` (or cleared) **before** suite-setup hooks run, so hooks and Vitest workers observe the same value. On managed devnode this makes `ctx.deploy()`/`ctx.execute()` and direct `upgrade` task calls use the standard ProgramManager builders instead of the devnode fast-path builders.
 
@@ -254,6 +256,7 @@ The programmatic Vitest runner currently:
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
 - sets `LIONDEN_CONFIG_PATH` when the parent CLI loaded an explicit config path, so worker processes honor `--config <file>` instead of falling back to the nearest conventional filename
 - bridges an explicit `--network` to workers via `LIONDEN_NETWORK` (set only when `--network` was supplied; default runs leave it unset). Workers honor it in `lre-factory`'s `buildLre()`, retargeting `config.defaultNetwork`, and an unknown name throws a clear validation error
+- bridges an explicit `--deploy-backend` to workers via `LIONDEN_DEPLOY_BACKEND`, so `ctx.deploy()` in workers uses the selected backend even though workers rebuild their LRE without the parent's global options. Unlike `LIONDEN_NETWORK`, an ambient `LIONDEN_DEPLOY_BACKEND` is preserved when the flag is absent, because the variable is itself a documented selection layer (see [`deploy-backends.md` § Selecting A Backend](deploy-backends.md#selecting-a-backend))
 - suppresses LionDen divider lines for the full managed `lionden test` flow while keeping the surrounding task and transition logs visible
 - forwards color support to Vitest workers when the parent terminal supports color and `NO_COLOR`/`FORCE_COLOR` are not already set
 - scopes test discovery to `test/**/*.test.ts` by default, or to the provided `lionden test [files...]` include patterns

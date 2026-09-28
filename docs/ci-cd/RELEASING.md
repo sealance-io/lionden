@@ -108,11 +108,14 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 
 ## Prerequisites & gotchas
 
-- **The first release was special (done).** OIDC publishing cannot create brand-new packages,
-  so the very first publish (0.1.0, 2026-07-22) was a one-time manual, token-authenticated
-  step, followed by Trusted Publisher configuration. The 0.1.1 release proved the tokenless
-  OIDC pipeline end-to-end. See
-  [REPOSITORY-SETUP.md → One-time bootstrap](./REPOSITORY-SETUP.md#one-time-bootstrap-required-before-oidc-works).
+- **The first release was special (done).** The very first publish (0.1.0, 2026-07-22) was a
+  one-time manual, token-authenticated step, followed by Trusted Publisher configuration. The
+  0.1.1 release proved the tokenless OIDC pipeline end-to-end. Adding a public package requires
+  an explicit release-policy decision. npm's documented trusted-publisher setup requires the
+  package to exist on the registry first; re-verify that constraint when designing the
+  bootstrap. The historical bootstrap procedure is not authorization to publish locally. See
+  [REPOSITORY-SETUP.md → One-time bootstrap](./REPOSITORY-SETUP.md#one-time-bootstrap-required-before-oidc-works)
+  for that historical record.
 - **Provenance** is active (the repo is public): every release since 0.1.1 ships SLSA
   provenance attestations, verifiable with `npm audit signatures`.
 - **Approval required.** Every publish waits on the `npm-publish` environment reviewers.
@@ -174,11 +177,12 @@ it rejects stays unpublished, and the way forward is a corrected commit, not a r
 
 ## Consuming lionden
 
-After the recovery is published, consumers should use the coordinated `^0.3.0` registry line.
-Consumers must depend on registry versions, never on `file:` paths into a lionden checkout —
-`file:` deps bypass the published artifacts and break
-as soon as the checkout moves. `compliant-transfer-aleo` migrated to registry ranges with the
-0.1.0 release; migrating `amm-aleo` is a deferred follow-up.
+Depend on every `@lionden/*` package with one coordinated caret range: the `^<version>` of a
+single LionDen release, which is what `create-lionden` generates for a new project (see
+[§1](#1-add-a-changeset-with-your-pr)). Pre-1.0 caret ranges don't cross minor versions, so move
+every `@lionden/*` range together when upgrading. Consumers must depend on registry versions,
+never on `file:` paths into a lionden checkout — `file:` deps bypass the published artifacts and
+break as soon as the checkout moves.
 
 For the underlying repository/account configuration (environments, GitHub App, npm trusted
 publishers), see [REPOSITORY-SETUP.md](./REPOSITORY-SETUP.md).

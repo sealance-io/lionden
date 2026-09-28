@@ -79,7 +79,7 @@ import pluginTest from "@lionden/plugin-test";
 
 export default defineConfig({
   plugins: [pluginLeo, pluginNetwork, pluginDeploy, pluginTest],
-  leoVersion: "4.3.2",
+  // leoVersion omitted: a generic probe uses the resolved default (see below).
   defaultNetwork: "devnode",
   networks: {
     devnode: {
@@ -95,6 +95,8 @@ export default defineConfig({
   },
 });
 ```
+
+Leave `leoVersion` unset in generic probes so they follow the resolved default (see [`leo-version-compatibility.md` § Configuration](leo-version-compatibility.md#configuration)). For a compatibility or regression probe that targets a specific Leo line, set `leoVersion` explicitly and keep that pin in the reproduction recipe.
 
 The TypeScript config must include generated bindings directly:
 
@@ -144,6 +146,8 @@ Do not pass `tmp/bug-hunts/<target>/scripts/deploy.ts` as the script path unless
 ## Probe Runner Template
 
 Run from the repo root. Keep the devnode process and cleanup in the same shell block so the PID is reliable.
+
+Run `npm run build` before the first probe run and again after any change under `packages/` (your own edits or pulled commits): `@lionden/*` imports from the source CLI and from the probe config and tests resolve to each package's built `dist/` output, so a stale build exercises old code. Re-running a probe with no package changes does not need a rebuild.
 
 ```bash
 set -euo pipefail
@@ -212,7 +216,7 @@ If an agent cannot keep a single shell session, write the PID to `tmp/bug-hunts/
 
 Project tests should use `@lionden/testing` and either rely on `testing.autoStartDevnode: false` or pass `setup({ skipDevnode: true })`.
 
-Deploy before local generated calls. LionDen local execution fetches deployed program source from the node with `getProgram(programId)`. A generated local method such as `contract.deposit(...)` will fail with “program not found” unless the program has already been deployed to the devnode.
+Compile before local generated calls. A local call such as `contract.deposit.locally(...)` runs the compiled program source: LionDen reads `artifacts/<programId>/main.aleo` first (and the same path for each import), and fetches source from the node with `getProgram(programId)` only for a program or import with no local artifact, such as a network dependency. Deploy first when the probe needs chain state or depends on programs that exist only on chain.
 
 Use a setup or fixture step like:
 
@@ -235,7 +239,7 @@ Use generated bindings through their public methods:
 
 - `contract.<transition>.locally(...)` for local execution
 - `contract.<transition>.accepted(...)` / `.settled(...)` / `.rejected(...)` for broadcast + settlement
-- `contract.<transition>.submit(...)` to broadcast without awaiting confirmation
+- `contract.<transition>.submitted(...)` to broadcast without awaiting confirmation
 - `contract.withSigner(account)` for signer overrides
 
 Do not call protected `BaseContract` helpers such as `executeLocal()` or `submitTransition()` from probe tests.

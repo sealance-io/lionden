@@ -16,7 +16,7 @@ Implemented in the repo today:
 - `@lionden/cli` for config discovery, help output, argument parsing, and task dispatch
 - `@lionden/leo-compiler` for source discovery, dependency resolution, package materialization, Leo compilation, ABI parsing, caching, and TypeScript binding generation
 - `@lionden/network` for devnode/HTTP connections and SDK initialization helpers
-- default plugins for compilation, network tasks, deploy/upgrade/export, and testing
+- default plugins for compilation, network tasks, deploy/upgrade/export/recipe, and testing
 - `@lionden/testing` for devnode lifecycle, fixtures, assertions, and test setup helpers
 - `create-lionden` scaffolding with `hello-world` and `token` templates
 - example projects under `examples/`
@@ -39,7 +39,7 @@ When the code and the plan differ, treat the current codebase as the source of t
 | `packages/testing` | Test context, fixtures, assertions, managed devnode helpers |
 | `packages/plugin-leo` | `compile` and `clean` tasks |
 | `packages/plugin-network` | `node` and `run` tasks, LRE network service |
-| `packages/plugin-deploy` | `deploy`, `upgrade`, and `export` tasks |
+| `packages/plugin-deploy` | `deploy`, `upgrade`, `export`, and `recipe` tasks |
 | `packages/plugin-test` | `test` task with Vitest integration |
 | `packages/create-lionden` | Project scaffolder |
 | `packages/test-internals` | Repo-private test fakes, builders, and shared mocks |
@@ -61,7 +61,7 @@ For contributor workflows and realistic end-to-end runs, assume:
 - Leo CLI v4.4.x available on `PATH` by default (default `leoVersion` is `"4.4.2"`). Leo v4.3.x, v4.2.x, v4.1.x, and v4.0.x remain explicit compatibility lines, and Leo v3.5.x is supported for deployable programs via `leoVersion` and `leoBinary` — see [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md)
 
 
-Network functionality depends on `@provablehq/sdk@^0.11.3` via `packages/network`.
+Network functionality depends on `@provablehq/sdk` via `packages/network`; the supported version range is declared in [`packages/network/package.json`](packages/network/package.json).
 
 ## Getting Started
 
@@ -142,40 +142,45 @@ The default plugins in this repo register these primary tasks:
 
 Task and generated-wrapper execution output is intentionally user-facing: commands print concise lifecycle status, semantic color when the terminal supports it, and quieter divider behavior during tests. See [`docs/usage.md`](docs/usage.md#cli-output) for details.
 
-From the repo root, a typical source-level workflow is:
-
-```bash
-node --import tsx packages/cli/src/bin.ts compile
-node --import tsx packages/cli/src/bin.ts test
-node --import tsx packages/cli/src/bin.ts node
-```
-
-In a scaffolded project, the intended workflow is through the installed `lionden` binary or package scripts.
+In a scaffolded project, the intended workflow is through the installed `lionden` binary or package scripts. To run the CLI from source, see [Development Flow](#development-flow).
 
 ## Development Flow
+
+The CLI needs a `lionden.config.ts`: it walks up from the current directory to find one, and the repo root has none of its own. To run the CLI from source, build the packages first, then work from an example project such as `examples/hello-world`:
+
+```bash
+npm run build
+cd examples/hello-world
+```
 
 Compile Leo sources and generate bindings:
 
 ```bash
-node --import tsx packages/cli/src/bin.ts compile
+node --import tsx ../../packages/cli/src/bin.ts compile
 ```
 
 Run tests with managed devnode lifecycle:
 
 ```bash
-node --import tsx packages/cli/src/bin.ts test
+node --import tsx ../../packages/cli/src/bin.ts test
 ```
 
 Run a deployment script:
 
 ```bash
-node --import tsx packages/cli/src/bin.ts run examples/hello-world/scripts/deploy.ts
+node --import tsx ../../packages/cli/src/bin.ts run scripts/deploy.ts
 ```
 
 Start a devnode:
 
 ```bash
-node --import tsx packages/cli/src/bin.ts node --port 3030
+node --import tsx ../../packages/cli/src/bin.ts node --port 3030
+```
+
+Alternatively, stay at the repo root and pass `--config`. `run` resolves a relative script path from the config's project root, not from the current directory, so the script path stays `scripts/deploy.ts`:
+
+```bash
+node --import tsx packages/cli/src/bin.ts --config examples/hello-world/lionden.config.ts run scripts/deploy.ts
 ```
 
 ## Architecture Summary

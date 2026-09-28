@@ -37,7 +37,7 @@ export default defineConfig({
 - **`leoBinary`** — path to the Leo CLI binary that LionDen actually executes. Defaults to `"leo"` (resolved from `PATH`). Tilde (`~/`) is expanded to the user's home directory during config resolution, since `execFile`/`spawn` do not perform shell expansion.
 - **`skipLeoVersionCheck`** — default `false`. When `true`, LionDen still verifies that `leoBinary --disable-update-check --version` runs successfully, but skips parsing and comparing the version output. The configured `leoVersion` must still be a stable `major.minor.patch` string.
 
-Install both Leo versions side-by-side with `leo update --name v3.5.0` (available since Leo v3.2.0). The default `leo` on `PATH` remains v4; point `leoBinary` at the named v3.5 installation.
+Do not use `leo update --name` as a side-by-side installer. Observed on 2026-06-07 with the Leo 4.x CLI (targets `v4.0.2` and `leo-lang-v4.1.0`), it replaced the default `leo` binary on PATH. To keep v3.5 alongside v4, stage a separate v3.5 binary manually and point `leoBinary` at it. The `--name v3.5.0` target was not tested in those observations.
 
 Maintained examples and scaffolder templates target Leo 4.4.2. `npm run test:smoke` is the normal 4.4.2 smoke workflow over the maintained core examples; `npm run test:smoke:aleo-ports` is the broader 4.4.2 ported-example suite. Those sources have been migrated for Leo 4.4 metadata syntax and are not expected to compile unchanged under earlier Leo minors.
 

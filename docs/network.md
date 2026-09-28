@@ -18,7 +18,7 @@ Current defaults include an implicit `devnode` network when the user does not co
 The active network is resolved in this order:
 
 - **CLI `--network <name>`** is a built-in global. The CLI validates it against `config.networks`, mutates `config.defaultNetwork` for the in-process run, and seeds it into `globalOptions["network"]`. Every task except `test` reads the mutated `config.defaultNetwork` directly.
-- **`test --network <name>`** additionally bridges the selection to Vitest worker processes via the `LIONDEN_NETWORK` env var (alongside `LIONDEN_PROJECT_ROOT` and `LIONDEN_PROVE`). It is set only when `--network` was supplied, so default runs leave it unset. Each worker's LRE (`@lionden/testing` `buildLre()`) retargets `config.defaultNetwork` to the bridged name — validated, with an unknown name throwing a clear error — so worker `setup()` contexts target the same network the CLI selected. A per-call `setup({ network })` still wins over the bridged default.
+- **`test --network <name>`** additionally bridges the selection to Vitest worker processes via the `LIONDEN_NETWORK` env var (alongside `LIONDEN_PROJECT_ROOT`, `LIONDEN_CONFIG_PATH`, `LIONDEN_PROVE`, and — for an explicit `--deploy-backend` — `LIONDEN_DEPLOY_BACKEND`). It is set only when `--network` was supplied, so default runs leave it unset. Each worker's LRE (`@lionden/testing` `buildLre()`) retargets `config.defaultNetwork` to the bridged name — validated, with an unknown name throwing a clear error — so worker `setup()` contexts target the same network the CLI selected. A per-call `setup({ network })` still wins over the bridged default.
 - **Programmatic `tasks.run("deploy"/"recipe"/"upgrade", { network })`** retargets that single task's connect/deploy step **and** the implicit compile it triggers. The task forwards the requested network into compile as an internal passthrough arg, so `compilePipeline` resolves network-dependency fetches (`GET /{network}/program/{id}`) and `.env` materialization for the deploying network rather than `config.defaultNetwork` — e.g. deploying to network `X` while the file default is devnode fetches imported on-chain sources from `X`. `network` is **not** a CLI flag (it is a reserved built-in global that mutates `config.defaultNetwork`); the forward is omitted on a default run, which stays byte-for-byte on `config.defaultNetwork`. An explicit network unknown to `config.networks` throws a clear validation error before any fetch.
 
 ## Platform Baseline
@@ -39,7 +39,7 @@ Current responsibilities:
 - expose named accounts for the active network (`getNamedAccounts()` returns a shallow copy)
 - disconnect all open connections and clear named account state
 - expose devnode accounts
-- proxy `execute()`, mapping reads, and storage reads to the active connection
+- proxy `execute()`, read-only view-function queries (`queryView()`), mapping reads, and storage reads to the active connection
 
 `connect()` is transactional: if named-account resolution fails after a new connection is created, only the new connection is closed and the previous active connection and named accounts are preserved. Switching back to a previously-connected network restores named accounts from the per-network cache without re-resolving.
 
@@ -48,7 +48,7 @@ Connection creation currently maps:
 - `devnode` to `http://<socketAddr>`
 - `http` to the configured endpoint
 
-`packages/network/src/connection.ts` provides `AleoConnection`, including REST/SDK-backed helpers for execution, mapping reads, balance checks, block height, transaction broadcasting, transaction confirmation, and deployed program source fetching.
+`packages/network/src/connection.ts` provides `AleoConnection`, including REST/SDK-backed helpers for execution, view-function queries (`queryView`, `POST /{network}/program/{programId}/view/{viewName}`; see [`compiler.md`](compiler.md#view-functions)), mapping reads, balance checks, block height, transaction broadcasting, transaction confirmation, deployed program source fetching, and program edition reads (`getProgramEdition`).
 
 `NetworkConnection.getProgramSource(programId)` returns compiled Aleo source for deployed programs and `null` for missing programs. Deployment preflight, deployment-state validation, and compiler network dependency fetching rely on this behavior.
 
@@ -305,7 +305,7 @@ The SDK exposes two families of transaction builders: standard methods for real 
 Before devnode fast-path transactions are built, two SDK checks run:
 
 - `checkDevnodeSdkSupport()` verifies that the loaded SDK exposes `buildDevnodeDeploymentTransaction`, `buildDevnodeExecutionTransaction`, and `buildDevnodeUpgradeTransaction`.
-- `initConsensusHeights()` calls `sdk.getOrInitConsensusVersionTestHeights()` (no arguments) to prime the SDK's internal consensus version state. The SDK auto-derives the full set of test heights for its snarkVM baseline — on `@provablehq/sdk@^0.11.3` (snarkVM 4.8.1) that set ends at **V17** — so this is count-agnostic and independent of any Leo `--consensus-heights` flag (which Leo 4.3+ no longer accepts). It is required for devnode transaction builders and is non-fatal if the method is absent in older SDK versions. Devnode `prove: true` deploy/upgrade skips `checkDevnodeSdkSupport()` because it does not call the `buildDevnode*` methods, but still initializes consensus heights.
+- `initConsensusHeights()` calls `sdk.getOrInitConsensusVersionTestHeights()` (no arguments) to prime the SDK's internal consensus version state. The SDK auto-derives the full set of test heights for its snarkVM baseline (see [`leo-version-compatibility.md`](leo-version-compatibility.md#consensus-v16-on-the-leo-43-devnode) for the consensus versions each Leo line and the locked SDK cover), so this is count-agnostic and independent of any Leo `--consensus-heights` flag (which Leo 4.3+ no longer accepts). It is required for devnode transaction builders and is non-fatal if the method is absent in older SDK versions. Devnode `prove: true` deploy/upgrade skips `checkDevnodeSdkSupport()` because it does not call the `buildDevnode*` methods, but still initializes consensus heights.
 
 ### Transaction Confirmation
 
@@ -332,6 +332,9 @@ This is the path used by the example deployment scripts.
 
 - default network must exist
 - HTTP networks must specify an endpoint
+- a devnode `clearStorageOnStart` requires a `storagePath`
+- a devnode with an explicit `provider: "standalone"` rejects a non-`testnet` `network` and any `consensusHeights`; an auto-detected standalone backend gets the same checks at start time instead (see [Backend selection](#backend-selection))
+- otherwise (`provider: "leo"` or omitted), when `leoVersion` is 4.3 or later (or unparseable), a devnode rejects `consensusHeights` and a non-`testnet` `network`; an omitted `network` defaults to `"testnet"` and passes
 
 Deploy-specific validation is documented in [`deployment.md`](deployment.md).
 
