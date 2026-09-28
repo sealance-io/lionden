@@ -1433,6 +1433,26 @@ describe("AleoConnection", () => {
         },
       );
     });
+
+    it("includes the Authorization header when apiKey is set", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify(["8u32"]), { status: 200 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const connection = createHttpConnection({ apiKey: "mykey" });
+
+      await expect(connection.queryView("math.aleo", "sum", ["3u32", "5u32"])).resolves.toEqual([
+        "8u32",
+      ]);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://api.explorer.provable.com/v1/testnet/program/math.aleo/view/sum",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer mykey" },
+          body: JSON.stringify(["3u32", "5u32"]),
+        },
+      );
+    });
   });
 
   // -------------------------------------------------------------------------
