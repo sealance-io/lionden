@@ -1,5 +1,17 @@
 # @lionden/leo-compiler
 
+## 0.5.0
+
+### Minor Changes
+
+- [#116](https://github.com/sealance-io/lionden/pull/116) [`09421c3`](https://github.com/sealance-io/lionden/commit/09421c36be3762571bf737c597c41282598e0533) Thanks [@NadavPeled1998](https://github.com/NadavPeled1998)! - Generate typed `contract.views` bindings for Leo ABI view functions and query them through the configured network connection's read-only view REST API.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @lionden/config@0.5.0
+  - @lionden/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

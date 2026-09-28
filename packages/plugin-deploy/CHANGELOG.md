@@ -1,5 +1,15 @@
 # @lionden/plugin-deploy
 
+## 0.5.0
+
+### Patch Changes
+
+- Updated dependencies [[`09421c3`](https://github.com/sealance-io/lionden/commit/09421c36be3762571bf737c597c41282598e0533)]:
+  - @lionden/leo-compiler@0.5.0
+  - @lionden/network@0.5.0
+  - @lionden/config@0.5.0
+  - @lionden/core@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
