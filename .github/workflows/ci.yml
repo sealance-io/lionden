@@ -223,7 +223,7 @@ jobs:
       # setup-leo-action v1.1.3 builds from source; the pinned SHA resolves the
       # requested leo-lang-v4.4.2 tag.
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
+        uses: sealance-io/setup-leo-action@7b57645adc0b4c352abf38619dd53f81c2e5fe76 # v1.1.4
         with:
           version: "4.4.2" # semver-only; must match core examples' leoVersion
           rust-version: "1.96.0"
@@ -258,7 +258,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
+        uses: sealance-io/setup-leo-action@7b57645adc0b4c352abf38619dd53f81c2e5fe76 # v1.1.4
         with:
           version: "4.4.2" # semver-only; must match examples/aleo-ports leoVersion
           rust-version: "1.96.0"
@@ -292,7 +292,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
+        uses: sealance-io/setup-leo-action@7b57645adc0b4c352abf38619dd53f81c2e5fe76 # v1.1.4
         with:
           version: "4.3.2" # semver-only; must match the legacy fixture leoVersion
           rust-version: "1.96.0"
@@ -327,7 +327,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - name: Set up Leo CLI
-        uses: sealance-io/setup-leo-action@3fb8fc821388716961eee9146b414fcfc093b32d # v1.1.3
+        uses: sealance-io/setup-leo-action@7b57645adc0b4c352abf38619dd53f81c2e5fe76 # v1.1.4
         with:
           # Intentionally pinned to 4.2.0 / consensus V15: the leo-samples lane is
           # decoupled from the default 4.4.x line (see docs/leo-version-compatibility.md).
