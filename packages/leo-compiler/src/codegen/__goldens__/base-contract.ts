@@ -1778,6 +1778,34 @@ export abstract class BaseContract {
     return network.execute(this.programId, transitionName, args, this.buildEffectiveOptions(options));
   }
 
+  protected async queryViewRaw(
+    viewName: string,
+    args: readonly string[],
+    expectedOutputs: number,
+  ): Promise<readonly string[]> {
+    const network = (this.getLre() as any).network;
+    if (!network || typeof network.queryView !== "function") {
+      throw new TransactionShapeError(
+        "Network is not available for " + this.programId + "/" + viewName + ". Ensure @lionden/plugin-network is loaded and connected before querying views.",
+        { programId: this.programId, transition: viewName },
+      );
+    }
+    const outputs = await network.queryView(this.programId, viewName, args);
+    if (!Array.isArray(outputs) || outputs.some((output: unknown) => typeof output !== "string")) {
+      throw new TransactionShapeError(
+        "View " + this.programId + "/" + viewName + " returned a non-string output payload.",
+        { programId: this.programId, transition: viewName },
+      );
+    }
+    if (outputs.length !== expectedOutputs) {
+      throw new TransactionShapeError(
+        "View " + this.programId + "/" + viewName + " returned " + outputs.length + " output(s); ABI expects " + expectedOutputs + ".",
+        { programId: this.programId, transition: viewName },
+      );
+    }
+    return outputs;
+  }
+
   private buildEffectiveOptions(
     options: BaseCallOptions & { readonly mode: ExecutionMode },
   ): BaseCallOptions & { readonly mode: ExecutionMode } {

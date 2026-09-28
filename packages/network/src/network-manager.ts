@@ -167,6 +167,15 @@ export class NetworkManagerImpl implements NetworkManager {
     return conn.execute(programId, transitionName, args, options);
   }
 
+  async queryView(
+    programId: string,
+    viewName: string,
+    args: readonly string[],
+  ): Promise<readonly string[]> {
+    const conn = this.requireConnection();
+    return conn.queryView(programId, viewName, args);
+  }
+
   async checkLocalExecution(
     programId: string,
     transitionName: string,

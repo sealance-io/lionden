@@ -46,4 +46,8 @@ describe("hello program", () => {
   it("handles zero", async () => {
     expect(await hello.main.locally(0, 42)).toBe(42);
   });
+
+  it("queries a generated read-only view", async () => {
+    expect(await hello.views.sum(3, 5)).toBe(8);
+  });
 });

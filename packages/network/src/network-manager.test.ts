@@ -204,6 +204,25 @@ describe("NetworkManagerImpl", () => {
     );
   });
 
+  it("queryView throws when not connected", async () => {
+    await expect(manager.queryView("test.aleo", "total", [])).rejects.toThrow(
+      "No active network connection",
+    );
+  });
+
+  it("queryView delegates to the active connection", async () => {
+    const conn = (await manager.connect("devnode")) as NetworkConnection & {
+      queryView: ReturnType<typeof vi.fn>;
+    };
+    const queryView = vi.fn().mockResolvedValue(["8u32"]);
+    conn.queryView = queryView;
+
+    await expect(manager.queryView("test.aleo", "sum", ["3u32", "5u32"])).resolves.toEqual([
+      "8u32",
+    ]);
+    expect(queryView).toHaveBeenCalledWith("test.aleo", "sum", ["3u32", "5u32"]);
+  });
+
   it("getStorageValue throws when not connected", async () => {
     await expect(manager.getStorageValue("test.aleo", "admin")).rejects.toThrow(
       "No active network connection",
