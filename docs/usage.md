@@ -158,7 +158,7 @@ Plugins are **declarative**: there is no auto-discovery. Drop a plugin from the 
 | `namedAccounts` | Per-role account values, optionally per network ([details](deployment.md#named-accounts)) | `{}` |
 | `compiler` | `leo build` knobs: `enableDce`, `conditionalBlockMaxDepth`, `buildTests`, `extraFlags` (`enableDce`/`conditionalBlockMaxDepth` apply only to the 4.1/4.0/3.5 lines; Leo 4.2+ removed those flags — [details](leo-version-compatibility.md#implementation-notes)) | sensible defaults |
 | `codegen.enabled` | Generate `typechain/` on each compile | `true` |
-| `codegen.dynamicRecords` | Emit `Leo.dynamicRecord(...)` helpers ([details](json-abi.md#interface-conversion-helpers-codegendynamicrecords)) | — |
+| `codegen.dynamicRecords` | Emit `Leo.dynamicRecord(...)` helpers ([details](typechain.md#dynamic-record-helper-configuration)) | — |
 | `execution.imports` | Runtime imports for dynamic-dispatch targets ([details](network.md#runtime-imports-for-dynamic-dispatch)) | `{}` |
 | `testing.timeout` | Per-test timeout in ms | `120_000` |
 | `testing.autoStartDevnode` | Whether `setup()` auto-starts a devnode | `true` |
@@ -236,7 +236,7 @@ Caching is content-hash based and stored under `artifacts/.cache`. Use `--force`
 
 ### Working With Generated Bindings
 
-For each compiled program, codegen emits a typed wrapper that exposes every transition and mapping, plus a `views` namespace for view functions and a `storage` namespace for storage variables when the program declares them (see [`compiler.md` § View functions](compiler.md#view-functions) and [§ Storage accessors](compiler.md#storage-accessors)). Import the factory directly from `typechain/<Name>.ts`:
+For each compiled program, codegen emits a typed wrapper that exposes every transition and mapping, plus a `views` namespace for view functions and a `storage` namespace for storage variables when the program declares them (see [`typechain.md` § View functions](typechain.md#view-functions) and [§ Storage accessors](typechain.md#storage-accessors)). Import the factory directly from `typechain/<Name>.ts`:
 
 ```ts
 import { createTokenContract } from "../typechain/Token.js";
@@ -272,10 +272,10 @@ throws a typed `MappingKeyNotFoundError` otherwise), `.tryGet` when absence is e
 whose value is an `Option`, `.get`/`.tryGet` are about *key* presence — a present-but-`None`
 value still resolves to `null`. This means `.tryGet` alone *cannot* distinguish a missing
 key from a stored `None` (both return `null`); use `.contains` to settle presence first,
-then `.get`. See [`compiler.md` § Option-valued mappings](compiler.md#option-valued-mappings)
+then `.get`. See [`typechain.md` § Option-valued mappings](typechain.md#option-valued-mappings)
 for the full state table.
 
-Every transition gets several call shapes: `.locally`, `.failsLocally`, `.captureLocalFailure`, `.submitted`, `.settled`, `.accepted`, `.rejected`. Use `.accepted` for the happy path on-chain, `.rejected` to assert finalizer rejection, and `.settled` when either is acceptable. See [`testing.md`](testing.md#typed-broadcast-results) for the typed-output contract, including how `EncryptedRecord<T>` and `EncryptedValue<T>` decrypt private outputs.
+Every transition gets several call shapes: `.locally`, `.failsLocally`, `.captureLocalFailure`, `.submitted`, `.settled`, `.accepted`, `.rejected`. Use `.accepted` for the happy path on-chain, `.rejected` to assert finalizer rejection, and `.settled` when either is acceptable. See [`typechain.md`](typechain.md#typed-broadcast-results) for the typed-output contract, including how `EncryptedRecord<T>` and `EncryptedValue<T>` decrypt private outputs.
 
 When a transition isn't representable in the typed wrapper (e.g., the ABI changed after upgrade in the same test process), drop down to the raw escape hatch:
 
@@ -736,7 +736,7 @@ Use `.from(name, outputIndex, { match: n })` when the same `(program, transition
 
 Direct record ciphertexts can still call `.decrypt(key)` directly. When you want one uniform style across direct records, `dyn record` outputs, and external `Record` outputs, call `.match(helper.output).decrypt(key)` on direct ciphertexts too.
 
-Use `sourceProgram` when more than one compiled program declares the same record name. See `examples/aleo-ports/dynamic_records`, [`json-abi.md`](json-abi.md#interface-conversion-helpers-codegendynamicrecords), and [`network.md`](network.md#id-only-record-outputs-dyn-record-and-external-record) for the exact helper rules and id-only output error taxonomy.
+Use `sourceProgram` when more than one compiled program declares the same record name. See `examples/aleo-ports/dynamic_records`, [`typechain.md` § Dynamic-record helper configuration](typechain.md#dynamic-record-helper-configuration), and [`typechain.md` § Id-only record outputs](typechain.md#id-only-record-outputs-dyn-record-and-external-record) for the exact helper rules and id-only output error taxonomy.
 
 ### Upgradeable program with admin
 
@@ -799,10 +799,11 @@ This guide stays at the happy-path level. For subsystem internals, follow the fo
 
 - [`architecture.md`](architecture.md) — plugin model, config lifecycle, task registry, LRE, CLI boot flow.
 - [`compiler.md`](compiler.md) — source discovery, dependency resolution, materialization, `leo build`, ABI, codegen.
+- [`typechain.md`](typechain.md) — generated TypeScript bindings: `codegen.*` config, wrappers, accessors, record helpers, typed broadcast results, decryption, dynamic records.
 - [`network.md`](network.md) — network manager, devnode lifecycle, SDK adapter, transaction confirmation, `node` and `run`.
 - [`deployment.md`](deployment.md) — deploy, upgrade, export, deployment state, ephemeral mode, recipes, named accounts.
 - [`deploy-backends.md`](deploy-backends.md) — SDK vs Leo CLI transaction backends, selection, flag mapping, limits, security.
-- [`testing.md`](testing.md) — `setup()`, fixtures, assertions, typed broadcast results, decryption, dynamic records.
+- [`testing.md`](testing.md) — `setup()`, fixtures, assertions.
 - [`testing-strategy.md`](testing-strategy.md) — repo-wide test taxonomy and CI lanes.
 - [`json-abi.md`](json-abi.md) — JSON ABI schema, serde rules, codegen type mapping.
 - [`leo-version-compatibility.md`](leo-version-compatibility.md) — Leo v4 default, v3.5 deployable support, `leoBinary`, devnode consensus heights.

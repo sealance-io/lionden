@@ -4,7 +4,7 @@ This note explains the snarkVM V15 record-existence rule for Leo v4 `dyn record`
 flows. It is practical maintainer guidance for authoring compliant programs and
 for understanding LionDen's dynamic-record example. For client-side id-only
 output handling, matchers, and decryption APIs, see
-[`network.md` § Id-only record outputs](../network.md#id-only-record-outputs-dyn-record-and-external-record).
+[`typechain.md` § Id-only record outputs](../typechain.md#id-only-record-outputs-dyn-record-and-external-record).
 
 ## When To Read This
 
@@ -24,7 +24,7 @@ Read this when working on:
 - The `examples/aleo-ports/dynamic_records` programs, config, tests, or
   generated typechain.
 
-This page is about consensus and Leo program shape. Use `docs/network.md` for
+This page is about consensus and Leo program shape. Use `docs/typechain.md` for
 the TypeScript API surface that selects and decrypts id-only dynamic/external
 record outputs.
 

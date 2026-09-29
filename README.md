@@ -210,6 +210,7 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
 - [`docs/architecture.md`](docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
 - [`docs/compiler.md`](docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
+- [`docs/typechain.md`](docs/typechain.md): generated TypeScript bindings — wrappers, `codegen.*` configuration, inputs, view/mapping/storage accessors, record helpers, typed broadcast results, id-only record outputs
 - [`docs/network.md`](docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
 - [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, and hooks
 - [`docs/deploy-backends.md`](docs/deploy-backends.md): SDK vs Leo CLI transaction backends, selection, limits, security

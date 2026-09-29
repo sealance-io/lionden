@@ -54,7 +54,7 @@ Generated typechain wrappers are preferred when the ABI is known. Use `ctx.raw.e
 
 `ctx.raw.execute(...)` accepts the same `options.imports?: readonly string[]` surface as the typed wrappers — useful when an escape-hatch call needs to load dynamic-dispatch targets (program ids or local `.aleo` paths) that the dispatching program doesn't `import` statically. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
 
-`ctx.execute(...)` and `ctx.raw.execute(...)` await on-chain confirmation by default and return the matching transition's parsed `outputs` (plus `rawOutputs`, the faithful on-chain output shape including any `idOnly` dynamic-record entries, whenever the call awaited confirmation). Pass `{ awaitConfirmation: false }` to recover fire-and-forget semantics — useful when broadcasting many transitions in parallel, or as the escape hatch for reentrant / recursive flows (see § `rawOutputs` Transition Identity).
+`ctx.execute(...)` and `ctx.raw.execute(...)` await on-chain confirmation by default and return the matching transition's parsed `outputs` (plus `rawOutputs`, the faithful on-chain output shape including any `idOnly` dynamic-record entries, whenever the call awaited confirmation). Pass `{ awaitConfirmation: false }` to recover fire-and-forget semantics — useful when broadcasting many transitions in parallel, or as the escape hatch for reentrant / recursive flows (see [`typechain.md` § `rawOutputs` Transition Identity](typechain.md#rawoutputs-transition-identity)).
 
 `deploy()` accepts a bare program name, a `.aleo` program id, or a generated wrapper with a `programId` property. It checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same session and returns the cached complete `{ programId, txId }` when available. If the deploy task skips all targets, `deploy()` checks the cache again and returns only complete records with a `txId`; degraded or recovered records still throw because they cannot identify the original deployment transaction. Pass `{ noSkipDeployed: true }` when a fixture must fail instead of reusing or skipping an existing deployment. `teardown()` invalidates the deployment cache for the connected network so the next test context revalidates state against the active network. The `network` property on `TestContext` exposes the connected network name. `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so deployment recipes can be called directly from test fixtures without any explicit type casting.
 
@@ -293,105 +293,11 @@ This lets test suites stay concise without reimplementing common network checks.
 
 ## Typed Broadcast Results
 
-`.accepted(...)` returns `AcceptedTransition<TOutputs>`, `.settled(...)` returns the union `AcceptedTransition<TOutputs> | RejectedTransition`, and `.rejected(...)` returns `RejectedTransition`. The `outputs` field on `AcceptedTransition<TOutputs>` mirrors `.locally()`'s return shape with two substitutions driven by what the chain returns encrypted:
-
-- **Record outputs** → `EncryptedRecord<RecordName>` handles with `decrypt(key): Promise<RecordName>`.
-- **Private plaintext outputs** (Leo's default visibility) → `EncryptedValue<T>` handles with `decrypt(key): Promise<T>`.
-- **Public plaintext outputs** → decoded eagerly via the same deserializers used by `.locally()`.
-
-`AcceptedTransition<TOutputs>` also carries `transitionPublicKey: string` — the on-chain `tpk` needed by the SDK to decrypt private value ciphertexts. It's threaded through `EncryptedValue<T>.decrypt(...)` automatically; callers don't pass it directly. `RejectedTransition` has no `outputs` and no `transitionPublicKey` (fee-only inclusion carries neither).
-
-```ts
-// Single record output → outputs is an EncryptedRecord<Token>
-const mintTx = await token.mint_private.accepted(receiver, 100n);
-const mintedRecord = await mintTx.outputs.decrypt(ctx.accounts[0]);
-await token.transfer_private.locally(mintedRecord, /* ... */);
-
-// Multi-output (Token, bigint) → outputs is a positional tuple
-const swap = await amm.swap.accepted(/* ... */);
-const [encryptedToken, leftoverAmount] = swap.outputs;
-const decoded = await encryptedToken.decrypt(ctx.accounts[0]);
-
-// Private plaintext output: u64 without `public` modifier → EncryptedValue<bigint>
-const compare = await governance.compare_strategies.accepted(10000n);
-const [linear, quadratic] = compare.outputs;
-expect(await linear.decrypt(ctx.accounts[0])).toBe(10000n);
-expect(await quadratic.decrypt(ctx.accounts[0])).toBe(100n);
-```
-
-`rawOutputs: readonly RawTransitionOutput[]` is still available alongside `outputs` on every settled result. String entries carry the raw on-wire values from the specific transition the caller invoked (record ciphertexts, value ciphertexts, plain literals — whatever the chain returned). Id-only dynamic-record outputs are preserved in position as `{ kind: "idOnly", id, type }` entries, so ABI-indexed projectors do not shift later outputs.
-
-### Why private plaintext outputs need `decrypt`
-
-Aleo encrypts every non-`public` transition input and output on chain. The local SDK gives `.locally()` decoded plaintexts, but `.accepted()` / `.settled()` see the raw chain shape: `record1...` for record outputs, `ciphertext1...` for private plaintext outputs. `EncryptedValue<T>` wraps the value ciphertext + the per-output context (tpk, program, function, AVM global index) so a single `decrypt(key)` call drives `Ciphertext.decryptWithTransitionInfo(...)` under the hood. Public plaintext outputs are not encrypted on chain, so they're decoded eagerly with no `decrypt` hop.
-
-### Future-typed Outputs
-
-`outputs` carries only client-decodable transition outputs. Future-typed outputs (post-finalization values) appear in `rawOutputs` at their original ABI index but are not represented in the typed `outputs` projection. To inspect a Future output, read `rawOutputs[i]` at its original ABI index — the projector preserves positions, so an output at ABI index 1 always wraps `rawOutputs[1]` even if a Future occupies index 0.
-
-### `EncryptedRecord<T>` / `EncryptedValue<T>` Decryption Keys
-
-Both handles' `.decrypt(key)` accept the same polymorphic key shape (aliased as `DecryptionKey` for clarity, identical to `RecordDecryptionKey`): a raw `APrivateKey1...` / `AViewKey1...` string (auto-detected by prefix), `{ viewKey }`, or `{ privateKey }`. Lionden `SignerInput` and devnode account objects (`{ privateKey, address }`) structurally match the `{ privateKey }` arm. Unrecognized strings throw `RecordDecryptionKeyError`. SDK / ciphertext failures throw `LocalRecordDecryptionError` (records) or `LocalValueDecryptionError` (values) — keeping the error name aligned with the decryption phase.
-
-For workflows that need to defer decryption — pass the ciphertext between processes, decrypt under a different account, batch decrypts — read `mintTx.outputs.ciphertext` directly and call `decrypt<RecordName>(ciphertext, key)` (records) or `decryptValueCiphertext(ciphertext, viewKey, tpk, programId, transitionName, globalIndex)` (values) later. The free `decrypt<RecordName>` functions remain generated alongside the typed projection.
-
-### `rawOutputs` Transition Identity
-
-`rawOutputs` is filtered from the confirmed transaction's `transitions[]` by `(programId, transitionName)` match:
-
-- **Accepted**: exactly one matching transition is required. 0 or >1 throws `TransactionShapeError` so test assertions don't pick the wrong outputs from a cross-program tx. Reentrant or recursive flows must opt out of the default await and inspect transitions directly — pass `{ awaitConfirmation: false }` to `ctx.raw.execute(...)` and call `ctx.connection.waitForConfirmation(txId)` to walk `transitions[]` yourself (or use `ctx.connection.getTransitionOutputs(...)` for a single targeted transition by `(programId, transitionName)`).
-- **Rejected**: Aleo converts rejected executes to fee-only on inclusion, so `rawOutputs` is typically `[]`. The selector stays permissive — if a matching transition entry IS present, its outputs are surfaced; if multiple match, the first is picked. This preserves `.rejected()` semantics for finalizer failures.
-
-`RejectedTransition` does not carry an `outputs` field — fee-only inclusion has no typed-output projection to project.
-
-### Error Policy For Typed Projection
-
-`.settled()` and `.accepted()` wrap their typed projector with a narrow error policy:
-
-- `TransactionShapeError` thrown by the projector (from `BaseContract.rawOutputAt`, which validates per-index access) is **rethrown unchanged**, preserving the `outputIndex` context.
-- Any other error from the projector — including `TransitionInputError` from per-primitive parsers and native `Error` — is **wrapped as `TransactionShapeError` with `.cause` set** to the original. This keeps "bad on-chain data" failures classified as shape errors rather than misleading the caller that they provided bad input.
-
-For `EncryptedValue<T>.decrypt(key)` specifically: only `RecordDecryptionKeyError` (caller-input shape) passes through unwrapped. SDK failures, malformed-ciphertext rejections from the SDK, and deserializer failures (even other `LionDenTypechainError` subclasses) wrap as `LocalValueDecryptionError` with `outputIndex` populated. This narrow pass-through makes "wrong account" / "malformed plaintext" failures surface under a single phase-aligned error name.
+The typed-output contract for `.accepted(...)`, `.settled(...)`, and `.rejected(...)` (`EncryptedRecord<T>` / `EncryptedValue<T>` handles, decryption keys, `rawOutputs` transition identity, and the typed-projection error policy) is documented in [`typechain.md` § Typed broadcast results](typechain.md#typed-broadcast-results).
 
 ## Building And Recovering Dynamic Records (Leo v4 `dyn record`)
 
-For transitions whose Leo signature accepts `dyn record`, build the input with `Leo.dynamicRecord(value, schema)`. The schema is compile-time-validated via a `${LeoPrimitiveType}.${LeoVisibility}` template-literal union:
-
-```ts
-const tokenInput = Leo.dynamicRecord(
-  { owner: Leo.address(addr), amount: 100n, _nonce: Leo.group("0group"), _version: 0 },
-  {
-    owner: "address.private",
-    amount: "u128.private",
-    _nonce: "group.public",
-    _version: "u8.public",
-  },
-);
-await amm.add_liquidity.locally(tokenInput, /* ... */);
-```
-
-Values are range-checked at runtime (integer bit-widths, address prefix, etc.). Missing or extra keys vs. the schema throw `TransitionInputError` with the offending key listed. The raw string escape hatch `Leo.unsafe.dynamicRecord("{ owner: ... }")` remains available for pre-built literals.
-
-For repeated conversions from a generated concrete record type, prefer a `codegen.dynamicRecords` helper such as `asGoldToken(token)` over retyping the schema at every call site. See [`json-abi.md` § Interface Conversion Helpers](json-abi.md#interface-conversion-helpers-codegendynamicrecords) and `examples/aleo-ports/dynamic_records`.
-
-On the output side, the same helper exposes a `.output` matcher (a `RecordOutputMatcher<T>`). Prefer generated matchers (`asGoldToken.output`, `GoldToken_Token.output`) over inline matcher construction; pass them to `accepted.outputs.match(matcher).decrypt(key)` to recover a record from any of the three handle types:
-
-```ts
-// Direct ciphertext: identity guard checks program/recordName.
-const tok = await mint.outputs.match(asGoldToken.output).decrypt(alice());
-
-// Dyn-record handle: bind the callee transition.
-const transferred = await routed.outputs
-  .match(asGoldToken.output.from("transfer", 0))
-  .decrypt(alice());
-
-// External-record handle: bind the callee transition by name.
-const wrapped = await accepted.outputs
-  .match(GoldToken_Token.output.from("mint", 0))
-  .decrypt(bob());
-```
-
-`.from(name, idx)` is the clean default because the matcher's program supplies the source program id. `.from(name, idx, { match: n })` disambiguates when the same `(program, transitionName)` appears more than once in the callgraph. `.at(transitionIndex, outputIndex)` is the positional escape hatch, and `createRecordOutputMatcher` is reserved for unresolved external records whose ABI was unavailable at codegen time. `.match()` itself is a pure builder — all validation, source resolution, and decryption is deferred to `CapturedRecord.decrypt(key)`. See [`network.md` § Id-only record outputs](network.md) for the full error taxonomy.
+Building `dyn record` inputs with `Leo.dynamicRecord(...)` or generated `codegen.dynamicRecords` helpers, and recovering records from the outputs with generated matchers, are documented in [`typechain.md` § Building And Recovering Dynamic Records](typechain.md#building-and-recovering-dynamic-records-leo-v4-dyn-record).
 
 ## Strategy And Design Direction
 
