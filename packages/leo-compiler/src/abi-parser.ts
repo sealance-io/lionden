@@ -543,10 +543,10 @@ function normalizeStorageType(raw: unknown, programId: string): StorageType {
 // ---------------------------------------------------------------------------
 
 /**
- * Self-reference canonicalization: Leo 4.2 emits self-refs with an explicit
- * `program: "<self>.aleo"` where 4.1 emitted `program: null`. Collapse the
- * self form to `null` (the historical local convention) so a 4.1 self-ref and
- * a 4.2 self-ref compare equal everywhere.
+ * Self-reference canonicalization: Leo (4.1 and 4.2+) emits struct/record
+ * self-refs with an explicit `program: "<self>.aleo"`, while legacy string refs
+ * upgrade to `program: null`. Collapse the self form to `null` (the historical
+ * local convention) so every self-ref compares equal everywhere.
  */
 function canonicalizeRefProgram(program: string | null, programId: string): string | null {
   return program === programId ? null : program;
