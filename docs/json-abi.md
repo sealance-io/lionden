@@ -19,11 +19,11 @@ The emitted ABI shape depends on the Leo line. LionDen's parser (`packages/leo-c
 
 | Wire shape | Emitted by | Distinguishing features |
 |---|---|---|
-| Positional (current) | Leo 4.2+, including the default Leo line | Function and view I/O elements are bare enum variants (`{ Plaintext: { ty, mode } }`, `{ Record: { path, program } }`, `"Final"`, `"DynamicRecord"`). No input names, `is_final`, `const_parameters`, `implements`, or `"None"` mode. Self-program refs are explicit. Leo 4.3+ also writes `"mode": "Private"` on record-definition fields. Details: [Leo 4.2 Wire Shape](#leo-42-wire-shape). |
+| Positional (current) | Leo 4.2+, including the default Leo line | Function and view I/O elements are bare enum variants (`{ Plaintext: { ty, mode } }`, `{ Record: { path, program } }`, `"Final"`, `"DynamicRecord"`). No input names, `is_final`, `const_parameters`, `implements`, or `"None"` mode. Leo 4.3+ also writes `"mode": "Private"` on record-definition fields. Details: [Leo 4.2 Wire Shape](#leo-42-wire-shape). |
 | Wrapper | Leo 4.1 / bytecode `leo abi` | I/O elements wrapped as `{ name?, ty, mode }`; `is_final`; `"None"` for unmoded values. |
 | v3.5 | Leo 3.5 | `transitions` / `is_async` keys and a bare `"Future"` output. |
 
-How to read the sections below: the type encodings (primitives, plaintext, structs, mappings, storage variables) are shared by all shapes, except for self-program references: Leo 4.1 writes `null` for a local struct, while Leo 4.2+ writes the program's own id (see [StructRef](#structref)). The examples that include function I/O or `mode` values (the Top-Level Schema minimal example, Records, and Functions) use the wrapper shape and are labeled as such. [Mode](#mode) separates wire values from LionDen's internal union, and [LionDen Normalization](#lionden-normalization) maps wire fields to the parsed `ProgramABI`.
+How to read the sections below: the type encodings (primitives, plaintext, structs, mappings, storage variables) are shared by all shapes. That includes self-program references: Leo 4.1 and 4.2+ both write the program's own id on the wire, and LionDen's parser normalizes it to `null` (see [StructRef](#structref)). The examples that include function I/O or `mode` values (the Top-Level Schema minimal example, Records, and Functions) use the wrapper shape and are labeled as such. [Mode](#mode) separates wire values from LionDen's internal union, and [LionDen Normalization](#lionden-normalization) maps wire fields to the parsed `ProgramABI`.
 
 ## Top-Level Schema
 
@@ -130,10 +130,12 @@ A reference to a struct type, potentially from another program:
 | Field | Type | Description |
 |---|---|---|
 | `path` | `string[]` | Path segments to the struct (e.g. `["Point"]` or `["utils", "Vector3"]` for module-scoped types) |
-| `program` | `string \| null` | The program containing this struct, if external. `null` for local structs in the Leo 4.1 wire shape and in LionDen's parsed ABI; Leo 4.2+ writes the program's own id, which the parser rewrites to `null` (see [Leo 4.2 Wire Shape](#leo-42-wire-shape)). |
+| `program` | `string \| null` | The program containing this struct. On the wire, Leo 4.1 and 4.2+ write the program's own id for a local struct; LionDen's parser rewrites that self-reference to `null`, so in the parsed ABI `null` means local (see [LionDen Normalization](#lionden-normalization)). |
+
+Wire form (a local struct in `token.aleo`, then an external one):
 
 ```json
-{ "Struct": { "path": ["TokenInfo"], "program": null } }
+{ "Struct": { "path": ["TokenInfo"], "program": "token.aleo" } }
 { "Struct": { "path": ["utils", "Vector3"], "program": "math_lib.aleo" } }
 ```
 
