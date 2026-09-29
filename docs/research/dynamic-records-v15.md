@@ -200,35 +200,39 @@ present in the ledger's record tree (the SDK fetches it via
 `GET /statePaths?commitments=<cm>`).
 
 A record's commitment depends on its original program, record name, and
-plaintext metadata. LionDen's generated concrete deserializer stores the exact
-decrypted plaintext under the non-enumerable `BaseContract.RECORD_RAW` symbol.
-Generated dynamic helpers now preserve that plaintext too, including `_version`
-even when it is absent from the ABI and configured schema. Manually constructed
-inputs still use schema encoding, but they can now carry `_version` when the
-helper schema declares `_version: "u8.public"`. Pass the original decrypted
-object: object spread, `structuredClone`, and JSON round-trips drop the
-non-enumerable cache.
-To persist a held record, store the plaintext string from `serialize<Record>`
-(or the ciphertext) and rehydrate it through `deserialize<Record>` or
-`decrypt<Record>`, which re-attach the cache. As with concrete serializers,
-cached plaintext takes precedence over object fields.
+plaintext metadata such as `_version`, which is absent from the ABI and, unless
+declared, from the helper schema. Generated record serializers and
+dynamic-record helpers replay the exact decrypted plaintext that
+`deserialize<Record>` / `decrypt<Record>` cache under the non-enumerable
+`BaseContract.RECORD_RAW` symbol, so spend the original decrypted object.
+Copying or reconstructing it (object spread, `structuredClone`, JSON
+round-trips, or rebuilding from schema fields) can discard that raw plaintext,
+so the rebuilt literal can commit to a different value. For persistence,
+rehydration, and declaring `_version` on manually constructed inputs, see
+[`typechain.md` § Interface conversion helpers](../typechain.md#interface-conversion-helpers).
 
-Before this fix, generated dynamic helpers rebuilt only schema fields and
-dropped `_version: 1u8.public`. The SDK interpreted the versionless literal as
-version 0, reconstructed a different commitment, and failed during proving:
+A held record rebuilt as a literal without `_version` is read as version 0, so
+the client computes a commitment the ledger does not contain and proving fails
+with:
 
 ```text
 GET /testnet/statePaths?commitments=<cm> -> 500
 Commitment '<cm>' does not exist
 ```
 
-An isolated two-program probe on Leo 4.3.2 and SDK/WASM 0.11.9 established the
-cause: the failing request exactly matched the commitment computed from the
-versionless helper literal, while the actual ledger commitment matched the
-original plaintext and had a retrievable state path. Passing the original
-plaintext through the same held-root router produced an accepted transaction
-with a nonempty proof. The earlier claim on this page that a different-program
-dynamic root inherently loses the originating program binding was incorrect.
+This error only says that the node has no record with the commitment the client
+computed. Dropped metadata is the cause demonstrated below, not the only
+possible one, so also confirm that the record was committed on the ledger being
+queried.
+
+Historical evidence (Leo 4.3.2, SDK/WASM 0.11.9): generated dynamic helpers
+once rebuilt only schema fields and dropped `_version: 1u8.public`. In an
+isolated two-program probe, the failing request matched the commitment computed
+from that versionless literal, while the ledger commitment matched the original
+plaintext and had a retrievable state path. Passing the original plaintext
+through the same held-root router was accepted with a nonempty proof, so a
+different-program dynamic root does not inherently lose its originating program
+binding.
 
 The devnode fast path skips inclusion-proof generation, so it did not detect
 this client serialization defect. Both `route_transfer` and

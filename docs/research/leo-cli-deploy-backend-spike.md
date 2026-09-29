@@ -1,9 +1,18 @@
 # Leo CLI Deploy Backend: Spike Findings
 
-When to read this: use this file before writing or reviewing the Leo deploy
-backend. It records what `leo deploy` and `leo upgrade` actually do, measured
-rather than inferred, and lists the places where the design assumptions turned
-out to be wrong. For the resulting user-facing backend behaviour, use
+> **Status: historical research record.** Captured 2026-08-18 against Leo
+> `4.3.2 (60bbdef HEAD)` on `leo devnode` (testnet, consensus version 17),
+> before the Leo deploy backend was written; the measurements are specific to
+> that binary. The backend has since shipped: for current behaviour and the
+> Leo lines it supports, use [`../deploy-backends.md`](../deploy-backends.md).
+> [Where the findings landed](#where-the-findings-landed) maps each correction
+> this spike called for to the component that implements it.
+
+When to read this: use this file for the measured evidence behind the Leo
+deploy backend's design — what `leo deploy` and `leo upgrade` actually do,
+measured rather than inferred, and where the design assumptions turned out to
+be wrong — for example before changing its argv assembly or outcome parsing.
+For the resulting user-facing backend behaviour, use
 [`../deploy-backends.md`](../deploy-backends.md); for the surrounding deploy
 task, see [`../deployment.md`](../deployment.md).
 
@@ -55,11 +64,12 @@ Two details the parser has to get right: the file has **no trailing newline**,
 and `type` is `"deploy"` even for an upgrade — the only structural difference is
 `deployment.edition` (`upgrade-save` shows `1`).
 
-**Correction to the plan.** The plan assumed `<save>/<id>.deployment.json`
-keyed by *transaction* id. It is keyed by **program id** — `spike_a.aleo.deployment.json`.
-That is better for us (the filename is predictable before the run, so the
-backend can name the file it expects instead of globbing), but any code written
-against the transaction-id assumption is wrong. `--save` and `--json-output`
+**Correction to the initial assumption.** The design had assumed
+`<save>/<id>.deployment.json` keyed by *transaction* id. It is keyed by
+**program id** — `spike_a.aleo.deployment.json`. That is better for us (the
+filename is predictable before the run, so the backend can name the file it
+expects instead of globbing), but any code written against the transaction-id
+assumption would have been wrong. `--save` and `--json-output`
 both being present is what lets a program id be paired with its transaction id.
 
 ## 2. There is no way to authenticate Leo's queries
@@ -95,8 +105,9 @@ Substring semantics are confirmed. `spike_main.aleo` depends on `spike_a.aleo`
 and `zspike_a.aleo`; deploying with `--skip spike_a.aleo` produced **one** save
 file, `spike_main.aleo.deployment.json` (`deploy-skip-collision`). The full
 program id `spike_a.aleo` is a substring of `zspike_a.aleo`, so both were
-dropped. The collision check in §5 of the plan is load-bearing, and matching on
-the full `.aleo`-suffixed id does not save you.
+dropped. The planned pre-run skip-collision check (since shipped as
+`assertNoSkipCollision`) is therefore load-bearing, and matching on the full
+`.aleo`-suffixed id does not save you.
 
 Two further results narrow what has to go into the `--skip` set:
 
@@ -122,12 +133,13 @@ Two runs against the same package (`deploy-rebuild-*`, each with an
 - `src/` edited after the last build — deploy **rewrote `build/`**, and the
   saved transaction contained the newly added transition.
 
-So the §8 post-run hash check fires exactly when `src/` has diverged from
-`build/`, which in a lionden run means something changed between `compile` and
-`deploy`. That is rare, and it means the pre-run check can catch the common case
-with a better message. It does not soften the post-run check: a hash change
-means Leo built different bytecode than lionden is about to record, so it stays
-a hard error that aborts before broadcast.
+So the planned post-run artifact hash check (since shipped as
+`assertPackageUnchanged`) fires exactly when `src/` has diverged from `build/`,
+which in a lionden run means something changed between `compile` and `deploy`.
+That is rare, and it means the pre-run staleness check (`resolveLeoPackage`) can
+catch the common case with a better message. It does not soften the post-run
+check: a hash change means Leo built different bytecode than lionden is about to
+record, so it stays a hard error that aborts before broadcast.
 
 ## 5. `--json-output` structure
 
@@ -147,11 +159,11 @@ a hard error that aborts before broadcast.
                    broadcast?: { fee_id, fee_transaction_id, confirmed } } ] }
 ```
 
-Against the plan's guess: `config` also carries `address`; `constructor_cost`
-was not listed; and `broadcast`, `confirmed`, `fee_id`, `fee_transaction_id` are
-**not flat fields on the deployment** — they are a nested `broadcast` object
-that is **absent entirely** when `--broadcast` was not passed. The file has no
-trailing newline.
+Against the shape the design had guessed: `config` also carries `address`;
+`constructor_cost` was not listed; and `broadcast`, `confirmed`, `fee_id`,
+`fee_transaction_id` are **not flat fields on the deployment** — they are a
+nested `broadcast` object that is **absent entirely** when `--broadcast` was not
+passed. The file has no trailing newline.
 
 `stats` has two shapes. Twelve of the thirteen cases with a deployment omit
 `total_variables`, `total_constraints`, `max_variables` and `max_constraints`;
@@ -165,7 +177,10 @@ needlessly lax. `function_costs` entries are the same four keys in both shapes.
 `zspike_a`, `spike_main`), and is `[]` rather than absent when everything is
 skipped.
 
-Worth noting for PR 7: the fee-estimation shape is not a cheap path.
+Worth noting for the fee-estimation follow-up (reading Leo's costs back from
+`--json-output`; see
+[`../deploy-backends.md` § Capabilities And Limitations](../deploy-backends.md#capabilities-and-limitations)):
+the fee-estimation shape is not a cheap path.
 `--json-output` with neither `--save` nor `--broadcast` produced byte-identical
 `stats` — because Leo builds the full transaction anyway and discards it. Fee
 estimation costs a full build.
@@ -197,7 +212,7 @@ build-only run: `program_id`, `transaction_id`, `stats`, and no `broadcast` key.
 Nothing in the machine-readable output distinguishes *rejected on chain* from
 *built but never broadcast*.
 
-Three consequences for PR 4:
+Three consequences for the backend's runner and outcome parser:
 
 1. **Never infer success from the exit code.** The runner must verify the
    expected `<program_id>.deployment.json` files exist, one per program it
@@ -212,11 +227,14 @@ Three consequences for PR 4:
 
 ## Two smaller observations
 
-**Leo truncates the private key but does print it.** The plan summary shows
-`Private Key: APrivateKey1zkp8CZNn3yeC...` — the first 24 characters. Truncated,
-but a prefix is still a prefix, so the redaction work in PR 4 stands. Passing
-the key via the `PRIVATE_KEY` environment variable kept it off argv throughout,
-as intended.
+**Leo truncates the private key but does print it.** Leo's own
+`Deployment Plan Summary` block on stdout shows
+`Private Key: APrivateKey1zkp8CZNn3yeC...` — the first 24 characters.
+Truncated, but a prefix is still a prefix, so the backend still had to redact
+Leo's output (it does; see
+[`../deploy-backends.md` § Security Properties](../deploy-backends.md#security-properties)).
+Passing the key via the `PRIVATE_KEY` environment variable kept it off argv
+throughout, as intended.
 
 **`--skip-deploy-certificate` changes the saved transaction's bytes but not its
 shape.** The same program built with and without the flag produced identical
@@ -225,19 +243,21 @@ shape.** The same program built with and without the flag produced identical
 parser needs no branch for it. This does **not** extend to `--json-output`,
 whose `stats` object does change shape; see §5.
 
-## What this means for PR 4
+## Where the findings landed
 
-Blocking corrections, all of them cheap if made before the code is written:
+The spike ended with seven blocking corrections, all of them cheap if made
+before the backend code was written. That checklist is retired; each item maps
+to shipped code as follows (paths under `packages/plugin-deploy/src/`):
 
-- Name saved files by **program id**, not transaction id.
-- Parse `broadcast` as an optional **nested object**.
-- Make the four constraint fields in `stats` **optional** — they are present
-  only when the deployment certificate was generated.
-- Verify **file existence**, never exit status.
-- Drop `graph.networkDeps` from the `--skip` set; keep already-deployed local
-  deps in it, because Leo will not skip them on its own.
-- Treat a missing `--json-output` file as an ordinary failure mode.
-- Document the API-key rejection as permanent.
+| Correction the spike called for | Where it landed |
+| --- | --- |
+| Name saved files by **program id**, not transaction id | `savedTransactionFileName` in `deploy-backend/leo/outcome.ts` |
+| Parse `broadcast` as an optional **nested object** | Made moot: LionDen never passes `--broadcast`, and `readLeoOutcome` does not read the `broadcast` key |
+| Make the four constraint fields in `stats` **optional** | `--json-output` is read best-effort; no `stats` field is required, and the four constraint fields are not read |
+| Verify **file existence**, never exit status | `readLeoOutcome` fails an exit-0 run that saved no transaction (`outcome` stage), then parses the file to confirm it deploys the requested program |
+| Drop `graph.networkDeps` from the `--skip` set; keep already-deployed local deps | `collectLocalDeploymentClosure` (`deployment-closure.ts`) stops at network dependencies and returns every local dependency regardless of chain state |
+| Treat a missing `--json-output` file as an ordinary failure mode | `readLeoOutcome` never requires the file; a failed run is reported from the exit status and the saved-transaction check instead |
+| Document the API-key rejection as permanent | `assertDeployBackendCompatible` (`deploy-backend/resolve.ts`) rejects it without implying a future fix; [`../deploy-backends.md` § Where selection is validated](../deploy-backends.md#where-selection-is-validated) calls it permanent |
 
 Nothing found here contradicts the backend's premise. The capability gap that
 motivated it is intact: Leo builds each program's transaction separately and

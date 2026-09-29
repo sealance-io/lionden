@@ -25,7 +25,7 @@ Important design-direction material is captured in:
 
 - [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md)
 
-When the code and the plan differ, treat the current codebase as the source of truth for shipped behavior.
+The design-direction docs still go further than the current implementation in places. Use them to understand direction, package boundaries, and intended end state, but not as a guarantee that every planned interface is already complete. When the code and the plan differ, treat the current codebase as the source of truth for shipped behavior.
 
 ## Monorepo Layout
 
@@ -220,16 +220,3 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md): Leo v4 default behavior plus scoped v3.5 compatibility
 - [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md): disposable agent-driven bug-hunt probe workflow
 - [`AGENTS.md`](AGENTS.md): agent-specific navigation and selective disclosure rules
-
-## Roadmap Framing
-
-The codebase already matches a meaningful part of the intended design:
-
-- typed config and plugin registration
-- config lifecycle stages
-- task registry and override support
-- compiler pipeline with Leo package materialization
-- network manager and default plugins
-- test helpers and scaffolded examples
-
-The design-direction docs still go further than the current implementation in places. Use them to understand direction, package boundaries, and intended end state, but not as a guarantee that every planned interface is already complete.

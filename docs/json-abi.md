@@ -13,6 +13,18 @@ LionDen consumes the ABI for two purposes:
 
 The authoritative type definitions live in the Leo compiler's Rust source at `crates/abi-types/src/lib.rs`. All types derive `serde::Serialize` and `serde::Deserialize`, so the JSON schema is a direct serde serialization of those Rust types.
 
+## Wire Versions
+
+The emitted ABI shape depends on the Leo line. LionDen's parser (`packages/leo-compiler/src/abi-parser.ts`) accepts every shape below and normalizes them to one internal representation (see [LionDen Normalization](#lionden-normalization)).
+
+| Wire shape | Emitted by | Distinguishing features |
+|---|---|---|
+| Positional (current) | Leo 4.2+, including the default Leo line | Function and view I/O elements are bare enum variants (`{ Plaintext: { ty, mode } }`, `{ Record: { path, program } }`, `"Final"`, `"DynamicRecord"`). No input names, `is_final`, `const_parameters`, `implements`, or `"None"` mode. Self-program refs are explicit. Leo 4.3+ also writes `"mode": "Private"` on record-definition fields. Details: [Leo 4.2 Wire Shape](#leo-42-wire-shape). |
+| Wrapper | Leo 4.1 / bytecode `leo abi` | I/O elements wrapped as `{ name?, ty, mode }`; `is_final`; `"None"` for unmoded values. |
+| v3.5 | Leo 3.5 | `transitions` / `is_async` keys and a bare `"Future"` output. |
+
+How to read the sections below: the type encodings (primitives, plaintext, structs, mappings, storage variables) are shared by all shapes, except for self-program references: Leo 4.1 writes `null` for a local struct, while Leo 4.2+ writes the program's own id (see [StructRef](#structref)). The examples that include function I/O or `mode` values (the Top-Level Schema minimal example, Records, and Functions) use the wrapper shape and are labeled as such. [Mode](#mode) separates wire values from LionDen's internal union, and [LionDen Normalization](#lionden-normalization) maps wire fields to the parsed `ProgramABI`.
+
 ## Top-Level Schema
 
 The root object is a `Program`:
@@ -32,7 +44,7 @@ The five core array fields (`structs`, `records`, `mappings`, `storage_variables
 
 This table describes the compiler's wire fields. LionDen's parsed `ProgramABI` (`packages/leo-compiler/src/abi-types.ts`) differs: it renames `functions` to `transitions` and sets `views` / `implements` only when they are non-empty. See [LionDen Normalization](#lionden-normalization).
 
-Minimal example:
+Minimal example (Leo 4.1 wrapper shape; the Leo 4.2+ form of this `main` function is under [Leo 4.2 Wire Shape](#leo-42-wire-shape)):
 
 ```json
 {
@@ -118,7 +130,7 @@ A reference to a struct type, potentially from another program:
 | Field | Type | Description |
 |---|---|---|
 | `path` | `string[]` | Path segments to the struct (e.g. `["Point"]` or `["utils", "Vector3"]` for module-scoped types) |
-| `program` | `string \| null` | The program containing this struct, if external. `null` for local structs. |
+| `program` | `string \| null` | The program containing this struct, if external. `null` for local structs in the Leo 4.1 wire shape and in LionDen's parsed ABI; Leo 4.2+ writes the program's own id, which the parser rewrites to `null` (see [Leo 4.2 Wire Shape](#leo-42-wire-shape)). |
 
 ```json
 { "Struct": { "path": ["TokenInfo"], "program": null } }
@@ -132,22 +144,6 @@ Wraps a `Plaintext` type. In Leo source this is `T?`. In compiled Aleo bytecode,
 ```json
 { "Optional": { "Primitive": { "UInt": "U64" } } }
 ```
-
-## Storage Types
-
-Storage variables use `StorageType`, not plain `Plaintext`, so vector storage is
-distinguishable from fixed-length plaintext arrays:
-
-| Variant | JSON shape | Generated access |
-|---|---|---|
-| `Plaintext` | `{ "Plaintext": ... }` | zero-argument `get()`, `tryGet()`, `getOrUse(def)` |
-| `Vector` | `{ "Vector": ... }` | `len()`, `get(index)`, `tryGet(index)`, `getOrUse(index, def)`, `getAll()`, `toArray()` |
-
-A `Plaintext.Array` storage variable remains a regular storage value and keeps the
-zero-argument accessor API. Only the top-level `StorageType.Vector` variant gets
-indexed accessors. Vector storage reads use Leo's lowered mapping representation:
-length is `<name>__len__` at key `"false"` and elements are `<name>__` at key
-`"<index>u32"`. Missing vector length is surfaced as `0`.
 
 ## Structs
 
@@ -190,7 +186,9 @@ Each `RecordField`:
 |---|---|---|
 | `name` | `string` | Field name |
 | `ty` | `Plaintext` | Field type |
-| `mode` | `Mode` | Visibility mode for this field |
+| `mode` | `Mode` | Visibility mode for this field (absent in Leo 4.2; see [Mode](#mode)) |
+
+Example (Leo 4.1 wrapper shape, with `"None"` modes):
 
 ```json
 {
@@ -241,14 +239,16 @@ Persistent on-chain state. Leo supports both singleton values (`storage name: Ty
 | `name` | `string` | Variable name |
 | `ty` | `StorageType` | Storage type |
 
-`StorageType` is an enum:
+Storage variables use `StorageType`, not plain `Plaintext`, so vector storage is distinguishable from fixed-length plaintext arrays. `StorageType` is an enum. The first three columns describe the wire shape; the last lists the generated TypeScript accessors:
 
-| Variant | JSON shape | Description |
-|---|---|---|
-| `Plaintext` | `{ "Plaintext": ... }` | A single plaintext value |
-| `Vector` | `{ "Vector": ... }` | A dynamic-length list of a `StorageType` |
+| Variant | JSON shape | Description | Generated access |
+|---|---|---|---|
+| `Plaintext` | `{ "Plaintext": ... }` | A single plaintext value | zero-argument `get()`, `tryGet()`, `getOrUse(def)` |
+| `Vector` | `{ "Vector": ... }` | A dynamic-length list of a `StorageType` | `len()`, `get(index)`, `tryGet(index)`, `getOrUse(index, def)`, `getAll()`, `toArray()` |
 
-Vectors lower to two on-chain mappings at the Aleo level: one for elements indexed by position, one for the length.
+A `Plaintext.Array` storage variable remains a regular storage value and keeps the zero-argument accessor API. Only the top-level `StorageType.Vector` variant gets indexed accessors.
+
+Vectors lower to two on-chain mappings at the Aleo level: elements are `<name>__` at key `"<index>u32"`, and the length is `<name>__len__` at key `"false"`. Generated vector reads use this lowered representation and surface a missing length as `0`; see [`typechain.md` § Storage accessors](typechain.md#storage-accessors).
 
 ```json
 { "name": "admin", "ty": { "Plaintext": { "Primitive": "Address" } } }
@@ -264,6 +264,8 @@ Storage vector (illustrative):
 
 Public entry points declared inside `program {}`. Each function compiles to an Aleo `transition`. Functions with `is_final: true` have a finalize block that executes on-chain after the transition.
 
+The tables and examples in this section use the Leo 4.1 wrapper shape. In the Leo 4.2+ positional shape, `is_final` and input names are gone and each I/O element is a bare `FunctionInput` / `FunctionOutput` variant; see [Leo 4.2 Wire Shape](#leo-42-wire-shape).
+
 | Field | Type | Description |
 |---|---|---|
 | `name` | `string` | Function name |
@@ -277,35 +279,14 @@ Public entry points declared inside `program {}`. Each function compiles to an A
 |---|---|---|
 | `name` | `string` | Parameter name |
 | `ty` | `FunctionInput` | Input type |
-| `mode` | `Mode` | Visibility mode (see below) |
+| `mode` | `Mode` | Visibility mode (see [Mode](#mode)) |
 
 ### Output
 
 | Field | Type | Description |
 |---|---|---|
 | `ty` | `FunctionOutput` | Output type |
-| `mode` | `Mode` | Visibility mode (see below) |
-
-### Mode
-
-The mode records the visibility modifier Leo declared on each input or output. The **wire**
-set depends on the Leo version (4.1 emits `"None"` for unmoded values; 4.2 dropped `None` and
-emits `"Private"`/`"Public"`/`"Constant"` explicitly). LionDen's **internal** `Mode` union is:
-
-```
-Mode = "Public" | "Private" | "Constant"
-```
-
-- `"Public"` — explicit `public` modifier; the value travels on chain as a plain Leo literal.
-- `"Private"` — explicit `private` modifier, **or** the canonicalized form of an unmoded
-  (4.1 `"None"`) transition input/output or record field.
-- `"Constant"` — immutable compile-time constant (Leo 4.2).
-
-The parser canonicalizes an unmoded value to `Private` for transitions/record fields and
-`Public` for views, so `"None"` never reaches codegen. Mode is only meaningful for the
-`Plaintext` variant; `Record`/`Final`/`DynamicRecord` carry an inert `Private` that is never read.
-
-Lionden codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "Private"` (or `"Constant"`) come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See [`typechain.md` § Typed broadcast results](typechain.md#typed-broadcast-results) for the typed-broadcast contract.
+| `mode` | `Mode` | Visibility mode (see [Mode](#mode)) |
 
 ### FunctionInput
 
@@ -391,9 +372,13 @@ Function with record input and output:
 
 ## Mode
 
-Visibility mode for function inputs, function outputs, and record fields. The wire values
-that may appear depend on the Leo version; LionDen's internal `Mode` union is
-`"Public" | "Private" | "Constant"` (the parser canonicalizes `None`/absent away).
+The mode records the visibility modifier Leo declared on each function or view input and
+output, and on each record field. Two layers are involved: the **wire** values the compiler
+emits, which depend on the Leo version, and LionDen's **internal** `Mode` union, which the
+parser produces and codegen consumes.
+
+**Wire values.** 4.1 emits `"None"` for unmoded values; 4.2 dropped `None` and emits
+`"Private"`/`"Public"`/`"Constant"` explicitly.
 
 | Value | Wire | Description |
 |---|---|---|
@@ -402,12 +387,34 @@ that may appear depend on the Leo version; LionDen's internal `Mode` union is
 | `"Private"` | all | Kept private off-chain (encrypted in the transaction) |
 | `"Public"` | all | Publicly visible on-chain |
 
+In the Leo 4.2+ positional shape only `Plaintext` I/O elements carry a mode;
+`Record`/`Final`/`DynamicRecord` elements carry none. Record-definition fields carry no mode
+in Leo 4.2 and an explicit `"Private"` from Leo 4.3.
+
+**Internal `Mode` union:**
+
+```
+Mode = "Public" | "Private" | "Constant"
+```
+
+- `"Public"` — explicit `public` modifier; the value travels on chain as a plain Leo literal.
+- `"Private"` — explicit `private` modifier, **or** the canonicalized form of an unmoded
+  (4.1 `"None"`, or absent) transition input/output or record field.
+- `"Constant"` — immutable compile-time constant (Leo 4.2).
+
+The parser canonicalizes an unmoded value to `Private` for transitions/record fields and
+`Public` for views, so `"None"` never reaches codegen. Mode is only meaningful for the
+`Plaintext` variant; `Record`/`Final`/`DynamicRecord` carry an inert `Private` that is never read.
+
+**Generated access.** LionDen codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "Private"` (or `"Constant"`) come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See [`typechain.md` § Typed broadcast results](typechain.md#typed-broadcast-results) for the typed-broadcast contract.
+
 ## Leo 4.2 Wire Shape
 
 Leo 4.2 (ProvableHQ/leo#29481, "interface compatibility check and slimmer ABI") ships an
-**intentional breaking change** to the emitted JSON ABI. All schema sections above describe
-the Leo 4.1 / bytecode-`leo abi` wrapper shape, which the parser still accepts; this section
-records what 4.2 emits and how LionDen normalizes it. The parser is **shape-detecting** —
+**intentional breaking change** to the emitted JSON ABI. The function, record, and mode
+examples above use the Leo 4.1 / bytecode-`leo abi` wrapper shape, which the parser still
+accepts; this section records what 4.2 emits (later lines keep this shape, see
+[Wire Versions](#wire-versions)) and how LionDen normalizes it. The parser is **shape-detecting** —
 the three forms (v3.5, 4.1/internal, 4.2) all normalize to the same internal representation,
 and re-parsing an already-normalized ABI is a fixed point.
 
@@ -422,9 +429,10 @@ and re-parsing an already-normalized ABI is a fixed point.
   - Plaintext: `{ "Plaintext": { "ty": <plaintext>, "mode": "Private" | "Public" | "Constant" } }`
   - Record: `{ "Record": { "path": [...], "program": "..." } }` (**no mode**)
   - `"Final"` and `"DynamicRecord"` as bare strings (**no mode**)
-- **`Mode::None` removed.** Unmoded transition plaintext is emitted as `Private`, unmoded
-  view plaintext as `Public`, unmoded record-definition fields as `Private`. Record / `Final`
-  / `DynamicRecord` carry no mode.
+- **`Mode::None` removed.** Unmoded transition plaintext is emitted as `Private` and unmoded
+  view plaintext as `Public`. Record-definition fields carry no `mode` (Leo 4.3+ emits an
+  explicit `"Private"`); the parser reads both as `Private`. Record / `Final` /
+  `DynamicRecord` I/O elements carry no mode.
 - **Self type references are explicit.** A struct/record ref to the program's own type now
   carries `program: "<self>.aleo"` where 4.1 emitted `program: null`.
 

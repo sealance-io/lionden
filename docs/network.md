@@ -2,6 +2,8 @@
 
 When to read this: use this file for network config types, connection management, devnode lifecycle, SDK integration, transaction confirmation, and script execution. For deploy, upgrade, export, and deployment state, use [`deployment.md`](deployment.md).
 
+Sections: [network selection](#network-selection-and-the-worker-bridge) · [network manager and `execute()`](#network-manager) · [devnode lifecycle](#devnode-lifecycle) (backends, snapshots, `node` task, log mode) · [runtime imports](#runtime-imports-for-dynamic-dispatch) · [SDK integration](#provable-sdk-integration) (key cache, [egress](#egress-policy), transaction building, confirmation) · [scripts](#script-execution) · [config validation](#config-validation)
+
 ## Current Network Model
 
 `packages/config/src/types.ts` defines two network config variants:
@@ -90,7 +92,7 @@ The standalone backend is **TestnetV0-only**: a non-`testnet` `network` or any `
 
 For the test runner's auto-started devnode (`@lionden/testing` `setup()`), the `LIONDEN_DEVNODE_BINARY=<path>` env var overrides the backend without editing the generated config: it points at a specific off-`PATH` `aleo-devnode` build, and because an explicit binary is a standalone-only input it forces the standalone backend on its own. It is read only by `setup()`; auto-detect remains the default mechanism. It selects *which* devnode runs — it does **not** grant permission to bind the REST port: a `Failed to bind TCP port … Operation not permitted` startup error is a host/sandbox restriction that affects either backend, so run the devnode where binding `127.0.0.1:3030` is allowed.
 
-The Leo CLI backend also behaves as a testnet devnode in practice. On Leo **< 4.3**, LionDen's `network` field is retained for CLI compatibility and may be forwarded to `leo devnode start` when it is not `"testnet"`, but callers should not rely on Leo devnode as a real mainnet/canary/devnet simulator: changing the configured route name does not make the local chain mainnet/canary/devnet. `consensusHeights` applies to the Leo < 4.3 backend only. On Leo **4.3+**, `leo devnode start` no longer accepts `--consensus-heights` or `--network` (the devnode is TestnetV0-only and auto-activates the latest consensus version, incl. V16/V17), so LionDen omits both and rejects a `consensusHeights` / non-`testnet` `network` at config validation.
+The Leo CLI backend also behaves as a testnet devnode in practice — even where a non-`testnet` `network` is accepted, it does not turn the local chain into mainnet, canary, or devnet — so use an `http` network to target a real network. `consensusHeights`, and a non-`testnet` `network`, are forwarded to `leo devnode start` only on Leo **< 4.3**. On Leo **4.3+** (or an unparseable `leoVersion`), LionDen omits both flags, and config validation (for `provider: "leo"` or an omitted `provider`) rejects any `consensusHeights` and a non-`testnet` `network`; an omitted `network` defaults to `"testnet"` and passes (see [Config Validation](#config-validation)). For why — Leo 4.3 removed both flags, and its devnode auto-activates the latest consensus version — and for the Leo v3.5 constructor-program case that needs explicit heights, see [`leo-version-compatibility.md`](leo-version-compatibility.md#devnode-consensus-heights).
 
 Leo 4.1 adds its own devnode persistence support, but LionDen does not enable or wrap it yet. Persistence and snapshot/restore remain standalone-backend-only in this repo.
 
@@ -107,8 +109,6 @@ Devnode network config fields:
 | `clearStorageOnStart` | standalone | clear `storagePath` before start (`--clear-storage`); requires `storagePath` |
 
 Common behavior: polls the REST API at `/<network>/block/height/latest` until healthy, then stops the process with graceful shutdown (SIGTERM) and a force-kill on timeout.
-
-On Leo **< 4.3**, `consensusHeights` is required for Leo v3.5 devnode constructor programs on the Leo backend (Leo v4 devnode defaults to V9-active). On Leo **4.3+** the flag was removed — the devnode auto-activates the latest consensus version (incl. V16/V17), so LionDen rejects `consensusHeights` rather than dropping it. See [`leo-version-compatibility.md`](leo-version-compatibility.md).
 
 ### Persistence and snapshots (standalone)
 
@@ -216,7 +216,7 @@ Filesystem key persistence covers LionDen-managed proven execution transition ke
 | Deploy / upgrade program keys | not persisted by LionDen v1 |
 | Translation keys | not persisted by LionDen v1 |
 
-This expansion is a **performance** improvement: it keeps repeated prove runs from re-fetching every credits.aleo proving key the SDK touches. The egress policy below does not gate parameter downloads — those go through the SDK's known parameter hosts. When the SDK asks `parameters.provable.com` for a parameter artifact and that request throws or returns a non-OK response, LionDen retries the equivalent `s3.us-west-1.amazonaws.com/<network>.parameters/...` mirror before surfacing the primary failure. For hermetic / offline operation, pre-warm the filesystem key cache and then enforce no-network at the container / CI / firewall level; LionDen does not promise an in-process offline mode.
+This expansion is a **performance** improvement: it keeps repeated prove runs from re-fetching every credits.aleo proving key the SDK touches. Parameter-download hosts, the mirror retry, and offline operation are covered under [Egress Policy](#egress-policy) (**Scope**).
 
 Runtime execution-key misses are synthesized lazily inside `pm.execute` and are not persisted by LionDen, so later processes synthesize again unless sidecar or runtime cache entries already exist. Covered `credits.aleo` keys are written back after the SDK's first fetch and reused by later processes. LionDen resolves program source and imports from local artifacts first, falling back to the connected network, and passes the resolved import graph to execution. For cache identity, the proven-execution and credits lookup order, and the paths LionDen deliberately leaves to the SDK, see [`research/key-caching.md`](research/key-caching.md#lookup-order).
 
@@ -226,7 +226,7 @@ LionDen installs a guarded `transport` on every `AleoNetworkClient` it construct
 
 This closes the leak on the **execute / prove** path (`pm.execute` → `buildExecutionTransaction`), where the SDK threads the `CallbackQuery` based on `hasCustomTransport`. It does **not** by itself cover the **eager key-synthesis** path: the WASM `synthesizeKeyPair` takes no query parameter, so it can bypass the transport entirely (the guard never sees it — it is a native WASM fetch, not a JS one). That second entry point is closed separately: LionDen never calls eager `synthesizeKeyPair` on a filesystem key-cache miss. Cache hits are still injected; misses defer to lazy `pm.execute` synthesis through the `CallbackQuery`. See [`research/key-caching.md` § Lookup order](research/key-caching.md#lookup-order) for the lookup order and `getPersistentExecutionOptions`.
 
-**Scope.** The policy governs **network-host** fetches only — chain-state reads, transaction submission, anything `AleoNetworkClient` does. Parameter downloads (credits proving/verifying keys, KZG SRS) are governed by the SDK key cache and an **internal** known-host list (`parameters.provable.com`, `s3.us-west-1.amazonaws.com`, `parameters.aleo.org`); they are not user-configurable. For `parameters.provable.com` artifacts, LionDen can retry the matching S3 mirror when the primary fetch fails or returns non-OK. An unknown parameter host means LionDen's allowlist is stale relative to the installed SDK and surfaces as an actionable error.
+**Scope.** The policy governs **network-host** fetches only — chain-state reads, transaction submission, anything `AleoNetworkClient` does. Parameter downloads (credits proving/verifying keys, KZG SRS) are governed by the SDK key cache (see [SDK Objects](#sdk-objects)) and an **internal** known-host list (`parameters.provable.com`, `s3.us-west-1.amazonaws.com`, `parameters.aleo.org`); they are not user-configurable. When a `parameters.provable.com` request throws or returns a non-OK response, LionDen retries the equivalent `s3.us-west-1.amazonaws.com/<network>.parameters/...` mirror before surfacing the primary failure. An unknown parameter host means LionDen's allowlist is stale relative to the installed SDK and surfaces as an actionable error. For hermetic / offline operation, pre-warm the filesystem key cache and enforce no-network at the container / CI / firewall level; LionDen has no in-process offline mode for parameter egress.
 
 **Defaults.** Same shape for every connection type — only the endpoint host varies:
 
@@ -251,8 +251,6 @@ sdk: {
 ```
 
 A blocked network fetch surfaces `LionDen blocked SDK network fetch to host "<host>". Allowed hosts: <list>. Extend sdk.egress.networkHosts or change sdk.egress.violation.` An unknown parameter host surfaces `LionDen does not recognize SDK parameter host "<host>". Known hosts: <list>. This may indicate a stale LionDen allowlist; please report.`
-
-**Parameter downloads as a performance / cache concern.** See § SDK Objects for how the filesystem key cache covers credits-key downloads. For hermetic / offline operation, pre-warm the filesystem cache and then enforce no-network at the container / CI / firewall level — LionDen does not provide an in-process offline mode for parameter egress.
 
 ### Transaction Building And Broadcasting
 

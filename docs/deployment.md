@@ -13,7 +13,7 @@ When to read this: use this file for `deploy`, `upgrade`, `export`, deployment s
 
 It also injects `DeploymentManagerImpl` into `lre.deployments`.
 
-The deploy subsystem owns transaction building, broadcast, and persisted deployment state. The `upgrade` task is thin: it compiles the updated program, builds and broadcasts the upgrade transaction, and records a minimal updated record. LionDen does not validate ABI compatibility, constructor immutability, or edition continuity — Leo's built-in tooling owns upgrade correctness.
+The deploy subsystem owns transaction building, broadcast, and persisted deployment state. The `upgrade` task is thin: it compiles the updated program, builds and broadcasts the upgrade transaction, and records a minimal updated record. See [Upgrade Task](#upgrade-task) for what it deliberately does not validate.
 
 ### Transaction Backends
 
@@ -24,7 +24,7 @@ Building the deploy/upgrade transaction itself goes through a swappable backend 
 
 Everything else in this document is backend-agnostic and does not change with the selection: dependency ordering, pending markers, confirmation polling, deployment records, preflight, export, and hooks. Program **execution** is not part of the seam and always uses the SDK.
 
-Broadcast is the exception. A backend returns either a built transaction for LionDen to submit, or a transaction id it already submitted. Only one path does the latter: the SDK backend deploying to an HTTP network, where `ProgramManager.deploy` builds and broadcasts atomically. The Leo backend always returns a built transaction, as does the SDK backend on devnode and for every upgrade.
+Broadcast is the exception: only the SDK backend's HTTP deploy path broadcasts by itself (`ProgramManager.deploy` is atomic); on every other path LionDen broadcasts the transaction the backend built. See [`deploy-backends.md` § What A Backend Owns](deploy-backends.md#what-a-backend-owns) for the `DeployBackendResult` arms and the full ownership split.
 
 Select with `deploy.backend`, `networks.<name>.deployBackend`, `LIONDEN_DEPLOY_BACKEND`, or `--deploy-backend`. See [`deploy-backends.md`](deploy-backends.md) for the precedence ladder, the Leo flag mapping, limitations, and security properties.
 
@@ -273,11 +273,11 @@ Export always writes `<deploymentsDir>/_exports/<network>.json` (`deployments/_e
 
 Export bundles include network metadata and one entry per known program (`ExportedProgram`) with its program ID, ABI when available, transaction ID when complete, and record status.
 
-`deploy --export` exports after a confirming deployment. It is rejected with `--skip-confirm` because validated export may race on-chain propagation. `deploy.autoExport` exports after confirming deploys and confirming upgrades; non-confirming deploys and upgrades skip auto-export.
+Exporting from a deploy requires confirmation: `deploy --export` is rejected with `--skip-confirm`, and `deploy.autoExport` skips non-confirming deploys and upgrades (see [Deploy Task](#deploy-task)).
 
 ## Upgrade Task
 
-`packages/plugin-deploy/src/upgrade-task.ts` implements `upgrade`. It is a thin task: it builds and broadcasts the upgrade transaction and records a minimal updated record. It does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity, and it does not read the old or deployed ABI. Leo's built-in tooling owns upgrade correctness.
+`packages/plugin-deploy/src/upgrade-task.ts` implements `upgrade`. It is a thin task: it builds and broadcasts the upgrade transaction and records a minimal updated record. It does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity, and it does not read the old or deployed ABI. Leo's built-in tooling and the target network own upgrade correctness.
 
 Current behavior:
 
@@ -313,9 +313,7 @@ Upgraded token_registry.aleo (tx: at1..., block: 12345)
 
 The same restrained semantic color policy applies in color-capable terminals: action words are accented, `Upgraded` is success-colored, and transaction/block metadata is dimmed.
 
-When `namedAccounts.admin` is set, the upgrade task selects its private key as the signing key (selection only — there is no address-match validation).
-
-LionDen still does not validate the old ABI or admin identity before upgrading; Leo and the target network enforce upgrade correctness.
+Signer: to sign as the admin, `namedAccounts.admin` must be signable. An address-only or absent `admin` is ignored and `connection.privateKey` signs instead; nothing checks the signer against the on-chain admin (see [Deploy/upgrade signer integration](#deployupgrade-signer-integration)).
 
 ## Deployment Recipes
 
@@ -395,25 +393,12 @@ Value types:
 
 ### Runtime types
 
-Two named account shapes exist (from `@lionden/config`):
+`NamedAccount` (from `@lionden/config`) is a discriminated union on `type`; see [`packages/config/src/named-account.ts`](../packages/config/src/named-account.ts) for the declarations:
 
 ```typescript
-// Has a private key — can sign transactions
-interface SignableNamedAccount {
-  type: "signable";
-  name: string;
-  address: string;
-  privateKey: string;
-}
-
-// Address only — cannot sign
-interface AddressOnlyNamedAccount {
-  type: "address-only";
-  name: string;
-  address: string;
-}
-
-type NamedAccount = SignableNamedAccount | AddressOnlyNamedAccount;
+type NamedAccount =
+  | SignableNamedAccount    // { type: "signable";     name; address; privateKey } — can sign
+  | AddressOnlyNamedAccount; // { type: "address-only"; name; address }             — cannot sign
 ```
 
 `SignableNamedAccount` structurally satisfies `Signer` — pass it directly to `ExecuteOptions.signer`.
@@ -471,7 +456,7 @@ When `namedAccounts.deployer` is configured as a `SignableNamedAccount`, the dep
 
 When `namedAccounts.deployer` is `AddressOnlyNamedAccount`, the deploy task throws — the deployer role requires a signing key.
 
-When `namedAccounts.admin` is configured for the upgrade task and is signable, it is selected as the transaction signer. This is selection only — there is no address-match validation against the on-chain admin.
+When `namedAccounts.admin` is configured for the upgrade task and is signable, it is selected as the transaction signer. This is selection only — there is no address-match validation against the on-chain admin. Unlike `deployer`, an address-only `admin` does not throw: it is ignored, and `connection.privateKey` signs the upgrade.
 
 ## Deployment Hooks
 

@@ -71,9 +71,7 @@ npx lionden test
 
 Either clone it or copy one of the examples under `examples/` (`hello-world`, `token`, `multi-program`, `nft-registry`, `async-escrow`) into a fresh directory. For Leo compatibility patterns, also inspect the focused aleo-ports such as `examples/aleo-ports/dynamic_dispatch` and `examples/aleo-ports/dynamic_records`. Each example is a self-contained workspace with its own `lionden.config.ts`, `programs/`, `scripts/`, `test/`, and (sometimes) `recipes/`.
 
-The maintained examples are the canonical reference for "how does a real LionDen project look?" They target Leo 4.4.2. Prefer reading them over inventing your own setup.
-
-From the repo root, `npm run test:smoke` is the normal Leo 4.4.2 smoke workflow over maintained examples. `npm run test:smoke:aleo-ports` runs the broader Leo 4.4.2 ported-example suite. `npm run test:smoke:legacy-v43` is intentionally separate and requires a Leo 4.3.x binary on `PATH`.
+The maintained examples are the canonical reference for "how does a real LionDen project look?" They target Leo 4.4.2. Prefer reading them over inventing your own setup. (Contributors: the repo-root smoke lanes that run these examples are listed in [`testing-strategy.md` § CI Lanes](testing-strategy.md#ci-lanes).)
 
 ## CLI Argument Shape
 
@@ -91,7 +89,7 @@ Bare arguments are stricter. A bare argument before the resolved task id is reje
 
 LionDen prints a small set of always-on lifecycle logs for normal CLI, script, and recipe runs. Each task invocation starts with `Running task "<task>"`; when a later task starts in the same run, LionDen prints a `----------------------------------------` divider first. Nested task calls use the same marker, so a script or test that invokes `compile` or `deploy` shows where that task begins.
 
-Task-specific logs describe domain work. `compile` starts with `Compiling programs` or `Compiling <program>` and ends with a short `Compiled ...` summary. `run` prints the resolved script path and network. `recipe` prints the recipe file, export name, and network. `deploy` and `upgrade` print the program, target network, confirmation wait, and final transaction/block summary; deploy also prints when a program is skipped because it is already deployed.
+Task-specific logs describe domain work. `compile` starts with `Compiling programs` or `Compiling <program>` and ends with a short `Compiled ...` summary that names the program or library when exactly one was compiled (otherwise the program/library counts) and says whether typechain bindings were generated or skipped. `run` prints the resolved script path and network before importing the script. `recipe` prints the resolved recipe module, export name, and network before calling the export. `deploy` and `upgrade` print the program, target network, confirmation wait (when confirmation is enabled), and final transaction/block summary; deploy also prints when a program is skipped because it is already deployed, and groups each program's lifecycle separately when several programs deploy in one command (see [`deployment.md` § Deploy Output](deployment.md#deploy-output)).
 
 Generated TypeScript contract wrappers log every transition execution through their shared base class. Outside tests, each transition block starts with the same `----------------------------------------` divider. Local calls look like `Executing token.aleo/mint(aleo1..., 1u64)` followed by `Executed token.aleo/mint (1 output)`. On-chain calls log `Submitting`, `Submitted`, `Waiting for confirmation of`, then `Accepted` or `Rejected` as the leading final status. Arguments are rendered as normal call parameters and long encoded values are truncated. If a signer override is present, logs show only `(signer: <address>)` or `(signer override)`, never the private key.
 
@@ -231,8 +229,6 @@ What `compile` does ([full pipeline](compiler.md#current-compile-pipeline)):
 Caching is content-hash based and stored under `artifacts/.cache`. Use `--force` if a network dependency changed or you want a clean rebuild. Changing `leoVersion` invalidates the cache automatically. If you replace the actual `leoBinary` while retaining the same configured `leoVersion`, run `lionden compile --force` before using the resulting artifacts: the cache tracks the declared compatibility version, not the binary's patch identity.
 
 `lionden clean` removes `artifacts/` and `typechain/` (deployment state under `deployments/` is preserved). It is the alternative after replacing a Leo binary without changing its configured version: run `lionden clean && lionden compile` to remove both cached hashes and preserved materialized builds before regenerating artifacts and bindings. Do not delete only a public `artifacts/<programId>/` output directory; the cache and preserved builds live elsewhere under `artifacts/`.
-
-`compile` logs immediately when compilation starts, then prints a compact completion summary that names a single compiled program when there is one, otherwise summarizes the compiled program/library count and whether typechain bindings were generated or skipped.
 
 ### Working With Generated Bindings
 
@@ -400,8 +396,6 @@ lionden run scripts/deploy.ts
 lionden run scripts/deploy.ts --network testnet
 ```
 
-Before importing the script, LionDen logs the resolved script path and selected network.
-
 The script's network defaults to `config.defaultNetwork` (or the global `--network` if provided). The LRE exposes:
 
 - `lre.config` — fully resolved config
@@ -442,8 +436,6 @@ What `deploy` does ([full reference](deployment.md#deploy-task)):
 9. Fires the `deployment.programDeployed` hook.
 
 Deployment state, ephemeral mode, pending recovery, and the export schema all live under [`deployment.md`](deployment.md#deployment-state).
-
-During deploy, LionDen logs each program as it starts, prints already-deployed skips, logs when it is waiting for transaction confirmation, and prints the final deployed transaction and block. When several programs deploy sequentially, each program's lifecycle is grouped in the terminal output.
 
 ### Choosing a deploy backend
 
@@ -505,8 +497,6 @@ await setupToken(ctx);
 
 The recipe task compiles once up front, then individual `ctx.deploy()` calls default to `noCompile: true`. `ctx.deploy()` may return an existing complete deployment record; pass `{ noSkipDeployed: true }` for first-time-only setup recipes that should fail instead of reusing an existing deployment.
 
-Before calling the recipe export, LionDen logs the resolved recipe module, export name, and network.
-
 ## Upgrading Programs
 
 `upgrade` is a thin task: it recompiles the program, builds and broadcasts the upgrade transaction, and records a minimal updated record. Renamed upgrades rely on the recorded local source/runtime mapping in LionDen deployment state. LionDen does **not** validate ABI compatibility, constructor immutability, edition continuity, or admin identity — Leo's built-in tooling owns upgrade correctness.
@@ -527,8 +517,6 @@ What `upgrade` does:
 6. Records the updated state; fires `deployment.programUpgraded`.
 
 The task returns `{ programId, txId, blockHeight }`. When `namedAccounts.admin` is signable, its key is selected as the signer (selection only — no address-match check). For v3.5 to v4 migration notes, see [`leo-version-compatibility.md`](leo-version-compatibility.md#migration-notes-v35-to-v4). To spot-check runtime upgrade behaviour, use a disposable probe per [`agent-bug-hunt-workflow.md`](agent-bug-hunt-workflow.md).
-
-Upgrade logs mirror deploy's lifecycle style: start with `Upgrading <programId> on network "<name>"`, then `Waiting for confirmation ...` when confirmation is enabled, then `Upgraded <programId> (tx: ..., block: ...)`.
 
 ## Exporting Deployment Data
 

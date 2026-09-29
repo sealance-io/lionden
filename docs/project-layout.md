@@ -21,13 +21,8 @@ LionDen is a workspace monorepo with code grouped by responsibility:
 
 Top-level supporting paths:
 
-- `examples/hello-world`: minimal project example
-- `examples/token`: fuller example with mappings and richer tests
-- `examples/multi-program`: cross-program calls and dependency graph
-- `examples/nft-registry`: structs, records, `loadFixture`, local mode
-- `examples/async-escrow`: typechain bindings in tests, escrow state machine
-- `examples/renamed_dynamic_records`: deploy rename, dynamic records, and renamed upgrade in one workflow
-- `examples/aleo-ports`: ~22 ported Aleo SDK examples used for compatibility smoke coverage (admin, auction, basic_bank, battleship, bubblesort, dynamic_dispatch, dynamic_records, example_with_test, fibonacci, groups, helloworld, interest, lottery, message, noupgrade, simple_token, tictactoe, timelock, token, twoadicity, upgrades-vote, vote) — each is its own workspace; `admin`/`noupgrade`/`timelock` are Leo constructor/upgrade compatibility coverage (Leo and the network own upgrade correctness — lionden does no upgrade validation)
+- `examples/`: maintained example projects; see [Examples](#examples) for what each one demonstrates
+- `examples/aleo-ports/`: one workspace per ported Aleo example, used for compatibility smoke coverage (`npm run test:smoke:aleo-ports`); `admin`/`noupgrade`/`timelock` cover Leo constructor/upgrade compatibility
 - `docs/`: focused implementation docs
 
 ## Contributor Entry Points
@@ -112,19 +107,8 @@ the scaffolder and generated toolchain stay on the same pre-1.0 compatibility li
 
 ## Documentation Usage
 
-Use this doc for navigation only. For behavior-level detail:
-
-- plugin/task/config mechanics: [`architecture.md`](architecture.md)
-- compile pipeline: [`compiler.md`](compiler.md)
-- network behavior: [`network.md`](network.md)
-- deployment behavior: [`deployment.md`](deployment.md)
-- SDK vs Leo CLI deploy backends: [`deploy-backends.md`](deploy-backends.md)
-- test helpers: [`testing.md`](testing.md)
-- repo-wide test strategy and CI: [`testing-strategy.md`](testing-strategy.md)
-- JSON ABI schema and codegen types: [`json-abi.md`](json-abi.md)
-- Leo version compatibility: [`leo-version-compatibility.md`](leo-version-compatibility.md)
-- disposable bug-hunt probes: [`agent-bug-hunt-workflow.md`](agent-bug-hunt-workflow.md)
-- product goals and roadmap: [`vision-and-roadmap.md`](vision-and-roadmap.md)
+Use this doc for navigation only. For behavior-level detail, pick the subsystem doc from the
+README [Documentation Map](../README.md#documentation-map).
 
 ## Design Direction
 
