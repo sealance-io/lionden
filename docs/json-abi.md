@@ -1,6 +1,6 @@
 # JSON ABI
 
-When to read this: use this file for the Leo compiler's JSON ABI schema, type serialization rules, CLI generation, and the differences between compiler output and LionDen's normalized TypeScript types.
+When to read this: use this file for the Leo compiler's JSON ABI schema, type serialization rules, CLI generation, and the differences between compiler output and LionDen's normalized TypeScript types. For generated bindings and helpers built from the ABI, use [`typechain.md`](typechain.md).
 
 ## Overview
 

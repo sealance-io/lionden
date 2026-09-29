@@ -209,14 +209,16 @@ Start here for overview, then open only the subsystem docs you need:
 - [`docs/project-layout.md`](docs/project-layout.md): package map, examples, scaffolding, contributor entry points
 - [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md): product goals, design decisions, Leo/SDK baseline, roadmap, known challenges
 - [`docs/architecture.md`](docs/architecture.md): plugin model, config lifecycle, tasks, LRE, CLI boot flow
-- [`docs/compiler.md`](docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI/codegen
+- [`docs/compiler.md`](docs/compiler.md): source discovery, dependency resolution, materialization, `leo build`, ABI parsing and the codegen handoff
 - [`docs/typechain.md`](docs/typechain.md): generated TypeScript bindings — wrappers, `codegen.*` configuration, inputs, view/mapping/storage accessors, record helpers, typed broadcast results, id-only record outputs
 - [`docs/network.md`](docs/network.md): network types, devnode/HTTP, SDK integration, `node`, and `run`
-- [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, deployment state, and hooks
+- [`docs/deployment.md`](docs/deployment.md): deploy, upgrade, export, recipes, named accounts, deployment state, and hooks
 - [`docs/deploy-backends.md`](docs/deploy-backends.md): SDK vs Leo CLI transaction backends, selection, limits, security
 - [`docs/testing.md`](docs/testing.md): `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test runner behavior
-- [`docs/testing-strategy.md`](docs/testing-strategy.md): proposed repo-wide testing strategy, lane split, ownership, CI plan
-- [`docs/json-abi.md`](docs/json-abi.md): JSON ABI schema, parser normalization, and generated binding type rules
+- [`docs/testing-strategy.md`](docs/testing-strategy.md): repo-wide test taxonomy, CI lanes, root test scripts, and testing backlog
+- [`docs/json-abi.md`](docs/json-abi.md): JSON ABI wire schema, serialization rules, and parser normalization
 - [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md): Leo v4 default behavior plus scoped v3.5 compatibility
 - [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md): disposable agent-driven bug-hunt probe workflow
+- [`docs/ci-cd/RELEASING.md`](docs/ci-cd/RELEASING.md) and [`docs/ci-cd/REPOSITORY-SETUP.md`](docs/ci-cd/REPOSITORY-SETUP.md): changesets and the release flow; CI workflows and repository/npm configuration
+- `docs/research/`: design notes and experiment records — [proving-key caching](docs/research/key-caching.md), [dynamic records under V15](docs/research/dynamic-records-v15.md), [Leo CLI deploy backend spike](docs/research/leo-cli-deploy-backend-spike.md)
 - [`AGENTS.md`](AGENTS.md): agent-specific navigation and selective disclosure rules
