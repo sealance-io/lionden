@@ -167,7 +167,7 @@ Each entry is one of:
 
 Path refs must exist on disk — missing files raise a config error rather than falling through to network fetch. Program-id refs follow the existing artifacts-first / network-fallback chain used by static imports. Two refs that resolve to the same canonical program id but different source content throw a conflict error with both ref origins listed.
 
-Runtime imports contribute to `importsHash` in the proving-key cache identity, so introducing a new dispatch target invalidates any cached keys for the dispatching program on first execute and re-caches under the new identity.
+Runtime imports contribute to `importsHash` in the proving-key cache identity, so introducing a new dispatch target changes that identity: previously cached runtime keys for the dispatching program no longer match, and the next execute synthesizes keys lazily without LionDen persisting them (see [`research/key-caching.md`](research/key-caching.md#lookup-order)).
 
 Runtime imports are **execution-time** dependencies only, not deploy-time deps. The compiler's static-import-based dependency resolver does not follow them, so a dispatch hub's strategy programs must be deployed explicitly (or pulled in via the normal `import` graph elsewhere). See `examples/aleo-ports/dynamic_dispatch` for config-level defaults and `examples/aleo-ports/dynamic_records` for wrapper instance imports plus per-call imports.
 
@@ -209,7 +209,7 @@ That remains true, with one path that opts out of the SDK altogether rather than
 
 When a task supplies a custom signer key, `createSignerSdkObjects()` builds an isolated `Account`, `ProgramManager`, and `NetworkRecordProvider` for that signer while sharing the key provider with the default connection.
 
-SDK proving-key caching defaults to filesystem-backed execution key persistence:
+SDK proving-key caching defaults to a filesystem-backed key cache:
 
 ```ts
 sdk: {
