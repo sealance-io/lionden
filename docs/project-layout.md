@@ -75,14 +75,15 @@ Useful starting points for common repo tasks:
 
 `examples/async-escrow` demonstrates typechain bindings in tests:
 
-- generated TypeScript contract wrappers
+- generated TypeScript contract wrappers for all transitions
 - escrow state machine with on-chain status transitions
+- typed mapping reads via `escrow.mappings.escrowStatus.get()` for verifying mapping state
 
 `examples/renamed_dynamic_records` demonstrates renamed deployment with dynamic records:
 
-- deploying `gold_token.aleo` as `tenant_gold.aleo`
+- deploying `gold_token.aleo` as `tenant_gold.aleo` with `deploy --program gold_token --rename tenant_gold`
 - runtime dynamic dispatch into the renamed program
-- successful upgrade by the renamed runtime id
+- successful admin-authorized upgrade by the renamed runtime id
 
 When documenting user workflows, prefer checking the examples before inventing examples from scratch.
 

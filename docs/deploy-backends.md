@@ -228,15 +228,17 @@ A `timeout` is the one failure that is cheap to retry: re-running resumes from L
 
 ## Testing
 
-`FakeLeoCli` (`packages/plugin-deploy/src/deploy-backend/leo/fake-leo-cli.ts`) swaps the injected `LeoRunner` and records every invocation's `argv`, `env`, `cwd`, and declared `secrets`. It parses `--save` and `--json-output` out of the argv it receives and writes the configured files there, so tests exercise the real file-discovery and outcome-parsing path rather than stubbing over it. Its stdout and stderr are redacted exactly the way `spawnLeoRunner` redacts them — a fake that handed back raw output would let a test "prove" an error message is clean while the real path leaks.
+This section covers how each backend test works and what the scale harness measured. Which lanes run in CI, which run only locally, and the one-devnode-at-a-time rule they share are in [`testing-strategy.md` § Deploy Backend Lanes](testing-strategy.md#deploy-backend-lanes).
+
+`FakeLeoCli` (`packages/plugin-deploy/src/deploy-backend/leo/fake-leo-cli.ts`) swaps the injected `LeoRunner`, returns a configured exit code, signal, stdout/stderr, or timeout, and records every invocation's `argv`, `env`, `cwd`, and declared `secrets`. It parses `--save` and `--json-output` out of the argv it receives and writes the configured files there, so tests exercise the real file-discovery and outcome-parsing path rather than stubbing over it. Its stdout and stderr are redacted exactly the way `spawnLeoRunner` redacts them — a fake that handed back raw output would let a test "prove" an error message is clean while the real path leaks.
 
 Swapping the runner rather than putting a script on `PATH` is what makes the environment and argv assertions meaningful.
 
-`leo-deploy-orchestration.contract.test.ts` drives deploy and upgrade, devnode and HTTP, through the real task layer with `FakeLeoCli` installed — real provider selection, real compatibility check, real version gate, real argv assembly, real staleness checks, real outcome parsing, with only the process boundary faked.
+The Tier 2 contract test `packages/plugin-deploy/src/leo-deploy-orchestration.contract.test.ts` drives deploy and upgrade, devnode and HTTP, through the real task layer with `FakeLeoCli` installed — real provider selection, real compatibility check, real version gate, real argv assembly, real staleness checks, real outcome parsing, with only the process boundary faked.
 
-It is a **Leo-only** suite, not a cross-backend comparison. The SDK-backed contract test covers pending markers, records, broadcast, and hooks for `sdk` only, and none of that is shared code below `deployAction` — so "the SDK path works" says nothing about whether the Leo path writes a pending marker before broadcasting, records the right transaction, or fires the hook. This file closes that gap by asserting the Leo path's behavior directly. Proving the two backends produce *equivalent* results is the job of the parity driver below, not of either contract test.
+It is a **Leo-only** suite, not a cross-backend comparison. The SDK-backed contract test covers pending markers, records, broadcast, and hooks for `sdk` only, and none of that is shared code below `deployAction` — so "the SDK path works" says nothing about whether the Leo path writes a pending marker before broadcasting, records the right transaction, or fires the hook. This file closes that gap by asserting the Leo path's behavior directly, failure handling included: a failed Leo run records nothing, and a mid-run rebuild aborts before broadcast. Proving the two backends produce *equivalent* results is the job of the parity driver below, not of either contract test.
 
-At Tier 3, `scripts/run-smoke-examples.mjs` takes a `--deploy-backend <sdk|leo>` axis, so every example's real compile/deploy/execute workflow can be run end-to-end on either backend:
+At Tier 3, `scripts/run-smoke-examples.mjs` takes a `--deploy-backend <sdk|leo>` axis, so every example's real compile/deploy/execute workflow can be run end-to-end on either backend. The runner passes the axis as `LIONDEN_DEPLOY_BACKEND` in the environment of the `lionden test` child it spawns; compile and typecheck deploy nothing, so they do not get it. The deploys under test happen inside the Vitest workers that the `test` task spawns, and the `test` task bridges an explicit `--deploy-backend` to those workers through the same variable, so for worker deploys `lionden test --deploy-backend <b>` is equivalent. The two are not interchangeable in general: in the parent process the flag is precedence layer 2 and the variable layer 3 (see [Selecting A Backend](#selecting-a-backend)).
 
 ```bash
 npm run test:smoke:leo-backend           # legacy 4.3 fixture, Leo backend, no proving
@@ -244,7 +246,7 @@ npm run test:smoke:leo-backend:prove     # the same with real proof generation
 npm run test:smoke:all:leo-backend:prove # core examples plus Aleo ports, Leo 4.4.x backend, with proving
 ```
 
-The runner refuses to run on a binary outside `4.3.x`/`4.4.x` rather than skipping, because a silently-skipped opt-in lane is a green result that exercised nothing. Each config's normal Leo preflight still applies: the legacy-v43 scripts require a Leo 4.3.x binary, while `test:smoke:all:leo-backend:prove` covers the current core and Aleo-port suites with Leo 4.4.x. The legacy fixture stays separate because it needs its own CLI line. The `leo-samples` lane does **not** take this axis: it is pinned to Leo 4.2.0 / consensus V15, which this backend does not support.
+The runner checks the `leo` on `PATH` before any example compiles, and refuses to run on a binary outside `4.3.x`/`4.4.x` rather than skipping, because a silently-skipped opt-in lane is a green result that exercised nothing. Each config's normal Leo preflight still applies: the legacy-v43 scripts require a Leo 4.3.x binary, while `test:smoke:all:leo-backend:prove` covers the current core and Aleo-port suites with Leo 4.4.x. The legacy fixture stays separate because it needs its own CLI line. The `leo-samples` lane does **not** take this axis: it is pinned to Leo 4.2.0 / consensus V15, which this backend does not support.
 
 Two Tier 4 lanes carry what nothing above them can:
 
@@ -253,11 +255,13 @@ npm run test:deploy-backend-parity   # SDK vs Leo, real chain, normalized record
 npm run test:deploy-backend-scale    # the memory-wall acceptance harness
 ```
 
-**Parity** (`scripts/verify-deploy-backends.mjs`) deploys the same programs on each backend against a *fresh devnode per arm*, then drops the fields two independent chains can never agree on (`txId`, `blockHeight`, `deployedAt`, `updatedAt`, `feePaid`) and requires the remainder to match exactly, asserting `status: "complete"` and non-null `txId`/`blockHeight` separately. It is also the only place real-chain `--dry-run` purity is checked: the Leo arm dry-runs first, while the state directory is still empty, and fails if a transaction is missing or if anything was written.
+**Parity** (`scripts/verify-deploy-backends.mjs`) deploys the same programs on each backend against a *fresh devnode per arm*, then drops the fields two independent chains can never agree on (`txId`, `blockHeight`, `deployedAt`, `updatedAt`, `feePaid`) and requires the remainder to match exactly, asserting `status: "complete"` and non-null `txId`/`blockHeight` separately. The fresh chain per arm is load-bearing: on a shared devnode the second arm would hit `skipDeployed` plus the already-deployed preflight outcome and deploy nothing, so the comparison would pass against an empty directory. So is `deploy.ephemeral: false` in the per-arm parity configs (`examples/<example>/lionden.config.backend-<sdk|leo>.ts`), since a devnode network defaults to ephemeral and an ephemeral network writes no records.
+
+It is the only place normalized, disk-backed record parity is checked — example smoke suites run on ephemeral devnode state and write no records at all. It is also the only place real-chain `--dry-run` purity is checked: the Leo arm dry-runs first, while the state directory is still empty, and fails if a transaction is missing or if anything was written.
 
 Its two cases are chosen for the failures that are otherwise silent. `hello` also deploys `hello` renamed to `zhello` — whose id *contains* `hello.aleo`, so a broken closure subtraction trips the collision guard instead of quietly skipping the program being deployed. `multi-program` deploys `treasury` then `rewards`, which imports it, so a wrong skip list makes Leo save two transactions or none.
 
-**Scale** (`scripts/verify-deploy-scale.mjs`) is the acceptance harness for the memory wall itself, on a generated fixture (`scripts/gen-large-program.mjs`). It runs with `--prove` because both backends take a devnode fast path that skips proof generation, and key synthesis is the only place the ceiling lives — without it the fixture deploys in seconds on both arms and proves nothing.
+**Scale** (`scripts/verify-deploy-scale.mjs`) is the acceptance harness for the memory wall itself, on a generated fixture (`scripts/gen-large-program.mjs` → `test/fixtures/deploy-scale/`). It runs with `--prove` because both backends take a devnode fast path that skips proof generation, and key synthesis is the only place the ceiling lives — without it the fixture deploys in seconds on both arms and proves nothing.
 
 The fixture is **four heavy library programs plus a thin program that imports all four**, and that shape is the whole trick. snarkVM caps a *program* at 2,097,152 variables, which is well below where the SDK gives out — so no single program the chain accepts can separate the backends. But the SDK's ~4 GiB ceiling bounds a *deployment*, and a deployment's key material spans the entire import closure: the verifying key of every called function is re-synthesized from source, never read back from the chain. Each library stays far under the per-program cap while their sum does not.
 
@@ -270,17 +274,17 @@ Measured on Leo 4.3.2 / snarkVM 4.8.1:
 | `leo` | deployed in 0.9m | 4.72 GB |
 | `sdk` | never returned; killed at the 15m bound | 4.92 GB, flat from ~7m on |
 
-Same program, same `--prove`, equivalent chains from the same genesis (each arm gets its own devnode), reproduced across runs — the SDK's peak lands between 4.76 and 4.92 GB and then stops moving.
+Same program, same `--prove`, equivalent chains from the same genesis, reproduced across runs — the SDK's peak lands between 4.76 and 4.92 GB and then stops moving.
 
 **The two arms want roughly the same amount of memory. Only one of them is allowed to have it.** That is the whole result, and it is worth stating plainly because the numbers invite the wrong reading: Leo is not winning by being lean. It needs ~4.7 GB too — it simply asks the host for it, while the SDK is asking a 32-bit WASM linear memory whose ceiling is 4 GiB no matter how much RAM the machine has.
 
 The `~/.aleo` cache explains the *time*, not the memory. The libraries' keys are on disk from their own deployments, so Leo loads them instead of re-deriving them and finishes in 54 seconds; a cold-cache Leo run would be far slower and still succeed. Both halves matter, and they are separate claims.
 
-(RSS is sampled across the whole process tree. Sampling only the LionDen pid — as an earlier version of this harness did — reports ~0.65 GB for the Leo arm, because the real work is in the `leo` child. That number was wrong and produced exactly the "fast and small" misreading above.)
+RSS is sampled across the whole process tree, not the LionDen pid: the SDK's work is in-process WASM, but Leo's is in the `leo` child. A single-pid sampler reports only the parent's idle footprint as Leo's cost — ~0.65 GB for the Leo arm — which is exactly the "fast and small" misreading above.
 
 Both arms are asserted, and the assertions are deliberately narrow. The Leo arm must exit 0, not time out, *and* leave a complete record — writing the record and then dying is not a pass. The SDK arm must fail the specific way the wall fails: it has to not return at all (or be killed by `SIGABRT`/`SIGKILL`, how an exhausted allocator dies) **and** peak above 3 GB. A clean non-zero exit, or a failure at 200 MB, fails the lane instead of being recorded as the memory wall. The 15-minute bound is roughly 3x a successful SDK run of comparable size, so the result is not an artifact of an impatient timeout.
 
-`--shape wide` (one program at the largest size the chain accepts) is kept as a benchmark and asserts only the Leo arm: the SDK deploys it in ~5 minutes. See the measurement tables in `gen-large-program.mjs` and [`testing-strategy.md`](testing-strategy.md#tier-4-proof-and-compatibility-tests).
+`gen-large-program.mjs --shape wide` regenerates the fixture as one program at the largest size the chain accepts. The scale harness then runs it as a benchmark, kept for the upper-bound number rather than as an acceptance case, and asserts only the Leo arm: the SDK deploys it in ~5 minutes. The per-shape measurement tables are in `scripts/gen-large-program.mjs`.
 
 ## Where To Go Deeper
 
