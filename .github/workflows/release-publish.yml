@@ -137,7 +137,7 @@ jobs:
         run: npx changeset publish
         env:
           # Provenance only when the source repo is public (npm can't attest a private repo);
-          # auto-flips on going OSS, off while internal so publish doesn't fail.
+          # follows the repo's current visibility so a private-repo publish doesn't fail.
           NPM_CONFIG_PROVENANCE: ${{ github.event.repository.visibility == 'public' }}
       - name: Reconcile and verify release tags
         # Verify only the versions in the checked-out manifests. Historical backfill does not

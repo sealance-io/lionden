@@ -95,7 +95,7 @@ jobs:
           persist-credentials: false
       # zizmor always runs and fails the job on findings (the rollup signal). SARIF upload
       # to code scanning is gated on visibility — it needs GitHub Advanced Security on a
-      # private repo, so while internal we run zizmor for its exit code only.
+      # private repo, so on a private repo without it zizmor runs for its exit code only.
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
         with:
