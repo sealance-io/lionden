@@ -378,12 +378,12 @@ emits, which depend on the Leo version, and LionDen's **internal** `Mode` union,
 parser produces and codegen consumes.
 
 **Wire values.** 4.1 emits `"None"` for unmoded values; 4.2 dropped `None` and emits
-`"Private"`/`"Public"`/`"Constant"` explicitly.
+unmoded values as explicit `"Private"` or `"Public"`. `"Constant"` exists in both.
 
 | Value | Wire | Description |
 |---|---|---|
 | `"None"` | Leo 4.1 / v3.5 only | No modifier written; canonicalized by the parser to `"Private"` (transitions, record fields) or `"Public"` (views). Removed from the Leo 4.2 ABI. |
-| `"Constant"` | Leo 4.2 | Immutable compile-time constant |
+| `"Constant"` | Leo 4.1 and 4.2+ | Immutable compile-time constant |
 | `"Private"` | all | Kept private off-chain (encrypted in the transaction) |
 | `"Public"` | all | Publicly visible on-chain |
 
@@ -400,7 +400,7 @@ Mode = "Public" | "Private" | "Constant"
 - `"Public"` — explicit `public` modifier; the value travels on chain as a plain Leo literal.
 - `"Private"` — explicit `private` modifier, **or** the canonicalized form of an unmoded
   (4.1 `"None"`, or absent) transition input/output or record field.
-- `"Constant"` — immutable compile-time constant (Leo 4.2).
+- `"Constant"` — immutable compile-time constant (Leo 4.1 and 4.2+).
 
 The parser canonicalizes an unmoded value to `Private` for transitions/record fields and
 `Public` for views, so `"None"` never reaches codegen. Mode is only meaningful for the
@@ -433,8 +433,6 @@ and re-parsing an already-normalized ABI is a fixed point.
   view plaintext as `Public`. Record-definition fields carry no `mode` (Leo 4.3+ emits an
   explicit `"Private"`); the parser reads both as `Private`. Record / `Final` /
   `DynamicRecord` I/O elements carry no mode.
-- **Self type references are explicit.** A struct/record ref to the program's own type now
-  carries `program: "<self>.aleo"` where 4.1 emitted `program: null`.
 
 A 4.2 `main` function (compare to the 4.1 example under [Top-Level Schema](#top-level-schema)):
 
@@ -564,9 +562,9 @@ LionDen's TypeScript types (`packages/leo-compiler/src/abi-types.ts`) preserve m
 | `StorageType::Plaintext \| Vector` | `StorageType` | Preserved — `{ Plaintext } \| { Vector }` |
 | `{ Array: { element, length } }` | `{ Array: [PlaintextType, number] }` | Object → tuple normalization |
 | `Mode::None` (4.1) / absent (4.2) | `"Private"` or `"Public"` | Canonicalized by context: `Private` for transitions/record fields, `Public` for views |
-| `Mode::Constant` | `"Constant"` | In the `Mode` union (`Public \| Private \| Constant`) since Leo 4.2 |
+| `Mode::Constant` | `"Constant"` | Passed through unchanged; emitted by Leo 4.1 and 4.2+ |
 | 4.2 positional input (no name) | `name: "arg{i}"` | Synthesized only when absent; existing 4.1 names preserved |
-| self struct/record ref `program: "<self>.aleo"` (4.2) | `program: null` | Self-refs collapsed to the local convention across all surfaces |
+| self struct/record ref `program: "<self>.aleo"` (Leo 4.1 and 4.2+) | `program: null` | Self-refs collapsed to the local convention across all surfaces |
 | `Primitive::Signature` | `"Signature"` | Preserved by the parser; rejected by codegen with `CodegenError` (no serializer/parser support yet) |
 
 Relevant source files:
