@@ -229,6 +229,7 @@ A `timeout` is the one failure that is cheap to retry: re-running resumes from L
 ## Testing
 
 This section covers how each backend test works and what the scale harness measured. Which lanes run in CI, which run only locally, and the one-devnode-at-a-time rule they share are in [`testing-strategy.md` § Deploy Backend Lanes](testing-strategy.md#deploy-backend-lanes).
+The measured `leo deploy` / `leo upgrade` CLI behavior these tests and the captured `leo-cli` fixture corpus are based on is recorded in [`research/leo-cli-deploy-backend-spike.md`](research/leo-cli-deploy-backend-spike.md).
 
 `FakeLeoCli` (`packages/plugin-deploy/src/deploy-backend/leo/fake-leo-cli.ts`) swaps the injected `LeoRunner`, returns a configured exit code, signal, stdout/stderr, or timeout, and records every invocation's `argv`, `env`, `cwd`, and declared `secrets`. It parses `--save` and `--json-output` out of the argv it receives and writes the configured files there, so tests exercise the real file-discovery and outcome-parsing path rather than stubbing over it. Its stdout and stderr are redacted exactly the way `spawnLeoRunner` redacts them — a fake that handed back raw output would let a test "prove" an error message is clean while the real path leaks.
 

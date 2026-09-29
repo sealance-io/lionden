@@ -1,6 +1,6 @@
 # Compiler
 
-When to read this: use this file for Leo source discovery, dependency resolution, package materialization, compilation, artifact output, and TypeScript binding generation.
+When to read this: use this file for Leo source discovery, dependency resolution, package materialization, compilation, artifact output, and the handoff to TypeScript binding generation; generated-client behavior and `codegen.*` configuration are in [`typechain.md`](typechain.md).
 
 ## Current Compile Pipeline
 

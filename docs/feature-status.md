@@ -10,7 +10,7 @@ For day-to-day usage, see [`usage.md`](usage.md). For design intent, see [`visio
 
 ## 1. Shipped Features
 
-Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives live in [`docs/architecture.md`](architecture.md), [`docs/compiler.md`](compiler.md), [`docs/network.md`](network.md), [`docs/deployment.md`](deployment.md), and [`docs/testing.md`](testing.md).
+Grouped by subsystem. Every row cites a code path. Subsystem-level deep dives live in [`docs/architecture.md`](architecture.md), [`docs/compiler.md`](compiler.md), [`docs/typechain.md`](typechain.md), [`docs/network.md`](network.md), [`docs/deployment.md`](deployment.md), and [`docs/testing.md`](testing.md).
 
 ### Config + CLI
 

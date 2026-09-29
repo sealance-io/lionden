@@ -4,15 +4,16 @@ This file is the navigation layer for agents working in the LionDen repo. Load t
 
 ## Start Here
 
-1. Read [`README.md`](README.md) for the project overview and current status.
-2. Read the relevant `docs/*.md` file for subsystem detail.
+1. For a scoped task, go straight to its [Task Routing](#task-routing) row and the relevant implementation and tests.
+2. Read [`README.md`](README.md) when you need project orientation or current status.
 3. Open [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) when you need design intent, roadmap context, or platform assumptions.
 
 Do not load every doc up front. Most tasks only need one focused doc plus a few source files.
 
 ## Selective Disclosure Rules
 
-- Prefer `README.md` plus one subsystem doc over broad doc loading.
+- Prefer one subsystem doc over broad doc loading; add `README.md` only for orientation.
+- In large docs, list the headings first (`grep -n '^#' <doc>`) and read the relevant section rather than the whole file.
 - Prefer current code over plan docs when documenting or changing shipped behavior.
 - Treat [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) as design-direction context, not as proof that an interface is already implemented.
 - Treat design specs and implementation plans under `_docs/` as roadmap context, not as source of truth for shipped behavior.
@@ -25,23 +26,25 @@ Open the smallest relevant doc first:
 
 | Task | Primary doc |
 | --- | --- |
+| End-user workflows, CLI arguments and output, troubleshooting | [`docs/usage.md`](docs/usage.md) |
 | Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](docs/architecture.md) |
 | Source discovery, package materialization, `leo build`, ABI parsing, codegen pipeline | [`docs/compiler.md`](docs/compiler.md) |
-| Generated TypeScript bindings: wrappers, `codegen.*` config, inputs, views/mappings/storage accessors, record helpers, typed broadcast results, id-only record outputs | [`docs/typechain.md`](docs/typechain.md) |
-| Network configs, devnode/HTTP, `node`, `run`, SDK integration | [`docs/network.md`](docs/network.md) |
-| Deployment state, `deploy`, the thin `upgrade` task, `export` | [`docs/deployment.md`](docs/deployment.md) |
-| SDK vs Leo CLI deploy backends, backend selection, Leo argv/env mapping, backend security | [`docs/deploy-backends.md`](docs/deploy-backends.md) |
+| Generated TypeScript bindings: `codegen.*` config, wrappers and inputs, view/mapping/storage accessors, record helpers, typed broadcast results, id-only record outputs | [`docs/typechain.md`](docs/typechain.md) |
+| Network selection, devnode, connection/runtime imports, SDK/egress, `node`, `run` | [`docs/network.md`](docs/network.md) |
+| Proving-key cache behavior, identity, and pre-warm rationale | [`docs/research/key-caching.md`](docs/research/key-caching.md) |
+| `deploy`, the thin `upgrade` task, `export`, recipes, named accounts, deployment state and hooks | [`docs/deployment.md`](docs/deployment.md) |
+| SDK vs Leo CLI deploy backends, backend selection, Leo argv/env mapping, backend security, backend test harnesses | [`docs/deploy-backends.md`](docs/deploy-backends.md) |
 | `@lionden/testing`, managed devnode lifecycle, fixtures, assertions, test task | [`docs/testing.md`](docs/testing.md) |
-| Repo-wide test strategy, CI lane split, testing rollout proposal | [`docs/testing-strategy.md`](docs/testing-strategy.md) |
-| JSON ABI schema, type serialization, compiler-vs-TS normalization | [`docs/json-abi.md`](docs/json-abi.md) |
-| Leo v4 `dyn record`, V15 record-existence, id-only dynamic record recovery, dynamic-record example maintenance | [`docs/research/dynamic-records-v15.md`](docs/research/dynamic-records-v15.md) |
+| Repo-wide test taxonomy, CI lanes, root test scripts, testing backlog | [`docs/testing-strategy.md`](docs/testing-strategy.md) |
+| JSON ABI wire versions, serialization, parser normalization | [`docs/json-abi.md`](docs/json-abi.md) |
+| Leo v4 `dyn record` V15 record-existence rules, authoring patterns, held-record proving, dynamic-record example maintenance | [`docs/research/dynamic-records-v15.md`](docs/research/dynamic-records-v15.md) |
 | Package map, examples, scaffolder, contributor entry points | [`docs/project-layout.md`](docs/project-layout.md) |
 | Leo version support, v3.5 compatibility, `leoBinary`, devnode consensus heights, `lib.leo` limitations | [`docs/leo-version-compatibility.md`](docs/leo-version-compatibility.md) |
 | Product goals, design decisions, Leo/SDK baseline, roadmap, known challenges | [`docs/vision-and-roadmap.md`](docs/vision-and-roadmap.md) |
 | What features are shipped / missing for V1 / deferred; doko-js parity reference | [`docs/feature-status.md`](docs/feature-status.md) |
 | Agent-driven disposable bug-hunt probes | [`docs/agent-bug-hunt-workflow.md`](docs/agent-bug-hunt-workflow.md) |
 | Changesets, coordinated package versions, npm publishing, tags, GitHub Releases | [`docs/ci-cd/RELEASING.md`](docs/ci-cd/RELEASING.md) |
-| CI/CD repository settings, rulesets, environments, GitHub App, npm OIDC | [`docs/ci-cd/REPOSITORY-SETUP.md`](docs/ci-cd/REPOSITORY-SETUP.md) |
+| CI workflow inventory, Leo CI pins, Dependabot/pinact cooldowns, rulesets, environments, GitHub App, npm OIDC | [`docs/ci-cd/REPOSITORY-SETUP.md`](docs/ci-cd/REPOSITORY-SETUP.md) |
 
 ## Ground Truth Order
 
