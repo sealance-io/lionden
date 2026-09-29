@@ -113,7 +113,7 @@ For program units, the compiler locates `abi.json` through `resolveBuildArtifact
 
 The ABI is the contract between Leo compilation and TypeScript code generation. That avoids regex-based parsing of generated Aleo source and keeps wrapper generation aligned with the compiler's structured output.
 
-Leo 4.1 ABI extensions are parsed conservatively: `views` and `implements` are preserved for compatibility checks and ABI hashes when present. Generated wrappers expose ABI views under `contract.views.<name>(...args)`. Executable functions or views with non-empty `const_parameters` fail codegen with an explicit unsupported-feature error.
+Leo 4.1 ABI extensions are parsed conservatively: `views` and `implements` are preserved on the parsed ABI and included in `computeAbiHash()` when present. Generated wrappers expose ABI views under `contract.views.<name>(...args)`. Executable functions or views with non-empty `const_parameters` fail codegen with an explicit unsupported-feature error.
 
 Generated-client behavior and all [`codegen.*` configuration](typechain.md#codegen-configuration) are documented in [`typechain.md`](typechain.md):
 

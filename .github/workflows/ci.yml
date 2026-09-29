@@ -77,9 +77,9 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
 
   # Review changed dependencies for known vulnerabilities. dependency-review requires a
-  # public repo (or GitHub Advanced Security on a private repo), so it is visibility-gated
-  # while this repo is internal. Set repo var SECURITY_CHECKS_ON_PRIVATE=true to force it on
-  # once GHAS is enabled. See docs/ci-cd/REPOSITORY-SETUP.md.
+  # public repo (or GitHub Advanced Security on a private repo), so it is visibility-gated:
+  # it runs on a public repo; on a private repo set SECURITY_CHECKS_ON_PRIVATE=true to force it on
+  # when GHAS is enabled. See docs/ci-cd/REPOSITORY-SETUP.md.
   dependency-review:
     # PR-only: the action needs a base/head to diff, which workflow_dispatch lacks.
     if: github.event_name == 'pull_request' && (github.event.repository.visibility == 'public' || vars.SECURITY_CHECKS_ON_PRIVATE == 'true')

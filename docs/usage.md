@@ -576,7 +576,7 @@ const { deployer, treasury } = ctx.named.require({
 });
 ```
 
-The deploy task auto-wires `namedAccounts.deployer` as the transaction signer when it's signable. The upgrade task selects `namedAccounts.admin` as the signer when it's signable — selection only, with no address-match validation (see [`deployment.md`](deployment.md#deployupgrade-signer-integration)).
+The deploy task auto-wires `namedAccounts.deployer` as the transaction signer when it's signable. The upgrade task selects `namedAccounts.admin` as the signer when it's signable — selection only, with no address-match validation; with an address-only or absent `admin`, the upgrade is signed with the connection's default key (see [`deployment.md`](deployment.md#deployupgrade-signer-integration)).
 
 > Reminder: `configVariable()` in `namedAccounts` is resolved **eagerly for all networks**. Comment out testnet entries until you're actually targeting testnet — otherwise devnode runs will fail with missing env vars.
 
@@ -773,7 +773,7 @@ If you run a non-default `socketAddr`/`--port`, substitute that port for `3030`.
 
 **Tests pass locally but `ctx.raw.execute(...)` is needed for upgraded transitions.** — The typechain class was compiled from the pre-upgrade ABI in this process. Add new transitions through `raw.execute` after the upgrade, or restart the test process so codegen picks up the new ABI.
 
-**Deploy says "skipping — already deployed".** — Default behavior under `skipDeployed: true`. Use `--no-skip-deployed` to make it a hard error, or `upgrade --program <name>` if you meant to ship an upgrade.
+**Deploy says "Skipping <programId>: already deployed".** — Default behavior under `skipDeployed: true`. Use `--no-skip-deployed` to make it a hard error, or `upgrade --program <name>` if you meant to ship an upgrade.
 
 **Deploy hangs or dies with an out-of-memory error during key synthesis.** — The SDK backend synthesizes every proving key inside one WASM call with a ~4 GiB ceiling and keeps nothing on failure, so retrying repeats the same work. Re-run with `--deploy-backend leo` (requires a `4.3.x` or `4.4.x` Leo binary): Leo runs out of process and caches keys under `~/.aleo`, so a failed run resumes cheaply. See [`deploy-backends.md`](deploy-backends.md).
 

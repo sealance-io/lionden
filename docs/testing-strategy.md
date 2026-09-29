@@ -497,7 +497,7 @@ Recommended policy:
 Suggested initial targets:
 
 - deterministic lines/branches threshold for `packages/config`, `packages/core`, and `packages/leo-compiler`
-- no global monorepo threshold until lane separation is in place
+- no global monorepo threshold; set thresholds per lane now that lanes are separate Vitest projects
 
 ## Failure Diagnostics
 
