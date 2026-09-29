@@ -49,7 +49,7 @@ Useful starting points for common repo tasks:
 
 `examples/hello-world` is the smallest useful reference:
 
-- one config file
+- one main config file (`lionden.config.ts`; the `lionden.config.backend-*.ts` variants exist only for the deploy-backend parity check)
 - one Leo program
 - one deployment script
 - one test file

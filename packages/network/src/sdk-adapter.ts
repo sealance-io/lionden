@@ -714,9 +714,9 @@ function creditsEntryFromFunctionKeysParams(
  * Map a `transferKeys(visibility)` argument to the corresponding entry
  * in CREDITS_PROGRAM_KEYS. Mirrors the SDK's visibility sets at
  * `node_modules/@provablehq/sdk/dist/testnet/browser.js:2913-2929`.
- * Unknown visibility strings fall through (returns `undefined`) so the
- * delegate result is still returned to the caller; only persistence is
- * skipped.
+ * Unknown visibility strings return `undefined`: the call is still delegated
+ * unchanged (the SDK's AleoKeyProvider currently rejects them) and nothing is
+ * persisted.
  */
 function transferKeyNameForVisibility(visibility: string): string | undefined {
   switch (visibility) {

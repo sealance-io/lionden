@@ -20,8 +20,9 @@
  *   node scripts/verify-deploy-backends.mjs hello      # one case
  *   node scripts/verify-deploy-backends.mjs --list
  *
- * Requires a Leo 4.3.x binary on PATH and a free devnode port. Devnode-backed
- * steps run strictly one at a time — the devnode binds a fixed TCP port.
+ * Requires a `leo` on PATH matching the parity examples' `leoVersion` line and a
+ * free devnode port. Devnode-backed steps run strictly one at a time — the
+ * devnode binds a fixed TCP port.
  */
 
 import { spawnSync } from "node:child_process";
