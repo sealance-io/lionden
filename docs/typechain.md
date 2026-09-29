@@ -296,7 +296,7 @@ const recovered = await accepted.outputs
 
 **`.output`** is a `RecordOutputMatcher<T>` carrying the program id, source record name, the matching deserializer, and `.from(...)` / `.at(...)` builders that bind a transition source. It works with every record-output handle: `EncryptedRecord<T>`, `IdOnlyExternalRecordHandle<T>`, and `IdOnlyDynamicRecordHandle`. Source binding, the `EncryptedRecord<T>` identity guard, and resolution errors are documented once in [§ Id-only record outputs](#id-only-record-outputs-dyn-record-and-external-record).
 
-**`.forProgram(programId)`** returns a new helper, leaving the original unchanged, whose `.output` matcher is bound to a runtime program id, so `.from(...)` and the identity guards use that id. Use it when the source program is deployed under another id, for example with `deploy --rename`; input conversion is unchanged:
+**`.forProgram(programId)`** returns a new helper, leaving the original unchanged, whose `.output` matcher is bound to a runtime program id, so `.from(...)` and the identity guards use that id. Use it when the source program is deployed under another id, for example with `deploy --rename` (which requires `leoVersion` 4.3.0 or newer; see [`deployment.md` § Deploy Rename](deployment.md#deploy-rename)); input conversion is unchanged:
 
 ```ts
 const asTenantPoolToken = asPoolToken.forProgram("tenant_stable_token.aleo");
