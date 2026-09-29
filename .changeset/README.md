@@ -30,5 +30,5 @@ failed publish job from the original release run instead; `changeset publish` sk
 already published. Never re-run a superseded release. Historical npm versions are outside the
 automatic reconciliation path.
 
-See `docs/ci-cd/RELEASING.md` for the full flow and `docs/ci-cd/REPOSITORY-SETUP.md` for the
-one-time bootstrap and trusted-publisher configuration.
+See `docs/ci-cd/RELEASING.md` for the full flow and `docs/ci-cd/REPOSITORY-SETUP.md` for
+trusted-publisher configuration and the historical one-time bootstrap record.

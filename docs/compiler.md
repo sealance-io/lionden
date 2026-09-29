@@ -85,7 +85,7 @@ When the default network is:
 - `http`: LionDen uses the configured endpoint
 - `devnode`: LionDen derives `http://<socketAddr>`
 
-The network segment in the URL comes from the effective network config's `network` field (devnode networks default to `testnet`; `http` networks must set it), passed to the fetcher as `networkHint`. [`defaultFetchNetworkDep()`](../packages/leo-compiler/src/compiler.ts) falls back across `testnet`, `mainnet`, and `canary`, using the first successful response, only when no hint is available, such as a direct programmatic call that omits it; configured networks always supply one.
+The network segment in the URL comes from the effective network config's `network` field (devnode networks default to `testnet`; `http` networks must set it), passed to the fetcher as `networkHint`. [`defaultFetchNetworkDep()`](../packages/leo-compiler/src/compiler.ts) falls back across `testnet`, `mainnet`, and `canary`, using the first successful response, only when no hint is available, such as a direct programmatic call that omits it. Fallback also applies when the resolved network entry has no `network` value.
 
 ### Effective-network override
 
