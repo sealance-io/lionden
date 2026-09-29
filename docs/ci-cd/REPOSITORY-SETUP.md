@@ -3,9 +3,11 @@
 This is the one-time GitHub/npm configuration the workflows in `.github/workflows/` depend on.
 Workflows are version-controlled; these settings are not, so they live here.
 
-> Status note: the repo is **public** (since 2026-07-22). The visibility-gated security checks
-> (see [Dependency review & code scanning](#dependency-review--code-scanning)) and npm
-> provenance are active.
+> Status note (historical): the repo was made **public** on 2026-07-22. The
+> visibility-gated security checks (see
+> [Dependency review & code scanning](#dependency-review--code-scanning)) and npm
+> [provenance](#provenance) are evaluated per run from the repository's visibility, so confirm
+> the current visibility in the repository settings rather than relying on this note.
 
 ## Workflows at a glance
 
@@ -150,16 +152,14 @@ Reuse the existing Sealance org App (the same one `compliant-transfer-aleo` uses
 Both `release-version.yml` and `release-publish.yml` mint a short-lived installation token
 scoped to `lionden` via `actions/create-github-app-token`.
 
-The publish workflow's manual dispatch is also the recovery path for a release that reached npm
-without tags or GitHub Releases. It is safe to approve on `main` even while a Version Packages PR
-is pending: the manual path skips dependency installation, build, and `changeset publish`, so it
-cannot publish the checked-out manifests. Current missing tags are recreated only at npm's
-recorded `gitHead`, remote targets are verified, and existing Releases are left unchanged.
-Automatic runs check all current package versions concurrently, allowing up to five minutes for
-npm packument replication and limiting each request to 15 seconds. Historical tag backfill is not
-part of the release path, so the App does not need permission to write workflow files. Remote tags
-are fetched once in the steady state, and GitHub Releases are listed in pages before only the
-missing ones are created.
+Of the App's repository permissions, only **Contents** and **Pull requests** need write access
+(GitHub adds read-only **Metadata** automatically; each workflow's job-level `permissions:` are
+configured separately in the workflow files). The App does not need **Workflows** write: release
+runs tag only the checked-out package versions, and historical tag backfill is outside the release
+path. Tag reconciliation is described in
+[RELEASING.md → Publishing](./RELEASING.md#3-publishing-automatic-gated); for the metadata-only
+manual dispatch that repairs missing tags or GitHub Releases, see
+[RELEASING.md → Recovery](./RELEASING.md#recovery).
 
 ## npm publishing (OIDC trusted publishing)
 
@@ -239,24 +239,28 @@ repository can enforce. There is no root `npm run release` shortcut; `release-pu
 
 ### Provenance
 
-`release-publish.yml` sets `NPM_CONFIG_PROVENANCE` from `repository.visibility`, so provenance
-is **off while the repo is private** (npm cannot attest a private source repo) and **auto-enables
-when the repo goes public**. All published manifests carry `repository` metadata pointing at
-`sealance-io/lionden`, which npm requires for GitHub-based trusted publishing.
+`release-publish.yml` sets `NPM_CONFIG_PROVENANCE` from `repository.visibility` on each run:
+provenance is generated when the repo is **public** and turned **off when it is private** (npm
+cannot attest a private source repo, so publishing with provenance would fail). All published
+manifests carry `repository` metadata pointing at `sealance-io/lionden`, which npm requires for
+GitHub-based trusted publishing.
 
 ## Dependency review & code scanning
 
 `actions/dependency-review-action` and zizmor's SARIF upload both require a **public repo** or
-**GitHub Advanced Security** on a private repo. While internal they skip cleanly via the gate:
+**GitHub Advanced Security** on a private repo. Both are gated on:
 
 ```
 github.event.repository.visibility == 'public' || vars.SECURITY_CHECKS_ON_PRIVATE == 'true'
 ```
 
-- Going public flips them on automatically.
-- To run them earlier on the private repo, **enable GitHub Advanced Security** and set repository
-  **variable** `SECURITY_CHECKS_ON_PRIVATE=true` (the override is needed because enabling GHAS
-  does not change `repository.visibility`).
+- **Public repo:** the gate is true, so both run with no extra configuration: dependency review
+  on pull requests, and zizmor's SARIF upload except on fork PRs, whose token cannot write.
+- **Private repo:** the gate is false by default, so the `dependency-review` job is skipped and
+  zizmor still runs and fails on findings but does not upload SARIF. To turn them on,
+  **enable GitHub Advanced Security** and set repository **variable**
+  `SECURITY_CHECKS_ON_PRIVATE=true` (the override is needed because enabling GHAS does not change
+  `repository.visibility`).
 
 ## Dependabot
 

@@ -31,7 +31,7 @@ This testing approach is built around a devnode-first workflow, suite-level isol
 - exposes well-known devnode accounts when connected to devnode, otherwise an empty account list
 - returns helpers for deploy, execute, advance blocks, and teardown
 
-The network `setup()` connects to is `network ?? config.defaultNetwork`. `lionden test --network <name>` now reaches worker `setup()` contexts: the CLI seeds the explicit `--network` into `globalOptions`, the `test` task bridges it to Vitest workers via `LIONDEN_NETWORK`, and each worker's LRE retargets `config.defaultNetwork` to it (see [Vitest Integration](#vitest-integration) and [`network.md`](network.md#network-selection-and-the-worker-bridge)). A per-call `setup({ network })` still wins over the bridged default.
+Target network precedence: `setup({ network })`, then an explicit `lionden test --network <name>` (bridged to workers; see [Vitest Integration](#vitest-integration)), then `config.defaultNetwork`.
 
 The resulting `TestContext` includes:
 
@@ -54,7 +54,7 @@ Generated typechain wrappers are preferred when the ABI is known. Use `ctx.raw.e
 
 `ctx.raw.execute(...)` accepts the same `options.imports?: readonly string[]` surface as the typed wrappers — useful when an escape-hatch call needs to load dynamic-dispatch targets (program ids or local `.aleo` paths) that the dispatching program doesn't `import` statically. See [`network.md` § Runtime Imports For Dynamic Dispatch](network.md#runtime-imports-for-dynamic-dispatch) for the full model.
 
-`ctx.execute(...)` and `ctx.raw.execute(...)` await on-chain confirmation by default and return the matching transition's parsed `outputs` (plus `rawOutputs`, the faithful on-chain output shape including any `idOnly` dynamic-record entries, whenever the call awaited confirmation). Pass `{ awaitConfirmation: false }` to recover fire-and-forget semantics — useful when broadcasting many transitions in parallel, or as the escape hatch for reentrant / recursive flows (see [`typechain.md` § `rawOutputs` Transition Identity](typechain.md#rawoutputs-transition-identity)).
+`ctx.execute(...)` and `ctx.raw.execute(...)` await on-chain confirmation by default and return the matching transition's parsed `outputs` (plus `rawOutputs`, the faithful on-chain output shape including any `idOnly` dynamic-record entries, whenever the call awaited confirmation). Pass `{ awaitConfirmation: false }` to recover fire-and-forget semantics — useful when broadcasting many transitions in parallel, or as the escape hatch for reentrant / recursive flows (see [`typechain.md` § `rawOutputs` transition identity](typechain.md#rawoutputs-transition-identity)).
 
 `deploy()` accepts a bare program name, a `.aleo` program id, or a generated wrapper with a `programId` property. It checks the deployment manager cache before invoking the `deploy` task. This avoids redeploying a program already deployed in the same session and returns the cached complete `{ programId, txId }` when available. If the deploy task skips all targets, `deploy()` checks the cache again and returns only complete records with a `txId`; degraded or recovered records still throw because they cannot identify the original deployment transaction. Pass `{ noSkipDeployed: true }` when a fixture must fail instead of reusing or skipping an existing deployment. `teardown()` invalidates the deployment cache for the connected network so the next test context revalidates state against the active network. The `network` property on `TestContext` exposes the connected network name. `TestContext` structurally satisfies `DeploymentContext` from `@lionden/plugin-deploy`, so deployment recipes can be called directly from test fixtures without any explicit type casting.
 
@@ -255,7 +255,7 @@ The programmatic Vitest runner currently:
 
 - sets `LIONDEN_PROJECT_ROOT` so worker processes can rediscover the project config
 - sets `LIONDEN_CONFIG_PATH` when the parent CLI loaded an explicit config path, so worker processes honor `--config <file>` instead of falling back to the nearest conventional filename
-- bridges an explicit `--network` to workers via `LIONDEN_NETWORK` (set only when `--network` was supplied; default runs leave it unset). Workers honor it in `lre-factory`'s `buildLre()`, retargeting `config.defaultNetwork`, and an unknown name throws a clear validation error
+- bridges an explicit `--network` to workers via `LIONDEN_NETWORK` (set only when `--network` was supplied; default runs leave it unset). Workers honor it in `lre-factory`'s `buildLre()`, retargeting `config.defaultNetwork`, and an unknown name throws a clear validation error. A per-call `setup({ network })` still wins over the bridged default. The CLI side of the selection is in [`network.md` § Network Selection And The Worker Bridge](network.md#network-selection-and-the-worker-bridge)
 - bridges an explicit `--deploy-backend` to workers via `LIONDEN_DEPLOY_BACKEND`, so `ctx.deploy()` in workers uses the selected backend even though workers rebuild their LRE without the parent's global options. Unlike `LIONDEN_NETWORK`, an ambient `LIONDEN_DEPLOY_BACKEND` is preserved when the flag is absent, because the variable is itself a documented selection layer (see [`deploy-backends.md` § Selecting A Backend](deploy-backends.md#selecting-a-backend))
 - suppresses LionDen divider lines for the full managed `lionden test` flow while keeping the surrounding task and transition logs visible
 - forwards color support to Vitest workers when the parent terminal supports color and `NO_COLOR`/`FORCE_COLOR` are not already set
@@ -297,10 +297,10 @@ The typed-output contract for `.accepted(...)`, `.settled(...)`, and `.rejected(
 
 ## Building And Recovering Dynamic Records (Leo v4 `dyn record`)
 
-Building `dyn record` inputs with `Leo.dynamicRecord(...)` or generated `codegen.dynamicRecords` helpers, and recovering records from the outputs with generated matchers, are documented in [`typechain.md` § Building And Recovering Dynamic Records](typechain.md#building-and-recovering-dynamic-records-leo-v4-dyn-record).
+Building `dyn record` inputs with `Leo.dynamicRecord(...)` or generated `codegen.dynamicRecords` helpers, and recovering records from the outputs with generated matchers, are documented in [`typechain.md` § Building and recovering dynamic records](typechain.md#building-and-recovering-dynamic-records-leo-v4-dyn-record).
 
 ## Strategy And Design Direction
 
-For the proposed repo-wide testing strategy, lane split, and rollout plan, use [`testing-strategy.md`](testing-strategy.md).
+For the repo-wide test taxonomy, CI lanes, root test scripts, and testing backlog, use [`testing-strategy.md`](testing-strategy.md).
 
 For the rationale behind the Vitest-based testing model, devnode-first assumptions, and known testing constraints, use [`vision-and-roadmap.md`](vision-and-roadmap.md). Use the testing package and example suites for current reality.
