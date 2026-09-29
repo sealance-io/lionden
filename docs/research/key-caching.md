@@ -37,6 +37,8 @@ Layout on disk:
   metadata.json     # RuntimeKeyCacheMetadata (format: "lionden.runtimeKeyCache.v1")
 ```
 
+`metadata.json` may also carry optional `diagnostics` (`sdkVersion`, `wasmVersion`); they are informational only and are not part of identity (`packages/core/src/key-artifacts.ts`).
+
 Atomic writes (temp+rename), fingerprint verification on read (size + SHA-256), reject-on-mismatch. LionDen still reads and injects matching runtime cache entries, but it no longer populates this cache on an execution miss. Cache misses synthesize lazily through `pm.execute` so state queries use the guarded `CallbackQuery`.
 
 ### 2. Compile-time sidecar `lionden-key-artifacts.json`
@@ -66,7 +68,12 @@ Source: `packages/network/src/sdk-adapter.ts` (`warmupCreditsKeys`, `PersistentF
 Two paths:
 
 - **Warmup-on-init.** When `keyCache.storage === "filesystem"` and `createSdkObjects` runs, LionDen reads `<keyCache.path>/lionden-credits/<wasmHash>/<network>/<base64url(locator)>.prover` + `.metadata.json` for every warmable entry in the SDK's `CREDITS_PROGRAM_KEYS`, verifies the metadata fingerprint, deserializes through `sdk.ProvingKey.fromBytes`, and primes the SDK's `AleoKeyProvider` cache via the public `cacheKeys()` API. The SDK's own credits-key code paths then return from cache without a network fetch.
-- **Write-back-after-fetch.** When the cache is cold (or stale `wasmHash`), the SDK fetches a covered `credits.aleo` proving key. `PersistentFunctionKeyProvider` intercepts the supported named-key accessors (`fee_*`, `inclusion`, `join`, `split`, bond/unbond/claim, transfer variants, `set_validator_state`) and persists the bytes to disk for the next process.
+- **Write-back-after-fetch.** When the cache is cold (or stale `wasmHash`), the SDK fetches a covered `credits.aleo` proving key. `PersistentFunctionKeyProvider` intercepts the supported named-key accessors (`fee_*`, `inclusion`, `join`, `split`, bond/unbond/claim), `transferKeys(visibility)`, and credits entries reached through `functionKeys()` (such as `set_validator_state`), and persists the bytes to disk for the next process.
+
+How the wrapper identifies the credits entry it persists on the two indirect accessors:
+
+- **`transferKeys(visibility)`** maps each visibility alias the SDK recognizes (short, camelCase, and `transfer_*` snake-case forms, e.g. `"private"`, `"transferPrivate"`, `"public_as_signer"`, `"transferPublicAsSigner"`) to its `transfer_*` credits entry before persisting. Unknown visibility strings are passed through to the SDK (whose `AleoKeyProvider` currently rejects them) and never persisted.
+- **`functionKeys(params)`** is the only SDK path to `set_validator_state`, which has no dedicated key-provider method. The wrapper identifies that entry, and any other credits entry the SDK routes the same way, by `name`, by `cacheKey: "credits.aleo/<entry>"`, or by matching `proverUri` against `CREDITS_PROGRAM_KEYS`, and persists it by entry name.
 
 Identity for covered credits keys is `(locator, network, wasmHash)`. Verifying keys are never persisted — they're reconstructed for free from WASM-bundled credits metadata on every warmup.
 
@@ -76,7 +83,7 @@ For a proven execution (`packages/network/src/connection.ts` → `getPersistentE
 
 1. **Sidecar refs** — when the program's `lionden-key-artifacts.json` declares matching `.prover` + `.verifier` files in the artifact directory and both file fingerprints verify, use them.
 2. **Runtime cache** — match on the full circuit identity, verify both file fingerprints, use them.
-3. **SDK lazy synthesis on misses** — if neither cache layer has keys, do not call eager `ProgramManagerBase.synthesizeKeyPair(...)`. Execute without injected keys and let `pm.execute` synthesize lazily through the SDK's `CallbackQuery`; those keys are not persisted by LionDen on that call.
+3. **SDK lazy synthesis on misses** — if neither cache layer has keys, do not call eager `ProgramManagerBase.synthesizeKeyPair(...)`. Execute without injected keys (passing only the program edition, when the network reports one) and let `pm.execute` synthesize lazily through the SDK's `CallbackQuery`; those keys are not persisted by LionDen on that call.
 
 Source/imports/wasm hash changes invalidate the cache as expected: a recompiled program with the same id but a changed circuit gets a new identity hash and misses until new sidecar/runtime keys are available or the SDK synthesizes lazily for that call.
 
@@ -86,11 +93,11 @@ For covered named `credits.aleo` keys:
 2. **SDK** uses its own resolution path (now hot in process memory).
 3. On cache miss, **write-back-after-fetch** persists for the next process.
 
-Cross-reference: [`../network.md`](../network.md) walks the same flow from the user-facing angle in its SDK key-cache section.
+Cross-reference: [`../network.md` § SDK Objects](../network.md#sdk-objects) has the `sdk.keyCache` config and a concise per-path table of user-visible cache behavior; this section is the canonical lookup order.
 
 ## What isn't persisted by LionDen
 
-From [`../network.md`](../network.md)'s filesystem key-cache behavior table and SDK-controlled path notes:
+These paths keep the SDK's own fetch/cache behavior (they also appear as rows in the user-facing behavior table in [`../network.md` § SDK Objects](../network.md#sdk-objects)):
 
 - **Deploy / upgrade program keys.** Not persisted by LionDen v1; SDK manages its own.
 - **Translation keys.** SDK exposes metadata but no public execution-injection hook, so LionDen has no path to persist them.

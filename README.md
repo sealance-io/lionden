@@ -198,41 +198,7 @@ For subsystem detail, use the focused docs in `docs/` instead of loading everyth
 
 ## Examples
 
-`examples/hello-world` shows the smallest usable setup:
-
-- one Leo program
-- one deployment script
-- one Vitest suite
-
-`examples/token` demonstrates a more realistic flow:
-
-- mappings
-- private and public transitions
-- richer test assertions via `@lionden/testing`
-
-`examples/multi-program` demonstrates cross-program interactions:
-
-- multiple programs with inter-program calls
-- dependency graph resolution
-- typechain usage for typed contract wrappers
-
-`examples/nft-registry` showcases structs, records, and test patterns:
-
-- struct and record definitions with `field` type
-- `loadFixture()` for shared test setup
-- local execution mode (no finalize)
-
-`examples/async-escrow` demonstrates typechain bindings in tests:
-
-- generated TypeScript contract wrappers for all transitions
-- escrow state machine with on-chain status transitions
-- `assertMappingValue` for verifying mapping state
-
-`examples/renamed_dynamic_records` demonstrates renamed deployment with dynamic records:
-
-- `deploy --program gold_token --rename tenant_gold`
-- runtime dynamic dispatch into the renamed program
-- admin-authorized upgrade of the renamed deployment
+Start with `examples/hello-world`, the smallest usable setup: one Leo program, one deployment script, and one Vitest suite. The [Monorepo Layout](#monorepo-layout) table lists the other examples; see [`docs/project-layout.md`](docs/project-layout.md#examples) for what each one demonstrates.
 
 ## Documentation Map
 
