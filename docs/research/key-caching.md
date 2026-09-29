@@ -4,7 +4,7 @@ When to read this: use this file for the rationale behind LionDen's key-cache la
 
 ## What ships today
 
-LionDen persists proving-key material in three coordinated places by default:
+LionDen coordinates three proving-key caches by default. They are not all written the same way: covered `credits.aleo` keys are persisted after an SDK fetch, the runtime execution-key cache is read on a hit but not populated on a miss, and the compile-time sidecar only records key references when Leo emits key files:
 
 ```ts
 sdk: {

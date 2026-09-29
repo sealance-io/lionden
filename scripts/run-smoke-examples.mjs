@@ -181,11 +181,11 @@ function coverageLane(groups) {
  * Environment for the `test` run: coverage plumbing plus the deploy-backend
  * selection.
  *
- * The backend travels as `LIONDEN_DEPLOY_BACKEND` rather than as
- * `--deploy-backend`, because the deploys under test happen inside Vitest
- * worker processes spawned by the `test` task. A global CLI option is scoped to
- * the LRE in the parent process; the environment variable is process-global and
- * inherited by the workers, which is the selection layer built for exactly this.
+ * The backend travels as `LIONDEN_DEPLOY_BACKEND` in the `test` child's
+ * environment. The deploys under test happen inside Vitest worker processes
+ * spawned by the `test` task, which inherit the variable; the `test` task also
+ * bridges an explicit `--deploy-backend` to its workers through the same
+ * variable, so for worker deploys the two are equivalent.
  *
  * Only `test` gets it — `compile` and `tsc` deploy nothing.
  */

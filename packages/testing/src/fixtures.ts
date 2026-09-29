@@ -6,8 +6,10 @@
  * the same fixture function, it is only executed once; subsequent
  * calls return the cached result.
  *
- * Since devnode has no snapshot/revert, fixture caching is the primary
- * mechanism for test setup reuse within a suite.
+ * Fixture caching reuses setup results within a suite; it does not restore
+ * chain state. Ledger rollback is a separate, explicit opt-in:
+ * `setup({ snapshotReset: true })` exposes `ctx.snapshot()` / `ctx.restore()`
+ * on the standalone devnode backend.
  */
 
 // Cache: fixture function reference → { result, promise }
