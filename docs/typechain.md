@@ -14,7 +14,7 @@ All `codegen.*` keys are optional:
 | --- | --- | --- |
 | `codegen.enabled` | `true` | Generates TypeScript bindings during `compile`. `false` skips generation; `compile --no-typechain` skips it for a single run regardless of this setting. |
 | `codegen.outDir` | top-level `typechainDir`, whose default is `"typechain"` | Output directory, relative to the project root. When set, it overrides `typechainDir`. The resolved absolute path is `config.paths.typechain`. |
-| `codegen.dynamicRecords` | none | Map from emitted helper name to `{ sourceRecord, sourceProgram?, schema }`. `sourceProgram` is only needed to disambiguate. See [§ Dynamic-record helper configuration](#dynamic-record-helper-configuration). |
+| `codegen.dynamicRecords` | none | Map from emitted helper name to `{ sourceRecord, sourceProgram?, schema }`. `sourceProgram` disambiguates record ownership and scopes helpers during targeted compilation. See [§ Dynamic-record helper configuration](#dynamic-record-helper-configuration). |
 
 ### Dynamic-record helper configuration
 
