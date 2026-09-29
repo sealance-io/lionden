@@ -345,7 +345,7 @@ export interface CapturedRecord<T> {
  * sibling concrete output in the same callgraph (typically the materialized
  * static record that a V15-compliant callee emitted alongside the dynamic
  * handle, per snarkVM's V15 record-existence rule) and decrypts that
- * ciphertext via the matcher's deserializer. See \`docs/network.md\` §
+ * ciphertext via the matcher's deserializer. See \`docs/typechain.md\` §
  * Id-only record outputs for the recovery flow.
  */
 export interface IdOnlyDynamicRecordHandle extends IdOnlyRecordHandleBase {
