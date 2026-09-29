@@ -55,18 +55,18 @@
     "reconcile-release-tags": "node scripts/reconcile-release-tags.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.13",
-    "@changesets/apply-release-plan": "^8.0.0",
+    "@biomejs/biome": "2.5.14",
+    "@changesets/apply-release-plan": "^8.1.1",
     "@changesets/assemble-release-plan": "^7.0.0",
     "@changesets/changelog-github": "^0.7.0",
-    "@changesets/cli": "^3.0.2",
+    "@changesets/cli": "^3.0.3",
     "@changesets/config": "^4.0.0",
     "@changesets/pre": "^3.0.0",
     "@changesets/read": "^1.0.0",
     "@manypkg/get-packages": "^3.1.0",
-    "@types/node": "24.13.4",
+    "@types/node": "24.13.6",
     "@vitest/coverage-v8": "^4.1.11",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.0",
     "vitest": "^4.1.8"
   },
