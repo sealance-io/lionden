@@ -26,7 +26,8 @@ Open the smallest relevant doc first:
 | Task | Primary doc |
 | --- | --- |
 | Plugin system, config lifecycle, task registry, CLI boot flow | [`docs/architecture.md`](docs/architecture.md) |
-| Source discovery, package materialization, `leo build`, ABI parsing, codegen | [`docs/compiler.md`](docs/compiler.md) |
+| Source discovery, package materialization, `leo build`, ABI parsing, codegen pipeline | [`docs/compiler.md`](docs/compiler.md) |
+| Generated TypeScript bindings: wrappers, `codegen.*` config, inputs, views/mappings/storage accessors, record helpers, typed broadcast results, id-only record outputs | [`docs/typechain.md`](docs/typechain.md) |
 | Network configs, devnode/HTTP, `node`, `run`, SDK integration | [`docs/network.md`](docs/network.md) |
 | Deployment state, `deploy`, the thin `upgrade` task, `export` | [`docs/deployment.md`](docs/deployment.md) |
 | SDK vs Leo CLI deploy backends, backend selection, Leo argv/env mapping, backend security | [`docs/deploy-backends.md`](docs/deploy-backends.md) |

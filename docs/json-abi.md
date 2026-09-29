@@ -25,7 +25,7 @@ The root object is a `Program`:
 | `mappings` | `Mapping[]` | On-chain key-value storage declarations |
 | `storage_variables` | `StorageVariable[]` | Storage variable declarations |
 | `functions` | `Function[]` | Public entry points (compiled to Aleo transitions) |
-| `views` | `View[]` | Optional, may be absent (Leo 4.1+). Read-only view functions with the same `name` / `inputs` / `outputs` shape as `functions`; unmoded view plaintext maps to `Public` (see [Mode](#mode)). Drives generated `contract.views` wrappers (see [`compiler.md` § View functions](compiler.md#view-functions)). |
+| `views` | `View[]` | Optional, may be absent (Leo 4.1+). Read-only view functions with the same `name` / `inputs` / `outputs` shape as `functions`; unmoded view plaintext maps to `Public` (see [Mode](#mode)). Drives generated `contract.views` wrappers (see [`typechain.md` § View functions](typechain.md#view-functions)). |
 | `implements` | array | Leo 4.1 only: interfaces the program implements. Removed in Leo 4.2 (see [Leo 4.2 Wire Shape](#leo-42-wire-shape)). |
 
 The five core array fields (`structs`, `records`, `mappings`, `storage_variables`, `functions`) are present even when empty; `views` and `implements` are optional.
@@ -204,127 +204,11 @@ Each `RecordField`:
 
 ### Generated Record Helpers
 
-For every record in the ABI, codegen emits three helpers (plus the interface):
-
-- `serialize<Name>(value, ctx?): string` — JS object → Leo literal. Round-trips losslessly via the `BaseContract.RECORD_RAW` symbol cache so visibility-suffixed records survive re-input.
-- `deserialize<Name>(value): <Name>` — Leo literal → typed JS object. Stashes the raw literal on `RECORD_RAW` for future re-serialization.
-- `async decrypt<Name>(ciphertext, key): Promise<<Name>>` — `record1...` ciphertext + decryption key → typed JS object. Internally delegates to `BaseContract.decryptRecord` which awaits `@lionden/network`'s SDK-load and runs `deserialize<Name>` over the plaintext; RECORD_RAW is preserved through this path too.
-
-Imported records (records declared in another program) reuse the originating program's generated helpers — no duplicate emission. See `docs/testing.md` for the decrypt key API and `SettledTransition.rawOutputs` transition-identity contract.
+The per-record helpers codegen emits (`serialize<Name>`, `deserialize<Name>`, `decrypt<Name>`) are documented in [`typechain.md` § Generated record helpers](typechain.md#generated-record-helpers).
 
 ### Interface Conversion Helpers (`codegen.dynamicRecords`)
 
-Programs that consume Leo v4 `dyn record` inputs through a shared interface (e.g. `compliant_amm` accepting any `Token`-shaped record) need a single-line conversion at every call site. Codegen can emit those helpers from a project-wide config map keyed by helper name:
-
-```ts
-// lionden.config.ts
-export default defineConfig({
-  codegen: {
-    dynamicRecords: {
-      asPoolToken: {
-        sourceRecord: "Token",
-        // Optional. Required only when multiple compiled programs declare a
-        // record with the generated name "Token".
-        sourceProgram: "stable_token.aleo",
-        schema: {
-          owner: "address.private",
-          amount: "u128.private",
-          _version: "u8.public",
-          _nonce: "group.public",
-        },
-      },
-    },
-  },
-});
-```
-
-The emitted helper lives alongside `decrypt<Name>` in the source program's generated module, using a callable+namespace pattern (`Object.assign`) so the helper is both a function and a namespace carrying the output-side `.output` matcher and a `.forProgram(...)` rebinding method:
-
-```ts
-// typechain/StableToken.ts (generated)
-function _asPoolTokenImpl(value: TokenInput & { readonly _version?: number }): LeoDynamicRecord {
-  BaseContract.assertObject(value);
-  const _raw = (value as unknown as { readonly [k: symbol]: unknown })[BaseContract.RECORD_RAW];
-  if (typeof _raw === "string") return Leo.unsafe.dynamicRecord(_raw);
-  return Leo.dynamicRecord(value, {
-    owner: "address.private" as const,
-    amount: "u128.private" as const,
-    _nonce: "group.public" as const,
-    _version: "u8.public" as const,
-  } as const);
-}
-export const asPoolToken = Object.assign(_asPoolTokenImpl, {
-  output: createRecordOutputMatcher<Token>({
-    program: "stable_token.aleo",
-    recordName: "Token",
-    deserialize: deserializeToken,
-  }),
-  forProgram(programId: string) {
-    return bindDynamicRecordHelperProgram(_asPoolTokenImpl, asPoolToken.output, programId);
-  },
-});
-```
-
-The value type gains `& { readonly _version?: number }` only when the schema declares `_version`. The codegen golden [`interface-helpers.ts`](../packages/leo-compiler/src/codegen/__goldens__/interface-helpers.ts) is the authoritative current output for this configuration.
-
-The original plaintext of a decrypted record takes precedence over schema encoding, preserving runtime metadata such as `_version` even when absent from the ABI. Pass the original decrypted object; object spread, `structuredClone`, and JSON round-trips drop its non-enumerable `RECORD_RAW` cache. To persist a held record, store the plaintext string from `serialize<Name>` (or the ciphertext) and rehydrate it through `deserialize<Name>` or `decrypt<Name>`, which re-attach the cache. Manually constructed inputs still use the configured schema and its validation. Declaring `_version: "u8.public"` in the schema lets them carry the record version (`_version: 1` on the value); omitting `_version` on the value yields a versionless literal, which the VM reads as version 0.
-
-Callers import `asPoolToken` directly for input conversion:
-
-```ts
-await amm.add_liquidity.locally(asPoolToken(tok), /* ... */);
-```
-
-The same helper is the preferred output-side matcher when the dispatched call returns a `dyn record` handle:
-
-```ts
-const accepted = await amm.route_transfer.accepted(asPoolToken(tok), to);
-
-const recovered = await accepted.outputs
-  .match(asPoolToken.output.from("transfer", 0))
-  .decrypt(to);
-```
-
-**`.output`** is a `RecordOutputMatcher<T>` carrying the program id, source record name, the matching deserializer, and `.from(...)` / `.at(...)` builders that bind a transition source. It feeds every record-output arm:
-
-- `IdOnlyExternalRecordHandle<T>.match(matcher.from(name, idx)).decrypt(key)` — selects the callee transition that emitted the external `Record` and decrypts via the matcher.
-- `IdOnlyDynamicRecordHandle.match(matcher.from(name, idx)).decrypt(key)` — selects an explicit sibling concrete output materialized by a V15-compliant callee (does **not** dereference the dynamic-record id).
-- `EncryptedRecord<T>.match(matcher).decrypt(key)` — re-routes decryption through the matcher's deserializer, with an identity guard requiring `matcher.program` / `matcher.recordName` to equal the ciphertext's metadata.
-
-Prefer named `.from(...)` in application code because the matcher's `program` is inherited as the source `programId`; use `.from(..., { match: n })` when the same transition appears multiple times. `.at(...)` is the positional escape hatch for awkward callgraphs and tests. `.match` is a pure builder; all resolution + identity checks + decryption are deferred to `.decrypt(key)`. See [`network.md` § Id-only record outputs](network.md#id-only-record-outputs-dyn-record-and-external-record) for the client-side flow and [`research/dynamic-records-v15.md`](research/dynamic-records-v15.md) for the V15 record-existence materialization model that makes sibling concrete outputs available in compliant programs.
-
-**`.forProgram(programId)`** returns a new helper, leaving the original unchanged, whose `.output` matcher is bound to a runtime program id, so `.from(...)` and the identity guards use that id. Use it when the source program is deployed under another id, for example with `deploy --rename`; input conversion is unchanged:
-
-```ts
-const asTenantPoolToken = asPoolToken.forProgram("tenant_stable_token.aleo");
-
-const recovered = await accepted.outputs
-  .match(asTenantPoolToken.output.from("transfer", 0))
-  .decrypt(to);
-```
-
-See [`examples/renamed_dynamic_records`](../examples/renamed_dynamic_records/test/renamed_dynamic_records.test.ts) for an end-to-end renamed deployment.
-
-**Cross-program external records** also emit a sibling `<ExternalRecord>.output` value binding alongside the imported type. For example, an `external_token_demo.aleo` typechain that imports `gold_token.aleo::Token` produces both the type alias `GoldToken_Token` and a value `GoldToken_Token.output: RecordOutputMatcher<GoldToken_Token>` — no `codegen.dynamicRecords` entry required for cross-program record decryption.
-
-For programs with **unresolved external types** (the referenced ABI isn't available at codegen time), the typechain falls back to `IdOnlyExternalRecordHandle<LeoDynamicRecord>` and emits no typed helper. Callers construct a matcher inline via the public `createRecordOutputMatcher<MyShape>({ program, recordName, deserialize })` factory and chain `.from` or `.at` as usual.
-
-**Naming**: `sourceRecord` must match the generated TS record type name (`pathToTsName(record.path)`). For module-scoped records, that's the joined PascalCase form, e.g. `Foo_Bar_Token` for `foo::bar::Token`. Set `sourceProgram` when more than one compiled program declares the same generated record name; `examples/aleo-ports/dynamic_records` uses this for `gold_token.aleo::Token` and `silver_token.aleo::Token`.
-
-On targeted compile (`compile --program`), helpers with `sourceProgram` outside the compiled subset are ignored for that run. Full compile remains strict. Helpers without `sourceProgram` still validate against the compiled subset and may require explicit `sourceProgram` when compiling one program at a time.
-
-**Schema rules**:
-
-- Schema keys must exactly match the **generated record shape**: implicit `owner: address`, every ABI field that isn't a re-declaration of `owner`, and implicit `_nonce: group`. The schema may additionally declare optional `_version: "u8.public"` metadata (it must be a public `u8`); the value may omit it.
-- The emitted literal always follows the canonical record layout (`owner`, ABI fields in ABI order, `_nonce`, then `_version`); the key order in the config is irrelevant.
-- Schema entry primitives must match each record field's declared type (visibility may differ — that's the point of the helper).
-- Supported primitives: `address`, `boolean`, `field`, `group`, `scalar`, `u8`-`u128`, `i8`-`i128`. `Identifier`, `Signature`, struct, array, and optional fields are rejected with `CodegenError` at compile time.
-
-**Validation layers**:
-
-- **Config shape** (plugin-leo `validateUserConfig` hook): non-object map, invalid helper names, non-object helpers, malformed schema entries → aggregated into `ConfigResolutionError`.
-- **ABI routing** (plugin-leo compile task): `sourceRecord` does not match a compiled program, ambiguous record name without `sourceProgram`, or `sourceProgram` doesn't declare the record → `CodegenError`.
-- **Schema vs generated record** (typescript-generator emit): missing/extra schema keys or primitive-type mismatch → `CodegenError`.
+`codegen.dynamicRecords` configuration (naming, targeted compile, schema rules, and validation layers) is documented in [`typechain.md` § Dynamic-record helper configuration](typechain.md#dynamic-record-helper-configuration). The emitted helpers, their `.output` matchers, and `.forProgram(...)` are documented in [`typechain.md` § Interface conversion helpers](typechain.md#interface-conversion-helpers).
 
 ## Mappings
 
@@ -346,7 +230,7 @@ On-chain key-value storage. Declared as `mapping name: KeyType => ValueType` in 
 
 Each mapping produces a `mappings.<camelName>` accessor group in the generated TypeScript
 bindings (`contains` / `get` / `getOrUse` / `tryGet`). The ABI schema itself is unchanged —
-see [`compiler.md` § Mapping accessors](compiler.md#mapping-accessors).
+see [`typechain.md` § Mapping accessors](typechain.md#mapping-accessors).
 
 ## Storage Variables
 
@@ -421,7 +305,7 @@ The parser canonicalizes an unmoded value to `Private` for transitions/record fi
 `Public` for views, so `"None"` never reaches codegen. Mode is only meaningful for the
 `Plaintext` variant; `Record`/`Final`/`DynamicRecord` carry an inert `Private` that is never read.
 
-Lionden codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "Private"` (or `"Constant"`) come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See `docs/testing.md` for the typed-broadcast contract.
+Lionden codegen consumes `mode` when projecting on-chain transition outputs into the typed `outputs` field of `AcceptedTransition<TOutputs>`. Plaintext outputs with `mode: "Public"` are decoded eagerly to their TS type. Plaintext outputs with `mode: "Private"` (or `"Constant"`) come back as Aleo value ciphertexts (`ciphertext1...`) on chain and are wrapped as `EncryptedValue<T>` handles in the typed shape — the caller invokes `outputs.decrypt(key)` to decode them. Record outputs are similarly wrapped as `EncryptedRecord<T>`. See [`typechain.md` § Typed broadcast results](typechain.md#typed-broadcast-results) for the typed-broadcast contract.
 
 ### FunctionInput
 
