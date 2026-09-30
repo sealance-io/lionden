@@ -1,5 +1,14 @@
 # @lionden/plugin-network
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [[`d518056`](https://github.com/sealance-io/lionden/commit/d51805694b331653d76f68f2112aee5f639ee4e5), [`02c5cce`](https://github.com/sealance-io/lionden/commit/02c5ccea26fa91c5613c93f3c85115c15fb4bd10)]:
+  - @lionden/network@0.5.1
+  - @lionden/config@0.5.1
+  - @lionden/core@0.5.1
+
 ## 0.5.0
 
 ### Patch Changes
