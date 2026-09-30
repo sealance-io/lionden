@@ -1,5 +1,13 @@
 # @lionden/leo-compiler
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @lionden/config@0.5.1
+  - @lionden/core@0.5.1
+
 ## 0.5.0
 
 ### Minor Changes
