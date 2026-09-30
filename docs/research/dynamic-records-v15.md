@@ -284,8 +284,8 @@ dereference the dynamic-record id, because the id has no ciphertext to decrypt.
 
 ## Metadata-Fix Verification (2026-09-08)
 
-Verified on Leo 4.3.2 with SDK/WASM 0.11.9 (the version resolved by this
-repository's lockfile) and the fixed generator:
+Verified on Leo 4.3.2 with SDK/WASM 0.11.9 (the version resolved by the
+repository's lockfile at the time of verification) and the fixed generator:
 
 - The codegen unit, runtime, golden, and typecheck suites pass. The two
   version-preservation regression tests fail against the old generator and pass
