@@ -97,7 +97,7 @@ jobs:
       # to code scanning is gated on visibility — it needs GitHub Advanced Security on a
       # private repo, so on a private repo without it zizmor runs for its exit code only.
       - name: Run zizmor
-        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           persona: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'auditor' || 'pedantic' }}
           min-severity: medium
@@ -108,7 +108,7 @@ jobs:
       # Inline PR annotations (no SARIF upload — safe on private repos).
       - name: Annotate PR
         if: github.event_name == 'pull_request'
-        uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           persona: pedantic
           min-severity: medium
