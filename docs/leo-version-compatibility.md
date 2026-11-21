@@ -2,7 +2,7 @@
 
 When to read this: use this file for choosing or configuring a Leo line (`leoVersion`, `leoBinary`, `skipLeoVersionCheck`, preflight), v3.5 support limits and migration to v4, and devnode consensus heights. Contributor notes on version-gated compiler, devnode, and deploy behavior are in [Implementation Notes](#implementation-notes).
 
-> **Different support ranges.** Everything on this page describes LionDen's **compile and devnode** range: Leo 3.5 through 4.4. The default **SDK deploy backend** uses the locked `@provablehq/sdk@0.11.11`. Its newer consensus support does not expand LionDen's verified Leo range. The optional **Leo CLI deploy backend** (`deploy.backend: "leo"`, which shells out to `leo deploy` / `leo upgrade`) supports **4.3.x and 4.4.x only** after line-specific CLI deploy/upgrade probes. Future Leo minor lines require separate verification before admission. See [`deploy-backends.md`](deploy-backends.md#leo-version-support).
+> LionDen supports **Leo 3.5 through 4.4** for compilation and devnode use. The default **SDK deploy backend** uses the locked `@provablehq/sdk@0.12.1`. The optional **Leo CLI deploy backend** (`deploy.backend: "leo"`) supports **4.3.x and 4.4.x only**, the lines verified with `leo deploy` and `leo upgrade`. Future Leo minor lines require separate verification. See [Leo CLI deploy backend support](deploy-backends.md#leo-version-support).
 
 ## Supported Versions
 
@@ -82,7 +82,9 @@ Both managed backends behave as testnet-like local chains in practice, whatever 
 
 ### Consensus V16+ on the Leo 4.3+ devnode
 
-The Leo 4.3.2 devnode advances through its 4.3-era consensus test heights, which end at **V17** (V16 rules active plus the V17 anchor-time revert). Leo 4.4.2 extends the devnode schedule through **V19**. The locked SDK 0.11.11 uses snarkVM 4.10.0, which adds **V20** and a **V21** placeholder. Updating the SDK does not update the devnode binary or establish compatibility between their consensus schedules; SDK-backed deployment and proving must be verified against the supported Leo lines. LionDen initializes the SDK's default test heights without `--consensus-heights`. These local test schedules differ from **public TestnetV0**, where some future consensus heights may be disabled or staged differently.
+The Leo 4.3.2 devnode schedule ends at **V17** (V16 rules plus the V17 anchor-time revert). Leo 4.4.2 extends the devnode schedule through **V19**. Each Leo binary determines its own local activation heights. Public TestnetV0 follows a separate schedule.
+
+SDK 0.12.1 uses snarkVM 4.11.0, where **V21** activates Varuna V3 and **V22** is a placeholder. Verify SDK-backed deployment and proving against each supported Leo line using the locked SDK. See the [SDK 0.12.0 consensus changes](https://github.com/ProvableHQ/sdk/releases/tag/v0.12.0) and [SDK 0.12.1 release notes](https://github.com/ProvableHQ/sdk/releases/tag/v0.12.1).
 
 ## Compatibility Matrix
 
@@ -134,7 +136,7 @@ These details are relevant to contributors working on the compiler and deploy pi
 
 - **Compiled bytecode.** v3.5 and v4 produce structurally identical `main.aleo` output: same `function`/`finalize` sections, same `constructor:` block layout, same `.future` dispatch. The v4 devnode accepts v3.5-compiled bytecode without issue.
 
-- **SDK compatibility.** The lockfile resolves `@provablehq/sdk@0.11.11` / `@provablehq/wasm@0.11.11`. For devnode connections the SDK derives its own consensus test heights via `getOrInitConsensusVersionTestHeights()`, independent of any Leo `--consensus-heights` flag. SDK 0.11.11 requires 21 entries if a caller supplies an explicit list; LionDen supplies no list. See the [upstream release notes](https://github.com/ProvableHQ/sdk/releases/tag/v0.11.11) for the snarkVM upgrade and signing restriction. Passing checks with an older installed SDK does not validate this locked version's deployment or proving behavior.
+- **SDK compatibility.** The lockfile resolves both `@provablehq/sdk` and `@provablehq/wasm` to `0.12.1`. For devnode connections, LionDen calls `getOrInitConsensusVersionTestHeights()` with no arguments and uses the SDK defaults, independently of Leo's `--consensus-heights` flag. Direct SDK callers who supply an explicit list must provide 22 heights. The SDK's off-chain `snarkVerify` and `snarkVerifyBatch` functions now require Varuna V3 proofs. Regenerate stored Varuna V2 proofs with snarkVM 4.11.0 or later before using those functions. See the [upstream compatibility notes](https://github.com/ProvableHQ/sdk/releases/tag/v0.12.0).
 
 - **Managed Leo invocations.** LionDen passes `--disable-update-check` before every managed Leo command: `--version`, `build`, `devnode start`, and — when the Leo deploy backend is selected — `deploy` and `upgrade`. This is fixed behavior, not a user-configurable setting.
 
