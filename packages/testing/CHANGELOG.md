@@ -1,5 +1,15 @@
 # @lionden/testing
 
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [[`0841aac`](https://github.com/sealance-io/lionden/commit/0841aac90a3e12781cad3f1fe4a2529acf210559)]:
+  - @lionden/network@0.5.2
+  - @lionden/config@0.5.2
+  - @lionden/core@0.5.2
+  - @lionden/leo-compiler@0.5.2
+
 ## 0.5.1
 
 ### Patch Changes

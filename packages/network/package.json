@@ -1,6 +1,6 @@
 {
   "name": "@lionden/network",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "license": "Apache-2.0",
   "type": "module",
   "repository": {
@@ -28,8 +28,8 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@lionden/config": "^0.5.1",
-    "@lionden/core": "^0.5.1",
+    "@lionden/config": "^0.5.2",
+    "@lionden/core": "^0.5.2",
     "@provablehq/sdk": "^0.12.1"
   }
 }
