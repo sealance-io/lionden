@@ -1,5 +1,14 @@
 # @lionden/network
 
+## 0.5.2
+
+### Patch Changes
+
+- [#126](https://github.com/sealance-io/lionden/pull/126) [`0841aac`](https://github.com/sealance-io/lionden/commit/0841aac90a3e12781cad3f1fe4a2529acf210559) Thanks [@dependabot](https://github.com/apps/dependabot)! - Raise the minimum `@provablehq/sdk` version to `0.12.1`, which includes snarkVM 4.11.0 and Varuna V3 support. If you call the SDK's `snarkVerify` or `snarkVerifyBatch` directly, regenerate stored Varuna V2 proofs before verifying them with this version.
+- Updated dependencies []:
+  - @lionden/config@0.5.2
+  - @lionden/core@0.5.2
+
 ## 0.5.1
 
 ### Patch Changes
