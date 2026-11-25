@@ -125,15 +125,18 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 1. `check-release` confirms the push is the merged `changeset-release/main` PR.
 2. The `publish-npm` job (behind the protected **`npm-publish`** environment — a maintainer must
    approve) builds, then runs `changeset publish` to publish every bumped package to npm via
-   **OIDC trusted publishing** (no tokens). Publishing is idempotent: already-published versions
-   are skipped.
-3. The workflow checks all 11 current package versions concurrently, retrying with bounded
-   exponential backoff within one shared five-minute deadline for them to appear in npm's
-   packuments, with a 15-second timeout on each registry request. Persistent registry failures
-   fail the protected release job; if every version did reach npm, repair the missing tags and
-   Releases as described in [Recovery](#recovery) instead of rerunning publication. The workflow
-   reads only those current versions' immutable `gitHead` values, validates existing refs from
-   one remote-tag snapshot, pushes missing refs as one batch, and verifies the batch with a second
+   **OIDC trusted publishing** (no tokens). Changesets skips versions it can already see on npm.
+3. The workflow checks all 11 current package versions concurrently. It retries outstanding
+   registry reads with bounded exponential backoff and a 15-second timeout per request. The
+   shared 25-minute deadline allows for npm's publish-time scan and metadata propagation.
+   Reconciliation proceeds as soon as every exact version is visible. If the deadline expires,
+   the job fails and its Actions summary lists the elapsed time, outstanding versions, and last
+   lookup error for each. Non-retryable registry failures (such as a 403, unexpected metadata,
+   or a missing or invalid `gitHead`) fail the protected job immediately and are recorded in the
+   same summary. Repair those through [Recovery](#recovery) instead of rerunning publication.
+   Metadata-only manual dispatches use a five-minute deadline instead, because they never publish.
+   The workflow reads those current versions' immutable `gitHead` values, validates existing refs from
+   one remote-tag snapshot taken after the registry wait, pushes missing refs as one batch, and verifies the batch with a second
    snapshot. Historical npm versions are deliberately outside the critical release path: automatic
    and metadata-only runs both ignore them, which avoids granting the release App permission to
    write workflow files merely to create a tag at a historical commit whose workflow tree differs
@@ -173,13 +176,26 @@ Merging the "Version Packages" PR triggers **`release-publish.yml`**:
 
 ## Recovery
 
-Two failure shapes, two different actions. Decide by comparing npm with the release commit's
-manifests before doing anything.
+Compare the original **Publish bumped packages to npm** step with the exact versions in the
+release commit's manifests.
 
-1. **Some package versions are missing from npm** (the publish job failed part-way, or the
-   registry rejected some packages), **and that release is still the intended one**: no newer
-   version has been published since, and its source needs no correction. **Re-run the failed
-   `publish-npm` job from the original release run** (Actions → that run → *Re-run failed jobs*).
+1. **Publish succeeded and registry visibility timed out.** Check the outstanding versions in
+   the Actions summary. Use `npm view <package>@<version> gitHead --prefer-online` to check
+   each exact version. npm can accept a version before it becomes visible, and dist-tags can
+   already work during scanning. Wait for visibility and check npm maintainer notifications if
+   the delay persists or npm reports a hold or block. Once all 11 versions are visible, use
+   the metadata-only dispatch below. See [npm's publish-time scanning announcement](https://github.blog/changelog/2026-07-28-npm-publish-time-malware-scanning-and-dual-use-metadata/).
+2. **Every package version is on npm, but tags or GitHub Releases are missing.** Manually
+   dispatch **Release - Publish** from `main` while its manifests still declare the affected
+   versions. This repairs only the current versions' tags and Releases. Do not re-run the
+   publish job for metadata repair. Tag repair needs a valid `gitHead`: if a visible version
+   reports a missing or invalid `gitHead`, every dispatch fails the same check. Investigate
+   that version's registry metadata (`npm view <package>@<version> gitHead --prefer-online`)
+   before dispatching.
+3. **Publication failed part-way.** Confirm which versions npm never accepted and wait until
+   every accepted version is visible to Changesets. If no newer version has shipped and the
+   release source needs no correction, **re-run the failed `publish-npm` job from the original
+   release run** (Actions → that run → *Re-run failed jobs*).
    The rerun keeps the original commit and event, so the release gate still recognises the merged
    Version Packages PR; it remains subject to the `npm-publish` environment's current protection
    rules, so approve the pending deployment if requested. `changeset publish` skips versions
@@ -187,10 +203,6 @@ manifests before doing anything.
    Never re-run a superseded release: `changeset publish` tags every package it publishes as
    `latest`, so completing an old partial release after a newer one shipped would move those
    packages' `latest` backwards. Leave the abandoned version incomplete.
-2. **Every package version is on npm, but tags or GitHub Releases are missing.** Use the
-   **metadata-only manual dispatch** described above. Do not re-run the publish job for this;
-   nothing is left to publish, and the rule against re-running publication exists precisely to
-   keep metadata repair from touching npm.
 
 What a rerun can and cannot pick up. A rerun retains the original SHA and event payload, so
 anything committed to the repository (workflow files, release scripts, manifests) is frozen at

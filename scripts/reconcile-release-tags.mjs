@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { assertFixedReleaseGroup, loadPublicPackages } from "./release-policy.mjs";
 
 const COMMIT_REGEXP = /^[0-9a-f]{40}$/;
-const DEFAULT_REGISTRY_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_REGISTRY_TIMEOUT_MS = 25 * 60_000;
 const DEFAULT_REGISTRY_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_REGISTRY_RETRY_DELAY_MS = 2_000;
 const MAX_REGISTRY_RETRY_DELAY_MS = 15_000;
@@ -107,47 +107,91 @@ function wait(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
-async function publishedRelease(
-  name,
-  version,
-  registryUrl,
-  fetchImpl,
-  { deadlineMs, requestTimeoutMs, retryDelayMs, sleepImpl, nowImpl },
+async function waitForPublishedReleases(
+  packages,
+  {
+    registryUrl,
+    fetchImpl,
+    timeoutMs,
+    requestTimeoutMs,
+    retryDelayMs,
+    sleepImpl,
+    nowImpl,
+    summaryPath,
+  },
 ) {
-  let lastError;
+  const lookups = packages.map(({ manifest }) => ({
+    manifest,
+    release: undefined,
+    lastError: undefined,
+  }));
+  let pending = lookups;
+  const startedAt = nowImpl();
+  const deadlineMs = startedAt + timeoutMs;
+  let delayMs = Math.min(retryDelayMs, MAX_REGISTRY_RETRY_DELAY_MS);
   let attempts = 0;
-  while (nowImpl() < deadlineMs) {
+  while (pending.length > 0 && nowImpl() < deadlineMs) {
     attempts++;
+    const requestBudgetMs = Math.min(requestTimeoutMs, Math.max(1, deadlineMs - nowImpl()));
     try {
-      const remainingMs = Math.max(1, deadlineMs - nowImpl());
-      return await fetchPublishedRelease(
-        name,
-        version,
-        registryUrl,
-        fetchImpl,
-        Math.min(requestTimeoutMs, remainingMs),
+      await Promise.all(
+        pending.map(async (lookup) => {
+          const { name, version } = lookup.manifest;
+          try {
+            lookup.release = await fetchPublishedRelease(
+              name,
+              version,
+              registryUrl,
+              fetchImpl,
+              requestBudgetMs,
+            );
+          } catch (error) {
+            if (!(error instanceof RetryableRegistryError)) throw error;
+            lookup.lastError = error.message;
+          }
+        }),
       );
     } catch (error) {
-      if (!(error instanceof RetryableRegistryError)) throw error;
-      lastError = error;
-      const remainingMs = deadlineMs - nowImpl();
-      if (remainingMs <= 0) break;
-
-      const delayMs = Math.min(
-        retryDelayMs * 2 ** Math.min(attempts - 1, 30),
-        MAX_REGISTRY_RETRY_DELAY_MS,
-        remainingMs,
-      );
-      console.warn(`${error.message}; retrying npm metadata in ${delayMs}ms`);
-      await sleepImpl(delayMs);
+      if (summaryPath) {
+        appendFileSync(
+          summaryPath,
+          `## npm registry visibility\n\nnpm registry lookup failed without retry: ${error.message}\n`,
+        );
+      }
+      throw error;
     }
+
+    pending = pending.filter((lookup) => !lookup.release);
+    const remainingMs = deadlineMs - nowImpl();
+    if (pending.length === 0 || remainingMs <= 0) break;
+    const waitMs = Math.min(delayMs, remainingMs);
+    const reasons = pending.map(
+      ({ manifest, lastError }) => `${releaseTag(manifest)} (${lastError})`,
+    );
+    console.warn(`Retrying npm metadata for ${reasons.join(", ")} in ${waitMs}ms`);
+    await sleepImpl(waitMs);
+    delayMs = Math.min(delayMs * 2, MAX_REGISTRY_RETRY_DELAY_MS);
   }
 
-  throw new Error(
-    `npm metadata for ${name}@${version} was not ready before the shared registry deadline ` +
-      `after ${attempts} attempt${attempts === 1 ? "" : "s"}: ${lastError?.message ?? "deadline expired"}`,
-    { cause: lastError },
-  );
+  const elapsedSeconds = (nowImpl() - startedAt) / 1000;
+  if (pending.length > 0) {
+    const report = [
+      `npm registry visibility timed out after ${elapsedSeconds}s (${attempts} polls). Outstanding versions:`,
+      "",
+      ...pending.map(
+        ({ manifest, lastError }) =>
+          `- \`${releaseTag(manifest)}\` — ${lastError ?? "deadline expired"}`,
+      ),
+      "",
+      "Check the original publish result and npm maintainer notifications. After a successful publish, " +
+        "wait for every version to appear. While main still declares those versions, manually dispatch " +
+        "Release - Publish from main to repair tags and GitHub Releases without publishing again.",
+    ].join("\n");
+    if (summaryPath) appendFileSync(summaryPath, `## npm registry visibility\n\n${report}\n`);
+    throw new Error(report);
+  }
+  console.log(`Verified npm metadata for ${lookups.length} package versions in ${elapsedSeconds}s`);
+  return lookups.map(({ release }) => release);
 }
 
 function argumentValue(args, index, flag) {
@@ -175,6 +219,7 @@ export async function reconcileReleaseTags({
   remote = "origin",
   registryUrl = "https://registry.npmjs.org",
   outputPath,
+  summaryPath,
   push = false,
   fetchImpl = globalThis.fetch,
   registryTimeoutMs = DEFAULT_REGISTRY_TIMEOUT_MS,
@@ -199,19 +244,18 @@ export async function reconcileReleaseTags({
 
   const expectedTags = [];
   const missingTags = [];
+  const releases = await waitForPublishedReleases(packages, {
+    registryUrl,
+    fetchImpl,
+    timeoutMs: registryTimeoutMs,
+    requestTimeoutMs: registryRequestTimeoutMs,
+    retryDelayMs: registryRetryDelayMs,
+    sleepImpl,
+    nowImpl,
+    summaryPath,
+  });
+  // Snapshot remote tags only after the registry wait, which can last many minutes.
   let verifiedTargets = remoteTagTargets(rootDir, remote);
-  const registryDeadlineMs = nowImpl() + registryTimeoutMs;
-  const releases = await Promise.all(
-    packages.map(({ manifest }) =>
-      publishedRelease(manifest.name, manifest.version, registryUrl, fetchImpl, {
-        deadlineMs: registryDeadlineMs,
-        requestTimeoutMs: registryRequestTimeoutMs,
-        retryDelayMs: registryRetryDelayMs,
-        sleepImpl,
-        nowImpl,
-      }),
-    ),
-  );
 
   for (const pkg of releases) {
     const tag = releaseTag(pkg);
@@ -274,7 +318,15 @@ function parseArgs(args) {
     const arg = args[index];
     if (arg === "--push") options.push = true;
     else if (arg === "--output") options.outputPath = argumentValue(args, index++, arg);
-    else if (arg === "--remote") options.remote = argumentValue(args, index++, arg);
+    else if (arg === "--summary") options.summaryPath = argumentValue(args, index++, arg);
+    else if (arg === "--registry-timeout-ms") {
+      const value = argumentValue(args, index++, arg);
+      // AbortSignal.timeout() rejects fractional delays, so accept only positive safe integers.
+      if (!/^[1-9][0-9]*$/.test(value) || !Number.isSafeInteger(Number(value))) {
+        throw new Error(`${arg} must be a positive integer number of milliseconds`);
+      }
+      options.registryTimeoutMs = Number(value);
+    } else if (arg === "--remote") options.remote = argumentValue(args, index++, arg);
     else if (arg === "--registry-url") options.registryUrl = argumentValue(args, index++, arg);
     else throw new Error(`Unknown or incomplete argument: ${arg}`);
   }
