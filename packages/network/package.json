@@ -30,6 +30,6 @@
   "dependencies": {
     "@lionden/config": "^0.5.2",
     "@lionden/core": "^0.5.2",
-    "@provablehq/sdk": "^0.12.1"
+    "@provablehq/sdk": "^0.13.1"
   }
 }
